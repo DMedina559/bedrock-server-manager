@@ -1,4 +1,5 @@
-from unittest.mock import AsyncMock, MagicMock
+import asyncio
+from pathlib import Path
 
 import pytest
 from pydantic import ValidationError
@@ -7,19 +8,23 @@ from bedrock_server_manager.api.models import (
     DeleteServerDataRequest,
     GetAllServerSettingsRequest,
     GetServerSettingRequest,
+    RestartServerRequest,
     SendCommandRequest,
     SetServerCustomValueRequest,
     SetServerSettingRequest,
     SetServerStatusRequest,
     StartServerRequest,
-    StartServerResponse,
     StopServerRequest,
-    StopServerResponse,
     UpdateServerPlayerStatsRequest,
 )
 from bedrock_server_manager.api.server import (
     delete_server_data,
+    get_all_server_settings,
+    get_server_setting,
+    restart_server,
     send_command,
+    set_server_custom_value,
+    set_server_setting,
     set_server_status,
     start_server,
     stop_server,
@@ -29,357 +34,145 @@ from bedrock_server_manager.error import BlockedCommandError
 from bedrock_server_manager.plugins.runtime_capabilities import server_lifecycle_manager
 
 
-async def test_start_server_success(app_context, monkeypatch):
-    """Test start_server dispatches to BedrockServer successfully."""
-    mock_server = MagicMock()
-    mock_server.start = AsyncMock()
-    mock_server.stop = AsyncMock()
-    mock_server.is_running = AsyncMock()
-    mock_server.send_command = AsyncMock()
-    mock_server.delete_all_data = AsyncMock()
-    mock_server.is_running.return_value = False
-    monkeypatch.setattr(app_context, "get_server", lambda x: mock_server)
-
-    # Mock the BedrockProcessManager globally mapped onto app_context
-    mock_bpm = MagicMock()
-    mock_bpm.add_server = AsyncMock()
-    mock_bpm.remove_server = AsyncMock()
-    monkeypatch.setattr(app_context, "_bedrock_process_manager", mock_bpm)
-
-    result = await start_server(
-        StartServerRequest(server_name="test_server"), app_context=app_context
-    )
-
-    assert result.status == "success"
-
-    mock_bpm.add_server.assert_awaited_once_with(mock_server)
-
-
-async def test_start_server_missing_name(app_context):
-    """Test start_server triggers early failure with invalid names."""
-    with pytest.raises(ValidationError):
-        await start_server({"server_name": ""}, app_context=app_context)
-
-
-async def test_stop_server_success(app_context, monkeypatch):
-    """Test stop_server executes successfully on target server."""
-    mock_server = MagicMock()
-    mock_server.start = AsyncMock()
-    mock_server.stop = AsyncMock()
-    mock_server.is_running = AsyncMock()
-    mock_server.send_command = AsyncMock()
-    mock_server.delete_all_data = AsyncMock()
-    mock_server.get_status_from_config = AsyncMock(return_value="RUNNING")
-    mock_server._manage_json_config = AsyncMock()
-    mock_server.get_pid_file_path = MagicMock(return_value="/tmp/test_pid")
-    monkeypatch.setattr(app_context, "get_server", lambda x: mock_server)
-
-    mock_bpm = MagicMock()
-    mock_bpm.remove_server = AsyncMock()
-    monkeypatch.setattr(app_context, "_bedrock_process_manager", mock_bpm)
-
-    result = await stop_server(
-        StopServerRequest(server_name="test_server"), app_context=app_context
-    )
-
-    assert result.status == "success"
-
-
-async def test_stop_server_missing_name(app_context):
-    """Test stop_server triggers early failure with invalid names."""
-    with pytest.raises(ValidationError):
-        await stop_server({"server_name": ""}, app_context=app_context)
-
-
-async def test_send_command_success(app_context, monkeypatch):
-    """Test send_command correctly transmits cleanly verified commands."""
-    mock_server = MagicMock()
-    mock_server.start = AsyncMock()
-    mock_server.stop = AsyncMock()
-    mock_server.is_running = AsyncMock()
-    mock_server.send_command = AsyncMock()
-    mock_server.delete_all_data = AsyncMock()
-    monkeypatch.setattr(app_context, "get_server", lambda x: mock_server)
-
-    result = (
-        await send_command(
-            request=SendCommandRequest(server_name="test_server", command="say hello"),
-            app_context=app_context,
-        )
-    ).model_dump(mode="python")
-
-    assert result["status"] == "success"
-    mock_server.send_command.assert_called_once_with("say hello")
-
-
-async def test_send_command_missing_name(app_context):
-    """Test send_command correctly throws on missing server string."""
-    with pytest.raises(ValidationError):
-        (
-            await send_command(
-                request=SendCommandRequest(server_name="", command="say hello"),
-                app_context=app_context,
-            )
-        ).model_dump(mode="python")
-
-
-async def test_send_command_blocked(app_context):
-    """Test send_command throws an exception against restricted operations like stop."""
-    with pytest.raises(BlockedCommandError):
-        (
-            await send_command(
-                request=SendCommandRequest(server_name="test_server", command="stop"),
-                app_context=app_context,
-            )
-        ).model_dump(mode="python")
-
-
-async def test_delete_server_data_success(app_context, monkeypatch):
-    """Test delete_server_data properly purges the cache and directory logic."""
-    mock_server = AsyncMock()
-    mock_server.start = AsyncMock()
-    mock_server.stop = AsyncMock()
-    mock_server.is_running = AsyncMock()
-    mock_server.send_command = AsyncMock()
-    mock_server.delete_all_data = AsyncMock()
-    mock_server.is_running.return_value = False
-    monkeypatch.setattr(app_context, "get_server", lambda x: mock_server)
-    monkeypatch.setattr(app_context, "remove_server", AsyncMock())
-
-    result = (
-        await delete_server_data(
-            request=DeleteServerDataRequest(server_name="test_server"),
-            app_context=app_context,
-        )
-    ).model_dump(mode="python")
-
-    assert result["status"] == "success"
-
-
-async def test_delete_server_data_missing_name(app_context):
-    """Test delete_server_data catches empty missing server string."""
-    with pytest.raises(ValidationError):
-        (
-            await delete_server_data(
-                request=DeleteServerDataRequest(server_name=""), app_context=app_context
-            )
-        ).model_dump(mode="python")
-
-
-async def test_server_lifecycle_manager(app_context, monkeypatch):
-    """Test the context manager properly sequences start/stop flows based on arguments."""
-    mock_server = AsyncMock()
-    mock_server.start = AsyncMock()
-    mock_server.stop = AsyncMock()
-    mock_server.is_running = AsyncMock()
-    mock_server.send_command = AsyncMock()
-    mock_server.delete_all_data = AsyncMock()
-    mock_server.is_running.return_value = True
-    monkeypatch.setattr(app_context, "get_server", lambda x: mock_server)
-
-    mock_stop = AsyncMock(
-        return_value=StopServerResponse(
-            server_name="test_server", outcome="stopped", message="Stopped"
-        )
-    )
-    mock_start = AsyncMock(
-        return_value=StartServerResponse(
-            server_name="test_server", outcome="started", message="Started"
-        )
-    )
-
-    monkeypatch.setattr("bedrock_server_manager.api.server.stop_server", mock_stop)
-    monkeypatch.setattr("bedrock_server_manager.api.server.start_server", mock_start)
-
-    async with server_lifecycle_manager(
-        "test_server", stop_before=True, app_context=app_context
-    ):
-        # The operation happens here
-        pass
-
-    mock_stop.assert_called_once()
-    mock_start.assert_called_once()
-
-
-async def test_set_server_status(app_context, monkeypatch):
-    """Test internal set_server_status modifies JSON configuration effectively."""
-    mock_server = MagicMock()
-    mock_server.start = AsyncMock()
-    mock_server.stop = AsyncMock()
-    mock_server.is_running = AsyncMock()
-    mock_server.send_command = AsyncMock()
-    mock_server.delete_all_data = AsyncMock()
-    mock_server.get_status_from_config = AsyncMock(return_value="STOPPED")
-    mock_server._manage_json_config = AsyncMock()
-    monkeypatch.setattr(app_context, "get_server", lambda x: mock_server)
-
-    result = (
-        await set_server_status(
-            request=SetServerStatusRequest(server_name="test_server", status="RUNNING"),
-            app_context=app_context,
-        )
-    ).model_dump(mode="python")
-
-    assert result["status"] == "success"
-    assert result["previous_status"] == "STOPPED"
-    mock_server._manage_json_config.assert_called_once_with(
-        key="server_info.status", operation="write", value="RUNNING"
-    )
-
-
-async def test_update_server_player_stats(app_context):
-    """Test update_server_player_stats effectively builds dictionary outputs for socket notifications."""
-    result = (
-        await update_server_player_stats(
-            request=UpdateServerPlayerStatsRequest(
-                server_name="test_server",
-                player_count=1,
-                players=[{"name": "p1", "xuid": "1"}],
-            ),
-            app_context=app_context,
-        )
-    ).model_dump(mode="python")
-
-    assert result["status"] == "success"
-
-
-async def test_set_server_setting_success(app_context, monkeypatch):
-    """Test setting generic server configs via API correctly targets the managed config map."""
-    from bedrock_server_manager.api.server import set_server_setting
-
-    mock_server = MagicMock()
-    mock_server.start = AsyncMock()
-    mock_server.stop = AsyncMock()
-    mock_server.is_running = AsyncMock()
-    mock_server.send_command = AsyncMock()
-    mock_server.delete_all_data = AsyncMock()
-    mock_server._manage_json_config = AsyncMock(return_value=None)
-    monkeypatch.setattr(app_context, "get_server", lambda x: mock_server)
-
-    result = (
-        await set_server_setting(
-            request=SetServerSettingRequest(
-                server_name="test_server", key="test.key", value="test_val"
-            ),
-            app_context=app_context,
-        )
-    ).model_dump(mode="python")
-
-    assert result["status"] == "success"
-    mock_server._manage_json_config.assert_called_once_with(
-        "test.key", "write", "test_val"
-    )
-
-
-async def test_set_server_custom_value_success(app_context, monkeypatch):
-    """Test custom section configuration correctly delegates to BedrockServer layer."""
-    from bedrock_server_manager.api.server import set_server_custom_value
-
-    mock_server = MagicMock()
-    mock_server.start = AsyncMock()
-    mock_server.stop = AsyncMock()
-    mock_server.is_running = AsyncMock()
-    mock_server.send_command = AsyncMock()
-    mock_server.delete_all_data = AsyncMock()
-    mock_server.set_custom_config_value = AsyncMock(return_value=None)
-    monkeypatch.setattr(app_context, "get_server", lambda x: mock_server)
-
-    result = (
-        await set_server_custom_value(
-            request=SetServerCustomValueRequest(
-                server_name="test_server", key="my_custom", value="custom_val"
-            ),
-            app_context=app_context,
-        )
-    ).model_dump(mode="python")
-
-    assert result["status"] == "success"
-    mock_server.set_custom_config_value.assert_called_once_with(
-        "my_custom", "custom_val"
-    )
-
-
-async def test_get_all_server_settings_success(app_context, monkeypatch):
-    """Test fetching all configs correctly retrieves the underlying dict from core server."""
-    from bedrock_server_manager.api.server import get_all_server_settings
-
-    mock_server = AsyncMock()
-    mock_server.start = AsyncMock()
-    mock_server.stop = AsyncMock()
-    mock_server.is_running = AsyncMock()
-    mock_server.send_command = AsyncMock()
-    mock_server.delete_all_data = AsyncMock()
-    mock_server._load_server_config.return_value = {"key1": "val1"}
-    monkeypatch.setattr(app_context, "get_server", lambda x: mock_server)
-
-    result = (
-        await get_all_server_settings(
-            request=GetAllServerSettingsRequest(server_name="test_server"),
-            app_context=app_context,
-        )
-    ).model_dump(mode="python")
-
-    assert result["status"] == "success"
-    assert result["settings"]["key1"] == "val1"
-
-
-async def test_get_server_setting_success(app_context, monkeypatch):
-    """Test grabbing a single server setting works accurately targeting core mappings."""
-    from bedrock_server_manager.api.server import get_server_setting
-
-    mock_server = MagicMock()
-    mock_server.start = AsyncMock()
-    mock_server.stop = AsyncMock()
-    mock_server.is_running = AsyncMock()
-    mock_server.send_command = AsyncMock()
-    mock_server.delete_all_data = AsyncMock()
-    mock_server._manage_json_config = AsyncMock(return_value="secret")
-    monkeypatch.setattr(app_context, "get_server", lambda x: mock_server)
-
-    result = (
-        await get_server_setting(
-            request=GetServerSettingRequest(
-                server_name="test_server", key="secret.key"
-            ),
-            app_context=app_context,
-        )
-    ).model_dump(mode="python")
-
-    assert result["status"] == "success"
-    assert result["value"] == "secret"
-    mock_server._manage_json_config.assert_called_once_with("secret.key", "read")
-
-
-@pytest.mark.parametrize("success_only", [True, False])
-async def test_cancelled_lifecycle_operation_does_not_restart(
-    app_context, monkeypatch, success_only
+async def test_server_lifecycle_api_controls_real_process(
+    app_context, real_bedrock_server
 ):
-    import asyncio
-    from types import SimpleNamespace
-
-    monkeypatch.setattr(
-        app_context,
-        "get_server",
-        lambda _: SimpleNamespace(is_running=AsyncMock(return_value=True)),
+    name = real_bedrock_server.server_name
+    assert (
+        await start_server(
+            StartServerRequest(server_name=name), app_context=app_context
+        )
+    ).outcome == "started"
+    first_pid = real_bedrock_server._process.pid
+    assert (
+        await start_server(
+            StartServerRequest(server_name=name), app_context=app_context
+        )
+    ).outcome == "already_running"
+    assert real_bedrock_server._process.pid == first_pid
+    result = await restart_server(
+        RestartServerRequest(server_name=name, send_message=False),
+        app_context=app_context,
     )
-    start = AsyncMock()
-    monkeypatch.setattr("bedrock_server_manager.api.server.start_server", start)
-    monkeypatch.setattr("bedrock_server_manager.api.server.stop_server", AsyncMock())
+    assert result.outcome == "restarted"
+    assert real_bedrock_server._process.pid != first_pid
+    assert (
+        await stop_server(StopServerRequest(server_name=name), app_context=app_context)
+    ).outcome == "stopped"
+    assert not await real_bedrock_server.is_running()
+    assert (
+        await stop_server(StopServerRequest(server_name=name), app_context=app_context)
+    ).outcome == "already_stopped"
+
+
+async def test_server_setting_api_persists_typed_and_custom_values(
+    app_context, real_bedrock_server
+):
+    name = real_bedrock_server.server_name
+    await set_server_setting(
+        SetServerSettingRequest(
+            server_name=name, key="settings.autoupdate", value=True
+        ),
+        app_context=app_context,
+    )
+    assert (
+        await get_server_setting(
+            GetServerSettingRequest(server_name=name, key="settings.autoupdate"),
+            app_context=app_context,
+        )
+    ).value is True
+    await set_server_custom_value(
+        SetServerCustomValueRequest(
+            server_name=name, key="integration", value={"value": 42}
+        ),
+        app_context=app_context,
+    )
+    result = await get_all_server_settings(
+        GetAllServerSettingsRequest(server_name=name), app_context=app_context
+    )
+    assert result.settings["custom"]["integration"] == {"value": 42}
+    await app_context.reload()
+    assert await real_bedrock_server.get_autoupdate()
+
+
+async def test_server_runtime_stats_api_updates_summary(
+    app_context, real_bedrock_server
+):
+    name = real_bedrock_server.server_name
+    response = await set_server_status(
+        SetServerStatusRequest(server_name=name, status="STOPPED"),
+        app_context=app_context,
+    )
+    assert response.new_status == "STOPPED"
+    await real_bedrock_server.start()
+    response = await update_server_player_stats(
+        UpdateServerPlayerStatsRequest(
+            server_name=name, player_count=1, players=[{"name": "Steve", "xuid": "123"}]
+        ),
+        app_context=app_context,
+    )
+    assert response.status == "success"
+    assert (await real_bedrock_server.get_summary_info())["player_count"] == 1
+
+
+async def test_command_api_sends_to_actual_dummy_server(
+    app_context, real_bedrock_server
+):
+    await real_bedrock_server.start()
+    response = await send_command(
+        SendCommandRequest(
+            server_name=real_bedrock_server.server_name,
+            command="__DUMMY__ PLAYER_JOIN APIPlayer",
+        ),
+        app_context=app_context,
+    )
+    assert response.status == "success"
+
+
+async def test_blocked_command_is_rejected(app_context, real_bedrock_server):
+    with pytest.raises(BlockedCommandError):
+        await send_command(
+            SendCommandRequest(
+                server_name=real_bedrock_server.server_name, command="stop"
+            ),
+            app_context=app_context,
+        )
+
+
+async def test_delete_api_removes_actual_installation(app_context, real_bedrock_server):
+    path = Path(real_bedrock_server.server_dir)
+    result = await delete_server_data(
+        DeleteServerDataRequest(server_name=real_bedrock_server.server_name),
+        app_context=app_context,
+    )
+    assert result.status == "success"
+    assert not path.exists()
+    assert real_bedrock_server.server_name not in app_context._servers
+
+
+async def test_cancelled_maintenance_does_not_restart_server(
+    app_context, real_bedrock_server
+):
+    await real_bedrock_server.start()
     with pytest.raises(asyncio.CancelledError):
         async with server_lifecycle_manager(
-            "example",
-            True,
-            restart_on_success_only=success_only,
-            app_context=app_context,
+            real_bedrock_server.server_name, True, app_context=app_context
         ):
-            raise asyncio.CancelledError()
-    start.assert_not_awaited()
+            assert not await real_bedrock_server.is_running()
+            raise asyncio.CancelledError
+    assert not await real_bedrock_server.is_running()
+
+
+@pytest.mark.parametrize(
+    "model", [StartServerRequest, StopServerRequest, DeleteServerDataRequest]
+)
+def test_lifecycle_request_rejects_empty_server(model):
+    with pytest.raises(ValidationError):
+        model(server_name="")
 
 
 def test_runtime_player_request_rejects_mismatched_count():
-    from pydantic import ValidationError
-
     with pytest.raises(ValidationError):
         UpdateServerPlayerStatsRequest(
-            server_name="example", player_count=2, players=[]
+            server_name="test_server", player_count=2, players=[]
         )

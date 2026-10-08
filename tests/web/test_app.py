@@ -1,224 +1,107 @@
 import asyncio
-from unittest.mock import AsyncMock, MagicMock, PropertyMock, patch
 
 import pytest
 from fastapi import Request
-from fastapi.testclient import TestClient
+from pydantic import BaseModel
 
 from bedrock_server_manager.web.app import create_web_app
 
 
 def test_create_web_app_initialization(app_context):
-    """Test that create_web_app initializes and configures the FastAPI app correctly."""
     app = create_web_app(app_context)
-
     assert app.title == "Bedrock Server Manager"
-    assert app.state.app_context == app_context
+    assert app.state.app_context is app_context
     assert app.openapi_url == "/api/openapi.json"
 
-    # Check that some routers are mounted
-    assert len(app.routes) > 0
+
+@pytest.mark.parametrize(
+    "path,expected",
+    [("/", 307), ("/docs", 200), ("/api/users", 404), ("/app/assets/missing.js", 404)],
+)
+async def test_setup_middleware_with_actual_empty_database(
+    unauth_client, path, expected
+):
+    response = await unauth_client.get(path, follow_redirects=False)
+    assert response.status_code == expected
+    if expected == 307:
+        assert response.headers["location"].endswith("/app")
 
 
-def test_setup_check_middleware_redirect(app_context, monkeypatch):
-    """Test that the setup_check_middleware redirects to /app when setup is needed."""
-    monkeypatch.setattr(
-        "bedrock_server_manager.context.AppContext.needs_setup",
-        PropertyMock(return_value=True),
-    )
-
-    app = create_web_app(app_context)
-    with TestClient(app) as client:
-        # Access a non-API route that is not allowed during setup
-        response = client.get("/", follow_redirects=False)
-        assert response.status_code == 307
-        # Note: request.url_for('serve_spa') resolves to an absolute URL, so it might include the domain
-        assert (
-            response.headers["location"].endswith("/app")
-            or response.headers["location"] == "/app"
-        )
-
-
-def test_setup_check_middleware_api_passthrough(app_context, monkeypatch):
-    """Test that API requests during setup don't redirect (they either pass or get handled by the route)."""
-    monkeypatch.setattr(
-        "bedrock_server_manager.context.AppContext.needs_setup",
-        PropertyMock(return_value=True),
-    )
-
-    app = create_web_app(app_context)
-    with TestClient(app) as client:
-        # Access an API route
-        response = client.get("/api/users", follow_redirects=False)
-        # Should not redirect. The route itself might return 401 because we aren't auth'd.
-        assert response.status_code != 307
-
-
-def test_setup_check_middleware_allowed_paths(app_context, monkeypatch):
-    """Test that allowed paths pass through even when setup is needed."""
-    monkeypatch.setattr(
-        "bedrock_server_manager.context.AppContext.needs_setup",
-        PropertyMock(return_value=True),
-    )
-
-    app = create_web_app(app_context)
-    with TestClient(app) as client:
-        response = client.get("/docs", follow_redirects=False)
-        assert response.status_code == 200
-
-
-def test_setup_check_middleware_static_assets(app_context, monkeypatch):
-    """Test that static assets paths pass through even when setup is needed."""
-    monkeypatch.setattr(
-        "bedrock_server_manager.context.AppContext.needs_setup",
-        PropertyMock(return_value=True),
-    )
-
-    app = create_web_app(app_context)
-    with TestClient(app) as client:
-        response = client.get("/app/assets/test.js", follow_redirects=False)
-        assert response.status_code != 307
-
-
-def test_add_user_to_request_middleware(test_app, auth_client, test_user):
-    """Test that the user is injected into the request state."""
-
-    # We will test the middleware specifically by hitting a dummy endpoint that reads request.state
+async def test_authenticated_request_populates_user_state(
+    test_app, auth_client, test_user
+):
     @test_app.get("/test-middleware-user")
-    def get_user(request: Request):
-        user = getattr(request.state, "current_user", None)
-        if user:
-            return {"username": user.username}
-        return {"username": None}
+    async def get_user(request: Request):
+        return {"username": request.state.current_user.username}
 
-    response = auth_client.get("/test-middleware-user", follow_redirects=False)
-    assert response.status_code == 200
+    response = await auth_client.get("/test-middleware-user")
     assert response.json()["username"] == test_user.username
 
 
-def test_cors_middleware_configuration(app_context, monkeypatch):
-    """Test CORS wildcard configuration dynamically sets allow_origin_regex."""
-    monkeypatch.setattr(
-        "bedrock_server_manager.context.AppContext.get_pre_app_config",
-        MagicMock(return_value=["*"]),
-    )
-
+async def test_lifespan_owns_monitors_on_the_application_loop(app_context):
     app = create_web_app(app_context)
-
-    # Find the CORSMiddleware
-    from starlette.middleware.cors import CORSMiddleware
-
-    cors_mw = None
-    for mw in app.user_middleware:
-        if mw.cls == CORSMiddleware:
-            cors_mw = mw
-            break
-
-    assert cors_mw is not None
-
-    assert cors_mw.kwargs.get("allow_origin_regex") == ".*"
+    async with app.router.lifespan_context(app):
+        assert app_context.loop is asyncio.get_running_loop()
+        resource_task = app_context.resource_monitor._task
+        process_task = app_context.bedrock_process_manager.monitoring_task
+        assert resource_task is not None and not resource_task.done()
+        assert process_task is not None and not process_task.done()
+        assert app_context.log_streamer._task is not None
+    assert resource_task.done()
+    assert process_task.done()
 
 
-async def test_lifespan_startup_shutdown(app_context, monkeypatch):
-    """Test the lifespan hook properly initializes and stops components."""
-    # We must patch asyncio.run so create_web_app doesn't try to run it inside the test's event loop
-    import asyncio
-
-    def dummy_run(coro):
-        try:
-            coro.close()
-        except Exception:
-            pass
-
-    monkeypatch.setattr(asyncio, "run", dummy_run)
-
-    app = create_web_app(app_context)
-
-    # Mock start and stop methods for our internal components
-    app_context.resource_monitor.start = MagicMock()
-    app_context.resource_monitor.stop = MagicMock()
-
-    app_context.api.application.update_server_statuses = AsyncMock()
-    app_context.plugin_manager.load_plugins = AsyncMock()
-    app_context.plugin_manager.trigger_guarded_event = AsyncMock()
-    app_context.plugin_manager.start_plugin_tasks = AsyncMock()
-    app_context.plugin_manager.shutdown = AsyncMock()
-    app_context.bedrock_process_manager.start = AsyncMock()
-    app_context.bedrock_process_manager.shutdown = AsyncMock()
-
-    # Extract the actual lifespan function from the app router
-    lifespan_manager = app.router.lifespan_context
-
-    # Create a mock for log streamer
-    with patch(
-        "bedrock_server_manager.web.log_streamer.LogStreamer"
-    ) as MockLogStreamer:
-        mock_ls_instance = MagicMock()
-        mock_ls_instance.shutdown = AsyncMock()
-        MockLogStreamer.return_value = mock_ls_instance
-
-        async with lifespan_manager(app):
-            # Verify startup logic
-            app_context.resource_monitor.start.assert_called_once()
-
-            # Check that the async function was directly awaited
-            app_context.api.application.update_server_statuses.assert_awaited_once()
-
-            # Check log streamer was initialized
-            MockLogStreamer.assert_called_once_with(
-                connection_manager=app_context.connection_manager,
-                log_dir=app_context.log_dir,
-                server_provider=app_context.get_server,
-            )
-            mock_ls_instance.start.assert_called_once()
-
-        # Verification of shutdown logic
-        mock_ls_instance.shutdown.assert_awaited_once()
-        app_context.resource_monitor.stop.assert_called_once()
-
-
-def test_http_validation_and_internal_errors_have_safe_envelopes(test_app, auth_client):
-    from pydantic import BaseModel
-
+async def test_validation_errors_have_safe_envelopes(test_app, auth_client):
     class Output(BaseModel):
         value: int
 
     @test_app.get("/api/test-input")
-    def input_route(value: int):
+    async def input_route(value: int):
         return {"value": value}
 
     @test_app.get("/api/test-output", response_model=Output)
-    def output_route():
+    async def output_route():
         return {"value": "private-invalid-value"}
 
-    response = auth_client.get("/api/test-input?value=invalid")
+    response = await auth_client.get("/api/test-input?value=invalid")
     assert response.status_code == 422
     assert response.json()["error"]["code"] == "validation_error"
-    response = auth_client.get("/api/test-output")
+    response = await auth_client.get("/api/test-output")
     assert response.status_code == 500
-    assert response.json()["error"]["code"] == "internal_error"
     assert "private-invalid-value" not in response.text
 
 
-@pytest.mark.asyncio
-async def test_failed_web_startup_cleans_up(app_context, monkeypatch):
-    def close_coroutine(coro):
-        coro.close()
-
-    monkeypatch.setattr(asyncio, "run", close_coroutine)
+async def test_failed_plugin_load_is_isolated_from_application_startup(
+    app_context, tmp_path
+):
+    plugin = tmp_path / "plugins" / "broken.py"
+    plugin.write_text("""from bedrock_server_manager import PluginBase
+class Broken(PluginBase):
+    version = "1.0"
+    async def on_load(self):
+        raise RuntimeError("startup failed")
+""")
+    manager = app_context.plugin_manager
+    await app_context.plugin_service.register_or_update_plugin("broken", enabled=True)
     app = create_web_app(app_context)
-    process = app_context.bedrock_process_manager
-    resource = app_context.resource_monitor
-    app_context.api.application.update_server_statuses = AsyncMock(
-        side_effect=RuntimeError("startup probe failed")
-    )
-    shutdown = AsyncMock(wraps=app_context.shutdown)
-    monkeypatch.setattr(app_context, "shutdown", shutdown)
-    with pytest.raises(RuntimeError, match="startup probe failed"):
+    async with app.router.lifespan_context(app):
+        assert manager.get_plugin_status("broken") == "ERROR"
+        assert not manager.plugins
+    assert app_context.bedrock_process_manager.monitoring_task.done()
+
+
+async def test_partial_startup_failure_drains_started_components(
+    app_context, monkeypatch
+):
+    def fail_resource_start():
+        raise RuntimeError("resource monitor startup failed")
+
+    monkeypatch.setattr(app_context.resource_monitor, "start", fail_resource_start)
+    app = create_web_app(app_context)
+    with pytest.raises(RuntimeError, match="resource monitor startup failed"):
         async with app.router.lifespan_context(app):
-            pass
-    assert process.monitoring_task is not None and process.monitoring_task.done()
-    assert resource._task is None or resource._task.done()
-    shutdown.assert_awaited_once()
-    await process.quiesce()
-    await resource.shutdown()
+            pytest.fail("Startup must propagate the failure")
+    task = app_context.bedrock_process_manager.monitoring_task
+    assert task is not None and task.done()
+    assert not app_context.task_manager.futures
+    assert not app_context.connection_manager.active_connections

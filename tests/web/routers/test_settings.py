@@ -1,145 +1,43 @@
-"""
-Integration tests for the settings router endpoints.
-"""
+import pytest
 
-from unittest.mock import patch
 
-from fastapi.testclient import TestClient
+async def test_global_settings_round_trip_survives_reload(
+    admin_auth_client, app_context
+):
+    response = await admin_auth_client.post(
+        "/api/settings/set", json={"key": "retention.downloads", "value": 7}
+    )
+    assert response.status_code == 200
+    assert app_context.settings.get("retention.downloads") == 7
+    assert (await admin_auth_client.get("/api/settings/get")).json()["settings"][
+        "retention"
+    ]["downloads"] == 7
+    assert (await admin_auth_client.put("/api/settings/reload")).status_code == 200
+    assert app_context.settings.get("retention.downloads") == 7
 
-from bedrock_server_manager.api.models import (
-    GetAllGlobalSettingsResponse,
-    ReloadGlobalSettingsResponse,
-    SetGlobalSettingResponse,
+
+@pytest.mark.parametrize(
+    "payload",
+    [
+        {"key": "retention.downloads", "value": -1},
+        {"key": "retention.downloads", "value": "invalid"},
+        {"key": "", "value": 1},
+    ],
 )
-from bedrock_server_manager.error import BSMError, UserInputError
+async def test_invalid_setting_preserves_persisted_value(
+    admin_auth_client, app_context, payload
+):
+    original = app_context.settings.get("retention.downloads")
+    response = await admin_auth_client.post("/api/settings/set", json=payload)
+    assert response.status_code in {400, 422}
+    assert app_context.settings.get("retention.downloads") == original
+    await app_context.settings.reload()
+    assert app_context.settings.get("retention.downloads") == original
 
 
-def test_get_all_settings_unauthorized(unauth_client: TestClient):
-    response = unauth_client.get("/api/settings/get")
-    assert response.status_code == 401
-
-
-def test_get_all_settings_forbidden(auth_client: TestClient):
-    response = auth_client.get("/api/settings/get")
-    assert response.status_code == 403
-
-
-def test_get_all_settings_success(admin_auth_client: TestClient):
-    with patch(
-        "bedrock_server_manager.web.routers.settings.settings_api.get_all_global_settings"
-    ) as mock_get:
-        mock_get.return_value = GetAllGlobalSettingsResponse.model_validate(
-            {
-                "status": "success",
-                "message": "Settings retrieved",
-                "settings": {"app.theme": "dark", "web.port": 8080},
-            }
-        )
-
-        response = admin_auth_client.get("/api/settings/get")
-        assert response.status_code == 200
-        data = response.json()
-        assert data["status"] == "success"
-        assert data["settings"]["app.theme"] == "dark"
-
-
-def test_get_all_settings_error(admin_auth_client: TestClient):
-    with patch(
-        "bedrock_server_manager.web.routers.settings.settings_api.get_all_global_settings"
-    ) as mock_get:
-        mock_get.side_effect = BSMError("Failed to read config file")
-
-        response = admin_auth_client.get("/api/settings/get")
-        assert response.status_code == 500
-        assert response.json()["error"]["message"] == "An unexpected error occurred."
-
-
-def test_get_all_settings_exception(admin_auth_client: TestClient):
-    with patch(
-        "bedrock_server_manager.web.routers.settings.settings_api.get_all_global_settings"
-    ) as mock_get:
-        mock_get.side_effect = Exception("Crash")
-
-        response = admin_auth_client.get("/api/settings/get")
-        assert response.status_code == 500
-        assert response.json()["error"]["message"] == "An unexpected error occurred."
-
-
-def test_post_set_setting_success(admin_auth_client: TestClient):
-    with patch(
-        "bedrock_server_manager.web.routers.settings.settings_api.set_global_setting"
-    ) as mock_set:
-        mock_set.return_value = SetGlobalSettingResponse.model_validate(
-            {"status": "success", "message": "Setting updated"}
-        )
-
-        response = admin_auth_client.post(
-            "/api/settings/set", json={"key": "app.theme", "value": "light"}
-        )
-        assert response.status_code == 200
-        data = response.json()
-        assert data["status"] == "success"
-        assert data["setting"]["key"] == "app.theme"
-
-
-def test_post_set_setting_error(admin_auth_client: TestClient):
-    with patch(
-        "bedrock_server_manager.web.routers.settings.settings_api.set_global_setting"
-    ) as mock_set:
-        mock_set.side_effect = UserInputError("Invalid key")
-
-        response = admin_auth_client.post(
-            "/api/settings/set", json={"key": "invalid.key", "value": "light"}
-        )
-        assert response.status_code == 400
-        assert "Invalid key" in response.json()["error"]["message"]
-
-
-def test_post_set_setting_user_input_error(admin_auth_client: TestClient):
-    with patch(
-        "bedrock_server_manager.web.routers.settings.settings_api.set_global_setting"
-    ) as mock_set:
-        mock_set.side_effect = UserInputError("Value must be string")
-
-        response = admin_auth_client.post(
-            "/api/settings/set", json={"key": "app.theme", "value": 123}
-        )
-        assert response.status_code == 400
-        assert "Value must be string" in response.json()["error"]["message"]
-
-
-def test_post_set_setting_bsm_error(admin_auth_client: TestClient):
-    with patch(
-        "bedrock_server_manager.web.routers.settings.settings_api.set_global_setting"
-    ) as mock_set:
-        mock_set.side_effect = BSMError("Disk write failed")
-
-        response = admin_auth_client.post(
-            "/api/settings/set", json={"key": "app.theme", "value": "light"}
-        )
-        assert response.status_code == 500
-        assert response.json()["error"]["message"] == "An unexpected error occurred."
-
-
-def test_put_reload_settings_success(admin_auth_client: TestClient):
-    with patch(
-        "bedrock_server_manager.web.routers.settings.settings_api.reload_global_settings"
-    ) as mock_reload:
-        mock_reload.return_value = ReloadGlobalSettingsResponse.model_validate(
-            {"status": "success", "message": "Reloaded"}
-        )
-
-        response = admin_auth_client.put("/api/settings/reload")
-        assert response.status_code == 200
-        assert response.json()["status"] == "success"
-
-
-def test_put_reload_settings_error(admin_auth_client: TestClient):
-    with patch(
-        "bedrock_server_manager.web.routers.settings.settings_api.reload_global_settings"
-    ) as mock_reload:
-        mock_reload.side_effect = BSMError("Failed to reload")
-
-        response = admin_auth_client.put("/api/settings/reload")
-        assert response.status_code == 500
-        assert response.json()["error"]["message"] == "An unexpected error occurred."
+@pytest.mark.parametrize("authenticated,expected", [(False, 401), (True, 403)])
+async def test_global_settings_require_admin(
+    unauth_client, auth_client, authenticated, expected
+):
+    client = auth_client if authenticated else unauth_client
+    assert (await client.get("/api/settings/get")).status_code == expected

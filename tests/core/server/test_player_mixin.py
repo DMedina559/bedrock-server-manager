@@ -99,10 +99,7 @@ async def test_scan_log_for_players_missing_file(real_bedrock_server):
 
 
 async def test_update_online_players(real_bedrock_server):
-    from unittest.mock import AsyncMock
-
-    real_bedrock_server.is_running = AsyncMock(return_value=True)
-    real_bedrock_server.is_running = AsyncMock(return_value=True)
+    await real_bedrock_server.start()
     """Test updating the online players property from the log."""
     server = real_bedrock_server
 

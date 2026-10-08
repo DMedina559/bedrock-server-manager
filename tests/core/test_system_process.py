@@ -541,7 +541,7 @@ async def test_dummy_launch_and_verify(tmp_path: Path, real_bedrock_server):
     await terminate_process_by_pid(pid)
 
     # 5. Verify process is no longer running
-    import time
+    import asyncio
 
-    time.sleep(0.5)
+    await asyncio.sleep(0.5)
     assert await is_process_running(pid) is False

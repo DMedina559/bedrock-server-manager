@@ -1,4 +1,4 @@
-from unittest.mock import MagicMock
+from pathlib import Path
 
 import pytest
 from pydantic import ValidationError
@@ -8,246 +8,75 @@ from bedrock_server_manager.api.models import (
     InstallNewServerRequest,
     UpdateServerRequest,
 )
-from bedrock_server_manager.error import (
-    BSMError,
-    ConfigurationError,
-    UserInputError,
-)
-from bedrock_server_manager.utils.general import ReentrantAsyncLock
+from bedrock_server_manager.error import BSMError, UserInputError
 
 
-async def test_install_new_server_success(app_context, monkeypatch):
-    """Test install_new_server formats new server context and runs successfully."""
-    from unittest.mock import AsyncMock
-
-    mock_server = MagicMock()
-    mock_server.operation_lock = ReentrantAsyncLock()
-    mock_server.is_installed = AsyncMock(return_value=False)
-    mock_server.get_target_version = AsyncMock(return_value="LATEST")
-    mock_server.get_version = AsyncMock(return_value="1.20")
-    mock_server.is_update_needed = AsyncMock(return_value=True)
-    mock_server.install_or_update = AsyncMock()
-    mock_server.backup_all_data = AsyncMock()
-    mock_server.get_version = AsyncMock(return_value="1.20")
-    monkeypatch.setattr(app_context, "get_server", lambda x: mock_server)
-
-    result = (
-        await install_new_server(
-            request=InstallNewServerRequest(server_name="new_server"),
-            app_context=app_context,
-        )
-    ).model_dump(mode="python")
-
-    assert result["status"] == "success"
-    assert result["version"] == "1.20"
-    mock_server.install_or_update.assert_called_once_with(
-        "LATEST", server_zip_path=None
+async def test_custom_install_creates_runnable_persisted_server(
+    app_context, dummy_server_zip, tmp_path
+):
+    archive = dummy_server_zip(target_dir=tmp_path, version="1.26.45.1")
+    request = InstallNewServerRequest(
+        server_name="installed", target_version="CUSTOM", server_zip_path=str(archive)
     )
-
-
-async def test_install_new_server_empty_name(app_context):
-    """Test install_new_server rejects missing names."""
-    with pytest.raises(ValidationError):
-        (
-            await install_new_server(
-                request=InstallNewServerRequest(server_name=""), app_context=app_context
-            )
-        ).model_dump(mode="python")
-
-
-async def test_install_new_server_already_exists(app_context, tmp_path, monkeypatch):
-    """Test install_new_server gracefully fails if server directory exists."""
-    from unittest.mock import AsyncMock
-
-    base_dir = tmp_path / "servers"
-    base_dir.mkdir()
-    (base_dir / "existing_server").mkdir()
-
-    await app_context.settings.set("paths.servers", str(base_dir))
-
-    mock_server = MagicMock()
-    mock_server.operation_lock = ReentrantAsyncLock()
-    mock_server.is_installed = AsyncMock(return_value=True)
-    monkeypatch.setattr(app_context, "get_server", lambda x: mock_server)
-
+    response = await install_new_server(request, app_context=app_context)
+    assert response.status == "success"
+    server = app_context.get_server("installed")
+    assert await server.is_installed()
+    assert Path(server.bedrock_executable_path).is_file()
+    assert response.version == await server.get_version()
     with pytest.raises(UserInputError):
-        (
-            await install_new_server(
-                request=InstallNewServerRequest(server_name="existing_server"),
-                app_context=app_context,
-            )
-        ).model_dump(mode="python")
-
-
-async def test_install_new_server_no_base_dir(app_context):
-    """Test install_new_server triggers error if path properties missing."""
-    await app_context.settings.set("paths.servers", "")
-
-    with pytest.raises(ConfigurationError):
-        (
-            await install_new_server(
-                request=InstallNewServerRequest(server_name="new_server"),
-                app_context=app_context,
-            )
-        ).model_dump(mode="python")
-
-
-async def test_install_new_server_error(app_context, monkeypatch):
-    """Test install_new_server traps underlying BSMError thrown via the class."""
-    from unittest.mock import AsyncMock
-
-    mock_server = MagicMock()
-    mock_server.operation_lock = ReentrantAsyncLock()
-    mock_server.is_installed = AsyncMock(return_value=False)
-    mock_server.get_target_version = AsyncMock(return_value="LATEST")
-    mock_server.get_version = AsyncMock(return_value="1.20")
-    mock_server.is_update_needed = AsyncMock(return_value=True)
-    mock_server.install_or_update = AsyncMock()
-    mock_server.backup_all_data = AsyncMock()
-    mock_server.install_or_update.side_effect = BSMError("Broken install")
-    monkeypatch.setattr(app_context, "get_server", lambda x: mock_server)
-
-    with pytest.raises(BSMError):
-        (
-            await install_new_server(
-                request=InstallNewServerRequest(server_name="new_server"),
-                app_context=app_context,
-            )
-        ).model_dump(mode="python")
-
-
-async def test_update_server_no_update_needed(app_context, monkeypatch):
-    """Test update_server returns early if version is current."""
-    from unittest.mock import AsyncMock
-
-    mock_server = MagicMock()
-    mock_server.operation_lock = ReentrantAsyncLock()
-    mock_server.get_target_version = AsyncMock(return_value="LATEST")
-    mock_server.get_version = AsyncMock(return_value="1.20")
-    mock_server.is_update_needed = AsyncMock(return_value=True)
-    mock_server.install_or_update = AsyncMock()
-    mock_server.backup_all_data = AsyncMock()
-    mock_server.backup_all_data = AsyncMock()
-    mock_server.is_update_needed = AsyncMock(return_value=False)
-    monkeypatch.setattr(app_context, "get_server", lambda x: mock_server)
-
-    result = (
-        await update_server(
-            request=UpdateServerRequest(server_name="test_server"),
-            app_context=app_context,
-        )
-    ).model_dump(mode="python")
-
-    assert result["status"] == "success"
-    assert result["updated"] is False
-    assert "already up-to-date" in result["message"]
-
-
-async def test_update_server_success(app_context, monkeypatch):
-    """Test update_server triggers backups, locks, and lifecycle managers properly."""
-    from unittest.mock import AsyncMock
-
-    mock_server = AsyncMock()
-    mock_server.operation_lock = ReentrantAsyncLock()
-    mock_server.get_target_version = AsyncMock(return_value="LATEST")
-    mock_server.get_version = AsyncMock(return_value="1.20")
-    mock_server.is_update_needed = AsyncMock(return_value=True)
-    mock_server.install_or_update = AsyncMock()
-    mock_server.backup_all_data = AsyncMock()
-    mock_server.backup_all_data = AsyncMock()
-    mock_server.is_update_needed = AsyncMock(return_value=True)
-    mock_server.get_version = AsyncMock(return_value="1.21")
-    monkeypatch.setattr(app_context, "get_server", lambda x: mock_server)
-
-    # Needs to bypass stop/start errors gracefully for test scope
-    import contextlib
-
-    @contextlib.asynccontextmanager
-    async def mock_slm(*args, **kwargs):
-        yield
-
-    monkeypatch.setattr(
-        "bedrock_server_manager.api.install.server_lifecycle_manager", mock_slm
+        await install_new_server(request, app_context=app_context)
+    await server.set_target_version(response.version)
+    response = await update_server(
+        UpdateServerRequest(server_name="installed"), app_context=app_context
     )
+    assert response.status == "success"
+    assert response.updated is False
 
-    result = (
-        await update_server(
-            request=UpdateServerRequest(server_name="test_server"),
+
+async def test_missing_custom_archive_does_not_install(app_context, tmp_path):
+    with pytest.raises(BSMError):
+        await install_new_server(
+            InstallNewServerRequest(
+                server_name="missing",
+                target_version="CUSTOM",
+                server_zip_path=str(tmp_path / "missing.zip"),
+            ),
             app_context=app_context,
         )
-    ).model_dump(mode="python")
-
-    assert result["status"] == "success"
-    assert result["updated"] is True
-    assert result["new_version"] == "1.21"
-
-    mock_server.backup_all_data.assert_called_once()
-    mock_server.install_or_update.assert_called_once()
+    assert not await app_context.get_server("missing").is_installed()
 
 
-async def test_update_server_locked(app_context, monkeypatch):
-    """Test update_server safely skips requests when lock is blocked."""
-    from unittest.mock import AsyncMock
-
-    mock_lock = MagicMock()
-    import asyncio
-
-    mock_lock.acquire = AsyncMock(side_effect=asyncio.TimeoutError())
-    mock_server = MagicMock()
-    mock_server.operation_lock = mock_lock
-    monkeypatch.setattr(app_context, "get_server", lambda x: mock_server)
-
-    result = (
-        await update_server(
-            request=UpdateServerRequest(server_name="test_server"),
-            app_context=app_context,
-        )
-    ).model_dump(mode="python")
-
-    assert result["status"] == "skipped"
-    assert "already in progress" in result["message"]
-
-
-async def test_update_server_missing_name(app_context):
-    """Test update_server checks bad incoming parameters."""
+@pytest.mark.parametrize("name", ["", "../outside", "invalid name"])
+def test_install_rejects_invalid_server_names(name):
     with pytest.raises(ValidationError):
-        (
-            await update_server(
-                request=UpdateServerRequest(server_name=""), app_context=app_context
-            )
-        ).model_dump(mode="python")
+        InstallNewServerRequest(server_name=name)
 
 
-async def test_update_server_error(app_context, monkeypatch):
-    """Test update_server captures failing tasks from subclass appropriately."""
-    from unittest.mock import AsyncMock
-
-    mock_server = AsyncMock()
-    mock_server.operation_lock = ReentrantAsyncLock()
-    mock_server.get_target_version = AsyncMock(return_value="LATEST")
-    mock_server.get_version = AsyncMock(return_value="1.20")
-    mock_server.is_update_needed = AsyncMock(return_value=True)
-    mock_server.install_or_update = AsyncMock()
-    mock_server.backup_all_data = AsyncMock()
-    mock_server.backup_all_data = AsyncMock()
-    mock_server.is_update_needed = AsyncMock(return_value=True)
-    mock_server.backup_all_data = AsyncMock(side_effect=BSMError("Backup Failed"))
-    monkeypatch.setattr(app_context, "get_server", lambda x: mock_server)
-
-    import contextlib
-
-    @contextlib.asynccontextmanager
-    async def mock_slm(*args, **kwargs):
-        yield
-
-    monkeypatch.setattr(
-        "bedrock_server_manager.api.install.server_lifecycle_manager", mock_slm
+async def test_update_downloads_real_archive_and_preserves_world(
+    app_context, dummy_server_zip, tmp_path, valid_mcworld_zip, download_api
+):
+    archive = dummy_server_zip(target_dir=tmp_path, version="1.20.1.1")
+    await install_new_server(
+        InstallNewServerRequest(
+            server_name="updated", target_version="CUSTOM", server_zip_path=str(archive)
+        ),
+        app_context=app_context,
     )
-
-    with pytest.raises(BSMError):
-        (
-            await update_server(
-                request=UpdateServerRequest(server_name="test_server"),
-                app_context=app_context,
-            )
-        ).model_dump(mode="python")
+    server = app_context.get_server("updated")
+    await server.extract_mcworld(str(valid_mcworld_zip), await server.get_world_name())
+    marker = (
+        Path(server.server_dir)
+        / "worlds"
+        / await server.get_world_name()
+        / "integration.txt"
+    )
+    marker.write_text("keep world")
+    await server.set_target_version("LATEST")
+    response = await update_server(
+        UpdateServerRequest(server_name="updated"), app_context=app_context
+    )
+    assert response.updated is True
+    assert response.new_version == "1.26.45.1"
+    assert marker.read_text() == "keep world"
+    assert list(Path(server.server_backup_directory).glob("*.mcworld"))

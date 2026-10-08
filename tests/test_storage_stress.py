@@ -11,7 +11,7 @@ from sqlalchemy.exc import OperationalError
 from sqlalchemy.future import select
 
 from bedrock_server_manager.db.database import Database
-from bedrock_server_manager.db.models import Base, Server
+from bedrock_server_manager.db.models import Server
 from bedrock_server_manager.db.storage import Storage
 from bedrock_server_manager.error import StorageError
 from bedrock_server_manager.state import (
@@ -30,9 +30,8 @@ async def file_db(tmp_path):
     database = Database(db_url)
     database.initialize()
 
-    assert database.engine is not None
-    async with database.engine.begin() as conn:
-        await conn.run_sync(Base.metadata.create_all)
+    async with database.session_manager():
+        pass
 
     yield database
     await database.shutdown()

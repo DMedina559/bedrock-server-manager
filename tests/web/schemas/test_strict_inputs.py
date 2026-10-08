@@ -29,5 +29,5 @@ def test_http_inputs_reject_invalid_data(model, data):
 
 
 async def test_unknown_role_rejected_by_http_before_write(admin_auth_client):
-    response = admin_auth_client.post("/api/users/1/role", json={"role": "owner"})
+    response = await admin_auth_client.post("/api/users/1/role", json={"role": "owner"})
     assert response.status_code == 422

@@ -1,7 +1,4 @@
-from unittest.mock import patch
-
 import pytest
-from pydantic import ValidationError
 
 from bedrock_server_manager.api.models import (
     GetPluginStatusesRequest,
@@ -15,150 +12,64 @@ from bedrock_server_manager.api.plugins import (
     set_plugin_status,
     trigger_external_app_event,
 )
-from bedrock_server_manager.context import AppContext
 from bedrock_server_manager.error import UserInputError
 
-"""
-Integration tests for the API functions in bedrock_server_manager/api/plugins.py.
-"""
 
+async def test_plugin_status_changes_persist_and_reload(app_context, plugin_factory):
+    await plugin_factory(
+        "integration",
+        "from bedrock_server_manager import PluginBase\nclass Integration(PluginBase):\n    version = '1.0'\n",
+    )
 
-async def test_get_plugin_statuses_success(app_context: AppContext):
-    """Test retrieving plugin statuses successfully."""
-    # Mocking the internal methods
-    with patch.object(
-        app_context.plugin_manager, "_synchronize_config_with_disk"
-    ) as mock_sync:
-        app_context.plugin_manager.plugin_config = {
-            "test_plugin": {"enabled": True, "version": "1.0.0"}
-        }
-
-        result = (
+    async def status():
+        return (
             await get_plugin_statuses(
-                request=GetPluginStatusesRequest(), app_context=app_context
+                GetPluginStatusesRequest(), app_context=app_context
             )
-        ).model_dump(mode="python")
+        ).plugins["integration"]
 
-        assert result["status"] == "success"
-        assert "test_plugin" in result["plugins"]
-        mock_sync.assert_called_once()
-
-
-async def test_set_plugin_status_success(app_context: AppContext):
-    """Test setting plugin status successfully."""
-    with patch.object(app_context.plugin_manager, "_synchronize_config_with_disk"):
-        with (
-            patch.object(app_context.plugin_manager, "_save_config") as mock_save,
-            patch.object(
-                app_context.plugin_manager, "load_plugin_by_name", return_value=True
-            ),
-        ):
-            app_context.plugin_manager.plugin_config = {
-                "test_plugin": {"enabled": False}
-            }
-
-            result = (
-                await set_plugin_status(
-                    request=SetPluginStatusRequest(
-                        target_plugin_name="test_plugin", enabled=True
-                    ),
-                    app_context=app_context,
-                )
-            ).model_dump(mode="python")
-
-            assert result["status"] == "success"
-            assert "test_plugin" in result["message"]
-            assert (
-                app_context.plugin_manager.plugin_config["test_plugin"]["enabled"]
-                is True
-            )
-            mock_save.assert_called_once()
+    assert (await status()).enabled
+    await set_plugin_status(
+        SetPluginStatusRequest(target_plugin_name="integration", enabled=False),
+        app_context=app_context,
+    )
+    assert not (await status()).enabled
+    assert app_context.plugin_manager.plugins == []
+    await reload_plugins(ReloadPluginsRequest(), app_context=app_context)
+    assert not (await status()).enabled
+    await set_plugin_status(
+        SetPluginStatusRequest(target_plugin_name="integration", enabled=True),
+        app_context=app_context,
+    )
+    assert (await status()).enabled
+    assert len(app_context.plugin_manager.plugins) == 1
 
 
-async def test_set_plugin_status_not_found(app_context: AppContext):
-    """Test setting plugin status for non-existent plugin raises UserInputError."""
-    with patch.object(app_context.plugin_manager, "_synchronize_config_with_disk"):
-        app_context.plugin_manager.plugin_config = {}
+async def test_external_event_reaches_loaded_plugin(app_context, plugin_factory):
+    plugin = await plugin_factory(
+        "events",
+        "from bedrock_server_manager import PluginBase\nclass Events(PluginBase):\n    version = '1.0'\n",
+    )
+    received = []
 
-        with pytest.raises(UserInputError, match="not found"):
-            (
-                await set_plugin_status(
-                    request=SetPluginStatusRequest(
-                        target_plugin_name="unknown_plugin", enabled=True
-                    ),
-                    app_context=app_context,
-                )
-            ).model_dump(mode="python")
+    async def listener(*args, **kwargs):
+        received.append(kwargs)
 
-
-async def test_set_plugin_status_empty_name(app_context: AppContext):
-    """Test setting plugin status with empty name raises UserInputError."""
-    with pytest.raises(ValidationError):
-        (
-            await set_plugin_status(
-                request=SetPluginStatusRequest(target_plugin_name="", enabled=True),
-                app_context=app_context,
-            )
-        ).model_dump(mode="python")
+    plugin.api.listen_for_event("integration_event", listener)
+    response = await trigger_external_app_event(
+        TriggerExternalAppEventRequest(
+            event_name="integration_event", payload={"saved": True}
+        ),
+        app_context=app_context,
+    )
+    assert response.status == "success"
+    assert received[0]["saved"] is True
 
 
-async def test_reload_plugins_success(app_context: AppContext):
-    """Test reloading plugins successfully."""
-    with patch.object(app_context.plugin_manager, "reload") as mock_reload:
-        result = (
-            await reload_plugins(
-                request=ReloadPluginsRequest(), app_context=app_context
-            )
-        ).model_dump(mode="python")
-
-        assert result["status"] == "success"
-        assert "reloaded successfully" in result["message"]
-        mock_reload.assert_called_once()
-
-
-async def test_trigger_external_app_event_success(app_context: AppContext):
-    """Test triggering external plugin event successfully."""
-    with patch.object(app_context.plugin_manager, "trigger_event") as mock_trigger:
-        result = (
-            await trigger_external_app_event(
-                request=TriggerExternalAppEventRequest(
-                    event_name="test:event", payload={"data": 123}
-                ),
-                app_context=app_context,
-            )
-        ).model_dump(mode="python")
-
-        assert result["status"] == "success"
-        assert "test:event" in result["message"]
-        mock_trigger.assert_called_once_with(
-            "test:event", data=123, _triggering_plugin="external_api_trigger"
+async def test_unknown_plugin_is_rejected_without_configuration_change(app_context):
+    with pytest.raises(UserInputError):
+        await set_plugin_status(
+            SetPluginStatusRequest(target_plugin_name="missing", enabled=True),
+            app_context=app_context,
         )
-
-
-async def test_trigger_external_app_event_empty_name(app_context: AppContext):
-    """Test triggering event with empty name raises UserInputError."""
-    with pytest.raises(ValidationError):
-        (
-            await trigger_external_app_event(
-                request=TriggerExternalAppEventRequest(event_name=""),
-                app_context=app_context,
-            )
-        ).model_dump(mode="python")
-
-
-async def test_failed_enable_does_not_report_success(app_context):
-    from unittest.mock import AsyncMock
-
-    from bedrock_server_manager.error import BSMError
-
-    manager = app_context.plugin_manager
-    manager.plugin_config = {"sample": {"enabled": False}}
-    with (
-        patch.object(manager, "_synchronize_config_with_disk", AsyncMock()),
-        patch.object(manager, "enable_plugin", AsyncMock(return_value=False)),
-    ):
-        with pytest.raises(BSMError):
-            await set_plugin_status(
-                SetPluginStatusRequest(target_plugin_name="sample", enabled=True),
-                app_context=app_context,
-            )
+    assert app_context.plugin_manager.plugin_config == {}

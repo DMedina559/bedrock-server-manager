@@ -1,7 +1,6 @@
-from unittest.mock import AsyncMock, MagicMock
+from pathlib import Path
 
 import pytest
-from pydantic import ValidationError
 
 from bedrock_server_manager.api.models import (
     GetPropertiesRequest,
@@ -16,44 +15,37 @@ from bedrock_server_manager.api.properties import (
 from bedrock_server_manager.error import UserInputError
 
 
-async def test_get_properties_success(app_context, monkeypatch):
-    """Test get_properties maps accurately to BedrockServer properties output."""
-    mock_server = MagicMock()
-    mock_server.get_server_properties = AsyncMock(
-        return_value={"server-name": "mc server"}
+async def test_property_api_updates_real_server_configuration(
+    app_context, real_bedrock_server
+):
+    name = real_bedrock_server.server_name
+    result = await set_properties(
+        SetPropertiesRequest(
+            server_name=name,
+            properties_to_update={"server-name": "API Server", "max-players": "30"},
+        ),
+        app_context=app_context,
     )
-    mock_server.server_properties_path = "test/path"
-    monkeypatch.setattr(app_context, "get_server", lambda x: mock_server)
-
-    # Mock aiofiles for properties read
-    import unittest.mock
-
-    mock_file = AsyncMock()
-    mock_file.read.return_value = "raw data"
-
-    mock_file.__aenter__.return_value = mock_file
-
-    with unittest.mock.patch("aiofiles.open", return_value=mock_file):
-        result = (
-            await get_properties(
-                request=GetPropertiesRequest(server_name="test_server"),
-                app_context=app_context,
-            )
-        ).model_dump(mode="python")
-
-    assert result["status"] == "success"
-    assert result["properties"]["server-name"] == "mc server"
-    assert result["raw_content"] == "raw data"
+    assert result.status == "success"
+    properties = await get_properties(
+        GetPropertiesRequest(server_name=name), app_context=app_context
+    )
+    assert properties.properties["server-name"] == "API Server"
+    assert "server-name=API Server" in properties.raw_content
 
 
-async def test_get_properties_missing_name(app_context):
-    """Test get_properties catches empty server names smoothly without raising."""
-    with pytest.raises(ValidationError):
-        (
-            await get_properties(
-                request=GetPropertiesRequest(server_name=""), app_context=app_context
-            )
-        ).model_dump(mode="python")
+async def test_property_api_validates_before_writing(app_context, real_bedrock_server):
+    path = Path(real_bedrock_server.server_dir) / "server.properties"
+    original = path.read_bytes()
+    with pytest.raises(UserInputError):
+        await set_properties(
+            SetPropertiesRequest(
+                server_name=real_bedrock_server.server_name,
+                properties_to_update={"server-port": "0"},
+            ),
+            app_context=app_context,
+        )
+    assert path.read_bytes() == original
 
 
 def test_validate_property_value():
@@ -171,71 +163,6 @@ def test_validate_property_value():
         ).model_dump(mode="python")["valid"]
         is False
     )
-
-
-async def test_set_properties_success(app_context, monkeypatch):
-    """Test set_properties maps properly calling BedrockServer validation and set operations."""
-    mock_server = MagicMock()
-    mock_server.set_server_property = AsyncMock()
-    monkeypatch.setattr(app_context, "get_server", lambda x: mock_server)
-
-    # Bypassing the stop_before lock via monkeypatching context manager
-    monkeypatch.setattr(
-        "bedrock_server_manager.api.properties.server_lifecycle_manager", MagicMock()
-    )
-
-    result = (
-        await set_properties(
-            request=SetPropertiesRequest(
-                server_name="test_server",
-                properties_to_update={"server-port": "19132", "server-name": "mc"},
-            ),
-            app_context=app_context,
-        )
-    ).model_dump(mode="python")
-
-    assert result["status"] == "success"
-    assert mock_server.set_server_property.call_count == 2
-    mock_server.set_server_property.assert_any_call("server-name", "mc")
-
-
-async def test_set_properties_validation_failure(app_context):
-    """Test set_properties returns a validation error gracefully preventing writes."""
-    with pytest.raises(UserInputError):
-        (
-            await set_properties(
-                request=SetPropertiesRequest(
-                    server_name="test_server", properties_to_update={"server-port": "0"}
-                ),
-                app_context=app_context,
-            )
-        ).model_dump(mode="python")
-
-
-async def test_set_properties_empty_name(app_context):
-    """Test set_properties validates server names rigidly before proceeding."""
-    with pytest.raises(ValidationError):
-        (
-            await set_properties(
-                request=SetPropertiesRequest(
-                    server_name="", properties_to_update={"server-name": "mc"}
-                ),
-                app_context=app_context,
-            )
-        ).model_dump(mode="python")
-
-
-async def test_set_properties_type_error(app_context):
-    """Test set_properties validates payload typing directly."""
-    with pytest.raises(ValidationError):
-        (
-            await set_properties(
-                request=SetPropertiesRequest(
-                    server_name="test_server", properties_to_update="not_a_dict"
-                ),
-                app_context=app_context,
-            )
-        ).model_dump(mode="python")
 
 
 @pytest.mark.parametrize(

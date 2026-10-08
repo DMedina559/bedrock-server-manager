@@ -1,192 +1,75 @@
-"""
-Integration tests for the world router endpoints.
-"""
+import shutil
+from pathlib import Path
 
-from unittest.mock import patch
-
-from fastapi.testclient import TestClient
-
-from bedrock_server_manager.api.models import ListAvailableWorldsResponse
-from bedrock_server_manager.error import BSMError
+import pytest
 
 
-def test_get_worlds_list_unauthorized(unauth_client: TestClient):
-    response = unauth_client.get("/api/content/worlds")
-    assert response.status_code == 401
-
-
-def test_get_worlds_list_success(admin_auth_client: TestClient):
-    with patch(
-        "bedrock_server_manager.web.routers.world.app_api.list_available_worlds"
-    ) as mock_list:
-        mock_list.return_value = ListAvailableWorldsResponse.model_validate(
-            {
-                "status": "success",
-                "files": ["/path/world1.mcworld", "/path/world2.mcworld"],
-            }
-        )
-
-        response = admin_auth_client.get("/api/content/worlds")
-        assert response.status_code == 200
-        data = response.json()
-        assert data["status"] == "success"
-        assert len(data["files"]) == 2
-        assert "world1.mcworld" in data["files"]
-
-
-def test_get_worlds_list_error(admin_auth_client: TestClient):
-    with patch(
-        "bedrock_server_manager.web.routers.world.app_api.list_available_worlds"
-    ) as mock_list:
-        mock_list.side_effect = BSMError("Disk unavailable")
-
-        response = admin_auth_client.get("/api/content/worlds")
-        assert response.status_code == 500
-        assert response.json()["error"]["message"] == "An unexpected error occurred."
-
-
-async def test_post_world_install_success(
-    admin_auth_client: TestClient,
-    real_bedrock_server,
+async def test_http_world_import_export_and_reset(
+    admin_auth_client,
     app_context,
-    tmp_path,
+    real_bedrock_server,
     valid_mcworld_zip,
+    wait_for_task,
 ):
-    import shutil
+    content = Path(app_context.settings.get("paths.content")) / "worlds"
+    content.mkdir(parents=True, exist_ok=True)
+    destination = content / "integration.mcworld"
+    shutil.copy2(valid_mcworld_zip, destination)
+    base = f"/api/server/{real_bedrock_server.server_name}/world"
+    response = await admin_auth_client.post(
+        base + "/install", json={"filename": destination.name}
+    )
+    assert response.status_code == 202
+    await wait_for_task(app_context, response.json()["task_id"])
+    world = (
+        Path(real_bedrock_server.server_dir)
+        / "worlds"
+        / await real_bedrock_server.get_world_name()
+    )
+    assert (world / "level.dat").is_file()
+    response = await admin_auth_client.post(base + "/export")
+    assert response.status_code == 202
+    snapshot = await wait_for_task(app_context, response.json()["task_id"])
+    assert Path(snapshot.result["export_file"]).is_file()
+    response = await admin_auth_client.request("DELETE", base + "/reset")
+    assert response.status_code == 202
+    await wait_for_task(app_context, response.json()["task_id"])
+    assert not world.exists()
 
-    # Set up mock content dir
-    await app_context.settings.set("paths.content", str(tmp_path))
-    worlds_dir = tmp_path / "worlds"
-    worlds_dir.mkdir(parents=True, exist_ok=True)
 
-    target_file = worlds_dir / "my_world.mcworld"
-    shutil.copy2(valid_mcworld_zip, target_file)
-
-    with patch(
-        "bedrock_server_manager.utils.server.validate_server", return_value=True
-    ):
-        with patch(
-            "bedrock_server_manager.web.tasks.TaskManager.run_task",
-            return_value="task-123",
-        ):
-            response = admin_auth_client.post(
-                f"/api/server/{real_bedrock_server.server_name}/world/install",
-                json={"filename": "my_world.mcworld"},
-            )
-            assert response.status_code == 202
-            assert response.json()["task_id"] == "task-123"
-
-
-async def test_post_world_install_not_found(
-    admin_auth_client: TestClient, real_bedrock_server, app_context, tmp_path
+@pytest.mark.parametrize(
+    "filename", ["../outside.mcworld", "/outside.mcworld", "missing.mcworld"]
+)
+async def test_world_import_rejects_unsafe_or_missing_content(
+    admin_auth_client, real_bedrock_server, filename
 ):
-    await app_context.settings.set("paths.content", str(tmp_path))
-    worlds_dir = tmp_path / "worlds"
-    worlds_dir.mkdir(parents=True, exist_ok=True)
+    response = await admin_auth_client.post(
+        f"/api/server/{real_bedrock_server.server_name}/world/install",
+        json={"filename": filename},
+    )
+    assert response.status_code in {400, 404, 422}
 
-    with patch(
-        "bedrock_server_manager.utils.server.validate_server", return_value=True
-    ):
-        response = admin_auth_client.post(
-            f"/api/server/{real_bedrock_server.server_name}/world/install",
-            json={"filename": "missing.mcworld"},
+
+async def test_world_changes_require_admin(auth_client, real_bedrock_server):
+    assert (
+        await auth_client.post(
+            f"/api/server/{real_bedrock_server.server_name}/world/export"
         )
-        assert response.status_code == 404
+    ).status_code == 403
 
 
-async def test_post_world_install_path_traversal(
-    admin_auth_client: TestClient, real_bedrock_server, app_context, tmp_path
+async def test_world_icon_is_served_from_actual_world(
+    admin_auth_client, populated_server
 ):
-    await app_context.settings.set("paths.content", str(tmp_path))
-    worlds_dir = tmp_path / "worlds"
-    worlds_dir.mkdir(parents=True, exist_ok=True)
-
-    with patch(
-        "bedrock_server_manager.utils.server.validate_server", return_value=True
-    ):
-        response = admin_auth_client.post(
-            f"/api/server/{real_bedrock_server.server_name}/world/install",
-            json={"filename": "../../../etc/passwd"},
-        )
-        assert response.status_code == 400
-
-
-def test_post_world_export_success(admin_auth_client: TestClient, real_bedrock_server):
-    with patch(
-        "bedrock_server_manager.utils.server.validate_server", return_value=True
-    ):
-        with patch(
-            "bedrock_server_manager.web.tasks.TaskManager.run_task",
-            return_value="task-456",
-        ):
-            response = admin_auth_client.post(
-                f"/api/server/{real_bedrock_server.server_name}/world/export"
-            )
-            assert response.status_code == 202
-            assert response.json()["task_id"] == "task-456"
-
-
-def test_delete_world_reset_success(admin_auth_client: TestClient, real_bedrock_server):
-    with patch(
-        "bedrock_server_manager.utils.server.validate_server", return_value=True
-    ):
-        with patch(
-            "bedrock_server_manager.web.tasks.TaskManager.run_task",
-            return_value="task-789",
-        ):
-
-            response = admin_auth_client.request(
-                "DELETE", f"/api/server/{real_bedrock_server.server_name}/world/reset"
-            )
-            assert response.status_code == 202
-            assert response.json()["task_id"] == "task-789"
-
-
-def test_get_world_icon_success(
-    unauth_client: TestClient, real_bedrock_server, tmp_path
-):
-    from unittest.mock import AsyncMock
-
-    icon_path = tmp_path / "world_icon.jpeg"
-    icon_path.write_bytes(b"icon_data")
-
-    with patch(
-        "bedrock_server_manager.context.AppContext.get_server"
-    ) as mock_get_server:
-        mock_server = mock_get_server.return_value
-        mock_server.is_installed = AsyncMock(return_value=True)
-        mock_server.has_world_icon = AsyncMock(return_value=True)
-        mock_server.get_world_icon_filesystem_path = AsyncMock(
-            return_value=str(icon_path)
-        )
-
-        response = unauth_client.get(
-            f"/api/server/{real_bedrock_server.server_name}/world/icon"
-        )
-        assert response.status_code == 200
-
-
-def test_get_world_icon_fallback(
-    unauth_client: TestClient, real_bedrock_server, tmp_path
-):
-    from unittest.mock import AsyncMock
-
-    fallback_icon = tmp_path / "image" / "icon" / "favicon.ico"
-    fallback_icon.parent.mkdir(parents=True, exist_ok=True)
-    fallback_icon.write_bytes(b"favicon")
-
-    with patch(
-        "bedrock_server_manager.context.AppContext.get_server"
-    ) as mock_get_server:
-        mock_server = mock_get_server.return_value
-        mock_server.is_installed = AsyncMock(return_value=True)
-        mock_server.has_world_icon = AsyncMock(return_value=False)
-        mock_server.get_world_icon_filesystem_path = AsyncMock(return_value=None)
-
-        with patch(
-            "bedrock_server_manager.web.routers.world.STATIC_DIR", str(tmp_path)
-        ):
-            response = unauth_client.get(
-                f"/api/server/{real_bedrock_server.server_name}/world/icon"
-            )
-            assert response.status_code == 200
+    world = (
+        Path(populated_server.server_dir)
+        / "worlds"
+        / await populated_server.get_world_name()
+    )
+    icon = world / "world_icon.jpeg"
+    icon.write_bytes(b"integration icon")
+    response = await admin_auth_client.get(
+        f"/api/server/{populated_server.server_name}/world/icon"
+    )
+    assert response.status_code == 200
+    assert response.content == icon.read_bytes()

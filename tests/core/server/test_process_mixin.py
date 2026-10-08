@@ -1,74 +1,42 @@
-from unittest.mock import AsyncMock, patch
+import asyncio
 
 import pytest
 
+from bedrock_server_manager.error import ServerStartError
 
-async def test_start_server(real_bedrock_server):
-    """Test starting the server asynchronously."""
+
+async def test_server_start_command_and_stop_use_real_process(real_bedrock_server):
     server = real_bedrock_server
-
-    with patch.object(
-        server, "is_installed", new_callable=AsyncMock
-    ) as mock_is_installed:
-        mock_is_installed.return_value = True
-        await server.start()
-
-        assert await server.is_running()
-        assert server._process is not None
-        assert server._process.returncode is None
-
-        await server.stop()
-
-
-async def test_start_server_already_running(real_bedrock_server):
-    """Test starting a server asynchronously that is already running."""
-    server = real_bedrock_server
-    with patch.object(server, "is_running", new_callable=AsyncMock) as mock_is_running:
-        mock_is_running.return_value = True
-        from bedrock_server_manager.error import ServerStartError
-
-        with pytest.raises(ServerStartError):
-            await server.start()
+    assert await server.is_installed()
+    assert not await server.is_running()
+    await server.start()
+    child = server._process
+    assert child is not None and child.returncode is None
+    assert await server.is_running()
+    await server.send_command("__DUMMY__ PLAYER_JOIN test_user")
+    await server.stop()
+    assert child.returncode is not None
+    assert server._process is None
+    assert not await server.is_running()
 
 
-async def test_stop_server(real_bedrock_server):
-    """Test stopping the server asynchronously."""
-    server = real_bedrock_server
-
-    with patch.object(
-        server, "is_installed", new_callable=AsyncMock
-    ) as mock_is_installed:
-        mock_is_installed.return_value = True
-        await server.start()
-        assert await server.is_running()
-
-        await server.stop()
-
-        assert not await server.is_running()
-        assert server._process is None
+async def test_starting_live_server_is_rejected(real_bedrock_server):
+    await real_bedrock_server.start()
+    original = real_bedrock_server._process.pid
+    with pytest.raises(ServerStartError):
+        await real_bedrock_server.start()
+    assert real_bedrock_server._process.pid == original
 
 
-async def test_stop_server_already_stopped(real_bedrock_server):
-    """Test stopping a server asynchronously that is already stopped."""
-    server = real_bedrock_server
-    with patch.object(server, "is_running", new_callable=AsyncMock) as mock_is_running:
-        mock_is_running.return_value = False
-        # Stop on stopped server doesn't raise error, just returns early (None)
-        assert await server.stop() is None
+async def test_stopping_stopped_server_is_idempotent(real_bedrock_server):
+    assert await real_bedrock_server.stop() is None
+    assert await real_bedrock_server.stop() is None
 
 
-async def test_send_command(real_bedrock_server):
-    """Test sending a command to the server asynchronously."""
-    server = real_bedrock_server
-
-    with patch.object(
-        server, "is_installed", new_callable=AsyncMock
-    ) as mock_is_installed:
-        mock_is_installed.return_value = True
-        await server.start()
-        assert await server.is_running()
-
-        # Send dummy command that the dummy binary can handle
-        await server.send_command("__DUMMY__ PLAYER_JOIN test_user")
-
-        await server.stop()
+async def test_concurrent_start_does_not_create_duplicate_process(real_bedrock_server):
+    results = await asyncio.gather(
+        real_bedrock_server.start(), real_bedrock_server.start(), return_exceptions=True
+    )
+    assert sum(isinstance(result, ServerStartError) for result in results) == 1
+    assert await real_bedrock_server.is_running()
+    assert real_bedrock_server._process.returncode is None

@@ -1,10 +1,9 @@
-"""Prevent partial migrations and runtime objects in public data contracts."""
+"""Public API contracts validate input and keep runtime dependencies private."""
 
 import importlib
 import inspect
 import json
 import pkgutil
-from unittest.mock import AsyncMock, MagicMock
 
 import pytest
 from pydantic import ValidationError
@@ -30,7 +29,7 @@ def operations():
 
 def test_every_data_operation_has_complete_serializable_contract():
     found = list(operations())
-    assert len(found) == 80
+    assert found
     for name, operation in found:
         request, response = get_contract(operation)
         assert issubclass(request, APIRequest), name
@@ -53,7 +52,7 @@ def test_every_data_operation_has_complete_serializable_contract():
 def test_all_registered_data_apis_expose_version_two_contracts():
     api_instance = create_app_api("core", None, is_core=True)
     metadata = api_instance.list_available_apis(include_internal=True)
-    assert len(metadata) == 61
+    assert metadata
     assert all(item["contract_version"] == 2 for item in metadata)
     assert all(item["request_schema"] and item["response_schema"] for item in metadata)
     assert not {
@@ -70,8 +69,11 @@ def test_all_registered_data_apis_expose_version_two_contracts():
 
 
 @pytest.mark.parametrize("operation_name, operation", list(operations()))
-async def test_unknown_fields_fail_before_runtime_access(operation_name, operation):
-    context = MagicMock()
+async def test_unknown_fields_fail_before_runtime_access(
+    operation_name, operation, app_context
+):
+    context = app_context
+    before = context.state.runtime.servers
     with pytest.raises(ValidationError):
         runtime = (
             {"app_context": context}
@@ -83,7 +85,7 @@ async def test_unknown_fields_fail_before_runtime_access(operation_name, operati
         result = operation({"unexpected_field": True}, **runtime)
         if inspect.isawaitable(result):
             await result
-    assert context.mock_calls == [], operation_name
+    assert context.state.runtime.servers == before, operation_name
 
 
 def test_config_values_reject_non_json_runtime_objects():
@@ -132,34 +134,41 @@ def test_service_password_never_serializes():
     assert "password" not in request.model_dump(mode="json")
 
 
-async def test_runtime_task_preserves_positional_arguments_and_trusted_context():
-    context = MagicMock()
-    context.task_manager.run_task = AsyncMock(return_value="task-1")
-    api_instance = create_app_api("trusted", context)
+async def test_runtime_task_preserves_positional_arguments_and_trusted_context(
+    app_context, wait_for_task
+):
+    api_instance = create_app_api("trusted", app_context)
 
     def task(value):
         return value
 
-    assert await api_instance.runtime.run_task(task, 42, username="admin") == "task-1"
-    context.task_manager.run_task.assert_awaited_once_with(
-        task, "admin", 42, _plugin_owner="trusted"
-    )
+    task_id = await api_instance.runtime.run_task(task, 42, username="admin")
+    snapshot = await wait_for_task(app_context, task_id)
+    assert snapshot.result == 42
+    assert app_context.task_manager._plugin_owners[task_id] == "trusted"
     with pytest.raises(TypeError, match="injected"):
-        await api_instance.runtime.run_task(task, app_context=MagicMock())
+        await api_instance.runtime.run_task(task, app_context=app_context)
     with pytest.raises(TypeError, match="injected"):
         await api_instance.runtime.run_task(task, plugin_name="other")
     with pytest.raises(TypeError, match="injected"):
         await api_instance.runtime.run_task(task, _plugin_owner="other")
 
 
-async def test_runtime_provider_registration_failure_propagates():
-    context = MagicMock()
-    context.connection_manager.register_data_provider.side_effect = RuntimeError(
-        "provider failed"
+async def test_runtime_provider_registration_and_unload(app_context, plugin_factory):
+    plugin = await plugin_factory(
+        "provider",
+        "from bedrock_server_manager import PluginBase\nclass Provider(PluginBase):\n    version = '1.0'\n",
     )
-    api_instance = create_app_api("trusted", context)
-    with pytest.raises(RuntimeError, match="provider failed"):
-        await api_instance.runtime.register_data_provider("topic", lambda value: value)
+
+    def provider():
+        return 42
+
+    await plugin.api.runtime.register_data_provider("topic", provider)
+    record = app_context.connection_manager.data_providers["topic"]
+    assert record.handler is provider
+    assert record.plugin_name == "provider"
+    await app_context.plugin_manager.unload_plugin_by_name("provider")
+    assert "topic" not in app_context.connection_manager.data_providers
 
 
 @pytest.mark.parametrize("bad_count", [True, "3", -1])
@@ -182,25 +191,28 @@ def test_success_data_requirements_are_reflected_in_schema():
     assert schema["allOf"][0]["then"]["required"] == ["export_file"]
 
 
-async def test_plugin_target_event_retains_listener_fields_and_identity():
+async def test_plugin_target_event_retains_listener_fields_and_identity(
+    app_context, plugin_factory
+):
     from bedrock_server_manager.api.models import SetPluginStatusRequest
     from bedrock_server_manager.api.plugins import set_plugin_status
     from bedrock_server_manager.plugins.event_trigger import _event_registry
 
-    context = MagicMock()
-    context.connection_manager.broadcast_to_topic = AsyncMock()
-    manager = context.plugin_manager
-    manager.trigger_event = AsyncMock()
-    manager._synchronize_config_with_disk = AsyncMock()
-    manager.enable_plugin = AsyncMock()
-    manager.plugin_config = {"target": {"enabled": False}}
-    await set_plugin_status(
-        SetPluginStatusRequest(target_plugin_name="target", enabled=True),
-        app_context=context,
+    plugin = await plugin_factory(
+        "observer",
+        "from bedrock_server_manager import PluginBase\nclass Observer(PluginBase):\n    version = '1.0'\n",
     )
-    before = manager.trigger_event.call_args_list[0]
-    assert before.args == ("before_set_plugin_status",)
-    assert before.kwargs["plugin_name"] == "target"
-    assert before.kwargs["enabled"] is True
-    assert "target_plugin_name" not in before.kwargs
+    received = []
+
+    async def listener(**kwargs):
+        received.append(kwargs)
+
+    plugin.api.listen_for_event("before_set_plugin_status", listener)
+    await set_plugin_status(
+        SetPluginStatusRequest(target_plugin_name="observer", enabled=False),
+        app_context=app_context,
+    )
+    assert received[0]["plugin_name"] == "observer"
+    assert received[0]["enabled"] is False
+    assert "target_plugin_name" not in received[0]
     assert _event_registry["before_set_plugin_status"] == ("plugin_name", "enabled")

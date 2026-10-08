@@ -1,174 +1,74 @@
-"""
-Integration tests for the allowlist router endpoints.
-"""
+import json
+from pathlib import Path
 
-from unittest.mock import AsyncMock, patch
+import pytest
 
-from fastapi.testclient import TestClient
 
-from bedrock_server_manager.api.models import (
-    AddToAllowlistResponse,
-    GetAllowlistResponse,
-    RemoveFromAllowlistResponse,
+async def test_allowlist_round_trip_persists_players(
+    admin_auth_client, real_bedrock_server
+):
+    base = f"/api/server/{real_bedrock_server.server_name}/allowlist"
+    response = await admin_auth_client.post(
+        base + "/add", json={"players": ["Steve", "Alex"], "ignoresPlayerLimit": True}
+    )
+    assert response.status_code == 200
+    response = await admin_auth_client.get(base + "/get")
+    assert response.status_code == 200
+    assert {p["name"] for p in response.json()["players"]} >= {"Steve", "Alex"}
+    disk = json.loads(
+        (Path(real_bedrock_server.server_dir) / "allowlist.json").read_text()
+    )
+    assert all(p["ignoresPlayerLimit"] for p in disk if p["name"] in {"Steve", "Alex"})
+    response = await admin_auth_client.request(
+        "DELETE", base + "/remove", json={"players": ["Steve", "Missing"]}
+    )
+    assert response.status_code == 200
+    assert "Steve" not in {
+        p["name"]
+        for p in (await admin_auth_client.get(base + "/get")).json()["players"]
+    }
+    assert "Steve" not in {p["name"] for p in await real_bedrock_server.get_allowlist()}
+
+
+@pytest.mark.parametrize(
+    "method,suffix,payload",
+    [
+        ("POST", "/add", {"players": ["Steve"]}),
+        ("GET", "/get", None),
+        ("DELETE", "/remove", {"players": ["Steve"]}),
+    ],
 )
-from bedrock_server_manager.error import AppFileNotFoundError, BSMError, UserInputError
-
-
-def test_post_allowlist_success(admin_auth_client: TestClient, real_bedrock_server):
-    """Test adding players to the allowlist successfully."""
-    with patch(
-        "bedrock_server_manager.api.allowlist.add_to_allowlist", new_callable=AsyncMock
-    ) as mock_add:
-        mock_add.return_value = AddToAllowlistResponse.model_validate(
-            {"status": "success", "message": "Players added", "added_count": 1}
-        )
-
-        response = admin_auth_client.post(
-            f"/api/server/{real_bedrock_server.server_name}/allowlist/add",
-            json={"players": ["Steve", "Alex"], "ignoresPlayerLimit": False},
-        )
-
-        assert response.status_code == 200
-        assert response.json()["status"] == "success"
-        assert response.json()["message"] == "Players added"
-
-        mock_add.assert_called_once()
-        call_args = mock_add.call_args[1]
-        assert call_args["request"].server_name == real_bedrock_server.server_name
-        assert [
-            player.model_dump(exclude_none=True)
-            for player in call_args["request"].new_players_data
-        ] == [
-            {"name": "Steve", "ignoresPlayerLimit": False},
-            {"name": "Alex", "ignoresPlayerLimit": False},
-        ]
-
-
-def test_post_allowlist_unauthorized(unauth_client: TestClient, real_bedrock_server):
-    """Test adding to allowlist without authentication."""
-    response = unauth_client.post(
-        f"/api/server/{real_bedrock_server.server_name}/allowlist/add",
-        json={"players": ["Steve"], "ignoresPlayerLimit": False},
+async def test_allowlist_requires_authentication(
+    unauth_client, real_bedrock_server, method, suffix, payload
+):
+    response = await unauth_client.request(
+        method,
+        f"/api/server/{real_bedrock_server.server_name}/allowlist{suffix}",
+        **({"json": payload} if payload else {}),
     )
     assert response.status_code == 401
 
 
-def test_post_allowlist_user_input_error(
-    admin_auth_client: TestClient, real_bedrock_server
+async def test_allowlist_invalid_input_preserves_file(
+    admin_auth_client, real_bedrock_server
 ):
-    """Test adding to allowlist when API raises UserInputError."""
-    with patch(
-        "bedrock_server_manager.api.allowlist.add_to_allowlist", new_callable=AsyncMock
-    ) as mock_add:
-        mock_add.side_effect = UserInputError("Invalid player name")
-
-        response = admin_auth_client.post(
-            f"/api/server/{real_bedrock_server.server_name}/allowlist/add",
-            json={"players": ["@Invalid"], "ignoresPlayerLimit": False},
-        )
-
-        assert response.status_code == 400
-        assert "Invalid player name" in response.json()["error"]["message"]
+    path = Path(real_bedrock_server.server_dir) / "allowlist.json"
+    original = path.read_bytes()
+    response = await admin_auth_client.post(
+        f"/api/server/{real_bedrock_server.server_name}/allowlist/add",
+        json={"players": "invalid"},
+    )
+    assert response.status_code in {400, 422}
+    assert path.read_bytes() == original
 
 
-def test_get_allowlist_success(admin_auth_client: TestClient, real_bedrock_server):
-    """Test retrieving the allowlist successfully."""
-    with patch(
-        "bedrock_server_manager.api.allowlist.get_allowlist", new_callable=AsyncMock
-    ) as mock_get:
-        mock_get.return_value = GetAllowlistResponse.model_validate(
-            {
-                "status": "success",
-                "players": [
-                    {"name": "Steve", "ignoresPlayerLimit": False},
-                    {"name": "Alex", "ignoresPlayerLimit": True},
-                ],
-            }
-        )
-
-        response = admin_auth_client.get(
-            f"/api/server/{real_bedrock_server.server_name}/allowlist/get"
-        )
-
-        assert response.status_code == 200
-        data = response.json()
-        assert data["status"] == "success"
-        assert len(data["players"]) == 2
-        assert data["players"][0]["name"] == "Steve"
-
-
-def test_get_allowlist_not_found(admin_auth_client: TestClient, real_bedrock_server):
-    """Test retrieving allowlist when file is not found."""
-    with patch(
-        "bedrock_server_manager.api.allowlist.get_allowlist", new_callable=AsyncMock
-    ) as mock_get:
-        mock_get.side_effect = AppFileNotFoundError("allowlist.json not found")
-
-        response = admin_auth_client.get(
-            f"/api/server/{real_bedrock_server.server_name}/allowlist/get"
-        )
-
-        assert response.status_code == 404
-        assert response.json()["error"]["code"] == "not_found"
-
-
-def test_get_allowlist_error(admin_auth_client: TestClient, real_bedrock_server):
-    """Test retrieving allowlist generic error."""
-    with patch(
-        "bedrock_server_manager.api.allowlist.get_allowlist", new_callable=AsyncMock
-    ) as mock_get:
-        mock_get.side_effect = BSMError("Failed to parse JSON")
-
-        response = admin_auth_client.get(
-            f"/api/server/{real_bedrock_server.server_name}/allowlist/get"
-        )
-
-        assert response.status_code == 500
-        assert response.json()["error"]["code"] == "application_error"
-
-
-def test_delete_allowlist_success(admin_auth_client: TestClient, real_bedrock_server):
-    """Test removing players from the allowlist successfully."""
-    with patch(
-        "bedrock_server_manager.api.allowlist.remove_from_allowlist",
-        new_callable=AsyncMock,
-    ) as mock_remove:
-        mock_remove.return_value = RemoveFromAllowlistResponse.model_validate(
-            {
-                "status": "success",
-                "message": "Players removed",
-                "details": {"removed": ["Player1"], "not_found": []},
-            }
-        )
-
-        response = admin_auth_client.request(
-            "DELETE",
-            f"/api/server/{real_bedrock_server.server_name}/allowlist/remove",
-            json={"players": ["Steve"]},
-        )
-
-        assert response.status_code == 200
-        assert response.json()["status"] == "success"
-
-        mock_remove.assert_called_once()
-        call_args = mock_remove.call_args[1]
-        assert call_args["request"].server_name == real_bedrock_server.server_name
-        assert call_args["request"].player_names == ["Steve"]
-
-
-def test_delete_allowlist_bsm_error(admin_auth_client: TestClient, real_bedrock_server):
-    """Test removing from allowlist when API raises BSMError."""
-    with patch(
-        "bedrock_server_manager.api.allowlist.remove_from_allowlist",
-        new_callable=AsyncMock,
-    ) as mock_remove:
-        mock_remove.side_effect = BSMError("Internal system failure")
-
-        response = admin_auth_client.request(
-            "DELETE",
-            f"/api/server/{real_bedrock_server.server_name}/allowlist/remove",
-            json={"players": ["Steve"]},
-        )
-
-        assert response.status_code == 500
-        assert response.json()["error"]["message"] == "An unexpected error occurred."
+async def test_allowlist_corrupt_file_returns_safe_error(
+    admin_auth_client, real_bedrock_server
+):
+    path = Path(real_bedrock_server.server_dir) / "allowlist.json"
+    path.write_text("private broken JSON")
+    response = await admin_auth_client.get(
+        f"/api/server/{real_bedrock_server.server_name}/allowlist/get"
+    )
+    assert response.status_code == 500
+    assert "private broken JSON" not in response.text

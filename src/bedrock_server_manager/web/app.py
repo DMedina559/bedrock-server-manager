@@ -27,14 +27,13 @@ def create_web_app(app_context: AppContext) -> FastAPI:  # noqa: C901
     settings = app_context.settings
     plugin_manager = app_context.plugin_manager
 
-    asyncio.run(plugin_manager.load_plugins())
-
     @asynccontextmanager
     async def lifespan(app: FastAPI):
         # Startup logic goes here
         app_context = app.state.app_context
         try:
             app_context.loop = asyncio.get_running_loop()
+            await plugin_manager.load_plugins()
             await app_context.bedrock_process_manager.start()
             app_context.resource_monitor.start()
             await app_context.api.application.update_server_statuses(request={})

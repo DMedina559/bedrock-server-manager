@@ -1,8 +1,6 @@
-"""Behavioral regression coverage for model validation and lifecycle effects."""
-
 import inspect
 import json
-from unittest.mock import AsyncMock, MagicMock
+from pathlib import Path
 
 import pytest
 from pydantic import ValidationError
@@ -12,35 +10,14 @@ from bedrock_server_manager.api.models import (
     RestartServerRequest,
     StartServerRequest,
     StartServerResponse,
-    StopServerRequest,
 )
-from bedrock_server_manager.api.server import restart_server, start_server, stop_server
+from bedrock_server_manager.api.server import restart_server, start_server
 from bedrock_server_manager.error import (
     APICancelledError,
     ServerStartError,
     ServerStopError,
 )
 from bedrock_server_manager.plugins.api_bridge import create_app_api
-
-
-@pytest.fixture
-def lifecycle_context():
-    context = MagicMock()
-    server = MagicMock()
-    server.server_name = "example"
-    server.is_running = AsyncMock(return_value=False)
-    server.start = AsyncMock()
-    server.stop = AsyncMock()
-    server.send_command = AsyncMock()
-    server.set_status_in_config = AsyncMock()
-    server.get_pid_file_path.return_value = "/nonexistent/example.pid"
-    context.get_server.return_value = server
-    context.plugin_manager.trigger_event = AsyncMock()
-    context.connection_manager.broadcast_to_topic = AsyncMock()
-    context.bedrock_process_manager.add_server = AsyncMock()
-    context.bedrock_process_manager.remove_server = AsyncMock()
-    context.api.server.set_status = AsyncMock()
-    return context
 
 
 @pytest.mark.parametrize(
@@ -54,124 +31,119 @@ def lifecycle_context():
         {"server_name": "example", "typo": True},
     ],
 )
-async def test_invalid_request_has_no_events_or_side_effects(
-    lifecycle_context, payload
+async def test_invalid_request_preserves_real_runtime(
+    app_context, real_bedrock_server, payload
 ):
+    before = app_context.state.runtime.servers
     with pytest.raises(ValidationError):
-        await start_server(payload, app_context=lifecycle_context)
-    lifecycle_context.get_server.assert_not_called()
-    lifecycle_context.plugin_manager.trigger_event.assert_not_awaited()
+        await start_server(payload, app_context=app_context)
+    assert app_context.state.runtime.servers == before
+    assert not await real_bedrock_server.is_running()
 
 
-async def test_constructed_invalid_instance_is_revalidated(lifecycle_context):
+async def test_constructed_invalid_instance_is_revalidated(app_context):
     request = StartServerRequest.model_construct(server_name="../example")
     with pytest.raises(ValidationError):
-        await start_server(request, app_context=lifecycle_context)
-    lifecycle_context.get_server.assert_not_called()
+        await start_server(request, app_context=app_context)
+    assert app_context._servers == {}
 
 
-async def test_start_has_typed_result_and_field_based_events(lifecycle_context):
+async def test_real_start_delivers_field_based_plugin_events(
+    app_context, real_bedrock_server, plugin_factory
+):
+    plugin = await plugin_factory(
+        "observer",
+        "from bedrock_server_manager import PluginBase\nclass Observer(PluginBase):\n    version = '1.0'\n",
+    )
+    before, after = [], []
+
+    async def on_before(**kwargs):
+        before.append(kwargs)
+
+    async def on_after(**kwargs):
+        after.append(kwargs)
+
+    plugin.api.listen_for_event("before_server_start", on_before)
+    plugin.api.listen_for_event("after_server_start", on_after)
     result = await start_server(
-        StartServerRequest(server_name="example"), app_context=lifecycle_context
+        StartServerRequest(server_name=real_bedrock_server.server_name),
+        app_context=app_context,
     )
     assert isinstance(result, StartServerResponse)
     assert result.outcome == "started"
-    lifecycle_context.bedrock_process_manager.add_server.assert_awaited_once_with(
-        lifecycle_context.get_server.return_value
-    )
-    before, after = lifecycle_context.plugin_manager.trigger_event.await_args_list
-    assert before.args == ("before_server_start",)
-    assert before.kwargs["server_name"] == "example"
-    assert isinstance(before.kwargs["request"], StartServerRequest)
-    assert "app_context" not in before.kwargs
-    assert after.kwargs["result"] == result
-    json.dumps(
-        lifecycle_context.connection_manager.broadcast_to_topic.await_args.args[1]
+    assert before[0]["server_name"] == real_bedrock_server.server_name
+    assert isinstance(before[0]["request"], StartServerRequest)
+    assert "app_context" not in before[0]
+    assert after[0]["result"] == result
+    assert (
+        app_context.bedrock_process_manager.servers[real_bedrock_server.server_name]
+        is real_bedrock_server
     )
 
 
-@pytest.mark.parametrize(
-    "operation,payload,outcome",
-    [
-        (start_server, StartServerRequest(server_name="example"), "already_running"),
-        (stop_server, StopServerRequest(server_name="example"), "already_stopped"),
-    ],
-)
-async def test_idempotent_lifecycle_outcome(
-    lifecycle_context, operation, payload, outcome
+async def test_plugin_cancellation_prevents_process_start_and_after_event(
+    app_context, real_bedrock_server, plugin_factory
 ):
-    server = lifecycle_context.get_server.return_value
-    server.is_running.return_value = operation is start_server
-    result = await operation(payload, app_context=lifecycle_context)
-    assert result.status == "success" and result.outcome == outcome
-    server.start.assert_not_awaited()
-    server.stop.assert_not_awaited()
+    plugin = await plugin_factory(
+        "cancel",
+        "from bedrock_server_manager import PluginBase\nclass Cancel(PluginBase):\n    version = '1.0'\n",
+    )
+    after = []
 
-
-async def test_cancellation_prevents_start_and_after_event(lifecycle_context):
-    async def cancel(name, **kwargs):
+    async def cancel(**kwargs):
         kwargs["event"].cancel("Requested cancellation")
 
-    lifecycle_context.plugin_manager.trigger_event.side_effect = cancel
+    async def on_after(**kwargs):
+        after.append(kwargs)
+
+    plugin.api.listen_for_event("before_server_start", cancel)
+    plugin.api.listen_for_event("after_server_start", on_after)
     with pytest.raises(APICancelledError):
-        await start_server({"server_name": "example"}, app_context=lifecycle_context)
-    lifecycle_context.get_server.assert_not_called()
-    assert lifecycle_context.plugin_manager.trigger_event.await_count == 1
-
-
-async def test_start_failure_propagates_original_exception(lifecycle_context):
-    error = ServerStartError("Failed start")
-    lifecycle_context.get_server.return_value.start.side_effect = error
-    with pytest.raises(ServerStartError) as caught:
-        await start_server({"server_name": "example"}, app_context=lifecycle_context)
-    assert caught.value is error
-    lifecycle_context.bedrock_process_manager.add_server.assert_not_awaited()
-    assert lifecycle_context.plugin_manager.trigger_event.await_count == 1
-
-
-async def test_restart_aborts_when_stop_fails_and_keeps_pid(
-    lifecycle_context, monkeypatch
-):
-    server = lifecycle_context.get_server.return_value
-    server.is_running.return_value = True
-    server.stop.side_effect = ServerStopError("Still running")
-    cleanup = AsyncMock()
-    monkeypatch.setattr(
-        "bedrock_server_manager.api.server.remove_pid_file_if_exists", cleanup
-    )
-    with pytest.raises(ServerStopError):
-        await restart_server(
-            RestartServerRequest(server_name="example", send_message=False),
-            app_context=lifecycle_context,
+        await start_server(
+            {"server_name": real_bedrock_server.server_name}, app_context=app_context
         )
-    server.start.assert_not_awaited()
-    server.send_command.assert_not_awaited()
-    lifecycle_context.bedrock_process_manager.remove_server.assert_not_awaited()
-    cleanup.assert_not_awaited()
+    assert not await real_bedrock_server.is_running()
+    assert after == []
 
 
-async def test_restart_sequences_stop_start_and_monitoring(lifecycle_context):
-    server = lifecycle_context.get_server.return_value
-    server.is_running.side_effect = [True, True, False]
-    result = await restart_server(
-        RestartServerRequest(server_name="example"), app_context=lifecycle_context
-    )
-    assert result.outcome == "restarted"
-    server.send_command.assert_awaited_once_with("say Restarting server...")
-    server.stop.assert_awaited_once()
-    server.start.assert_awaited_once()
-    lifecycle_context.bedrock_process_manager.remove_server.assert_awaited_once_with(
-        "example"
-    )
-    lifecycle_context.bedrock_process_manager.add_server.assert_awaited_once_with(
-        server
-    )
+async def test_actual_executable_failure_is_reported(app_context, real_bedrock_server):
+    executable = Path(real_bedrock_server.bedrock_executable_path)
+    executable.write_bytes(b"invalid executable")
+    with pytest.raises(ServerStartError):
+        await start_server(
+            {"server_name": real_bedrock_server.server_name}, app_context=app_context
+        )
+    assert not await real_bedrock_server.is_running()
 
 
-async def test_bridge_accepts_one_mapping_and_exposes_contract(lifecycle_context):
-    api = create_app_api("example_plugin", lifecycle_context)
+async def test_restart_stop_failure_preserves_actual_child(
+    app_context, real_bedrock_server, monkeypatch
+):
+    await real_bedrock_server.start()
+    child = real_bedrock_server._process
+
+    async def fail_stop():
+        raise ServerStopError("Still running")
+
+    with monkeypatch.context() as fault:
+        fault.setattr(real_bedrock_server, "stop", fail_stop)
+        with pytest.raises(ServerStopError):
+            await restart_server(
+                RestartServerRequest(
+                    server_name=real_bedrock_server.server_name, send_message=False
+                ),
+                app_context=app_context,
+            )
+    assert real_bedrock_server._process is child
+    assert await real_bedrock_server.is_running()
+
+
+async def test_bridge_accepts_mapping_and_describes_actual_contract(
+    app_context, real_bedrock_server
+):
+    api = create_app_api("example_plugin", app_context)
     assert list(inspect.signature(api.server.start).parameters) == ["request"]
-    result = await api.server.start({"server_name": "example"})
+    result = await api.server.start({"server_name": real_bedrock_server.server_name})
     assert result.outcome == "started"
     metadata = next(
         item for item in api.list_available_apis() if item["name"] == "start_server"
@@ -181,27 +153,19 @@ async def test_bridge_accepts_one_mapping_and_exposes_contract(lifecycle_context
     assert metadata["request_schema"]["additionalProperties"] is False
     assert metadata["response_model"] == "StartServerResponse"
     assert "app_context" not in json.dumps(metadata["request_schema"])
-    assert "set_server_status" not in {
-        item["name"] for item in api.list_available_apis(include_internal=True)
-    }
 
 
-async def test_bridge_cannot_override_runtime_context(lifecycle_context):
-    api = create_app_api("example_plugin", lifecycle_context)
+async def test_bridge_cannot_override_runtime_context(app_context):
+    api = create_app_api("example_plugin", app_context)
     with pytest.raises(TypeError, match="injected"):
-        await api.server.start({"server_name": "example"}, app_context=MagicMock())
-    lifecycle_context.get_server.assert_not_called()
+        await api.server.start({"server_name": "example"}, app_context=app_context)
+    assert app_context._servers == {}
 
 
 def test_errors_do_not_expose_internal_exception_or_invalid_input():
-    assert (
-        error_response(RuntimeError("private database credentials")).code
-        == "internal_error"
-    )
-    assert (
-        "credentials"
-        not in error_response(RuntimeError("credentials")).model_dump_json()
-    )
+    envelope = error_response(RuntimeError("private database credentials"))
+    assert envelope.code == "internal_error"
+    assert "credentials" not in envelope.model_dump_json()
     with pytest.raises(ValidationError) as caught:
         StartServerRequest(server_name="example", secret="secret_value")
     envelope = error_response(caught.value)

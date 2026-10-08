@@ -1,5 +1,4 @@
 import os
-from unittest.mock import patch
 
 import aiofiles.ospath
 import pytest
@@ -34,13 +33,9 @@ async def test_validate_installation_missing_exe(real_bedrock_server):
 
 
 async def test_set_filesystem_permissions(real_bedrock_server):
-    """Test setting filesystem permissions delegates to system_base."""
-    server = real_bedrock_server
-    with patch(
-        "bedrock_server_manager.core.server.installation_mixin.system_base.set_server_folder_permissions"
-    ) as mock_set_perms:
-        await server.set_filesystem_permissions()
-        mock_set_perms.assert_called_once_with(server.server_dir)
+    """Apply filesystem permissions to the actual installation."""
+    await real_bedrock_server.set_filesystem_permissions()
+    assert os.access(real_bedrock_server.bedrock_executable_path, os.R_OK | os.X_OK)
 
 
 async def test_delete_server_files(real_bedrock_server):
@@ -60,6 +55,9 @@ async def test_delete_all_data(real_bedrock_server):
     server = real_bedrock_server
 
     assert os.path.exists(server.server_dir)
+    os.makedirs(server.server_config_dir, exist_ok=True)
+    with open(os.path.join(server.server_config_dir, "runtime.pid"), "w") as handle:
+        handle.write("0")
     assert os.path.exists(server.server_config_dir)
 
     await server.delete_all_data()

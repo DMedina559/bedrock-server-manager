@@ -1,6 +1,6 @@
 import pytest
 from fastapi import Depends, FastAPI
-from fastapi.testclient import TestClient
+from httpx2 import ASGITransport, AsyncClient
 
 from bedrock_server_manager.web.deps.auth import (
     get_admin_user,
@@ -37,8 +37,12 @@ def auth_test_app(app_context):
 
 
 @pytest.fixture
-def unauth_client_test(auth_test_app):
-    with TestClient(auth_test_app) as client:
+async def unauth_client_test(auth_test_app):
+    async with AsyncClient(
+        transport=ASGITransport(app=auth_test_app),
+        base_url="http://testserver",
+        follow_redirects=True,
+    ) as client:
         yield client
 
 
@@ -47,7 +51,11 @@ async def auth_client_test(auth_test_app, app_context, test_user):
     from bedrock_server_manager.utils.auth import create_access_token
 
     token = await create_access_token(app_context, {"sub": test_user.username})
-    with TestClient(auth_test_app) as client:
+    async with AsyncClient(
+        transport=ASGITransport(app=auth_test_app),
+        base_url="http://testserver",
+        follow_redirects=True,
+    ) as client:
         client.cookies.set("access_token_cookie", token)
         yield client
 
@@ -57,7 +65,11 @@ async def admin_client_test(auth_test_app, app_context, test_admin_user):
     from bedrock_server_manager.utils.auth import create_access_token
 
     token = await create_access_token(app_context, {"sub": test_admin_user.username})
-    with TestClient(auth_test_app) as client:
+    async with AsyncClient(
+        transport=ASGITransport(app=auth_test_app),
+        base_url="http://testserver",
+        follow_redirects=True,
+    ) as client:
         client.cookies.set("access_token_cookie", token)
         yield client
 
@@ -77,21 +89,25 @@ async def moderator_client_test(auth_test_app, app_context, db_session):
     await db_session.commit()
 
     token = await create_access_token(app_context, {"sub": user.username})
-    with TestClient(auth_test_app) as client:
+    async with AsyncClient(
+        transport=ASGITransport(app=auth_test_app),
+        base_url="http://testserver",
+        follow_redirects=True,
+    ) as client:
         client.cookies.set("access_token_cookie", token)
         yield client
 
 
 async def test_get_current_user_optional_no_token(unauth_client_test):
     """Test get_current_user_optional without any token returns None."""
-    response = unauth_client_test.get("/optional")
+    response = await unauth_client_test.get("/optional")
     assert response.status_code == 200
     assert response.json() == {"user": None}
 
 
 async def test_get_current_user_optional_with_token(auth_client_test, test_user):
     """Test get_current_user_optional with a valid token returns the user."""
-    response = auth_client_test.get("/optional")
+    response = await auth_client_test.get("/optional")
     assert response.status_code == 200
     data = response.json()
     assert data["user"] is not None
@@ -100,53 +116,53 @@ async def test_get_current_user_optional_with_token(auth_client_test, test_user)
 
 async def test_get_current_user_no_token(unauth_client_test):
     """Test get_current_user without token raises 401."""
-    response = unauth_client_test.get("/required")
+    response = await unauth_client_test.get("/required")
     assert response.status_code == 401
 
 
 async def test_get_current_user_with_token(auth_client_test, test_user):
     """Test get_current_user with token returns user."""
-    response = auth_client_test.get("/required")
+    response = await auth_client_test.get("/required")
     assert response.status_code == 200
     assert response.json()["user"]["username"] == test_user.username
 
 
 async def test_get_admin_user_as_admin(admin_client_test, test_admin_user):
     """Test get_admin_user with an admin user succeeds."""
-    response = admin_client_test.get("/admin")
+    response = await admin_client_test.get("/admin")
     assert response.status_code == 200
     assert response.json()["user"]["username"] == test_admin_user.username
 
 
 async def test_get_admin_user_as_normal_user(auth_client_test):
     """Test get_admin_user with a normal user raises 403."""
-    response = auth_client_test.get("/admin")
+    response = await auth_client_test.get("/admin")
     assert response.status_code == 403
 
 
 async def test_get_admin_user_as_moderator(moderator_client_test):
     """Test get_admin_user with a moderator user raises 403."""
-    response = moderator_client_test.get("/admin")
+    response = await moderator_client_test.get("/admin")
     assert response.status_code == 403
 
 
 async def test_get_moderator_user_as_moderator(moderator_client_test):
     """Test get_moderator_user with a moderator user succeeds."""
-    response = moderator_client_test.get("/moderator")
+    response = await moderator_client_test.get("/moderator")
     assert response.status_code == 200
     assert response.json()["user"]["username"] == "moduser"
 
 
 async def test_get_moderator_user_as_admin(admin_client_test, test_admin_user):
     """Test get_moderator_user with an admin user succeeds."""
-    response = admin_client_test.get("/moderator")
+    response = await admin_client_test.get("/moderator")
     assert response.status_code == 200
     assert response.json()["user"]["username"] == test_admin_user.username
 
 
 async def test_get_moderator_user_as_normal_user(auth_client_test):
     """Test get_moderator_user with a normal user raises 403."""
-    response = auth_client_test.get("/moderator")
+    response = await auth_client_test.get("/moderator")
     assert response.status_code == 403
 
 
@@ -158,8 +174,14 @@ async def test_get_current_user_optional_bearer_token(
 
     token = await create_access_token(app_context, {"sub": test_user.username})
 
-    with TestClient(auth_test_app) as client:
-        response = client.get("/optional", headers={"Authorization": f"Bearer {token}"})
+    async with AsyncClient(
+        transport=ASGITransport(app=auth_test_app),
+        base_url="http://testserver",
+        follow_redirects=True,
+    ) as client:
+        response = await client.get(
+            "/optional", headers={"Authorization": f"Bearer {token}"}
+        )
 
         assert response.status_code == 200
         data = response.json()

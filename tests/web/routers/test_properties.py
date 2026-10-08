@@ -1,195 +1,59 @@
-"""
-Integration tests for the properties router endpoints.
-"""
+from pathlib import Path
 
-from unittest.mock import AsyncMock, patch
-
-from fastapi.testclient import TestClient
-
-from bedrock_server_manager.api.models import (
-    GetPropertiesResponse,
-    SetPropertiesResponse,
-)
-from bedrock_server_manager.error import AppFileNotFoundError, BSMError, UserInputError
+import pytest
 
 
-def test_post_properties_set_unauthorized(
-    unauth_client: TestClient, real_bedrock_server
+async def test_properties_round_trip_persists_user_values(
+    admin_auth_client, real_bedrock_server
 ):
-    response = unauth_client.post(
-        f"/api/server/{real_bedrock_server.server_name}/properties/set",
-        json={"properties": {"server-name": "My Server"}},
+    base = f"/api/server/{real_bedrock_server.server_name}/properties"
+    response = await admin_auth_client.post(
+        base + "/set",
+        json={"properties": {"server-name": "Integration Server", "max-players": "25"}},
     )
-    assert response.status_code == 401
-
-
-def test_post_properties_set_forbidden(auth_client: TestClient, real_bedrock_server):
-    response = auth_client.post(
-        f"/api/server/{real_bedrock_server.server_name}/properties/set",
-        json={"properties": {"server-name": "My Server"}},
+    assert response.status_code == 200
+    result = (await admin_auth_client.get(base + "/get")).json()
+    assert result["properties"]["server-name"] == "Integration Server"
+    assert result["properties"]["max-players"] == "25"
+    text = (Path(real_bedrock_server.server_dir) / "server.properties").read_text()
+    assert "server-name=Integration Server" in text
+    assert (
+        await real_bedrock_server.get_server_property("server-name")
+        == "Integration Server"
     )
-    assert response.status_code == 403
 
 
-def test_post_properties_set_success(
-    admin_auth_client: TestClient, real_bedrock_server
+@pytest.mark.parametrize("value", ["0", "65536", "invalid"])
+async def test_invalid_property_update_preserves_disk(
+    admin_auth_client, real_bedrock_server, value
 ):
-    with patch(
-        "bedrock_server_manager.web.routers.properties.properties_api.set_properties",
-        new_callable=AsyncMock,
-    ) as mock_set:
-        mock_set.return_value = SetPropertiesResponse.model_validate(
-            {"status": "success", "message": "Properties updated"}
-        )
-
-        response = admin_auth_client.post(
-            f"/api/server/{real_bedrock_server.server_name}/properties/set",
-            json={"properties": {"server-name": "My Server"}},
-        )
-        assert response.status_code == 200
-        assert response.json()["status"] == "success"
+    path = Path(real_bedrock_server.server_dir) / "server.properties"
+    original = path.read_bytes()
+    response = await admin_auth_client.post(
+        f"/api/server/{real_bedrock_server.server_name}/properties/set",
+        json={"properties": {"server-port": value}},
+    )
+    assert response.status_code in {400, 422}
+    assert path.read_bytes() == original
 
 
-def test_post_properties_set_not_found(
-    admin_auth_client: TestClient, real_bedrock_server
+@pytest.mark.parametrize("authenticated,expected", [(False, 401), (True, 403)])
+async def test_property_changes_require_admin(
+    unauth_client, auth_client, real_bedrock_server, authenticated, expected
 ):
-    with patch(
-        "bedrock_server_manager.web.routers.properties.properties_api.set_properties",
-        new_callable=AsyncMock,
-    ) as mock_set:
-        mock_set.side_effect = AppFileNotFoundError("server.properties not found")
-
-        response = admin_auth_client.post(
-            f"/api/server/{real_bedrock_server.server_name}/properties/set",
-            json={"properties": {"server-name": "My Server"}},
-        )
-        assert response.status_code == 404
-        assert response.json()["error"]["code"] == "not_found"
+    client = auth_client if authenticated else unauth_client
+    response = await client.post(
+        f"/api/server/{real_bedrock_server.server_name}/properties/set",
+        json={"properties": {"server-name": "Denied"}},
+    )
+    assert response.status_code == expected
 
 
-def test_post_properties_set_error(admin_auth_client: TestClient, real_bedrock_server):
-    with patch(
-        "bedrock_server_manager.web.routers.properties.properties_api.set_properties",
-        new_callable=AsyncMock,
-    ) as mock_set:
-        mock_set.side_effect = UserInputError("Validation failed")
-
-        response = admin_auth_client.post(
-            f"/api/server/{real_bedrock_server.server_name}/properties/set",
-            json={"properties": {"server-name": "My Server"}},
-        )
-        assert response.status_code == 400
-        assert "Validation failed" in response.json()["error"]["message"]
-
-
-def test_post_properties_set_user_input_error(
-    admin_auth_client: TestClient, real_bedrock_server
+async def test_missing_properties_returns_not_found(
+    admin_auth_client, real_bedrock_server
 ):
-    with patch(
-        "bedrock_server_manager.web.routers.properties.properties_api.set_properties",
-        new_callable=AsyncMock,
-    ) as mock_set:
-        mock_set.side_effect = UserInputError("Invalid value for max-players")
-
-        response = admin_auth_client.post(
-            f"/api/server/{real_bedrock_server.server_name}/properties/set",
-            json={"properties": {"max-players": "-1"}},
-        )
-        assert response.status_code == 400
-        assert "Invalid value for max-players" in response.json()["error"]["message"]
-
-
-def test_post_properties_set_bsm_error(
-    admin_auth_client: TestClient, real_bedrock_server
-):
-    with patch(
-        "bedrock_server_manager.web.routers.properties.properties_api.set_properties",
-        new_callable=AsyncMock,
-    ) as mock_set:
-        mock_set.side_effect = BSMError("Disk write failed")
-
-        response = admin_auth_client.post(
-            f"/api/server/{real_bedrock_server.server_name}/properties/set",
-            json={"properties": {"server-name": "My Server"}},
-        )
-        assert response.status_code == 500
-        assert response.json()["error"]["message"] == "An unexpected error occurred."
-
-
-def test_post_properties_set_exception(
-    admin_auth_client: TestClient, real_bedrock_server
-):
-    with patch(
-        "bedrock_server_manager.web.routers.properties.properties_api.set_properties",
-        new_callable=AsyncMock,
-    ) as mock_set:
-        mock_set.side_effect = Exception("Boom")
-
-        response = admin_auth_client.post(
-            f"/api/server/{real_bedrock_server.server_name}/properties/set",
-            json={"properties": {"server-name": "My Server"}},
-        )
-        assert response.status_code == 500
-        assert response.json()["error"]["message"] == "An unexpected error occurred."
-
-
-def test_get_properties_unauthorized(unauth_client: TestClient, real_bedrock_server):
-    response = unauth_client.get(
+    (Path(real_bedrock_server.server_dir) / "server.properties").unlink()
+    response = await admin_auth_client.get(
         f"/api/server/{real_bedrock_server.server_name}/properties/get"
     )
-    assert response.status_code == 401
-
-
-def test_get_properties_success(admin_auth_client: TestClient, real_bedrock_server):
-    with patch(
-        "bedrock_server_manager.web.routers.properties.properties_api.get_properties",
-        new_callable=AsyncMock,
-    ) as mock_get:
-        mock_get.return_value = GetPropertiesResponse.model_validate(
-            {
-                "status": "success",
-                "properties": {
-                    "server-name": "Dedicated Server",
-                    "gamemode": "survival",
-                },
-                "raw_content": "gamemode=survival",
-            }
-        )
-
-        response = admin_auth_client.get(
-            f"/api/server/{real_bedrock_server.server_name}/properties/get"
-        )
-        assert response.status_code == 200
-        data = response.json()
-        assert data["status"] == "success"
-        assert data["properties"]["gamemode"] == "survival"
-
-
-def test_get_properties_not_found(admin_auth_client: TestClient, real_bedrock_server):
-    with patch(
-        "bedrock_server_manager.web.routers.properties.properties_api.get_properties",
-        new_callable=AsyncMock,
-    ) as mock_get:
-        mock_get.side_effect = AppFileNotFoundError("server.properties not found")
-
-        response = admin_auth_client.get(
-            f"/api/server/{real_bedrock_server.server_name}/properties/get"
-        )
-        assert response.status_code == 404
-        assert response.json()["error"]["code"] == "not_found"
-
-
-def test_get_properties_internal_error(
-    admin_auth_client: TestClient, real_bedrock_server
-):
-    with patch(
-        "bedrock_server_manager.web.routers.properties.properties_api.get_properties",
-        new_callable=AsyncMock,
-    ) as mock_get:
-        mock_get.side_effect = BSMError("Failed to parse properties")
-
-        response = admin_auth_client.get(
-            f"/api/server/{real_bedrock_server.server_name}/properties/get"
-        )
-        assert response.status_code == 500
-        assert response.json()["error"]["code"] == "application_error"
+    assert response.status_code == 404
