@@ -1,123 +1,77 @@
-from unittest.mock import AsyncMock, MagicMock
-
 import pytest
 
 from bedrock_server_manager.plugins.event_trigger import trigger_event
 
 
-@pytest.fixture
-def mock_app_context():
-    mock_context = MagicMock()
-    mock_context.plugin_manager = MagicMock()
-    mock_context.plugin_manager.trigger_event = AsyncMock()
-    mock_context.plugin_manager.trigger_event_async = AsyncMock()
-    mock_context.connection_manager = AsyncMock()
+@pytest.mark.parametrize(
+    "before,after",
+    [("before", "after"), ("before", None), (None, "after"), (None, None)],
+)
+async def test_event_hooks_dispatch_to_loaded_plugin(
+    app_context, plugin_factory, before, after
+):
+    plugin = await plugin_factory(
+        "event_recorder",
+        """
+from bedrock_server_manager.plugins import PluginBase, app_event
+class Recorder(PluginBase):
+    version = "1.0.0"
+    def on_load(self):
+        self.received = []
+    @app_event("before")
+    async def before(self, **kwargs):
+        self.received.append(("before", kwargs))
+    @app_event("after")
+    async def after(self, **kwargs):
+        self.received.append(("after", kwargs))
+""",
+    )
 
-    mock_loop = MagicMock()
-    mock_loop.is_running.return_value = True
-    mock_context.loop = mock_loop
-    return mock_context
-
-
-async def test_trigger_event_basic_hooks(mock_app_context, monkeypatch):
-    """Test trigger_event wraps an async function, triggering both before and after hooks."""
-
-    import bedrock_server_manager.plugins.event_trigger as et
-
-    mock_broadcast = AsyncMock()
-    monkeypatch.setattr(et, "broadcast_event", mock_broadcast, raising=False)
-
-    @trigger_event(before="sync_before", after="sync_after")
-    async def async_target(app_context, multiplier, increment=5):
+    @trigger_event(before=before, after=after)
+    async def target(app_context, multiplier, increment=5):
+        plugin.received.append(("target", {}))
         return multiplier * increment
 
-    result = await async_target(mock_app_context, 10)
-    assert result == 50
-
-    from unittest.mock import ANY
-
-    mock_app_context.plugin_manager.trigger_event.assert_any_call(
-        "sync_before",
-        multiplier=10,
-        increment=5,
-        event=ANY,
+    assert await target(app_context, 10) == 50
+    expected = (
+        (["before"] if before else []) + ["target"] + (["after"] if after else [])
     )
-    mock_app_context.plugin_manager.trigger_event.assert_any_call(
-        "sync_after",
-        multiplier=10,
-        increment=5,
-        event=ANY,
-        result=50,
-    )
+    assert [name for name, _ in plugin.received] == expected
+    for name, payload in plugin.received:
+        if name == "target":
+            continue
+        assert payload["multiplier"] == 10
+        assert payload["increment"] == 5
+        assert "app_context" not in payload
+        assert not payload["event"].is_cancelled
+        if name == "after":
+            assert payload["result"] == 50
+    if before and after:
+        assert plugin.received[0][1]["event"] is plugin.received[-1][1]["event"]
 
 
-async def test_trigger_event_async_hooks(mock_app_context, monkeypatch):
-    """Test trigger_event successfully wraps async coroutines awaiting correctly."""
+async def test_event_hooks_publish_safe_payloads_to_real_socket(
+    app_context, subscribed_socket
+):
+    import asyncio
+    import json
 
-    async def mock_async_broadcast(*args, **kwargs):
-        pass
+    @trigger_event(before="socket_before", after="socket_after")
+    async def target(app_context, value):
+        return value * 2
 
-    import bedrock_server_manager.plugins.event_trigger as et
-
-    monkeypatch.setattr(et, "broadcast_event", mock_async_broadcast, raising=False)
-
-    @et.trigger_event(before="async_before", after="async_after")
-    async def async_target(app_context, val):
-        import asyncio
-
-        await asyncio.sleep(0)
-        return val + 10
-
-    result = await async_target(mock_app_context, val=20)
-    assert result == 30
-
-    from unittest.mock import ANY
-
-    mock_app_context.plugin_manager.trigger_event.assert_any_call(
-        "async_before", val=20, event=ANY
-    )
-    mock_app_context.plugin_manager.trigger_event.assert_any_call(
-        "async_after", val=20, result=30, event=ANY
-    )
-
-
-async def test_trigger_event_no_args(mock_app_context):
-    """Test trigger_event skips triggering when no string events are mapped to kwargs."""
-
-    @trigger_event
-    async def blank_target(app_context):
-        return "blank"
-
-    assert await blank_target(mock_app_context) == "blank"
-    mock_app_context.plugin_manager.trigger_event.assert_not_called()
-    mock_app_context.connection_manager.broadcast_to_topic.assert_not_called()
-
-
-async def test_trigger_event_only_before(mock_app_context):
-    """Test trigger_event only executes the before hook if no after is given."""
-
-    @trigger_event(before="only_before")
-    async def my_target(app_context):
-        return True
-
-    await my_target(mock_app_context)
-    from unittest.mock import ANY
-
-    mock_app_context.plugin_manager.trigger_event.assert_called_once_with(
-        "only_before", event=ANY
-    )
-
-
-async def test_trigger_event_only_after(mock_app_context):
-    """Test trigger_event only executes the after hook if no before is given."""
-
-    @trigger_event(after="only_after")
-    async def my_target(app_context):
-        return "success_val"
-
-    await my_target(mock_app_context)
-    from unittest.mock import ANY
-
-    mock_app_context.plugin_manager.trigger_event.assert_called_once_with(
-        "only_after", result="success_val", event=ANY
-    )
+    async with subscribed_socket("event:socket_before", "event:socket_after") as socket:
+        assert await target(app_context, 4) == 8
+        async with asyncio.timeout(5):
+            before = json.loads(await socket.recv())
+            after = json.loads(await socket.recv())
+        assert before == {
+            "type": "event",
+            "topic": "event:socket_before",
+            "data": {"value": 4},
+        }
+        assert after == {
+            "type": "event",
+            "topic": "event:socket_after",
+            "data": {"value": 4, "result": 8},
+        }

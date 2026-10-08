@@ -1,7 +1,5 @@
 """Contract registration, sync/async validation, and trusted identity injection."""
 
-from unittest.mock import AsyncMock, MagicMock
-
 import pytest
 from pydantic import ValidationError
 
@@ -36,12 +34,12 @@ def register(func, name="contract_test", exposed=True):
     return api_method(name, expose_to_plugins=exposed)(func)
 
 
-def test_sync_forward_annotations_validate_and_reflect():
+def test_sync_forward_annotations_validate_and_reflect(app_context):
     def target(request: "ExampleRequest", *, app_context) -> "ExampleResponse":
         return ExampleResponse(doubled=request.value * 2)
 
     target = register(target)
-    api = create_app_api("example", MagicMock())
+    api = create_app_api("example", app_context)
     result = api.server.contract_test({"value": 4})
     assert isinstance(result, ExampleResponse) and result.doubled == 8
     assert target.__name__ == "target"
@@ -79,8 +77,8 @@ def test_invalid_output_is_an_internal_error(construct):
         target({"value": 2})
 
 
-async def test_injected_identity_cannot_be_replaced():
-    context = MagicMock()
+async def test_injected_identity_cannot_be_replaced(app_context):
+    context = app_context
 
     async def target(
         request: ExampleRequest, app_context, plugin_name: str
@@ -128,10 +126,25 @@ def test_extra_scalar_parameters_are_rejected():
         register(target)
 
 
-async def test_invalid_output_is_not_published_in_after_event():
-    context = MagicMock()
-    context.plugin_manager.trigger_event = AsyncMock()
-    context.connection_manager.broadcast_to_topic = AsyncMock()
+async def test_invalid_output_is_not_published_in_after_event(
+    app_context, plugin_factory
+):
+    plugin = await plugin_factory(
+        "contract_observer",
+        """
+from bedrock_server_manager.plugins import PluginBase, app_event
+class Observer(PluginBase):
+    version = "1.0.0"
+    def on_load(self):
+        self.events = []
+    @app_event("contract_before")
+    async def before(self, **kwargs):
+        self.events.append("before")
+    @app_event("contract_after")
+    async def after(self, **kwargs):
+        self.events.append("after")
+""",
+    )
 
     @trigger_event(before="contract_before", after="contract_after")
     async def target(request: ExampleRequest, app_context) -> ExampleResponse:
@@ -139,6 +152,5 @@ async def test_invalid_output_is_not_published_in_after_event():
 
     target = register(target)
     with pytest.raises(APIResponseValidationError):
-        await target({"value": 2}, app_context=context)
-    assert context.plugin_manager.trigger_event.await_count == 1
-    assert context.plugin_manager.trigger_event.await_args.args == ("contract_before",)
+        await target({"value": 2}, app_context=app_context)
+    assert plugin.events == ["before"]

@@ -1,57 +1,40 @@
-from unittest.mock import MagicMock
+import pytest
 
 from bedrock_server_manager.plugins.event_trigger import trigger_event
 
 
-async def test_cancellable_event_sync(monkeypatch):
-    from unittest.mock import AsyncMock
+@pytest.mark.parametrize("async_handler", [False, True])
+async def test_loaded_plugin_cancels_before_target(
+    app_context, plugin_factory, async_handler
+):
+    handler = "async def" if async_handler else "def"
+    plugin = await plugin_factory(
+        "cancel_event",
+        f"""
+from bedrock_server_manager.plugins import PluginBase, app_event
+class Canceller(PluginBase):
+    version = "1.0.0"
+    def on_load(self):
+        self.after_called = False
+    @app_event("before_event")
+    {handler} cancel(self, event, **kwargs):
+        event.cancel("Cancelled by plugin")
+    @app_event("after_event")
+    async def after(self, **kwargs):
+        self.after_called = True
+""",
+    )
+    executed = False
 
-    mock_context = MagicMock()
-    mock_context.plugin_manager = MagicMock()
-    mock_context.plugin_manager.trigger_event = AsyncMock()
-    mock_context.connection_manager = AsyncMock()
+    @trigger_event(before="before_event", after="after_event")
+    async def target(app_context):
+        nonlocal executed
+        executed = True
+        return {"status": "success"}
 
-    import bedrock_server_manager.plugins.event_trigger as et
-
-    mock_broadcast = AsyncMock()
-    monkeypatch.setattr(et, "broadcast_event", mock_broadcast, raising=False)
-
-    async def mock_trigger_event(event_name, *args, **kwargs):
-        if event_name == "before_event":
-            kwargs["event"].cancel("Sync cancelled")
-
-    mock_context.plugin_manager.trigger_event.side_effect = mock_trigger_event
-
-    @trigger_event(before="before_event")
-    async def sync_target(app_context):
-        return {"status": "success", "message": "should not reach"}
-
-    result = await sync_target(app_context=mock_context)
-    assert result == {"status": "canceled", "message": "Sync cancelled"}
-
-
-async def test_cancellable_event_async(monkeypatch):
-    from unittest.mock import AsyncMock
-
-    mock_context = MagicMock()
-    mock_context.plugin_manager = MagicMock()
-    mock_context.plugin_manager.trigger_event = AsyncMock()
-    mock_context.connection_manager = AsyncMock()
-
-    import bedrock_server_manager.plugins.event_trigger as et
-
-    mock_broadcast = AsyncMock()
-    monkeypatch.setattr(et, "broadcast_event", mock_broadcast, raising=False)
-
-    async def mock_trigger_event(event_name, *args, **kwargs):
-        if event_name == "before_event":
-            kwargs["event"].cancel("Async cancelled")
-
-    mock_context.plugin_manager.trigger_event.side_effect = mock_trigger_event
-
-    @trigger_event(before="before_event")
-    async def async_target(app_context):
-        return {"status": "success", "message": "should not reach"}
-
-    result = await async_target(app_context=mock_context)
-    assert result == {"status": "canceled", "message": "Async cancelled"}
+    assert await target(app_context) == {
+        "status": "canceled",
+        "message": "Cancelled by plugin",
+    }
+    assert not executed
+    assert not plugin.after_called

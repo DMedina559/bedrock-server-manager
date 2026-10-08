@@ -1,6 +1,3 @@
-from pathlib import Path
-from unittest.mock import MagicMock
-
 from bedrock_server_manager.plugins.plugin_manager import PluginManager
 
 
@@ -48,12 +45,12 @@ async def test_load_and_save_config(db, app_context):
 async def test_synchronize_config_with_disk(db, app_context):
     """Test synchronize configuration cleans up orphaned keys and adds loaded ones."""
     pm = app_context.plugin_manager
-    # Injected plugins mock directory might be empty, but we can verify it wipes clean unused dict entries
+    # Disk discovery removes configuration entries without a plugin module.
     pm.plugin_config = {"phantom_plugin": {"enabled": True}}
 
     await pm._synchronize_config_with_disk()
 
-    assert isinstance(pm.plugin_config, dict)
+    assert "phantom_plugin" not in pm.plugin_config
 
 
 async def test_synchronize_config_preserves_app_state(db, app_context):
@@ -72,85 +69,44 @@ async def test_synchronize_config_preserves_app_state(db, app_context):
     assert key_after == "persistent_secret_key_123"
 
 
-async def test_load_plugins(db, app_context, monkeypatch):
-    """Test PluginManager loads properly matching plugins."""
-    pm = app_context.plugin_manager
-
-    mock_plugin_instance = MagicMock()
-    mock_plugin_instance.name = "mock_plugin_y"
-    mock_plugin_instance.version = "1.0"
-
-    # Stub load mechanisms
-    monkeypatch.setattr(pm, "_synchronize_config_with_disk", MagicMock())
-
-    # Normally we load from disk, so we fake plugins array directly here to test dispatch hooks.
-    pm.plugins = [mock_plugin_instance]
-    assert len(pm.plugins) == 1
-    assert pm.plugins[0].name == "mock_plugin_y"
+EVENT_PLUGIN = """
+from bedrock_server_manager.plugins import PluginBase, app_event
+class Listener(PluginBase):
+    version = "1.0.0"
+    def on_load(self):
+        self.received = []
+    @app_event("test:event")
+    async def receive(self, *args, **kwargs):
+        self.received.append((args, kwargs))
+"""
 
 
-async def test_custom_event_system(db, app_context):
-    """Test inter-plugin event broadcast and listeners dispatch accurately."""
-    pm = app_context.plugin_manager
+async def test_load_plugins(app_context, plugin_factory):
+    plugin = await plugin_factory("listener", EVENT_PLUGIN)
+    assert app_context.plugin_manager.get_plugin_status("listener") == "LOADED"
+    assert plugin in app_context.plugin_manager.plugins
 
-    callback = MagicMock()
-    callback.__name__ = "my_callback"
 
-    mock_plugin = MagicMock()
-    mock_plugin.name = "listen_plugin"
-
-    # Actually pm.plugins might be a list
-    pm.plugins = [mock_plugin]
-
-    pm.register_app_event_listener("test:event", callback, "listen_plugin")
-
-    await pm.trigger_event(
+async def test_custom_event_system(app_context, plugin_factory):
+    plugin = await plugin_factory("listener", EVENT_PLUGIN)
+    await app_context.plugin_manager.trigger_event(
         "test:event", "arg1", kw="val", _triggering_plugin="sender_plugin"
     )
-
-    callback.assert_called_once_with(
-        "arg1", kw="val", _triggering_plugin="sender_plugin"
-    )
-
-
-async def test_event_dispatch(db, app_context):
-    """Test trigger_event correctly loops over all active plugins invoking registered hooks."""
-    pm = app_context.plugin_manager
-
-    mock_plugin = MagicMock()
-    mock_plugin.name = "mock_plugin"
-
-    callback = MagicMock()
-    callback.__name__ = "my_callback"
-
-    pm.plugins = [mock_plugin]
-    pm._event_listeners = {"on_unload": {"mock_plugin": [callback]}}
-
-    await pm.trigger_event("on_unload")
-
-    callback.assert_called_once()
+    assert plugin.received == [
+        (("arg1",), {"kw": "val", "_triggering_plugin": "sender_plugin"})
+    ]
 
 
-async def test_reload_plugins(db, app_context, monkeypatch):
-    """Test PluginManager unloads plugins before reloading the cache."""
-    pm = app_context.plugin_manager
-
-    mock_plugin = MagicMock()
-    mock_plugin.name = "mock_plugin"
-
-    pm.plugins = {mock_plugin}
-    pm._event_listeners = {"test_event": {}}
-
-    with monkeypatch.context() as m:
-        from unittest.mock import AsyncMock
-
-        mock_load = AsyncMock()
-        m.setattr(pm, "load_plugins", mock_load)
-        # Instead of intercepting the mock plugin event, just verify load_plugins is called and lists are cleared
-        await pm.reload()
-
-        assert len(pm._event_listeners) == 0
-        mock_load.assert_called_once()
+async def test_reload_plugins(app_context, plugin_factory):
+    old_plugin = await plugin_factory("listener", EVENT_PLUGIN)
+    manager = app_context.plugin_manager
+    await manager.reload()
+    assert manager.get_plugin_status("listener") == "LOADED"
+    new_plugin = next(p for p in manager.plugins if p.api._plugin_name == "listener")
+    assert new_plugin is not old_plugin
+    await manager.trigger_event("test:event", payload="reloaded")
+    assert new_plugin.received == [((), {"payload": "reloaded"})]
+    assert old_plugin.received == []
 
 
 def test_path_traversal_rejection(app_context):
@@ -163,28 +119,12 @@ def test_path_traversal_rejection(app_context):
     assert pm._find_plugin_path("..") is None
 
 
-async def test_event_dispatch_app_context_sanitization(app_context):
-    """Test dispatch_event strips app_context from kwargs passed to listeners."""
-    pm = app_context.plugin_manager
-
-    received_kwargs = {}
-
-    async def listener(**kwargs):
-        received_kwargs.update(kwargs)
-
-    listener.__name__ = "listener"
-
-    mock_plugin = MagicMock()
-    mock_plugin.name = "test_plugin"
-    pm.plugins = [mock_plugin]
-    pm.register_app_event_listener("test_event", listener, "test_plugin")
-
-    await pm.dispatch_event(
-        mock_plugin, "test_event", app_context=app_context, payload="data"
+async def test_event_dispatch_app_context_sanitization(app_context, plugin_factory):
+    plugin = await plugin_factory("listener", EVENT_PLUGIN)
+    await app_context.plugin_manager.dispatch_event(
+        plugin, "test:event", app_context=app_context, payload="data"
     )
-
-    assert "app_context" not in received_kwargs
-    assert received_kwargs.get("payload") == "data"
+    assert plugin.received == [((), {"payload": "data"})]
 
 
 async def test_topological_dependency_sorting(app_context):
@@ -274,46 +214,39 @@ def test_plugin_status_tracking(app_context):
     assert pm.get_plugin_status("error_plugin") == "ERROR"
 
 
-async def test_failed_load_removes_partial_instance_and_provider(
-    app_context, monkeypatch
-):
-
+async def test_failed_load_removes_partial_instance_and_provider(app_context):
     manager = app_context.plugin_manager
-    manager.plugin_config["sample"] = {"enabled": True}
+    path = manager.plugin_dirs[0] / "sample.py"
+    path.write_text("""
+from bedrock_server_manager.plugins import PluginBase
+class FailingPlugin(PluginBase):
+    version = "1.0.0"
+    async def on_load(self):
+        await self.api.runtime.register_data_provider("partial", lambda: 1)
+        raise RuntimeError("load failed")
+""")
+    await app_context.plugin_service.register_or_update_plugin("sample", enabled=True)
+    await manager._synchronize_config_with_disk()
+    for _ in range(2):
+        assert not await manager.load_plugin_by_name("sample")
+        assert manager.plugins == []
+        assert manager.get_plugin_status("sample") == "ERROR"
+        assert app_context.connection_manager.get_data_provider("partial") is None
 
-    class FailingPlugin:
-        def __init__(self, name, api, logger):
-            self.name = name
-            self.api = api
 
-        async def on_load(self):
-            app_context.connection_manager.register_data_provider(
-                "partial", lambda: 1, "sample"
-            )
-            raise RuntimeError("load failed")
-
-    monkeypatch.setattr(manager, "_find_plugin_path", lambda name: Path("sample.py"))
-    monkeypatch.setattr(
-        manager, "_get_plugin_class_from_path", lambda *args: FailingPlugin
+async def test_full_unload_removes_plugin_providers(app_context, plugin_factory):
+    await plugin_factory(
+        "sample",
+        """
+from bedrock_server_manager.plugins import PluginBase
+class Provider(PluginBase):
+    version = "1.0.0"
+    async def on_load(self):
+        await self.api.runtime.register_data_provider("sample", lambda: 1)
+""",
     )
-    assert not await manager.load_plugin_by_name("sample")
-    assert manager.plugins == []
-    assert manager.get_plugin_status("sample") == "ERROR"
-    assert app_context.connection_manager.get_data_provider("partial") is None
-    assert not await manager.load_plugin_by_name("sample")
-
-
-async def test_full_unload_removes_plugin_providers(app_context):
-    from types import SimpleNamespace
-    from unittest.mock import AsyncMock
-
-    manager = app_context.plugin_manager
-    manager.plugins = [
-        SimpleNamespace(name="sample", api=SimpleNamespace(_plugin_name="sample"))
-    ]
-    manager.dispatch_event = AsyncMock()
-    app_context.connection_manager.register_data_provider("sample", lambda: 1, "sample")
-    await manager.unload_plugins()
+    assert app_context.connection_manager.get_data_provider("sample") is not None
+    await app_context.plugin_manager.unload_plugins()
     assert app_context.connection_manager.get_data_provider("sample") is None
 
 
@@ -334,34 +267,31 @@ def test_runtime_snapshot_is_typed_and_independent(app_context):
     assert manager.get_plugin_status("sample") == "LOADED"
 
 
-async def test_plugin_http_routes_follow_load_and_unload(app_context, monkeypatch):
-    from fastapi import APIRouter, FastAPI
-
+async def test_plugin_http_routes_follow_load_and_unload(
+    app_context, running_app, admin_auth_client, plugin_factory
+):
     manager = app_context.plugin_manager
-    app = FastAPI()
-    manager.bind_web_app(app)
-    manager.plugin_config["sample"] = {"enabled": True}
-
-    class WebPlugin:
-        def __init__(self, name, api, logger):
-            self.name, self.api = name, api
-            self.router = APIRouter()
-            self.router.add_api_route(
-                "/sample", lambda: {"ok": True}, operation_id="sample"
-            )
-
-        def get_fastapi_routers(self):
-            return [self.router]
-
-    monkeypatch.setattr(manager, "_find_plugin_path", lambda name: Path("sample.py"))
-    monkeypatch.setattr(manager, "_get_plugin_class_from_path", lambda *args: WebPlugin)
-    assert await manager.load_plugin_by_name("sample")
-    assert "/sample" in app.openapi()["paths"]
-    await manager.unload_plugins()
-    assert "/sample" not in app.openapi()["paths"]
-    assert not manager.plugin_fastapi_routers
-    assert await manager.load_plugin_by_name("sample")
-    assert "/sample" in app.openapi()["paths"]
+    await plugin_factory(
+        "sample",
+        """
+from fastapi import APIRouter
+from bedrock_server_manager.plugins import PluginBase
+class WebPlugin(PluginBase):
+    version = "1.0.0"
+    def get_fastapi_routers(self):
+        router = APIRouter()
+        router.add_api_route("/sample", lambda: {"ok": True}, operation_id="sample")
+        return [router]
+""",
+    )
+    for _ in range(2):
+        assert "/sample" in running_app.openapi()["paths"]
+        assert (await admin_auth_client.get("/sample")).json() == {"ok": True}
+        await manager.unload_plugins()
+        assert "/sample" not in running_app.openapi()["paths"]
+        assert (await admin_auth_client.get("/sample")).status_code == 404
+        assert not manager.plugin_fastapi_routers
+        assert await manager.load_plugin_by_name("sample")
 
 
 async def test_sync_plugin_loop_unload_waits_for_worker(app_context):
