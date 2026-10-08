@@ -5,7 +5,7 @@ Defines the central application context.
 
 from __future__ import annotations
 
-from logging import Logger
+from logging import Logger, getLogger
 from typing import TYPE_CHECKING, Any, Dict, Optional
 
 from sqlalchemy import inspect, select
@@ -129,11 +129,11 @@ class AppContext:
             await self._plugin_manager.reload()
 
         if self._resource_monitor is not None:
-            self._resource_monitor.stop()
+            await self._resource_monitor.shutdown()
             self._resource_monitor.start()
 
         if self._log_streamer is not None:
-            self._log_streamer.stop()
+            await self._log_streamer.shutdown()
             self._log_streamer.start()
 
     async def flush(self):
@@ -147,28 +147,34 @@ class AppContext:
         """
         Shuts down application context components and flushes pending state to storage.
         """
-        if self._bedrock_process_manager is not None:
-            await self._bedrock_process_manager.shutdown()
-
-        if self._plugin_manager is not None:
-            await self._plugin_manager.shutdown()
-
-        if self._task_manager is not None:
-            await self._task_manager.shutdown()
-
-        if self._resource_monitor is not None:
-            self._resource_monitor.stop()
-
-        if self._log_streamer is not None:
-            self._log_streamer.stop()
-
-        if self._connection_manager is not None:
-            await self._connection_manager.shutdown()
-
-        await self.flush()
-
-        if self._db is not None:
-            await self._db.shutdown()
+        errors: list[Exception] = []
+        components = (
+            self._bedrock_process_manager,
+            self._plugin_manager,
+            self._task_manager,
+            self._resource_monitor,
+            self._log_streamer,
+            self._connection_manager,
+        )
+        for component in components:
+            if component is not None:
+                try:
+                    await component.shutdown()
+                except Exception as error:
+                    errors.append(error)
+                    getLogger(__name__).exception("Component shutdown failed: %s", type(component).__name__)
+        try:
+            await self.flush()
+        except Exception as error:
+            errors.append(error)
+        finally:
+            if self._db is not None:
+                try:
+                    await self._db.shutdown()
+                except Exception as error:
+                    errors.append(error)
+        if errors:
+            raise ExceptionGroup("Application shutdown failed", errors)
 
     @property
     def pre_app_config(self) -> Dict[str, Any]:

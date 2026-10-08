@@ -77,3 +77,10 @@ class ResourceMonitor:
             self._task.cancel()
             self._task = None
             logger.info("Resource monitor background task stopped.")
+
+    async def shutdown(self) -> None:
+        """Cancel and await the monitor before releasing its dependencies."""
+        task = self._task
+        self.stop()
+        if task is not None:
+            await asyncio.gather(task, return_exceptions=True)

@@ -161,3 +161,10 @@ class LogStreamer:
 
         except Exception as e:
             logger.warning(f"Failed to read log file {file_path}: {e}")
+
+    async def shutdown(self) -> None:
+        """Cancel and await the monitor before releasing its dependencies."""
+        task = self._task
+        self.stop()
+        if task is not None:
+            await asyncio.gather(task, return_exceptions=True)

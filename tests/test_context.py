@@ -54,6 +54,8 @@ async def test_app_context_reload(app_context, monkeypatch):
     # Setup mocks for resource_monitor and log_streamer
     app_context._resource_monitor = MagicMock()
     app_context._log_streamer = MagicMock()
+    app_context._resource_monitor.shutdown = AsyncMock()
+    app_context._log_streamer.shutdown = AsyncMock()
 
     await app_context.reload()
 
@@ -71,9 +73,9 @@ async def test_app_context_reload(app_context, monkeypatch):
     plugin_manager_reload_mock.assert_called_once()
 
     # Verify monitors are stopped and started
-    app_context._resource_monitor.stop.assert_called_once()
+    app_context._resource_monitor.shutdown.assert_awaited_once()
     app_context._resource_monitor.start.assert_called_once()
-    app_context.log_streamer.stop.assert_called_once()
+    app_context.log_streamer.shutdown.assert_awaited_once()
     app_context.log_streamer.start.assert_called_once()
 
 
@@ -137,3 +139,19 @@ async def test_remove_server_non_existent(app_context):
     """Test remove_server handles non-existent servers gracefully."""
     # Should not raise an error
     await app_context.remove_server("does_not_exist")
+
+
+async def test_shutdown_attempts_all_cleanup_after_failures(app_context, monkeypatch):
+    import pytest
+    process = MagicMock(shutdown=AsyncMock(side_effect=RuntimeError("process")))
+    plugin = MagicMock(shutdown=AsyncMock())
+    database = MagicMock(shutdown=AsyncMock())
+    monkeypatch.setattr(app_context, "_bedrock_process_manager", process)
+    monkeypatch.setattr(app_context, "_plugin_manager", plugin)
+    monkeypatch.setattr(app_context, "_db", database)
+    monkeypatch.setattr(app_context, "flush", AsyncMock(side_effect=RuntimeError("flush")))
+    with pytest.raises(ExceptionGroup) as failure:
+        await app_context.shutdown()
+    assert len(failure.value.exceptions) == 2
+    plugin.shutdown.assert_awaited_once()
+    database.shutdown.assert_awaited_once()
