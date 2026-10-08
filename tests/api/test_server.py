@@ -233,7 +233,7 @@ async def test_update_server_player_stats(app_context):
         await update_server_player_stats(
             request=UpdateServerPlayerStatsRequest(
                 server_name="test_server",
-                player_count=5,
+                player_count=1,
                 players=[{"name": "p1", "xuid": "1"}],
             ),
             app_context=app_context,
@@ -374,3 +374,12 @@ async def test_cancelled_lifecycle_operation_does_not_restart(
         ):
             raise asyncio.CancelledError()
     start.assert_not_awaited()
+
+
+def test_runtime_player_request_rejects_mismatched_count():
+    from pydantic import ValidationError
+
+    with pytest.raises(ValidationError):
+        UpdateServerPlayerStatsRequest(
+            server_name="example", player_count=2, players=[]
+        )

@@ -532,6 +532,9 @@ async def update_server_player_stats(
     server_name = request.server_name
     player_count = request.player_count
     players = request.model_dump(mode="python")["players"]
+    app_context.state.runtime.update_server_runtime(
+        server_name, players=players, players_online=player_count
+    )
     return UpdateServerPlayerStatsResponse.model_validate(
         {
             "status": "success",

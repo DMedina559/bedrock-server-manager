@@ -72,8 +72,7 @@ class ServerStateMixin(BedrockServerBaseMixin):
         initialized or will be by a preceding class in the MRO.
         """
         super().__init__(*args, **kwargs)
-        setattr(self, "player_count", 0)
-        setattr(self, "players", [])
+        # Runtime data is shared through AppState, including recovered servers.
         setattr(self, "_log_file_cursor", 0)
         setattr(self, "_scan_log_cursor", 0)
 

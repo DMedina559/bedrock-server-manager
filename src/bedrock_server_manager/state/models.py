@@ -4,13 +4,11 @@ Typed domain state models for ServerState, PluginState, UserState, and RuntimeSt
 """
 
 import asyncio
-from copy import deepcopy
 from dataclasses import dataclass, field
-from typing import Any, Dict, List, Optional, cast
+from typing import Dict, List, Optional, Self, cast
 
-from pydantic import BaseModel, ConfigDict, Field, JsonValue
+from pydantic import BaseModel, ConfigDict, Field, JsonValue, model_validator
 
-from ..plugins.runtime import PluginRuntime
 from .types import UserRole
 
 
@@ -258,21 +256,31 @@ class BanResult(PersistentRecord):
     bans: Optional[List[BanItem]] = None
 
 
+class RuntimePlayer(PersistentRecord):
+    name: str
+    xuid: str
+
+
 class ServerRuntimeInfo(PersistentRecord):
     running: bool = False
     pid: Optional[int] = Field(default=None, gt=0)
     players_online: int = Field(default=0, ge=0)
-    online_players_list: List[str] = Field(default_factory=list)
+    players: List[RuntimePlayer] = Field(default_factory=list)
     cpu_percent: float = Field(default=0.0, ge=0)
     memory_mb: float = Field(default=0.0, ge=0)
+
+    @model_validator(mode="after")
+    def coherent_runtime(self) -> Self:
+        if self.players_online != len(self.players):
+            raise ValueError("Player count must match the player list.")
+        if not self.running and self.pid is not None:
+            raise ValueError("Stopped servers cannot retain a process ID.")
+        return self
 
 
 @dataclass
 class RuntimeState:
     _servers: Dict[str, ServerRuntimeInfo] = field(default_factory=dict)
-    plugins: Dict[str, PluginRuntime] = field(default_factory=dict)
-    active_tasks: Dict[str, Any] = field(default_factory=dict)
-    websocket_connections: int = 0
 
     @property
     def servers(self) -> Dict[str, ServerRuntimeInfo]:
@@ -290,10 +298,16 @@ class RuntimeState:
             runtime
         ).model_copy(deep=True)
 
-    def get_plugin_runtime(self, plugin_name: str) -> PluginRuntime:
-        if plugin_name not in self.plugins:
-            self.plugins[plugin_name] = PluginRuntime(plugin_name=plugin_name)
-        return cast(PluginRuntime, deepcopy(self.plugins[plugin_name]))
+    def update_server_runtime(self, server_name: str, **values: object) -> None:
+        """Validate and publish one complete runtime update without exposing handles."""
+        data = self.get_server_runtime(server_name).model_dump()
+        data.update(values)
+        if values.get("running") is False:
+            data.update(
+                pid=None, players_online=0, players=[], cpu_percent=0.0, memory_mb=0.0
+            )
+        record = ServerRuntimeInfo.model_validate(data)
+        self.set_server_runtime(server_name, record)
 
-    def set_plugin_runtime(self, plugin_name: str, runtime: PluginRuntime) -> None:
-        self.plugins[plugin_name] = deepcopy(runtime)
+    def remove_server_runtime(self, server_name: str) -> None:
+        self._servers.pop(server_name, None)

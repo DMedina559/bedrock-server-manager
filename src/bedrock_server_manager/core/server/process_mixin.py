@@ -112,26 +112,27 @@ class ServerProcessMixin(BedrockServerBaseMixin):
             and hasattr(self._process, "poll")
             and self._process.poll() is None
         ):
-            return True
+            return self._publish_running(True)
         elif (
             self._process is not None
             and hasattr(self._process, "is_running")
             and self._process.is_running()
         ):
             # For psutil.Process
-            return True
+            return self._publish_running(True)
         elif (
             self._process is not None
             and hasattr(self._process, "returncode")
             and self._process.returncode is None
         ):
             # For asyncio.subprocess.Process
-            return True
-        return await system_base.is_server_running(
+            return self._publish_running(True)
+        running = await system_base.is_server_running(
             self.server_name,
             self.server_dir,
             self.app_config_dir,
         )
+        return self._publish_running(running)
 
     async def send_command(self, command: str) -> None:
         """Sends a command string to the running Bedrock server process asynchronously."""
@@ -231,6 +232,7 @@ class ServerProcessMixin(BedrockServerBaseMixin):
             )
 
             await system_process.write_pid_to_file(pid_file_path, self._process.pid)
+            self._publish_running(True)
             self.intentionally_stopped = False
             self.start_time = time.time()
 
@@ -376,6 +378,7 @@ class ServerProcessMixin(BedrockServerBaseMixin):
                 self._log_file_handle = None
 
         self._process = None
+        self._publish_running(False)
 
         pid_file_path = self.get_pid_file_path()
         await system_process.remove_pid_file_if_exists(pid_file_path)
@@ -417,16 +420,23 @@ class ServerProcessMixin(BedrockServerBaseMixin):
                 self.logger.debug(
                     f"No verified process found for server '{self.server_name}' to get info."
                 )
+                await self.is_running()
                 return None
 
             data = await asyncio.to_thread(
                 self._resource_monitor.get_stats, process_obj
             )
-            return (
-                ProcessRecord.model_validate(data).model_dump(mode="json")
-                if data is not None
-                else None
+            if data is None:
+                return None
+            record = ProcessRecord.model_validate(data)
+            self._runtime_state.update_server_runtime(
+                self.server_name,
+                running=True,
+                pid=record.pid,
+                cpu_percent=record.cpu_percent,
+                memory_mb=record.memory_mb,
             )
+            return record.model_dump(mode="json")
 
         except BSMError as e_bsm:
             self.logger.warning(

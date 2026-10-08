@@ -21,6 +21,7 @@ if TYPE_CHECKING:
     from ...context import AppContext
 
 from ...error import ConfigurationError, MissingArgumentError
+from ...state.models import RuntimeState
 from ...utils.general import ReentrantAsyncLock
 from ..system import base as system_base
 
@@ -94,6 +95,7 @@ class BedrockServerBaseMixin:
 
         self.settings = settings
         self.state = state
+        self._runtime_state = state.runtime if state is not None else RuntimeState()
         self.storage = storage
         self.app_context = app_context
 
@@ -140,6 +142,41 @@ class BedrockServerBaseMixin:
             f"BedrockServerBaseMixin initialized for '{self.server_name}' "
             f"at '{self.server_dir}'. App Config Dir: '{self.app_config_dir}'"
         )
+
+    @property
+    def players(self) -> list[dict[str, str]]:
+        return [
+            {"name": player.name, "xuid": player.xuid}
+            for player in self._runtime_state.get_server_runtime(
+                self.server_name
+            ).players
+        ]
+
+    @players.setter
+    def players(self, values: list[dict[str, str]]) -> None:
+        self._runtime_state.update_server_runtime(
+            self.server_name, players=values, players_online=len(values)
+        )
+
+    @property
+    def player_count(self) -> int:
+        return self._runtime_state.get_server_runtime(self.server_name).players_online
+
+    @player_count.setter
+    def player_count(self, value: int) -> None:
+        self._runtime_state.update_server_runtime(
+            self.server_name, players_online=value
+        )
+
+    def _publish_running(self, running: bool) -> bool:
+        process = getattr(self, "_process", None)
+        pid = getattr(process, "pid", None)
+        if not isinstance(pid, int) or isinstance(pid, bool) or pid <= 0:
+            pid = None
+        self._runtime_state.update_server_runtime(
+            self.server_name, running=running, pid=pid
+        )
+        return running
 
     @cached_property
     def bedrock_executable_name(self) -> str:

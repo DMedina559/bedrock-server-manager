@@ -309,6 +309,7 @@ class Storage:
                 async with self.transaction() as session:
                     await self.server_repo.delete_server(session, server_name)
                 state.servers.remove(server_name)
+                state.runtime.remove_server_runtime(server_name)
 
     async def flush(self, state: AppState) -> None:
         """Persist pending entity snapshots through the same commit boundary."""

@@ -124,3 +124,19 @@ async def test_invalid_nested_write_is_atomic(real_bedrock_server):
     with pytest.raises(ValidationError):
         await server._manage_json_config("custom.invalid", "write", float("nan"))
     assert server.state.servers.get(server.server_name) == before
+
+
+async def test_core_players_share_runtime_and_return_snapshots(real_bedrock_server):
+    server = real_bedrock_server
+    server.players = [{"name": "Player", "xuid": "1"}]
+    assert server.player_count == 1
+    snapshot = server.state.runtime.get_server_runtime(server.server_name)
+    assert snapshot.players[0].name == "Player"
+    server.players[0]["name"] = "Changed"
+    assert (
+        server.state.runtime.get_server_runtime(server.server_name).players[0].name
+        == "Player"
+    )
+    server._publish_running(False)
+    assert server.players == []
+    assert server.player_count == 0

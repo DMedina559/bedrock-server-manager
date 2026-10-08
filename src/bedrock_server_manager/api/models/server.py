@@ -1,8 +1,8 @@
 """Request and response contracts for server lifecycle operations."""
 
-from typing import Annotated, Literal
+from typing import Annotated, Literal, Self
 
-from pydantic import Field, JsonValue
+from pydantic import Field, JsonValue, model_validator
 
 from .common import (
     ActionResponse,
@@ -128,6 +128,12 @@ class UpdateServerPlayerStatsRequest(APIRequest):
     server_name: ServerName
     player_count: Annotated[int, Field(ge=0)]
     players: list[PlayerInfo]
+
+    @model_validator(mode="after")
+    def coherent_player_count(self) -> Self:
+        if self.player_count != len(self.players):
+            raise ValueError("Player count must match the player list.")
+        return self
 
 
 class UpdateServerPlayerStatsResponse(SuccessResponse):
