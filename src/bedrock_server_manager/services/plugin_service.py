@@ -64,16 +64,20 @@ class PluginService:
             data.update(update.model_dump(exclude_unset=True))
             plugin = PluginInfoState.model_validate(data)
 
-            self.state.plugins.set(plugin)
-
-        changeset = ChangeSet()
-        changeset.add_plugin(plugin_name)
-        if settings is not None:
-            async with self.state.settings.get_lock("global"):
-                values = self.state.settings.get("plugin_settings", {})
-                values[plugin_name] = settings
-                self.state.settings.set("plugin_settings", values)
-            changeset.add_setting("plugin_settings")
+            changeset = ChangeSet()
+            changeset.add_plugin(plugin_name)
+            if settings is not None:
+                async with self.state.settings.get_lock("global"):
+                    values = self.state.settings.get("plugin_settings", {})
+                    values[plugin_name] = settings
+                    candidate = self.state.settings.model_dump()
+                    candidate["plugin_settings"] = values
+                    type(self.state.settings).model_validate(candidate)
+                    self.state.settings.set("plugin_settings", values)
+                    self.state.plugins.set(plugin)
+                changeset.add_setting("plugin_settings")
+            else:
+                self.state.plugins.set(plugin)
 
         await self.storage.apply_changeset(self.state, changeset)
 
