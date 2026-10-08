@@ -2,7 +2,6 @@
 import asyncio
 import inspect
 import logging
-import threading
 import uuid
 from typing import Any, Callable, Dict, Optional
 
@@ -11,7 +10,9 @@ from pydantic import BaseModel, ValidationError
 from ..api.models.tasks import TaskSnapshot
 from ..error import APICancelledError
 from ..plugins.api_contract import APIResponseValidationError
+from ..utils.threads import run_in_thread
 from .task_record import TaskRecord
+from .websocket_manager import ConnectionManager
 
 logger = logging.getLogger(__name__)
 
@@ -21,7 +22,7 @@ class TaskManager:
 
     def __init__(
         self,
-        connection_manager: Any,
+        connection_manager: ConnectionManager | None,
         max_workers: Optional[int] = None,
     ):
         """Initializes the TaskManager with explicit dependencies."""
@@ -64,7 +65,9 @@ class TaskManager:
 
             if loop is not None and loop.is_running():
                 try:
-                    await asyncio.wait_for(connection_manager.send_to_user(username, message), timeout=5)
+                    await asyncio.wait_for(
+                        connection_manager.send_to_user(username, message), timeout=5
+                    )
                 except Exception:
                     logger.warning(
                         "Could not deliver task update %s", task_id, exc_info=True
@@ -211,30 +214,7 @@ class TaskManager:
                 return await target_function(*args, **call_kwargs)
             else:
 
-                def sync_wrapper():
-                    return target_function(*args, **call_kwargs)
-
-                cancellation_event = threading.Event()
-                try:
-                    if "cancellation_event" in inspect.signature(target_function).parameters:
-                        call_kwargs["cancellation_event"] = cancellation_event
-                except (ValueError, TypeError):
-                    pass
-                worker = asyncio.create_task(asyncio.to_thread(sync_wrapper))
-                try:
-                    return await asyncio.shield(worker)
-                except asyncio.CancelledError:
-                    cancellation_event.set()
-                    while not worker.done():
-                        try:
-                            await asyncio.shield(worker)
-                        except asyncio.CancelledError:
-                            continue
-                        except Exception:
-                            break
-                    if not worker.cancelled():
-                        worker.exception()
-                    raise
+                return await run_in_thread(target_function, *args, **call_kwargs)
 
         task = asyncio.create_task(_runner())
         self.futures[task_id] = task
@@ -256,10 +236,16 @@ class TaskManager:
             return False
 
         task = self.futures[task_id]
+        if task.done():
+            return False
         if not task.done() and not task.cancelling():
             task.cancel()
 
-        await self._update_task(task_id, "cancelling", "Cancellation requested; waiting for execution to finish.")
+        await self._update_task(
+            task_id,
+            "cancelling",
+            "Cancellation requested; waiting for execution to finish.",
+        )
         return True
 
     def _snapshot(self, task_id: str) -> TaskSnapshot:

@@ -10,6 +10,7 @@ from pydantic import ValidationError
 from ...api.errors import error_response
 from ...context import AppContext
 from ...utils import authenticate_websocket_token
+from ...utils.threads import run_in_thread
 from ..schemas.websocket import (
     AuthenticationFrame,
     ClientFrame,
@@ -53,7 +54,7 @@ async def _call_data_provider(
     if inspect.iscoroutinefunction(handler):
         result = await handler(*args, **kwargs)
     else:
-        result = await asyncio.to_thread(handler, *args, **kwargs)
+        result = await run_in_thread(handler, *args, **kwargs)
         if inspect.isawaitable(result):
             result = await result
     return json_payload(result).value

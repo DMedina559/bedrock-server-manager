@@ -235,14 +235,17 @@ async def test_slow_notification_does_not_orphan_admission():
 
 async def test_cancelled_thread_remains_tracked_until_worker_exits():
     import threading
+
     started = threading.Event()
     released = threading.Event()
     finished = threading.Event()
+
     def worker(cancellation_event):
         started.set()
         cancellation_event.wait()
         released.wait()
         finished.set()
+
     manager = TaskManager(None)
     task_id = await manager.run_task(worker)
     await asyncio.to_thread(started.wait)
