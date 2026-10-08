@@ -196,9 +196,7 @@ def test_post_permissions_set_user_input_error(
 
         assert response.status_code == 400
         data = response.json()
-        assert (
-            data["error"]["details"]["errors"]["123"] == "Invalid permission level"
-        )
+        assert data["error"]["details"]["errors"]["123"] == "Invalid permission level"
 
 
 def test_get_permissions_unauthorized(unauth_client: TestClient, real_bedrock_server):
