@@ -8,7 +8,9 @@ from typing import Any, Callable, TypeVar
 Result = TypeVar("Result")
 
 
-async def run_in_thread(target: Callable[..., Result], *args: Any, **kwargs: Any) -> Result:
+async def run_in_thread(
+    target: Callable[..., Result], *args: Any, **kwargs: Any
+) -> Result:
     cancellation_event = threading.Event()
     try:
         if "cancellation_event" in inspect.signature(target).parameters:
