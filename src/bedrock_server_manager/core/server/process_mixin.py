@@ -132,6 +132,11 @@ class ServerProcessMixin(BedrockServerBaseMixin):
             self.server_dir,
             self.app_config_dir,
         )
+        self._process = None
+        if running:
+            self._process = await system_process.get_verified_bedrock_process(
+                self.server_name, self.server_dir, self.app_config_dir
+            )
         return self._publish_running(running)
 
     async def send_command(self, command: str) -> None:
@@ -245,7 +250,11 @@ class ServerProcessMixin(BedrockServerBaseMixin):
             self.logger.info(
                 f"Server '{self.server_name}' has been started with PID {self._process.pid}."
             )
+        except asyncio.CancelledError:
+            await self._rollback_start()
+            raise
         except FileNotFoundError:
+            await self._rollback_start()
             await self.set_status_in_config("ERROR")  # type: ignore
             self.logger.error(
                 f"Executable not found for server '{self.server_name}' at path '{self.bedrock_executable_path}'."
@@ -254,11 +263,36 @@ class ServerProcessMixin(BedrockServerBaseMixin):
                 f"Executable not found for server '{self.server_name}'."
             )
         except Exception as e:
+            await self._rollback_start()
             await self.set_status_in_config("ERROR")  # type: ignore
             self.logger.error(
                 f"Failed to start server '{self.server_name}': {e}", exc_info=True
             )
             raise ServerStartError(f"Failed to start server '{self.server_name}': {e}")
+
+    async def _rollback_start(self) -> None:
+        """Release resources acquired by a startup that did not complete."""
+        process = self._process
+        if process is not None:
+            try:
+                process.terminate()
+                if inspect.iscoroutinefunction(process.wait):
+                    await asyncio.wait_for(process.wait(), timeout=5)
+                else:
+                    await asyncio.to_thread(process.wait, timeout=5)
+            except Exception:
+                process.kill()
+                if inspect.iscoroutinefunction(process.wait):
+                    await process.wait()
+                else:
+                    await asyncio.to_thread(process.wait)
+        self._process = None
+        if self._log_file_handle is not None:
+            self._log_file_handle.close()
+            self._log_file_handle = None
+        self.intentionally_stopped = True
+        self._publish_running(False)
+        await system_process.remove_pid_file_if_exists(self.get_pid_file_path())
 
     async def stop(self) -> None:
         """Stops the Bedrock server process gracefully, with a forceful fallback asynchronously."""
