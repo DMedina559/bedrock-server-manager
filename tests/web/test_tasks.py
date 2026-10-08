@@ -191,3 +191,33 @@ async def test_run_task_with_unused_username(task_manager):
     assert task_manager.tasks[task_id]["status"] == "completed"
     assert task_manager.tasks[task_id]["result"] == 12
     assert task_manager.tasks[task_id]["username"] == "myuser"
+
+
+async def test_task_reads_do_not_allow_mutating_live_results(task_manager):
+    async def collect():
+        return {"nested": {"value": 1}}
+
+    task_id = await task_manager.run_task(collect)
+    await task_manager.shutdown()
+    snapshots = task_manager.tasks
+    snapshots[task_id].result["nested"]["value"] = object()
+    snapshots.clear()
+    assert task_manager.tasks[task_id].result == {"nested": {"value": 1}}
+    public = await task_manager.get_task(task_id)
+    public.result["nested"]["value"] = 2
+    assert (await task_manager.get_task(task_id)).result == {"nested": {"value": 1}}
+
+
+async def test_invalid_admission_does_not_evict_completed_task(task_manager):
+    from pydantic import ValidationError
+
+    async def collect():
+        return None
+
+    task_id = await task_manager.run_task(collect)
+    await asyncio.sleep(0.01)
+    task_manager._max_tasks = 1
+    with pytest.raises(ValidationError):
+        await task_manager.run_task(collect, username=42)
+    assert task_id in task_manager.tasks
+    await task_manager.shutdown()

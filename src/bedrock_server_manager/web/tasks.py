@@ -25,15 +25,22 @@ class TaskManager:
     ):
         """Initializes the TaskManager with explicit dependencies."""
         self.connection_manager = connection_manager
-        self.tasks: Dict[str, TaskRecord] = {}
+        self._tasks: Dict[str, TaskRecord] = {}
         self.futures: Dict[str, asyncio.Task] = {}
         self._shutdown_started = False
         self._max_tasks = 100
         self._background_tasks: set[asyncio.Task] = set()
 
+    @property
+    def tasks(self) -> Dict[str, TaskRecord]:
+        """Independent snapshots; execution records remain owned by this manager."""
+        return {
+            name: record.model_copy(deep=True) for name, record in self._tasks.items()
+        }
+
     async def _notify_client_of_update(self, task_id: str):
         """Sends a WebSocket notification to the user associated with the task."""
-        task_details = self.tasks.get(task_id)
+        task_details = self._tasks.get(task_id)
         if not task_details:
             return
 
@@ -71,8 +78,8 @@ class TaskManager:
         error: Optional[Any] = None,
     ):
         """Helper function to update the status of a task and notify client."""
-        if task_id in self.tasks:
-            data = dict(self.tasks[task_id])
+        if task_id in self._tasks:
+            data = dict(self._tasks[task_id])
             data.update(status=status, message=message)
             if result is not None:
                 data["result"] = (
@@ -88,7 +95,7 @@ class TaskManager:
                 raise APIResponseValidationError(
                     "Background task returned invalid JSON data."
                 ) from validation_error
-            self.tasks[task_id] = record
+            self._tasks[task_id] = record
             await self._notify_client_of_update(task_id)
 
     def _task_done_callback(self, task_id: str, future: asyncio.Task):
@@ -156,30 +163,31 @@ class TaskManager:
                 "Cannot start new tasks after shutdown has been initiated."
             )
 
+        candidate = TaskRecord(
+            status="queued", message="Task is queued.", username=username
+        )
         task_id = str(uuid.uuid4())
 
         # Enforce max tasks limit to prevent memory leaks
-        if len(self.tasks) >= self._max_tasks:
+        if len(self._tasks) >= self._max_tasks:
             # Remove the oldest task (first item inserted)
             oldest_task_id = next(
                 (
                     key
-                    for key in self.tasks
+                    for key in self._tasks
                     if key not in self.futures
-                    and self.tasks[key]["status"]
+                    and self._tasks[key]["status"]
                     in {"completed", "failed", "cancelled"}
                 ),
                 None,
             )
             if oldest_task_id is None:
                 raise RuntimeError("Background task capacity reached.")
-            del self.tasks[oldest_task_id]
+            del self._tasks[oldest_task_id]
             if oldest_task_id in self.futures:
                 del self.futures[oldest_task_id]
 
-        self.tasks[task_id] = TaskRecord(
-            status="queued", message="Task is queued.", username=username
-        )
+        self._tasks[task_id] = candidate
         await self._notify_client_of_update(task_id)
 
         call_kwargs = dict(kwargs)
@@ -261,7 +269,7 @@ class TaskManager:
         return True
 
     def _snapshot(self, task_id: str) -> TaskSnapshot:
-        record = self.tasks[task_id]
+        record = self._tasks[task_id]
         result = record["result"]
         if isinstance(result, BaseModel):
             result = result.model_dump(mode="json")
@@ -278,7 +286,7 @@ class TaskManager:
     async def get_task(
         self, task_id: str, *, username: str | None = None
     ) -> TaskSnapshot | None:
-        record = self.tasks.get(task_id)
+        record = self._tasks.get(task_id)
         if record is None or (username is not None and record["username"] != username):
             return None
         return self._snapshot(task_id)
@@ -288,7 +296,7 @@ class TaskManager:
     ) -> dict[str, TaskSnapshot]:
         return {
             key: self._snapshot(key)
-            for key, record in self.tasks.items()
+            for key, record in self._tasks.items()
             if username is None or record["username"] == username
         }
 
