@@ -152,6 +152,7 @@ async def test_lifespan_startup_shutdown(app_context, monkeypatch):
         "bedrock_server_manager.web.log_streamer.LogStreamer"
     ) as MockLogStreamer:
         mock_ls_instance = MagicMock()
+        mock_ls_instance.shutdown = AsyncMock()
         MockLogStreamer.return_value = mock_ls_instance
 
         async with lifespan_manager(app):
@@ -170,7 +171,7 @@ async def test_lifespan_startup_shutdown(app_context, monkeypatch):
             mock_ls_instance.start.assert_called_once()
 
         # Verification of shutdown logic
-        mock_ls_instance.stop.assert_called_once()
+        mock_ls_instance.shutdown.assert_awaited_once()
         app_context.resource_monitor.stop.assert_called_once()
 
 

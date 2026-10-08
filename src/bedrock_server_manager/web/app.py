@@ -10,7 +10,6 @@ import bsm_frontend
 from fastapi import FastAPI
 from fastapi.exceptions import RequestValidationError, ResponseValidationError
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.staticfiles import StaticFiles
 from starlette.exceptions import HTTPException as StarletteHTTPException
 
 from ..api.models.common import APIErrorResponse, ErrorEnvelope
@@ -253,45 +252,6 @@ def create_web_app(app_context: AppContext) -> FastAPI:  # noqa: C901
     for router in routers.all_routers:
         app.include_router(router)
 
-    # --- Dynamically include FastAPI routers from plugins ---
-    if plugin_manager.plugin_fastapi_routers:
-        logger.info(
-            f"Found {len(plugin_manager.plugin_fastapi_routers)} FastAPI router(s) from plugins. Attempting to include them."
-        )
-        for i, router in enumerate(plugin_manager.plugin_fastapi_routers):
-            try:
-                if hasattr(router, "routes"):
-                    app.include_router(router)
-                    logger.info(
-                        f"Successfully included FastAPI router (prefix: '{router.prefix}') from a plugin."
-                    )
-                else:
-                    logger.warning(
-                        f"Plugin provided an object at index {i} that is not a valid FastAPI APIRouter."
-                    )
-            except Exception as e:
-                logger.error(
-                    f"Failed to include a FastAPI router from a plugin: {e}",
-                    exc_info=True,
-                )
-    else:
-        logger.info("No additional FastAPI routers found from plugins.")
-
-    # --- Dynamically mount static directories from plugins ---
-    if plugin_manager.plugin_static_mounts:
-        logger.info(
-            f"Found {len(plugin_manager.plugin_static_mounts)} static mount configurations from plugins."
-        )
-        for mount_path, dir_path, name in plugin_manager.plugin_static_mounts:
-            try:
-                app.mount(mount_path, StaticFiles(directory=dir_path), name=name)
-                logger.info(
-                    f"Mounted static directory '{dir_path}' at '{mount_path}' (name: '{name}')."
-                )
-            except Exception as e:
-                logger.error(
-                    f"Failed to mount static directory '{dir_path}' at '{mount_path}': {e}",
-                    exc_info=True,
-                )
+    plugin_manager.bind_web_app(app)
 
     return app

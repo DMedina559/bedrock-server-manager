@@ -16,11 +16,19 @@ import warnings
 from pathlib import Path
 from typing import TYPE_CHECKING, Any, Callable, Dict, List, Optional, Set, Tuple, Type
 
+from fastapi import APIRouter, FastAPI
+from starlette.routing import BaseRoute, Route
+from starlette.types import Lifespan
+
 if TYPE_CHECKING:
     from ..context import AppContext
+    from ..state.app_state import AppState
+    from ..db.storage import Storage
+    from ..config.settings import Settings
 
 from ..config import GUARD_VARIABLE
 from ..config.const import _MISSING_PARAM_PLACEHOLDER, DEFAULT_ENABLED_PLUGINS
+from ..utils.threads import run_in_thread
 from .api_bridge import create_app_api
 from .event_trigger import _event_registry
 from .plugin_base import PluginBase
@@ -39,9 +47,9 @@ class PluginManager:
 
     def __init__(
         self,
-        state: Any,
-        storage: Any,
-        settings: Any,
+        state: "AppState",
+        storage: "Storage",
+        settings: "Settings",
         app_context: Optional["AppContext"] = None,
     ):
         """Initialize the PluginManager with explicit required dependencies."""
@@ -61,7 +69,12 @@ class PluginManager:
 
         # Event listener map structured as: {event_name: {plugin_identifier: [callbacks]}}
         self._event_listeners: Dict[str, Dict[str, List[Callable[..., Any]]]] = {}
-        self.plugin_fastapi_routers: List[Any] = []
+        self.plugin_fastapi_routers: List[APIRouter] = []
+        self._router_owners: dict[str, list[APIRouter]] = {}
+        self._mount_owners: dict[str, list[Tuple[str, Path, str]]] = {}
+        self._mounted_routes: dict[str, list[BaseRoute]] = {}
+        self._web_app: FastAPI | None = None
+        self._web_lifespan_base: Lifespan[FastAPI] | None = None
         self.ui_render_tags = {"json": "plugin-json-ui", "legacy": "plugin-ui-native"}
         self.plugin_static_mounts: List[Tuple[str, Path, str]] = []
         self.plugin_tasks: Dict[str, List[asyncio.Task[Any]]] = {}
@@ -208,6 +221,8 @@ class PluginManager:
         ui_routes = []
         for router in self.plugin_fastapi_routers:
             for route in router.routes:
+                if not isinstance(route, Route):
+                    continue
                 tags = getattr(route, "tags", None)
                 if not tags:
                     continue
@@ -279,7 +294,7 @@ class PluginManager:
                         if inspect.iscoroutinefunction(callback):
                             await callback(*args, **dispatch_kwargs)
                         else:
-                            await asyncio.to_thread(callback, *args, **dispatch_kwargs)
+                            await run_in_thread(callback, *args, **dispatch_kwargs)
                     except Exception as e:
                         if event_name == "on_load":
                             raise
@@ -301,9 +316,7 @@ class PluginManager:
                     if inspect.iscoroutinefunction(lifecycle_method):
                         await lifecycle_method(*args, **dispatch_kwargs)
                     else:
-                        await asyncio.to_thread(
-                            lifecycle_method, *args, **dispatch_kwargs
-                        )
+                        await run_in_thread(lifecycle_method, *args, **dispatch_kwargs)
                 except Exception as e:
                     if event_name == "on_load":
                         raise
@@ -412,7 +425,7 @@ class PluginManager:
                                     if inspect.iscoroutinefunction(m):
                                         await m()
                                     else:
-                                        await asyncio.to_thread(m)
+                                        await run_in_thread(m)
                                     consecutive_failures = 0
                                 except asyncio.CancelledError:
                                     logger.debug(
@@ -563,6 +576,8 @@ class PluginManager:
     async def load_plugins(self) -> None:
         """Discovers, loads, initializes, and starts tasks for all enabled plugins."""
         logger.info("Starting plugin loading process...")
+        if self.plugins:
+            await self.unload_plugins()
         await self._synchronize_config_with_disk()
 
         self.plugins.clear()
@@ -609,7 +624,7 @@ class PluginManager:
                 if callable(getattr(instance, "get_fastapi_routers", None)):
                     routers = instance.get_fastapi_routers()
                     if isinstance(routers, list):
-                        self.plugin_fastapi_routers.extend(routers)
+                        self._register_routers(plugin_name, routers)
 
                 if callable(getattr(instance, "get_static_mounts", None)):
                     mounts = instance.get_static_mounts()
@@ -636,7 +651,7 @@ class PluginManager:
                                     logger.warning(
                                         f"Plugin '{plugin_name}' provided invalid or out-of-bounds static mount path: '{static_dir}'"
                                     )
-                        self.plugin_static_mounts.extend(valid_mounts)
+                        self._register_mounts(plugin_name, valid_mounts)
 
                 if plugin_name in self.plugin_config:
                     self._set_runtime_status(plugin_name, "LOADED")
@@ -662,7 +677,10 @@ class PluginManager:
         logger.info("--- Unloading all plugins ---")
         tasks_to_await: List[asyncio.Task[Any]] = []
         for plugin_instance in reversed(list(self.plugins)):
-            plugin_key = getattr(getattr(plugin_instance, "api", None), "_plugin_name", None) or plugin_instance.name
+            plugin_key = (
+                getattr(getattr(plugin_instance, "api", None), "_plugin_name", None)
+                or plugin_instance.name
+            )
             await self.unload_plugin_by_name(plugin_key)
 
         # Cancel any remaining background tasks across all plugin keys
@@ -708,14 +726,77 @@ class PluginManager:
         await self.load_plugins()
         logger.info("PluginManager reload complete.")
 
+    def bind_web_app(self, app: FastAPI) -> None:
+        self._web_app = app
+        self._web_lifespan_base = app.router.lifespan_context
+        self._sync_web_routes("")
+
+    def _register_routers(self, name: str, routers: list[APIRouter]) -> None:
+        self._router_owners.setdefault(name, []).extend(routers)
+        self.plugin_fastapi_routers.extend(routers)
+        self._sync_web_routes(name)
+
+    def _register_mounts(self, name: str, mounts: list[Tuple[str, Path, str]]) -> None:
+        self._mount_owners.setdefault(name, []).extend(mounts)
+        self.plugin_static_mounts.extend(mounts)
+        self._sync_web_routes(name)
+
+    def _remove_web_routes(self, name: str) -> None:
+        routes = self._mounted_routes.pop(name, [])
+        if self._web_app is not None:
+            self._web_app.router.routes[:] = [
+                route for route in self._web_app.router.routes if route not in routes
+            ]
+            self._web_app.openapi_schema = None
+
+    def _sync_web_routes(self, name: str) -> None:
+        if self._web_app is None:
+            return
+        for owner in list(self._mounted_routes):
+            self._remove_web_routes(owner)
+        if self._web_lifespan_base is not None:
+            self._web_app.router.lifespan_context = self._web_lifespan_base
+        from fastapi.staticfiles import StaticFiles
+
+        for owner in dict.fromkeys([*self._router_owners, *self._mount_owners]):
+            before = {id(route) for route in self._web_app.router.routes}
+            try:
+                for router in self._router_owners.get(owner, []):
+                    self._web_app.include_router(router)
+                for path, directory, mount_name in self._mount_owners.get(owner, []):
+                    self._web_app.mount(
+                        path, StaticFiles(directory=directory), name=mount_name
+                    )
+            finally:
+                self._mounted_routes[owner] = [
+                    route
+                    for route in self._web_app.router.routes
+                    if id(route) not in before
+                ]
+                self._web_app.openapi_schema = None
+
     def _set_runtime_status(self, plugin_name: str, status: PluginStatus) -> None:
-        self._runtime_records[plugin_name] = PluginRuntime(plugin_name=plugin_name, status=status, module_name=f"bsm_plugins.{plugin_name}" if status == "LOADED" else None)
+        self._runtime_records[plugin_name] = PluginRuntime(
+            plugin_name=plugin_name,
+            status=status,
+            module_name=f"bsm_plugins.{plugin_name}" if status == "LOADED" else None,
+        )
 
     def get_plugin_runtime(self, plugin_name: str) -> PluginRuntime:
-        record = self._runtime_records.get(plugin_name) or PluginRuntime(plugin_name=plugin_name, status=self.get_plugin_status(plugin_name))
+        record = self._runtime_records.get(plugin_name) or PluginRuntime(
+            plugin_name=plugin_name, status=self.get_plugin_status(plugin_name)
+        )
         data = record.model_dump()
-        data["registered_events"] = [event for event, listeners in self._event_listeners.items() if plugin_name in listeners]
-        data["active_tasks"] = [task.get_name() for task in self.plugin_tasks.get(plugin_name, []) if not task.done()]
+        data["registered_events"] = [
+            event
+            for event, listeners in self._event_listeners.items()
+            if plugin_name in listeners
+        ]
+        data["active_tasks"] = [
+            task.get_name()
+            for task in self.plugin_tasks.get(plugin_name, [])
+            if not task.done()
+        ]
         return PluginRuntime.model_validate(data)
 
     def get_plugin_status(self, plugin_name: str) -> PluginStatus:
@@ -732,7 +813,9 @@ class PluginManager:
             return self._runtime_records[plugin_name].status
         if isinstance(cfg, dict):
             if cfg.get("status") in ("ERROR", "DISABLED", "UNLOADED"):
-                return PluginRuntime(plugin_name=plugin_name, status=cfg["status"]).status
+                return PluginRuntime(
+                    plugin_name=plugin_name, status=cfg["status"]
+                ).status
             if not cfg.get("enabled", False):
                 return "DISABLED"
         return "UNKNOWN" if cfg is None else "UNLOADED"
@@ -787,28 +870,15 @@ class PluginManager:
         if target_instance in self.plugins:
             self.plugins.remove(target_instance)
 
-        if callable(getattr(target_instance, "get_fastapi_routers", None)):
-            try:
-                routers = target_instance.get_fastapi_routers()
-                if isinstance(routers, list):
-                    for r in routers:
-                        if r in self.plugin_fastapi_routers:
-                            self.plugin_fastapi_routers.remove(r)
-            except Exception as e:
-                logger.error(f"Error removing routers for '{plugin_key}': {e}")
+        self._remove_web_routes(plugin_key)
+        for router in self._router_owners.pop(plugin_key, []):
+            if router in self.plugin_fastapi_routers:
+                self.plugin_fastapi_routers.remove(router)
+        for mount in self._mount_owners.pop(plugin_key, []):
+            if mount in self.plugin_static_mounts:
+                self.plugin_static_mounts.remove(mount)
 
-        if callable(getattr(target_instance, "get_static_mounts", None)):
-            try:
-                mounts = target_instance.get_static_mounts()
-                if isinstance(mounts, list):
-                    for m in mounts:
-                        if isinstance(m, tuple) and len(m) == 3:
-                            mount_tuple = (m[0], Path(m[1]).resolve(), m[2])
-                            if mount_tuple in self.plugin_static_mounts:
-                                self.plugin_static_mounts.remove(mount_tuple)
-            except Exception as e:
-                logger.error(f"Error removing static mounts for '{plugin_key}': {e}")
-
+        self._sync_web_routes(plugin_key)
         for event_name, plugin_map in list(self._event_listeners.items()):
             plugin_map.pop(plugin_key, None)
             plugin_map.pop(target_instance.name, None)
@@ -879,7 +949,7 @@ class PluginManager:
             if callable(getattr(instance, "get_fastapi_routers", None)):
                 routers = instance.get_fastapi_routers()
                 if isinstance(routers, list):
-                    self.plugin_fastapi_routers.extend(routers)
+                    self._register_routers(plugin_name, routers)
 
             if callable(getattr(instance, "get_static_mounts", None)):
                 mounts = instance.get_static_mounts()
@@ -897,8 +967,9 @@ class PluginManager:
                                 except ValueError:
                                     continue
                             if is_safe and resolved_dir.is_dir():
-                                self.plugin_static_mounts.append(
-                                    (route_path, resolved_dir, mount_name)
+                                self._register_mounts(
+                                    plugin_name,
+                                    [(route_path, resolved_dir, mount_name)],
                                 )
 
             for method_name, method in inspect.getmembers(
@@ -929,7 +1000,7 @@ class PluginManager:
                                 if inspect.iscoroutinefunction(m):
                                     await m()
                                 else:
-                                    await asyncio.to_thread(m)
+                                    await run_in_thread(m)
                                 consecutive_failures = 0
                             except asyncio.CancelledError:
                                 logger.debug(
@@ -982,7 +1053,7 @@ class PluginManager:
 
         if load_immediately:
             return await self.load_plugin_by_name(plugin_name)
-        self._set_runtime_status(plugin_name, "DISABLED")
+        self._set_runtime_status(plugin_name, "UNLOADED")
         return True
 
     async def disable_plugin(

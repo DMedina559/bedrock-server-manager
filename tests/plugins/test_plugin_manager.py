@@ -274,19 +274,28 @@ def test_plugin_status_tracking(app_context):
     assert pm.get_plugin_status("error_plugin") == "ERROR"
 
 
-async def test_failed_load_removes_partial_instance_and_provider(app_context, monkeypatch):
-    from types import SimpleNamespace
+async def test_failed_load_removes_partial_instance_and_provider(
+    app_context, monkeypatch
+):
+
     manager = app_context.plugin_manager
     manager.plugin_config["sample"] = {"enabled": True}
+
     class FailingPlugin:
         def __init__(self, name, api, logger):
             self.name = name
             self.api = api
+
         async def on_load(self):
-            app_context.connection_manager.register_data_provider("partial", lambda: 1, "sample")
+            app_context.connection_manager.register_data_provider(
+                "partial", lambda: 1, "sample"
+            )
             raise RuntimeError("load failed")
+
     monkeypatch.setattr(manager, "_find_plugin_path", lambda name: Path("sample.py"))
-    monkeypatch.setattr(manager, "_get_plugin_class_from_path", lambda *args: FailingPlugin)
+    monkeypatch.setattr(
+        manager, "_get_plugin_class_from_path", lambda *args: FailingPlugin
+    )
     assert not await manager.load_plugin_by_name("sample")
     assert manager.plugins == []
     assert manager.get_plugin_status("sample") == "ERROR"
@@ -297,8 +306,11 @@ async def test_failed_load_removes_partial_instance_and_provider(app_context, mo
 async def test_full_unload_removes_plugin_providers(app_context):
     from types import SimpleNamespace
     from unittest.mock import AsyncMock
+
     manager = app_context.plugin_manager
-    manager.plugins = [SimpleNamespace(name="sample", api=SimpleNamespace(_plugin_name="sample"))]
+    manager.plugins = [
+        SimpleNamespace(name="sample", api=SimpleNamespace(_plugin_name="sample"))
+    ]
     manager.dispatch_event = AsyncMock()
     app_context.connection_manager.register_data_provider("sample", lambda: 1, "sample")
     await manager.unload_plugins()
@@ -306,8 +318,9 @@ async def test_full_unload_removes_plugin_providers(app_context):
 
 
 def test_runtime_snapshot_is_typed_and_independent(app_context):
-    from pydantic import ValidationError
     import pytest
+    from pydantic import ValidationError
+
     manager = app_context.plugin_manager
     manager._set_runtime_status("sample", "LOADED")
     manager._event_listeners = {"example": {"sample": []}}
@@ -319,3 +332,63 @@ def test_runtime_snapshot_is_typed_and_independent(app_context):
     with pytest.raises(ValidationError):
         manager._set_runtime_status("sample", "INVALID")
     assert manager.get_plugin_status("sample") == "LOADED"
+
+
+async def test_plugin_http_routes_follow_load_and_unload(app_context, monkeypatch):
+    from fastapi import APIRouter, FastAPI
+
+    manager = app_context.plugin_manager
+    app = FastAPI()
+    manager.bind_web_app(app)
+    manager.plugin_config["sample"] = {"enabled": True}
+
+    class WebPlugin:
+        def __init__(self, name, api, logger):
+            self.name, self.api = name, api
+            self.router = APIRouter()
+            self.router.add_api_route(
+                "/sample", lambda: {"ok": True}, operation_id="sample"
+            )
+
+        def get_fastapi_routers(self):
+            return [self.router]
+
+    monkeypatch.setattr(manager, "_find_plugin_path", lambda name: Path("sample.py"))
+    monkeypatch.setattr(manager, "_get_plugin_class_from_path", lambda *args: WebPlugin)
+    assert await manager.load_plugin_by_name("sample")
+    assert "/sample" in app.openapi()["paths"]
+    await manager.unload_plugins()
+    assert "/sample" not in app.openapi()["paths"]
+    assert not manager.plugin_fastapi_routers
+    assert await manager.load_plugin_by_name("sample")
+    assert "/sample" in app.openapi()["paths"]
+
+
+async def test_sync_plugin_loop_unload_waits_for_worker(app_context):
+    import asyncio
+    import threading
+    from types import SimpleNamespace
+
+    from bedrock_server_manager.utils.threads import run_in_thread
+
+    started, released = threading.Event(), threading.Event()
+
+    def worker(cancellation_event):
+        started.set()
+        cancellation_event.wait()
+        released.wait()
+
+    manager = app_context.plugin_manager
+    manager.plugins = [
+        SimpleNamespace(name="sample", api=SimpleNamespace(_plugin_name="sample"))
+    ]
+    task = asyncio.create_task(run_in_thread(worker))
+    manager.plugin_tasks = {"sample": [task]}
+    await asyncio.to_thread(started.wait)
+    unload = asyncio.create_task(manager.unload_plugins())
+    await asyncio.sleep(0)
+    assert not unload.done()
+    released.set()
+    await unload
+    assert task.cancelled()
+    assert not manager.plugin_tasks
