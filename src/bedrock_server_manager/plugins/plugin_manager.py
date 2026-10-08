@@ -28,6 +28,7 @@ if TYPE_CHECKING:
 
 from ..config import GUARD_VARIABLE
 from ..config.const import _MISSING_PARAM_PLACEHOLDER, DEFAULT_ENABLED_PLUGINS
+from ..utils.general import ReentrantAsyncLock
 from ..utils.threads import run_in_thread
 from .api_bridge import create_app_api
 from .event_trigger import _event_registry
@@ -63,9 +64,12 @@ class PluginManager:
         self.plugin_dirs: List[Path] = [user_plugin_dir, default_plugin_dir]
         logger.debug(f"Plugin directories configured: {self.plugin_dirs}")
 
+        self._lifecycle_lock = ReentrantAsyncLock()
+        self._shutdown_started = False
         self.plugin_config: Dict[str, Dict[str, Any]] = {}
         self._runtime_records: dict[str, PluginRuntime] = {}
         self.plugins: List[PluginBase] = []
+        self._pending_plugins: dict[str, PluginBase] = {}
 
         # Event listener map structured as: {event_name: {plugin_identifier: [callbacks]}}
         self._event_listeners: Dict[str, Dict[str, List[Callable[..., Any]]]] = {}
@@ -212,8 +216,20 @@ class PluginManager:
             sys.modules.pop(full_module_name, None)
         return None
 
+    async def quiesce(self) -> None:
+        self._shutdown_started = True
+        async with self._lifecycle_lock:
+            tasks = [task for group in self.plugin_tasks.values() for task in group]
+            for task in tasks:
+                task.cancel()
+            if tasks:
+                await asyncio.gather(*tasks, return_exceptions=True)
+            self.plugin_tasks.clear()
+
+
     async def shutdown(self) -> None:
         """Gracefully shuts down the PluginManager, unloading all plugins and cleaning up resources."""
+        await self.quiesce()
         await self.unload_plugins()
 
     def get_native_ui_routes(self) -> List[Dict[str, str]]:
@@ -368,85 +384,88 @@ class PluginManager:
 
         Includes idempotency checks to prevent duplicate task loops if called multiple times.
         """
-        logger.info("Starting background tasks for plugins.")
-        try:
-            current_loop = asyncio.get_running_loop()
-        except RuntimeError:
-            current_loop = None
-
-        for plugin_instance in self.plugins:
-            plugin_key = (
-                getattr(getattr(plugin_instance, "api", None), "_plugin_name", None)
-                or plugin_instance.name
-            )
-
-            # Keep only tasks that are alive AND belong to the current running event loop
-            existing_tasks = self.plugin_tasks.get(plugin_key, [])
-            valid_existing_tasks = [
-                t
-                for t in existing_tasks
-                if not t.done()
-                and (current_loop is None or t.get_loop() is current_loop)
-            ]
-
-            if valid_existing_tasks:
-                self.plugin_tasks[plugin_key] = valid_existing_tasks
-                continue
-
-            # Reset task list for this plugin on the active loop
-            self.plugin_tasks[plugin_key] = []
-
+        async with self._lifecycle_lock:
+            if self._shutdown_started:
+                raise RuntimeError("Cannot start plugins during shutdown.")
+            logger.info("Starting background tasks for plugins.")
             try:
-                for method_name, method in inspect.getmembers(
-                    plugin_instance, predicate=inspect.ismethod
-                ):
-                    interval_raw = getattr(method, "_task_loop_interval", None)
-                    if interval_raw is not None:
-                        interval = max(float(interval_raw), 0.1)
+                current_loop = asyncio.get_running_loop()
+            except RuntimeError:
+                current_loop = None
 
-                        async def run_task_loop(
-                            m: Callable[..., Any] = method,
-                            intv: float = interval,
-                            p_name: str = plugin_key,
-                            m_name: str = method_name,
-                        ) -> None:
-                            consecutive_failures = 0
-                            while True:
-                                try:
-                                    sleep_time = (
-                                        intv
-                                        if consecutive_failures == 0
-                                        else min(
-                                            intv * (2 ** min(consecutive_failures, 6)),
-                                            300.0,
-                                        )
-                                    )
-                                    await asyncio.sleep(sleep_time)
-                                    if inspect.iscoroutinefunction(m):
-                                        await m()
-                                    else:
-                                        await run_in_thread(m)
-                                    consecutive_failures = 0
-                                except asyncio.CancelledError:
-                                    logger.debug(
-                                        f"Task loop {p_name}.{m_name} cancelled cleanly."
-                                    )
-                                    break
-                                except Exception as e:
-                                    consecutive_failures += 1
-                                    logger.error(
-                                        f"Error in task loop {p_name}.{m_name} (failure #{consecutive_failures}): {e}"
-                                    )
-
-                        task = asyncio.create_task(
-                            run_task_loop(),
-                            name=f"task_loop_{plugin_key}_{method_name}",
-                        )
-                        self.plugin_tasks.setdefault(plugin_key, []).append(task)
-            except Exception as e:
-                logger.error(
-                    f"Error auto-registering tasks for plugin '{plugin_key}': {e}"
+            for plugin_instance in self.plugins:
+                plugin_key = (
+                    getattr(getattr(plugin_instance, "api", None), "_plugin_name", None)
+                    or plugin_instance.name
                 )
+
+                # Keep only tasks that are alive AND belong to the current running event loop
+                existing_tasks = self.plugin_tasks.get(plugin_key, [])
+                valid_existing_tasks = [
+                    t
+                    for t in existing_tasks
+                    if not t.done()
+                    and (current_loop is None or t.get_loop() is current_loop)
+                ]
+
+                if valid_existing_tasks:
+                    self.plugin_tasks[plugin_key] = valid_existing_tasks
+                    continue
+
+                # Reset task list for this plugin on the active loop
+                self.plugin_tasks[plugin_key] = []
+
+                try:
+                    for method_name, method in inspect.getmembers(
+                        plugin_instance, predicate=inspect.ismethod
+                    ):
+                        interval_raw = getattr(method, "_task_loop_interval", None)
+                        if interval_raw is not None:
+                            interval = max(float(interval_raw), 0.1)
+
+                            async def run_task_loop(
+                                m: Callable[..., Any] = method,
+                                intv: float = interval,
+                                p_name: str = plugin_key,
+                                m_name: str = method_name,
+                            ) -> None:
+                                consecutive_failures = 0
+                                while True:
+                                    try:
+                                        sleep_time = (
+                                            intv
+                                            if consecutive_failures == 0
+                                            else min(
+                                                intv * (2 ** min(consecutive_failures, 6)),
+                                                300.0,
+                                            )
+                                        )
+                                        await asyncio.sleep(sleep_time)
+                                        if inspect.iscoroutinefunction(m):
+                                            await m()
+                                        else:
+                                            await run_in_thread(m)
+                                        consecutive_failures = 0
+                                    except asyncio.CancelledError:
+                                        logger.debug(
+                                            f"Task loop {p_name}.{m_name} cancelled cleanly."
+                                        )
+                                        break
+                                    except Exception as e:
+                                        consecutive_failures += 1
+                                        logger.error(
+                                            f"Error in task loop {p_name}.{m_name} (failure #{consecutive_failures}): {e}"
+                                        )
+
+                            task = asyncio.create_task(
+                                run_task_loop(),
+                                name=f"task_loop_{plugin_key}_{method_name}",
+                            )
+                            self.plugin_tasks.setdefault(plugin_key, []).append(task)
+                except Exception as e:
+                    logger.error(
+                        f"Error auto-registering tasks for plugin '{plugin_key}': {e}"
+                    )
 
     async def _synchronize_config_with_disk(self) -> None:
         """Synchronizes the in-memory plugin configuration with the actual plugin files on disk."""
@@ -575,156 +594,165 @@ class PluginManager:
 
     async def load_plugins(self) -> None:
         """Discovers, loads, initializes, and starts tasks for all enabled plugins."""
-        logger.info("Starting plugin loading process...")
-        if self.plugins:
-            await self.unload_plugins()
-        await self._synchronize_config_with_disk()
+        async with self._lifecycle_lock:
+            if self._shutdown_started:
+                raise RuntimeError("Cannot start plugins during shutdown.")
+            logger.info("Starting plugin loading process...")
+            if self.plugins:
+                await self.unload_plugins()
+            await self._synchronize_config_with_disk()
 
-        self.plugins.clear()
-        self.plugin_fastapi_routers.clear()
-        self.plugin_static_mounts.clear()
+            self.plugins.clear()
+            self.plugin_fastapi_routers.clear()
+            self.plugin_static_mounts.clear()
 
-        # Retrieve enabled classes that were already imported during disk synchronization
-        enabled_plugins_data: Dict[str, Type[PluginBase]] = {
-            name: cls
-            for name, cls in self._discovered_classes.items()
-            if isinstance(self.plugin_config.get(name), dict)
-            and self.plugin_config[name].get("enabled")
-        }
+            # Retrieve enabled classes that were already imported during disk synchronization
+            enabled_plugins_data: Dict[str, Type[PluginBase]] = {
+                name: cls
+                for name, cls in self._discovered_classes.items()
+                if isinstance(self.plugin_config.get(name), dict)
+                and self.plugin_config[name].get("enabled")
+            }
 
-        sorted_plugin_names = self._sort_plugin_dependencies(enabled_plugins_data)
+            sorted_plugin_names = self._sort_plugin_dependencies(enabled_plugins_data)
 
-        for plugin_name in sorted_plugin_names:
-            plugin_class = enabled_plugins_data[plugin_name]
-            instance = None
-            try:
-                plugin_logger = logging.getLogger(f"plugin.{plugin_name}")
-                api_instance = create_app_api(
-                    plugin_name=plugin_name, app_context=self.app_context
-                )
-
-                instance = plugin_class(plugin_name, api_instance, plugin_logger)
-                self.plugins.append(instance)
-
-                # Support both single (_app_event_name) and stacked/multi (_app_event_names) decorators
-                for _, method in inspect.getmembers(
-                    instance, predicate=inspect.ismethod
-                ):
-                    event_names = getattr(method, "_app_event_names", None) or (
-                        [getattr(method, "_app_event_name", None)]
-                        if getattr(method, "_app_event_name", None)
-                        else []
+            for plugin_name in sorted_plugin_names:
+                plugin_class = enabled_plugins_data[plugin_name]
+                instance = None
+                try:
+                    plugin_logger = logging.getLogger(f"plugin.{plugin_name}")
+                    api_instance = create_app_api(
+                        plugin_name=plugin_name, app_context=self.app_context
                     )
-                    for event_name in event_names:
-                        instance.api.listen_for_event(event_name, method)
 
-                # Dispatch on_load so plugins initialize internal state (e.g. self.router)
-                await self.dispatch_event(instance, "on_load")
+                    instance = plugin_class(plugin_name, api_instance, plugin_logger)
+                    self._pending_plugins[plugin_name] = instance
 
-                if callable(getattr(instance, "get_fastapi_routers", None)):
-                    routers = instance.get_fastapi_routers()
-                    if isinstance(routers, list):
-                        self._register_routers(plugin_name, routers)
+                    # Support both single (_app_event_name) and stacked/multi (_app_event_names) decorators
+                    for _, method in inspect.getmembers(
+                        instance, predicate=inspect.ismethod
+                    ):
+                        event_names = getattr(method, "_app_event_names", None) or (
+                            [getattr(method, "_app_event_name", None)]
+                            if getattr(method, "_app_event_name", None)
+                            else []
+                        )
+                        for event_name in event_names:
+                            instance.api.listen_for_event(event_name, method)
 
-                if callable(getattr(instance, "get_static_mounts", None)):
-                    mounts = instance.get_static_mounts()
-                    if isinstance(mounts, list):
-                        valid_mounts = []
-                        for m in mounts:
-                            if isinstance(m, tuple) and len(m) == 3:
-                                route_path, static_dir, mount_name = m
-                                resolved_dir = Path(static_dir).resolve()
-                                # Verify resolved static dir is within one of the allowed plugin directories
-                                is_safe = False
-                                for p_dir in self.plugin_dirs:
-                                    try:
-                                        if resolved_dir.is_relative_to(p_dir.resolve()):
-                                            is_safe = True
-                                            break
-                                    except ValueError:
-                                        continue
-                                if is_safe and resolved_dir.is_dir():
-                                    valid_mounts.append(
-                                        (route_path, resolved_dir, mount_name)
-                                    )
-                                else:
-                                    logger.warning(
-                                        f"Plugin '{plugin_name}' provided invalid or out-of-bounds static mount path: '{static_dir}'"
-                                    )
-                        self._register_mounts(plugin_name, valid_mounts)
+                    # Dispatch on_load so plugins initialize internal state (e.g. self.router)
+                    await self.dispatch_event(instance, "on_load")
 
-                if plugin_name in self.plugin_config:
-                    self._set_runtime_status(plugin_name, "LOADED")
+                    if callable(getattr(instance, "get_fastapi_routers", None)):
+                        routers = instance.get_fastapi_routers()
+                        if isinstance(routers, list):
+                            self._register_routers(plugin_name, routers)
 
-            except BaseException as e:
-                if instance is not None:
-                    await self.unload_plugin_by_name(plugin_name)
-                if plugin_name in self.plugin_config:
-                    self._set_runtime_status(plugin_name, "ERROR")
-                if not isinstance(e, Exception):
-                    raise
-                logger.error(
-                    f"Failed to instantiate plugin '{plugin_name}': {e}", exc_info=True
-                )
+                    if callable(getattr(instance, "get_static_mounts", None)):
+                        mounts = instance.get_static_mounts()
+                        if isinstance(mounts, list):
+                            valid_mounts = []
+                            for m in mounts:
+                                if isinstance(m, tuple) and len(m) == 3:
+                                    route_path, static_dir, mount_name = m
+                                    resolved_dir = Path(static_dir).resolve()
+                                    # Verify resolved static dir is within one of the allowed plugin directories
+                                    is_safe = False
+                                    for p_dir in self.plugin_dirs:
+                                        try:
+                                            if resolved_dir.is_relative_to(p_dir.resolve()):
+                                                is_safe = True
+                                                break
+                                        except ValueError:
+                                            continue
+                                    if is_safe and resolved_dir.is_dir():
+                                        valid_mounts.append(
+                                            (route_path, resolved_dir, mount_name)
+                                        )
+                                    else:
+                                        logger.warning(
+                                            f"Plugin '{plugin_name}' provided invalid or out-of-bounds static mount path: '{static_dir}'"
+                                        )
+                            self._register_mounts(plugin_name, valid_mounts)
 
-        logger.info(f"Loaded {len(self.plugins)} plugins.")
+                    self.plugins.append(instance)
+                    self._pending_plugins.pop(plugin_name, None)
+                    if plugin_name in self.plugin_config:
+                        self._set_runtime_status(plugin_name, "LOADED")
 
-        # Auto-start background tasks
-        await self.start_plugin_tasks()
+                except BaseException as e:
+                    if instance is not None:
+                        await self.unload_plugin_by_name(plugin_name)
+                    if plugin_name in self.plugin_config:
+                        self._set_runtime_status(plugin_name, "ERROR")
+                    if not isinstance(e, Exception):
+                        raise
+                    logger.error(
+                        f"Failed to instantiate plugin '{plugin_name}': {e}", exc_info=True
+                    )
+
+            logger.info(f"Loaded {len(self.plugins)} plugins.")
+
+            # Auto-start background tasks
+            await self.start_plugin_tasks()
 
     async def unload_plugins(self) -> None:
         """Unloads all currently loaded plugins, cleans up background tasks, and purges imported modules."""
-        logger.info("--- Unloading all plugins ---")
-        tasks_to_await: List[asyncio.Task[Any]] = []
-        for plugin_instance in reversed(list(self.plugins)):
-            plugin_key = (
-                getattr(getattr(plugin_instance, "api", None), "_plugin_name", None)
-                or plugin_instance.name
-            )
-            await self.unload_plugin_by_name(plugin_key)
+        async with self._lifecycle_lock:
+            logger.info("--- Unloading all plugins ---")
+            tasks_to_await: List[asyncio.Task[Any]] = []
+            for plugin_instance in reversed(list(self.plugins)):
+                plugin_key = (
+                    getattr(getattr(plugin_instance, "api", None), "_plugin_name", None)
+                    or plugin_instance.name
+                )
+                await self.unload_plugin_by_name(plugin_key)
 
-        # Cancel any remaining background tasks across all plugin keys
-        for plugin_key, tasks in list(self.plugin_tasks.items()):
-            for task in tasks:
+            # Cancel any remaining background tasks across all plugin keys
+            for plugin_key, tasks in list(self.plugin_tasks.items()):
+                for task in tasks:
+                    try:
+                        task.cancel()
+                        tasks_to_await.append(task)
+                    except Exception:
+                        pass
+            self.plugin_tasks.clear()
+
+            # Ensure only tasks belonging to the current running event loop are gathered
+            if tasks_to_await:
                 try:
-                    task.cancel()
-                    tasks_to_await.append(task)
-                except Exception:
+                    current_loop = asyncio.get_running_loop()
+                    active_tasks = [
+                        t
+                        for t in tasks_to_await
+                        if not t.done()
+                        and (t.get_loop() is current_loop or t.get_loop() == current_loop)
+                    ]
+                    if active_tasks:
+                        await asyncio.gather(*active_tasks, return_exceptions=True)
+                except RuntimeError:
+                    # No active running loop, tasks are already cancelled
                     pass
-        self.plugin_tasks.clear()
 
-        # Ensure only tasks belonging to the current running event loop are gathered
-        if tasks_to_await:
-            try:
-                current_loop = asyncio.get_running_loop()
-                active_tasks = [
-                    t
-                    for t in tasks_to_await
-                    if not t.done()
-                    and (t.get_loop() is current_loop or t.get_loop() == current_loop)
-                ]
-                if active_tasks:
-                    await asyncio.gather(*active_tasks, return_exceptions=True)
-            except RuntimeError:
-                # No active running loop, tasks are already cancelled
-                pass
+            self._event_listeners.clear()
+            self._discovered_classes.clear()
 
-        self._event_listeners.clear()
-        self._discovered_classes.clear()
-
-        # Purge every module and submodule registered under bsm_plugins (preserve the root package)
-        for name in list(sys.modules.keys()):
-            if name.startswith("bsm_plugins."):
-                del sys.modules[name]
+            # Purge every module and submodule registered under bsm_plugins (preserve the root package)
+            for name in list(sys.modules.keys()):
+                if name.startswith("bsm_plugins."):
+                    del sys.modules[name]
 
     async def reload(self) -> None:
         """Gracefully reloads all plugins and restarts background tasks."""
-        logger.info("--- Starting Full Plugin Reload Process ---")
-        await self.unload_plugins()
-        self.plugin_fastapi_routers.clear()
-        self.plugin_static_mounts.clear()
-        await self.load_plugins()
-        logger.info("PluginManager reload complete.")
+        async with self._lifecycle_lock:
+            if self._shutdown_started:
+                raise RuntimeError("Cannot start plugins during shutdown.")
+            logger.info("--- Starting Full Plugin Reload Process ---")
+            await self.unload_plugins()
+            self.plugin_fastapi_routers.clear()
+            self.plugin_static_mounts.clear()
+            await self.load_plugins()
+            logger.info("PluginManager reload complete.")
 
     def bind_web_app(self, app: FastAPI) -> None:
         self._web_app = app
@@ -822,253 +850,267 @@ class PluginManager:
 
     async def unload_plugin_by_name(self, plugin_name: str) -> bool:
         """Unloads a single plugin by name, stopping its tasks and unregistering its listeners."""
-        target_instance = None
-        for p in self.plugins:
-            api = getattr(p, "api", None)
-            ident = getattr(api, "_plugin_name", None) or getattr(p, "name", None)
-            if p.name == plugin_name or ident == plugin_name:
-                target_instance = p
-                break
+        async with self._lifecycle_lock:
+            target_instance = self._pending_plugins.get(plugin_name)
+            for p in self.plugins:
+                api = getattr(p, "api", None)
+                ident = getattr(api, "_plugin_name", None) or getattr(p, "name", None)
+                if p.name == plugin_name or ident == plugin_name:
+                    target_instance = p
+                    break
 
-        if not target_instance:
-            logger.warning(f"Plugin '{plugin_name}' is not currently loaded.")
-            if plugin_name in self.plugin_config:
-                self._set_runtime_status(plugin_name, "UNLOADED")
-            return False
+            if not target_instance:
+                logger.warning(f"Plugin '{plugin_name}' is not currently loaded.")
+                if plugin_name in self.plugin_config:
+                    self._set_runtime_status(plugin_name, "UNLOADED")
+                return False
 
-        plugin_key = (
-            getattr(getattr(target_instance, "api", None), "_plugin_name", None)
-            or target_instance.name
-        )
-
-        try:
-            await self.dispatch_event(target_instance, "on_unload")
-        except Exception as e:
-            logger.error(
-                f"Error during on_unload for '{plugin_key}': {e}", exc_info=True
+            plugin_key = (
+                getattr(getattr(target_instance, "api", None), "_plugin_name", None)
+                or target_instance.name
             )
 
-        tasks_to_await = []
-        if plugin_key in self.plugin_tasks:
-            for task in self.plugin_tasks.pop(plugin_key, []):
-                task.cancel()
-                tasks_to_await.append(task)
-
-        if tasks_to_await:
             try:
-                current_loop = asyncio.get_running_loop()
-                active_tasks = [
-                    t
-                    for t in tasks_to_await
-                    if not t.done() and t.get_loop() is current_loop
-                ]
-                if active_tasks:
-                    await asyncio.gather(*active_tasks, return_exceptions=True)
-            except RuntimeError:
-                pass
+                await self.dispatch_event(target_instance, "on_unload")
+            except Exception as e:
+                logger.error(
+                    f"Error during on_unload for '{plugin_key}': {e}", exc_info=True
+                )
 
-        if target_instance in self.plugins:
-            self.plugins.remove(target_instance)
+            tasks_to_await = []
+            if plugin_key in self.plugin_tasks:
+                for task in self.plugin_tasks.pop(plugin_key, []):
+                    task.cancel()
+                    tasks_to_await.append(task)
 
-        self._remove_web_routes(plugin_key)
-        for router in self._router_owners.pop(plugin_key, []):
-            if router in self.plugin_fastapi_routers:
-                self.plugin_fastapi_routers.remove(router)
-        for mount in self._mount_owners.pop(plugin_key, []):
-            if mount in self.plugin_static_mounts:
-                self.plugin_static_mounts.remove(mount)
+            if tasks_to_await:
+                try:
+                    current_loop = asyncio.get_running_loop()
+                    active_tasks = [
+                        t
+                        for t in tasks_to_await
+                        if not t.done() and t.get_loop() is current_loop
+                    ]
+                    if active_tasks:
+                        await asyncio.gather(*active_tasks, return_exceptions=True)
+                except RuntimeError:
+                    pass
 
-        self._sync_web_routes(plugin_key)
-        for event_name, plugin_map in list(self._event_listeners.items()):
-            plugin_map.pop(plugin_key, None)
-            plugin_map.pop(target_instance.name, None)
+            self._pending_plugins.pop(plugin_key, None)
+            if target_instance in self.plugins:
+                self.plugins.remove(target_instance)
 
-        if self.app_context and hasattr(self.app_context, "connection_manager"):
-            cm = self.app_context.connection_manager
-            cm.unregister_plugin_providers(plugin_key)
-            cm.unregister_plugin_providers(target_instance.name)
-            cm.unregister_plugin_providers(plugin_name)
+            self._remove_web_routes(plugin_key)
+            for router in self._router_owners.pop(plugin_key, []):
+                if router in self.plugin_fastapi_routers:
+                    self.plugin_fastapi_routers.remove(router)
+            for mount in self._mount_owners.pop(plugin_key, []):
+                if mount in self.plugin_static_mounts:
+                    self.plugin_static_mounts.remove(mount)
 
-        full_module_name = f"bsm_plugins.{plugin_name}"
-        sys.modules.pop(full_module_name, None)
+            self._sync_web_routes(plugin_key)
+            for event_name, plugin_map in list(self._event_listeners.items()):
+                plugin_map.pop(plugin_key, None)
+                plugin_map.pop(target_instance.name, None)
 
-        if plugin_name in self.plugin_config:
-            self._set_runtime_status(plugin_name, "UNLOADED")
+            if self.app_context and hasattr(self.app_context, "connection_manager"):
+                cm = self.app_context.connection_manager
+                cm.unregister_plugin_providers(plugin_key)
+                cm.unregister_plugin_providers(target_instance.name)
+                cm.unregister_plugin_providers(plugin_name)
 
-        logger.info(f"Plugin '{plugin_name}' unloaded successfully.")
-        return True
+            full_module_name = f"bsm_plugins.{plugin_name}"
+            sys.modules.pop(full_module_name, None)
+
+            if plugin_name in self.plugin_config:
+                self._set_runtime_status(plugin_name, "UNLOADED")
+
+            logger.info(f"Plugin '{plugin_name}' unloaded successfully.")
+            return True
 
     async def load_plugin_by_name(self, plugin_name: str) -> bool:
         """Loads and initializes a single plugin by name if discoverable."""
-        for p in self.plugins:
-            api = getattr(p, "api", None)
-            ident = getattr(api, "_plugin_name", None) or getattr(p, "name", None)
-            if p.name == plugin_name or ident == plugin_name:
-                logger.info(f"Plugin '{plugin_name}' is already loaded.")
-                return True
+        async with self._lifecycle_lock:
+            if self._shutdown_started:
+                raise RuntimeError("Cannot start plugins during shutdown.")
+            for p in self.plugins:
+                api = getattr(p, "api", None)
+                ident = getattr(api, "_plugin_name", None) or getattr(p, "name", None)
+                if p.name == plugin_name or ident == plugin_name:
+                    logger.info(f"Plugin '{plugin_name}' is already loaded.")
+                    return True
 
-        path = self._find_plugin_path(plugin_name)
-        if not path:
-            logger.error(
-                f"Cannot load plugin '{plugin_name}': File or directory not found."
-            )
-            if plugin_name in self.plugin_config:
-                self._set_runtime_status(plugin_name, "ERROR")
-            return False
-
-        p_class = self._get_plugin_class_from_path(path, plugin_name)
-        if not p_class:
-            logger.error(
-                f"Cannot load plugin '{plugin_name}': No PluginBase subclass found."
-            )
-            if plugin_name in self.plugin_config:
-                self._set_runtime_status(plugin_name, "ERROR")
-            return False
-
-        instance = None
-        try:
-            plugin_logger = logging.getLogger(f"plugin.{plugin_name}")
-            api_instance = create_app_api(
-                plugin_name=plugin_name, app_context=self.app_context
-            )
-
-            instance = p_class(plugin_name, api_instance, plugin_logger)
-            self.plugins.append(instance)
-
-            for _, method in inspect.getmembers(instance, predicate=inspect.ismethod):
-                event_names = getattr(method, "_app_event_names", None) or (
-                    [getattr(method, "_app_event_name", None)]
-                    if getattr(method, "_app_event_name", None)
-                    else []
+            path = self._find_plugin_path(plugin_name)
+            if not path:
+                logger.error(
+                    f"Cannot load plugin '{plugin_name}': File or directory not found."
                 )
-                for event_name in event_names:
-                    instance.api.listen_for_event(event_name, method)
+                if plugin_name in self.plugin_config:
+                    self._set_runtime_status(plugin_name, "ERROR")
+                return False
 
-            await self.dispatch_event(instance, "on_load")
+            p_class = self._get_plugin_class_from_path(path, plugin_name)
+            if not p_class:
+                logger.error(
+                    f"Cannot load plugin '{plugin_name}': No PluginBase subclass found."
+                )
+                if plugin_name in self.plugin_config:
+                    self._set_runtime_status(plugin_name, "ERROR")
+                return False
 
-            if callable(getattr(instance, "get_fastapi_routers", None)):
-                routers = instance.get_fastapi_routers()
-                if isinstance(routers, list):
-                    self._register_routers(plugin_name, routers)
+            instance = None
+            try:
+                plugin_logger = logging.getLogger(f"plugin.{plugin_name}")
+                api_instance = create_app_api(
+                    plugin_name=plugin_name, app_context=self.app_context
+                )
 
-            if callable(getattr(instance, "get_static_mounts", None)):
-                mounts = instance.get_static_mounts()
-                if isinstance(mounts, list):
-                    for m in mounts:
-                        if isinstance(m, tuple) and len(m) == 3:
-                            route_path, static_dir, mount_name = m
-                            resolved_dir = Path(static_dir).resolve()
-                            is_safe = False
-                            for p_dir in self.plugin_dirs:
-                                try:
-                                    if resolved_dir.is_relative_to(p_dir.resolve()):
-                                        is_safe = True
-                                        break
-                                except ValueError:
-                                    continue
-                            if is_safe and resolved_dir.is_dir():
-                                self._register_mounts(
-                                    plugin_name,
-                                    [(route_path, resolved_dir, mount_name)],
-                                )
+                instance = p_class(plugin_name, api_instance, plugin_logger)
+                self._pending_plugins[plugin_name] = instance
 
-            for method_name, method in inspect.getmembers(
-                instance, predicate=inspect.ismethod
-            ):
-                interval_raw = getattr(method, "_task_loop_interval", None)
-                if interval_raw is not None:
-                    interval = max(float(interval_raw), 0.1)
-
-                    async def run_task_loop(
-                        m: Callable[..., Any] = method,
-                        intv: float = interval,
-                        p_name: str = plugin_name,
-                        m_name: str = method_name,
-                    ) -> None:
-                        consecutive_failures = 0
-                        while True:
-                            try:
-                                sleep_time = (
-                                    intv
-                                    if consecutive_failures == 0
-                                    else min(
-                                        intv * (2 ** min(consecutive_failures, 6)),
-                                        300.0,
-                                    )
-                                )
-                                await asyncio.sleep(sleep_time)
-                                if inspect.iscoroutinefunction(m):
-                                    await m()
-                                else:
-                                    await run_in_thread(m)
-                                consecutive_failures = 0
-                            except asyncio.CancelledError:
-                                logger.debug(
-                                    f"Task loop {p_name}.{m_name} cancelled cleanly."
-                                )
-                                break
-                            except Exception as e:
-                                consecutive_failures += 1
-                                logger.error(
-                                    f"Error in task loop {p_name}.{m_name} (failure #{consecutive_failures}): {e}"
-                                )
-
-                    task = asyncio.create_task(
-                        run_task_loop(),
-                        name=f"task_loop_{plugin_name}_{method_name}",
+                for _, method in inspect.getmembers(instance, predicate=inspect.ismethod):
+                    event_names = getattr(method, "_app_event_names", None) or (
+                        [getattr(method, "_app_event_name", None)]
+                        if getattr(method, "_app_event_name", None)
+                        else []
                     )
-                    self.plugin_tasks.setdefault(plugin_name, []).append(task)
+                    for event_name in event_names:
+                        instance.api.listen_for_event(event_name, method)
 
-            if plugin_name in self.plugin_config:
-                self._set_runtime_status(plugin_name, "LOADED")
-            logger.info(f"Plugin '{plugin_name}' loaded successfully.")
-            return True
-        except BaseException as e:
-            if instance is not None:
-                await self.unload_plugin_by_name(plugin_name)
-            if not isinstance(e, Exception):
-                raise
-            logger.error(f"Failed to load plugin '{plugin_name}': {e}", exc_info=True)
-            if plugin_name in self.plugin_config:
-                self._set_runtime_status(plugin_name, "ERROR")
-            return False
+                await self.dispatch_event(instance, "on_load")
+
+                if callable(getattr(instance, "get_fastapi_routers", None)):
+                    routers = instance.get_fastapi_routers()
+                    if isinstance(routers, list):
+                        self._register_routers(plugin_name, routers)
+
+                if callable(getattr(instance, "get_static_mounts", None)):
+                    mounts = instance.get_static_mounts()
+                    if isinstance(mounts, list):
+                        for m in mounts:
+                            if isinstance(m, tuple) and len(m) == 3:
+                                route_path, static_dir, mount_name = m
+                                resolved_dir = Path(static_dir).resolve()
+                                is_safe = False
+                                for p_dir in self.plugin_dirs:
+                                    try:
+                                        if resolved_dir.is_relative_to(p_dir.resolve()):
+                                            is_safe = True
+                                            break
+                                    except ValueError:
+                                        continue
+                                if is_safe and resolved_dir.is_dir():
+                                    self._register_mounts(
+                                        plugin_name,
+                                        [(route_path, resolved_dir, mount_name)],
+                                    )
+
+                for method_name, method in inspect.getmembers(
+                    instance, predicate=inspect.ismethod
+                ):
+                    interval_raw = getattr(method, "_task_loop_interval", None)
+                    if interval_raw is not None:
+                        interval = max(float(interval_raw), 0.1)
+
+                        async def run_task_loop(
+                            m: Callable[..., Any] = method,
+                            intv: float = interval,
+                            p_name: str = plugin_name,
+                            m_name: str = method_name,
+                        ) -> None:
+                            consecutive_failures = 0
+                            while True:
+                                try:
+                                    sleep_time = (
+                                        intv
+                                        if consecutive_failures == 0
+                                        else min(
+                                            intv * (2 ** min(consecutive_failures, 6)),
+                                            300.0,
+                                        )
+                                    )
+                                    await asyncio.sleep(sleep_time)
+                                    if inspect.iscoroutinefunction(m):
+                                        await m()
+                                    else:
+                                        await run_in_thread(m)
+                                    consecutive_failures = 0
+                                except asyncio.CancelledError:
+                                    logger.debug(
+                                        f"Task loop {p_name}.{m_name} cancelled cleanly."
+                                    )
+                                    break
+                                except Exception as e:
+                                    consecutive_failures += 1
+                                    logger.error(
+                                        f"Error in task loop {p_name}.{m_name} (failure #{consecutive_failures}): {e}"
+                                    )
+
+                        task = asyncio.create_task(
+                            run_task_loop(),
+                            name=f"task_loop_{plugin_name}_{method_name}",
+                        )
+                        self.plugin_tasks.setdefault(plugin_name, []).append(task)
+
+                self.plugins.append(instance)
+                self._pending_plugins.pop(plugin_name, None)
+                if plugin_name in self.plugin_config:
+                    self._set_runtime_status(plugin_name, "LOADED")
+                logger.info(f"Plugin '{plugin_name}' loaded successfully.")
+                return True
+            except BaseException as e:
+                if instance is not None:
+                    await self.unload_plugin_by_name(plugin_name)
+                if not isinstance(e, Exception):
+                    raise
+                logger.error(f"Failed to load plugin '{plugin_name}': {e}", exc_info=True)
+                if plugin_name in self.plugin_config:
+                    self._set_runtime_status(plugin_name, "ERROR")
+                return False
 
     async def reload_plugin(self, plugin_name: str) -> bool:
         """Reloads a single plugin by name."""
-        logger.info(f"Reloading plugin '{plugin_name}'...")
-        await self.unload_plugin_by_name(plugin_name)
-        return await self.load_plugin_by_name(plugin_name)
+        async with self._lifecycle_lock:
+            if self._shutdown_started:
+                raise RuntimeError("Cannot start plugins during shutdown.")
+            logger.info(f"Reloading plugin '{plugin_name}'...")
+            await self.unload_plugin_by_name(plugin_name)
+            return await self.load_plugin_by_name(plugin_name)
 
     async def enable_plugin(
         self, plugin_name: str, load_immediately: bool = True
     ) -> bool:
         """Enables a plugin in config and optionally loads it immediately."""
-        await self._synchronize_config_with_disk()
-        if plugin_name not in self.plugin_config:
-            logger.error(f"Cannot enable unknown plugin '{plugin_name}'.")
-            return False
+        async with self._lifecycle_lock:
+            if self._shutdown_started:
+                raise RuntimeError("Cannot start plugins during shutdown.")
+            await self._synchronize_config_with_disk()
+            if plugin_name not in self.plugin_config:
+                logger.error(f"Cannot enable unknown plugin '{plugin_name}'.")
+                return False
 
-        self.plugin_config[plugin_name]["enabled"] = True
-        await self._save_config()
+            self.plugin_config[plugin_name]["enabled"] = True
+            await self._save_config()
 
-        if load_immediately:
-            return await self.load_plugin_by_name(plugin_name)
-        self._set_runtime_status(plugin_name, "UNLOADED")
-        return True
+            if load_immediately:
+                return await self.load_plugin_by_name(plugin_name)
+            self._set_runtime_status(plugin_name, "UNLOADED")
+            return True
 
     async def disable_plugin(
         self, plugin_name: str, unload_immediately: bool = True
     ) -> bool:
         """Disables a plugin in config and optionally unloads it immediately."""
-        await self._synchronize_config_with_disk()
-        if plugin_name not in self.plugin_config:
-            logger.error(f"Cannot disable unknown plugin '{plugin_name}'.")
-            return False
+        async with self._lifecycle_lock:
+            await self._synchronize_config_with_disk()
+            if plugin_name not in self.plugin_config:
+                logger.error(f"Cannot disable unknown plugin '{plugin_name}'.")
+                return False
 
-        self.plugin_config[plugin_name]["enabled"] = False
-        await self._save_config()
+            self.plugin_config[plugin_name]["enabled"] = False
+            await self._save_config()
 
-        if unload_immediately:
-            await self.unload_plugin_by_name(plugin_name)
-        self._set_runtime_status(plugin_name, "DISABLED")
-        return True
+            if unload_immediately:
+                await self.unload_plugin_by_name(plugin_name)
+            self._set_runtime_status(plugin_name, "DISABLED")
+            return True
