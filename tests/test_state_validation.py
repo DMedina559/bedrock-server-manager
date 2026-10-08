@@ -262,7 +262,11 @@ def test_bootstrap_config_rejects_bad_resolved_values(
     bcm_config.set_custom_data_dir(None)
     bcm_config.set_custom_db_url(None)
     bcm_config.set_custom_log_level(None)
-    bcm_config.save_config({field: value})
+    import json
+    from pathlib import Path
+
+    Path(bcm_config.get_config_path()).parent.mkdir(parents=True, exist_ok=True)
+    Path(bcm_config.get_config_path()).write_text(json.dumps({field: value}))
     with pytest.raises(ConfigurationError):
         bcm_config.load_config()
 
