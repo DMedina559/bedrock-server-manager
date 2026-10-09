@@ -3,6 +3,12 @@ import os
 import aiofiles.ospath
 import pytest
 
+from bedrock_server_manager.core.server.removal import (
+    delete_all_data,
+    delete_server_files,
+    set_filesystem_permissions,
+)
+
 
 async def test_is_installed(real_bedrock_server):
     """Test checking if a server is installed."""
@@ -34,7 +40,7 @@ async def test_validate_installation_missing_exe(real_bedrock_server):
 
 async def test_set_filesystem_permissions(real_bedrock_server):
     """Apply filesystem permissions to the actual installation."""
-    await real_bedrock_server.set_filesystem_permissions()
+    await set_filesystem_permissions(real_bedrock_server)
     assert os.access(real_bedrock_server.bedrock_executable_path, os.R_OK | os.X_OK)
 
 
@@ -45,7 +51,7 @@ async def test_delete_server_files(real_bedrock_server):
     os.makedirs(world_dir)
 
     # Note: `keep_worlds` is not an argument for `delete_server_files` in the actual code
-    await server.delete_server_files()
+    await delete_server_files(server)
 
     assert not os.path.exists(server.server_dir)
 
@@ -60,7 +66,25 @@ async def test_delete_all_data(real_bedrock_server):
         handle.write("0")
     assert os.path.exists(server.server_config_dir)
 
-    await server.delete_all_data()
+    await delete_all_data(server)
 
     assert not await aiofiles.ospath.exists(server.server_dir)
     assert not await aiofiles.ospath.exists(server.server_config_dir)
+
+
+async def test_delete_record_without_installation_or_backups(real_bedrock_server):
+    """Deletion also removes configuration and persistence after files disappear."""
+    server = real_bedrock_server
+    await delete_server_files(server)
+    os.makedirs(server.server_config_dir, exist_ok=True)
+    assert server.state.servers.get(server.server_name) is not None
+
+    await delete_all_data(server)
+
+    assert not os.path.exists(server.server_config_dir)
+    assert server.state.servers.get(server.server_name) is None
+    async with server.storage.transaction() as session:
+        record = await server.storage.server_repo.get_server_by_name(
+            session, server.server_name
+        )
+    assert record is None

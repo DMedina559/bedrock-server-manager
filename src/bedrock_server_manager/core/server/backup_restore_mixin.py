@@ -22,7 +22,7 @@ export and import operations.
 
 import os
 import re
-from typing import Any, Dict, List, Optional, Union
+from typing import Dict, List, Optional, Union
 
 from ...error import (
     AppFileNotFoundError,
@@ -64,24 +64,8 @@ class ServerBackupMixin(BedrockServerBaseMixin):
         server_backup_directory (Optional[str]): The path to this server's specific backup directory.
     """
 
-    def __init__(self, *args: Any, **kwargs: Any) -> None:
-        """Initializes the ServerBackupMixin.
-
-        Calls ``super().__init__(*args, **kwargs)`` to participate in cooperative
-        multiple inheritance. It depends on attributes initialized by
-        :class:`.BedrockServerBaseMixin` and assumes methods from other mixins
-        (like :meth:`~.core.server.state_mixin.ServerStateMixin.get_world_name`,
-        :meth:`~.core.server.world_mixin.ServerWorldMixin.export_world`,
-        and :meth:`~.core.server.world_mixin.ServerWorldMixin.import_world`)
-        will be available on the composed :class:`~.core.bedrock_server.BedrockServer` object.
-
-        Args:
-            *args (Any): Variable length argument list passed to `super()`.
-            **kwargs (Any): Arbitrary keyword arguments passed to `super()`.
-        """
-        super().__init__(*args, **kwargs)
-        # Dependencies on other mixins' methods are resolved at runtime on the
-        # final BedrockServer class instance.
+    # Dependencies on other mixins' methods are resolved at runtime on the
+    # final BedrockServer class instance.
 
     @property
     def server_backup_directory(self) -> Optional[str]:

@@ -29,7 +29,7 @@ import tempfile
 import time
 import zipfile
 from pathlib import Path
-from typing import TYPE_CHECKING, Any, List, Optional, Tuple
+from typing import TYPE_CHECKING, List, Optional, Tuple
 
 import aiofiles
 import aiofiles.os
@@ -71,23 +71,7 @@ class ServerWorldMixin(BedrockServerBaseMixin):
         _worlds_base_dir_in_server (str): Path to the "worlds" subdirectory in the server installation.
     """
 
-    def __init__(self, *args: Any, **kwargs: Any) -> None:
-        """Initializes the ServerWorldMixin.
-
-        Calls ``super().__init__(*args, **kwargs)`` to participate in cooperative
-        multiple inheritance. It depends on attributes initialized by
-        :class:`.BedrockServerBaseMixin` (e.g., `server_dir`, `logger`) and
-        assumes methods like ``get_world_name()`` (from
-        :class:`~.core.server.state_mixin.ServerStateMixin`) will be available on
-        the composed :class:`~.core.bedrock_server.BedrockServer` object.
-
-        Args:
-            *args (Any): Variable length argument list passed to `super()`.
-            **kwargs (Any): Arbitrary keyword arguments passed to `super()`.
-        """
-        super().__init__(*args, **kwargs)
-        # Attributes from BaseMixin are available.
-        # Relies on await self.get_world_name() from StateMixin.
+    # Attributes from BaseMixin are available.
 
     if TYPE_CHECKING:
 

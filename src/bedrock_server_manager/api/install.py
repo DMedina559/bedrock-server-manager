@@ -2,6 +2,7 @@ import asyncio
 import logging
 
 from ..context import AppContext
+from ..core.server.software import install_or_update, is_update_needed
 from ..error import (
     BSMError,
     InvalidServerNameError,
@@ -73,7 +74,7 @@ async def install_new_server(
         logger.info(
             f"API: Installing new server '{server_name}', target version '{target_version}'."
         )
-        await server.install_or_update(target_version, server_zip_path=server_zip_path)
+        await install_or_update(server, target_version, server_zip_path=server_zip_path)
         return InstallNewServerResponse.model_validate(
             {
                 "status": "success",
@@ -140,7 +141,7 @@ async def update_server(
         logger.info(
             f"API: Updating server '{server_name}'. Send message: {send_message}"
         )
-        if not await server.is_update_needed(target_version):
+        if not await is_update_needed(server, target_version):
             return UpdateServerResponse.model_validate(
                 {
                     "status": "success",
@@ -160,7 +161,7 @@ async def update_server(
             logger.info(
                 f"API: Performing update for '{server_name}' to target '{target_version}'..."
             )
-            await server.install_or_update(target_version)
+            await install_or_update(server, target_version)
         return UpdateServerResponse.model_validate(
             {
                 "status": "success",

@@ -73,31 +73,6 @@ class ServerAddonMixin(BedrockServerBaseMixin):
     :meth:`~.core.server.world_mixin.ServerWorldMixin.extract_mcworld`.
     """
 
-    def __init__(self, *args: Any, **kwargs: Any) -> None:
-        """Initializes the ServerAddonMixin.
-
-        This constructor participates in Python's cooperative multiple inheritance
-        by calling ``super().__init__(*args, **kwargs)``. It ensures that the
-        initialization chain is correctly followed, allowing this mixin to
-        rely on attributes (e.g., ``server_name``, ``server_dir``, ``logger`` from
-        :class:`.BedrockServerBaseMixin`) and methods (e.g.,
-        :meth:`~.core.server.state_mixin.ServerStateMixin.get_world_name` from
-        :class:`~.core.server.state_mixin.ServerStateMixin`, or
-        :meth:`~.core.server.world_mixin.ServerWorldMixin.extract_mcworld`
-        from :class:`~.core.server.world_mixin.ServerWorldMixin`) that are
-        provided by other base or sibling mixins in the final
-        :class:`~.core.bedrock_server.BedrockServer` class.
-
-        Args:
-            *args (Any): Variable length argument list passed to `super().__init__()`.
-            **kwargs (Any): Arbitrary keyword arguments passed to `super().__init__()`.
-        """
-        super().__init__(*args, **kwargs)
-        # This mixin depends on attributes from BaseMixin: self.server_name, self.base_dir, self.server_dir, self.logger.
-        # It also depends on methods from other mixins that will be part of the final BedrockServer class, such as:
-        # - await self.get_world_name() (from StateMixin)
-        # - self.extract_mcworld() (from WorldMixin)
-
     if TYPE_CHECKING:
 
         async def get_world_name(self) -> str: ...

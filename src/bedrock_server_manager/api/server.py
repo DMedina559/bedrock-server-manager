@@ -1,3 +1,5 @@
+from ..core.server.removal import delete_all_data
+
 # bedrock_server_manager/api/server.py
 """Provides API functions for managing Bedrock server instances.
 
@@ -461,7 +463,7 @@ async def delete_server_data(
         logger.debug(
             f"API: Proceeding with deletion of data for server '{server_name}'..."
         )
-        await server.delete_all_data()
+        await delete_all_data(server)
         await app_context.remove_server(server_name)
         logger.info(f"API: Successfully deleted all data for server '{server_name}'.")
         return DeleteServerDataResponse.model_validate(

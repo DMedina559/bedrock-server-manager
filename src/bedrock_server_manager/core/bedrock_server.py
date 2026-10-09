@@ -1,29 +1,23 @@
-# bedrock_server_manager/core/bedrock_server.py
-"""Defines the main :class:`~.BedrockServer` class, which consolidates all server management functionalities.
+"""A single Bedrock server's runtime and game data interface."""
 
-This module provides the :class:`~.BedrockServer` class, serving as the central
-entry point for managing and interacting with a single Minecraft Bedrock Server instance.
-The :class:`~.BedrockServer` is constructed by inheriting from a collection of
-specialized mixin classes (e.g., for process control, world management, backups),
-each contributing a distinct set of features. This compositional approach promotes
-code organization and modularity, allowing for clear separation of concerns.
-"""
-
-from typing import TYPE_CHECKING, Any, Dict, Optional
-
-if TYPE_CHECKING:
-    from ..context import AppContext
-
-import typing
+import asyncio
+import subprocess
+from io import BufferedWriter
+from typing import TYPE_CHECKING, Any, Dict, Optional, Union
 
 from . import server
 from .data import SummaryRecord
 
+if TYPE_CHECKING:
+    import psutil
+
+    from ..config.settings import Settings
+    from ..context import AppContext
+    from ..db.storage import Storage
+    from ..state.app_state import AppState
+
 
 class BedrockServer(
-    # The order of inheritance is important for Method Resolution Order (MRO).
-    # More specific mixins should generally come before more general ones.
-    # BedrockServerBaseMixin, providing foundational __init__, is typically last.
     server.ServerStateMixin,
     server.ServerProcessMixin,
     server.ServerInstallationMixin,
@@ -34,162 +28,54 @@ class BedrockServer(
     server.ServerAllowlistMixin,
     server.ServerPermissionsMixin,
     server.ServerPropertiesMixin,
-    server.ServerInstallUpdateMixin,
-    # Foundational BedrockServerBaseMixin is last to ensure its __init__ runs after
-    # all other mixins have potentially set up their specific attributes.
     server.BedrockServerBaseMixin,
 ):
-    """Represents and manages a single Minecraft Bedrock Server instance.
+    """Manage a Bedrock process, configuration, players, worlds, and addons.
 
-    This class is the primary interface for all server-specific operations within
-    the Bedrock Server Manager. It consolidates a wide range of functionalities
-    by inheriting from the various specialized mixin classes listed above. Each instance of
-    :class:`~.BedrockServer` is tied to a unique server name and provides
-    methods to control, configure, and maintain that server.
-
-    The order of mixin inheritance is significant for Python's Method Resolution
-    Order (MRO), ensuring that methods are overridden and extended correctly.
-    The :class:`~.core.server.base_server_mixin.BedrockServerBaseMixin` provides
-    core attributes and foundational initialization logic.
-
-    Attributes:
-        server_name (str): The unique name identifying this server instance.
-        settings (:class:`~bedrock_server_manager.config.settings.Settings`):
-            The application's global settings object.
-        base_dir (str): The base directory where all server installation
-            directories reside (from settings: ``paths.servers``).
-        server_dir (str): The full path to this specific server's installation
-            directory (e.g., ``<base_dir>/<server_name>``).
-        app_config_dir (str): Path to the application's global configuration
-            directory (from settings: ``_config_dir``).
-        os_type (str): The current operating system, e.g., "Linux", "Windows".
-        logger (:class:`logging.Logger`): A logger instance specific to this
-            server instance.
-
-    Note:
-        Many other attributes related to specific functionalities (e.g., server state,
-        process information, world data paths) are available from the inherited mixin classes.
-        Refer to the documentation of individual mixins for more details.
-
-    Key Methods (Illustrative list, grouped by typical functionality):
-
-        Installation & Validation (from :class:`~.core.server.installation_mixin.ServerInstallationMixin`):
-            - :meth:`~.core.server.installation_mixin.ServerInstallationMixin.is_installed`
-            - :meth:`~.core.server.installation_mixin.ServerInstallationMixin.validate_installation`
-            - :meth:`~.core.server.installation_mixin.ServerInstallationMixin.set_filesystem_permissions`
-            - :meth:`~.core.server.installation_mixin.ServerInstallationMixin.delete_all_data`
-
-        State Management (from :class:`~.core.server.state_mixin.ServerStateMixin`):
-            - :meth:`~.core.server.state_mixin.ServerStateMixin.get_status`
-            - :meth:`~.core.server.state_mixin.ServerStateMixin.get_version`
-            - :meth:`~.core.server.state_mixin.ServerStateMixin.set_version`
-            - :meth:`~.core.server.state_mixin.ServerStateMixin.get_world_name`
-            - :meth:`~.core.server.state_mixin.ServerStateMixin.get_custom_config_value`
-            - :meth:`~.core.server.state_mixin.ServerStateMixin.set_custom_config_value`
-
-        Process Management (from :class:`~.core.server.process_mixin.ServerProcessMixin`):
-            - :meth:`~.core.server.process_mixin.ServerProcessMixin.is_running`
-            - :meth:`~.core.server.process_mixin.ServerProcessMixin.get_process_info`
-            - :meth:`~.core.server.process_mixin.ServerProcessMixin.start`
-            - :meth:`~.core.server.process_mixin.ServerProcessMixin.stop`
-            - :meth:`~.core.server.process_mixin.ServerProcessMixin.send_command`
-
-        World Management (from :class:`~.core.server.world_mixin.ServerWorldMixin`):
-            - :meth:`~.core.server.world_mixin.ServerWorldMixin.export_world`
-            - :meth:`~.core.server.world_mixin.ServerWorldMixin.import_world`
-            - :meth:`~.core.server.world_mixin.ServerWorldMixin.delete_world`
-
-        Addon Management (from :class:`~.core.server.addon_mixin.ServerAddonMixin`):
-            - :meth:`~.core.server.addon_mixin.ServerAddonMixin.process_addon_file`
-            - :meth:`~.core.server.addon_mixin.ServerAddonMixin.list_installed_addons`
-            - :meth:`~.core.server.addon_mixin.ServerAddonMixin.export_addon`
-            - :meth:`~.core.server.addon_mixin.ServerAddonMixin.remove_addon`
-
-        Backup & Restore (from :class:`~.core.server.backup_restore_mixin.ServerBackupMixin`):
-            - :meth:`~.core.server.backup_restore_mixin.ServerBackupMixin.backup_all_data`
-            - :meth:`~.core.server.backup_restore_mixin.ServerBackupMixin.restore_all_data_from_latest`
-            - :meth:`~.core.server.backup_restore_mixin.ServerBackupMixin.prune_server_backups`
-            - :meth:`~.core.server.backup_restore_mixin.ServerBackupMixin.list_backups`
-
-        Player Log Scanning (from :class:`~.core.server.player_mixin.ServerPlayerMixin`):
-            - :meth:`~.core.server.player_mixin.ServerPlayerMixin.scan_log_for_players`
-
-        Config File Management (from :class:`~.core.server.allowlist_mixin.ServerAllowlistMixin`, :class:`~.core.server.permissions_mixin.ServerPermissionsMixin`, and :class:`~.core.server.properties_mixin.ServerPropertiesMixin`):
-            - :meth:`~.core.server.allowlist_mixin.ServerAllowlistMixin.get_allowlist`
-            - :meth:`~.core.server.allowlist_mixin.ServerAllowlistMixin.add_to_allowlist`
-            - :meth:`~.core.server.permissions_mixin.ServerPermissionsMixin.set_player_permission`
-            - :meth:`~.core.server.properties_mixin.ServerPropertiesMixin.get_server_properties`
-            - :meth:`~.core.server.properties_mixin.ServerPropertiesMixin.set_server_property`
-
-        Installation & Updates (from :class:`~.core.server.install_update_mixin.ServerInstallUpdateMixin`):
-            - :meth:`~.core.server.install_update_mixin.ServerInstallUpdateMixin.is_update_needed`
-            - :meth:`~.core.server.install_update_mixin.ServerInstallUpdateMixin.install_or_update`
-
-    Note:
-        This is not an exhaustive list of all available methods. Many more specialized
-        methods are accessible from the respective mixin classes. Please consult the
-        documentation for each individual mixin for a comprehensive list of its capabilities.
-    """
+    Software acquisition and removal live in core.server.software and removal."""
 
     def __init__(
         self,
         server_name: str,
-        *args: Any,
-        settings: Optional[Any] = None,
+        *,
+        settings: Optional["Settings"] = None,
         app_context: Optional["AppContext"] = None,
-        state: Optional[Any] = None,
-        storage: Optional[Any] = None,
-        **kwargs: Any,
+        state: Optional["AppState"] = None,
+        storage: Optional["Storage"] = None,
     ) -> None:
-        """Initializes a BedrockServer instance.
-
-        This constructor is responsible for setting up a :class:`~.BedrockServer`
-        object, which represents a specific Minecraft Bedrock server. It calls
-        ``super().__init__(...)``, triggering the initialization methods of all
-        inherited mixin classes according to Python's Method Resolution Order (MRO).
-        This process starts with the first mixin in the inheritance list (currently
-        :class:`~.core.server.state_mixin.ServerStateMixin`) and culminates with
-        :class:`~.core.server.base_server_mixin.BedrockServerBaseMixin`, which
-        establishes fundamental server attributes.
-
-        Args:
-            server_name (str): The unique name for this server instance.
-            *args: Variable length argument list.
-            settings: Settings object instance.
-            app_context (:class:`~bedrock_server_manager.context.AppContext`):
-                Optional instance of the application context.
-            **kwargs: Arbitrary keyword arguments.
-        """
+        """Initialize the runtime with explicit application dependencies."""
         super().__init__(
             server_name=server_name,
-            *args,
             settings=settings,
             app_context=app_context,
             state=state,
             storage=storage,
-            **kwargs,
         )
+        self._process: Optional[
+            Union[subprocess.Popen[Any], asyncio.subprocess.Process, "psutil.Process"]
+        ] = None
+        self.intentionally_stopped = True
+        self.failure_count = 0
+        self.start_time = 0.0
+        self._log_file_handle: BufferedWriter | None = None
+        self._log_file_cursor = 0
+        self._scan_log_cursor = 0
         self.logger.info(
             f"BedrockServer instance '{self.server_name}' fully initialized and ready for operations."
         )
 
-    @typing.no_type_check
     async def get_summary_info(self) -> Dict[str, Any]:
         """Returns a generic summary of the server's current status and state asynchronously."""
         self.logger.debug(
             f"Gathering async summary info for server '{self.server_name}'."
         )
-
         status = await self.get_status()
-
         version = await self.get_version()
-
         summary = {
             "name": self.server_name,
             "status": status,
             "version": version,
-            "player_count": getattr(self, "player_count", 0),
-            "players": getattr(self, "players", []),
+            "player_count": self.player_count,
+            "players": self.players,
         }
-
         return SummaryRecord.model_validate(summary).model_dump(mode="json")

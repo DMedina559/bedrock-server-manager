@@ -62,20 +62,6 @@ class ServerStateMixin(BedrockServerBaseMixin):
     as `server_name` and `server_config_dir`, to locate and manage its files.
     """
 
-    def __init__(self, *args: Any, **kwargs: Any) -> None:
-        """Initializes the ServerStateMixin.
-
-        This constructor primarily calls ``super().__init__(*args, **kwargs)``
-        to ensure correct initialization within a cooperative multiple inheritance
-        setup. It assumes that attributes from :class:`.BedrockServerBaseMixin`
-        (like `server_name`, `logger`, `server_config_dir`) are already
-        initialized or will be by a preceding class in the MRO.
-        """
-        super().__init__(*args, **kwargs)
-        # Runtime data is shared through AppState, including recovered servers.
-        setattr(self, "_log_file_cursor", 0)
-        setattr(self, "_scan_log_cursor", 0)
-
     def _get_default_server_config(self) -> Dict[str, Any]:
         """Returns the default structure and values for a server's JSON config file.
 

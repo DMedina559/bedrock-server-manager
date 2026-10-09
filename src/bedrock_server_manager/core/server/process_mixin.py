@@ -31,11 +31,8 @@ from typing import TYPE_CHECKING, Any, Callable, Dict, Optional, Union, cast
 import aiofiles
 import aiofiles.ospath
 
-from ...utils.threads import run_in_thread
-
 if TYPE_CHECKING:
-    # This helps type checkers understand psutil types without making it a hard dependency.
-    import psutil as psutil_for_types
+    import psutil
 
 from ...error import (
     BSMError,
@@ -45,6 +42,7 @@ from ...error import (
     ServerStartError,
     ServerStopError,
 )
+from ...utils.threads import run_in_thread
 from ..data import ProcessRecord
 from ..system import base as system_base
 from ..system import process as system_process
@@ -71,34 +69,13 @@ class ServerProcessMixin(BedrockServerBaseMixin):
     like ``set_status_in_config()`` (from :class:`.ServerStateMixin`).
     """
 
-    def __init__(self, *args: Any, **kwargs: Any) -> None:
-        """Initializes the ServerProcessMixin.
-
-        Calls ``super().__init__(*args, **kwargs)`` to participate in cooperative
-        multiple inheritance. It relies on attributes (e.g., `server_name`, `logger`,
-        `settings`, `server_dir`, `app_config_dir`, `os_type`) initialized by
-        :class:`.BedrockServerBaseMixin`. It also implicitly depends on methods
-        that may be provided by other mixins that form the complete
-        :class:`~.core.bedrock_server.BedrockServer` class (e.g.,
-        :meth:`~.ServerStateMixin.set_status_in_config`,
-        ``is_installed`` from an installation mixin).
-
-        Args:
-            *args (Any): Variable length argument list passed to `super()`.
-            **kwargs (Any): Arbitrary keyword arguments passed to `super()`.
-        """
-        super().__init__(*args, **kwargs)
-        self._process: Optional[
-            Union[
-                subprocess.Popen[Any],
-                asyncio.subprocess.Process,
-                "psutil_for_types.Process",
-            ]
-        ] = None
-        self.intentionally_stopped: bool = True
-        self.failure_count: int = 0
-        self.start_time: float = 0
-        self._log_file_handle: BufferedWriter | None = None
+    _process: Optional[
+        Union[subprocess.Popen[Any], asyncio.subprocess.Process, "psutil.Process"]
+    ]
+    intentionally_stopped: bool
+    failure_count: int
+    start_time: float
+    _log_file_handle: BufferedWriter | None
 
     if TYPE_CHECKING:
 

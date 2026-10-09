@@ -13,7 +13,7 @@ for example, to populate a player database or track server activity.
 import asyncio
 import os
 import re
-from typing import TYPE_CHECKING, Any, Dict, Iterator, List, Optional, Tuple
+from typing import TYPE_CHECKING, Dict, Iterator, List, Optional, Tuple
 
 from ...error import FileOperationError
 from .base_server_mixin import BedrockServerBaseMixin
@@ -34,21 +34,6 @@ class ServerPlayerMixin(BedrockServerBaseMixin):
     The primary method offered is :meth:`.scan_log_for_players`, which performs
     this scanning operation.
     """
-
-    def __init__(self, *args: Any, **kwargs: Any) -> None:
-        """Initializes the ServerPlayerMixin.
-
-        Calls ``super().__init__(*args, **kwargs)`` to participate in cooperative
-        multiple inheritance. It relies on attributes initialized by
-        :class:`.BedrockServerBaseMixin`, such as `server_name`,
-        `server_log_path` (used by :meth:`.scan_log_for_players`), and `logger`.
-
-        Args:
-            *args (Any): Variable length argument list passed to `super()`.
-            **kwargs (Any): Arbitrary keyword arguments passed to `super()`.
-        """
-        super().__init__(*args, **kwargs)
-        # Attributes from BedrockServerBaseMixin are available.
 
     def _parse_player_log_events(  # noqa: C901
         self, start_cursor: int = 0

@@ -13,7 +13,7 @@ def test_bedrock_server_composition(app_context):
     assert server.server_name == "composed_server"
 
     # Check Install/Update mixin
-    assert hasattr(server, "install_or_update")
+    assert not hasattr(server, "install_or_update")
 
     # Check Properties mixin
     assert hasattr(server, "get_server_property")
