@@ -40,10 +40,10 @@ async def get_properties(
 
     try:
         server = app_context.get_server(server_name)
-        properties = await server.get_server_properties()
+        properties = await server.properties.get_server_properties()
         raw_content = ""
         async with aiofiles.open(
-            server.server_properties_path, "r", encoding="utf-8"
+            server.paths.server_properties_path, "r", encoding="utf-8"
         ) as f:
             raw_content = await f.read()
         return GetPropertiesResponse.model_validate(
@@ -375,7 +375,7 @@ async def set_properties(
         ):
             server = app_context.get_server(server_name)
             for prop_name, prop_value in properties_to_update.items():
-                await server.set_server_property(prop_name, prop_value)
+                await server.properties.set_server_property(prop_name, prop_value)
         return SetPropertiesResponse.model_validate(
             {"status": "success", "message": "Server properties updated successfully."}
         )

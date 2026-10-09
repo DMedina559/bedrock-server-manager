@@ -107,7 +107,7 @@ async def test_plugin_cancellation_prevents_process_start_and_after_event(
 
 
 async def test_actual_executable_failure_is_reported(app_context, real_bedrock_server):
-    executable = Path(real_bedrock_server.bedrock_executable_path)
+    executable = Path(real_bedrock_server.paths.bedrock_executable_path)
     executable.write_bytes(b"invalid executable")
     with pytest.raises(ServerStartError):
         await start_server(
@@ -120,7 +120,7 @@ async def test_restart_stop_failure_preserves_actual_child(
     app_context, real_bedrock_server, monkeypatch
 ):
     await real_bedrock_server.start()
-    child = real_bedrock_server._process
+    child = real_bedrock_server.process._process
 
     async def fail_stop():
         raise ServerStopError("Still running")
@@ -134,7 +134,7 @@ async def test_restart_stop_failure_preserves_actual_child(
                 ),
                 app_context=app_context,
             )
-    assert real_bedrock_server._process is child
+    assert real_bedrock_server.process._process is child
     assert await real_bedrock_server.is_running()
 
 

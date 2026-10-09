@@ -22,7 +22,7 @@ async def test_http_world_import_export_and_reset(
     assert response.status_code == 202
     await wait_for_task(app_context, response.json()["task_id"])
     world = (
-        Path(real_bedrock_server.server_dir)
+        Path(real_bedrock_server.paths.server_dir)
         / "worlds"
         / await real_bedrock_server.get_world_name()
     )
@@ -62,7 +62,7 @@ async def test_world_icon_is_served_from_actual_world(
     admin_auth_client, populated_server
 ):
     world = (
-        Path(populated_server.server_dir)
+        Path(populated_server.paths.server_dir)
         / "worlds"
         / await populated_server.get_world_name()
     )

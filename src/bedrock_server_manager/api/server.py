@@ -1,3 +1,5 @@
+from ..core.server.removal import delete_all_data
+
 # bedrock_server_manager/api/server.py
 """Provides API functions for managing Bedrock server instances.
 
@@ -69,7 +71,7 @@ logger = logging.getLogger(__name__)
 async def get_server_setting(
     request: GetServerSettingRequest, *, app_context: AppContext
 ) -> GetServerSettingResponse:
-    """Reads any value from a server's specific JSON configuration file
+    """Reads any value from a server's specific persisted configuration
 
     Accepts GetServerSettingRequest and returns GetServerSettingResponse.
     Invalid requests fail validation before side effects; operation failures raise application exceptions.
@@ -83,7 +85,7 @@ async def get_server_setting(
     logger.debug(f"API: Reading server setting for '{server_name}': Key='{key}'")
     try:
         server = app_context.get_server(server_name)
-        value = await server._manage_json_config(key, "read")
+        value = server.configuration.read(key)
         success_response: Dict[str, Any] = {"status": "success", "value": value}
         return GetServerSettingResponse.model_validate(success_response)
     except BSMError as e:
@@ -108,7 +110,7 @@ async def get_server_setting(
 async def set_server_setting(
     request: SetServerSettingRequest, *, app_context: AppContext
 ) -> SetServerSettingResponse:
-    """Writes any value to a server's specific JSON configuration file
+    """Writes any value to a server's specific persisted configuration
 
     Accepts SetServerSettingRequest and returns SetServerSettingResponse.
     Invalid requests fail validation before side effects; operation failures raise application exceptions.
@@ -125,7 +127,7 @@ async def set_server_setting(
     )
     try:
         server = app_context.get_server(server_name)
-        await server._manage_json_config(key, "write", value)
+        await server.configuration.update(key, value)
         return SetServerSettingResponse(
             message=f"Setting '{key}' updated for server '{server_name}'."
         )
@@ -180,7 +182,7 @@ async def set_server_custom_value(
 async def get_all_server_settings(
     request: GetAllServerSettingsRequest, *, app_context: AppContext
 ) -> GetAllServerSettingsResponse:
-    """Reads the entire JSON configuration for a specific server from its
+    """Reads the entire persisted configurationuration for a specific server from its
 
     Accepts GetAllServerSettingsRequest and returns GetAllServerSettingsResponse.
     Invalid requests fail validation before side effects; operation failures raise application exceptions.
@@ -191,7 +193,7 @@ async def get_all_server_settings(
     logger.debug(f"API: Reading all settings for server '{server_name}'.")
     try:
         server = app_context.get_server(server_name)
-        all_settings = await server._load_server_config()
+        all_settings = server.configuration.as_settings()
         success_response: Dict[str, Any] = {
             "status": "success",
             "settings": all_settings,
@@ -227,7 +229,7 @@ async def get_server_summary(
             raise BSMError(f"Server '{server_name}' is not installed.")
         summary = await server.get_summary_info()
         return GetServerSummaryResponse.model_validate(
-            {"status": "success", "summary": summary}
+            {"status": "success", "summary": summary.model_dump(mode="json")}
         )
     except Exception as e:
         logger.error(
@@ -461,7 +463,7 @@ async def delete_server_data(
         logger.debug(
             f"API: Proceeding with deletion of data for server '{server_name}'..."
         )
-        await server.delete_all_data()
+        await delete_all_data(server)
         await app_context.remove_server(server_name)
         logger.info(f"API: Successfully deleted all data for server '{server_name}'.")
         return DeleteServerDataResponse.model_validate(
@@ -503,11 +505,9 @@ async def set_server_status(
     status = request.status
     server = app_context.get_server(server_name)
     previous_status = await server.get_status_from_config()
-    await server._manage_json_config(
-        key="server_info.status", operation="write", value=status
-    )
+    await server.configuration.update("server_info.status", status)
     server.logger.info(
-        f"Status in JSON config for '{server.server_name}' set to '{status}'."
+        f"Status in persisted configuration for '{server.server_name}' set to '{status}'."
     )
     return SetServerStatusResponse.model_validate(
         {

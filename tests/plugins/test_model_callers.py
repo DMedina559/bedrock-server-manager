@@ -45,7 +45,7 @@ async def test_shutdown_notification_consumes_real_summary(
     await server.start()
     await server.send_command("__DUMMY__ PLAYER_JOIN Steve")
     async with asyncio.timeout(5):
-        while not await server.update_online_players():
+        while not await server.player_tracker.update_online_players():
             await asyncio.sleep(0.01)
     plugin = ServerLifecycleNotificationsPlugin(
         "notifications",
@@ -59,7 +59,7 @@ async def test_shutdown_notification_consumes_real_summary(
     async with asyncio.timeout(5):
         while (
             "Server is stopping in 0 seconds"
-            not in Path(server.server_log_path).read_text()
+            not in Path(server.paths.server_log_path).read_text()
         ):
             await asyncio.sleep(0.01)
 

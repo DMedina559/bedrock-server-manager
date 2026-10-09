@@ -24,7 +24,7 @@ async def test_process_manager_shutdown_drains_monitor_and_child(
 ):
     manager = app_context.bedrock_process_manager
     await real_bedrock_server.start()
-    child = real_bedrock_server._process
+    child = real_bedrock_server.process._process
     await manager.start()
     monitor = manager.monitoring_task
     await manager.shutdown()
@@ -42,7 +42,9 @@ async def test_restart_limit_persists_error_and_removes_monitoring(
     app_context, real_bedrock_server
 ):
     await app_context.settings.set("monitoring.max_retries", 0)
-    real_bedrock_server.failure_count = 1
+    app_context.bedrock_process_manager.restart_attempts[
+        real_bedrock_server.server_name
+    ] = 1
     manager = app_context.bedrock_process_manager
     await manager._try_restart_server(real_bedrock_server)
     assert real_bedrock_server.server_name not in manager.servers
@@ -76,18 +78,18 @@ async def test_error_status_storage_failure_is_reported(
 async def test_monitor_restarts_actual_crashed_child(app_context, real_bedrock_server):
     await app_context.settings.set("monitoring.process_interval_sec", 1)
     await real_bedrock_server.start()
-    child = real_bedrock_server._process
+    child = real_bedrock_server.process._process
     child.kill()
     await child.wait()
     manager = app_context.bedrock_process_manager
     await manager.start()
     try:
         await wait_until(
-            lambda: real_bedrock_server._process is not None
-            and real_bedrock_server._process is not child
-            and real_bedrock_server._process.returncode is None
+            lambda: real_bedrock_server.process._process is not None
+            and real_bedrock_server.process._process is not child
+            and real_bedrock_server.process._process.returncode is None
         )
-        assert real_bedrock_server.failure_count == 1
+        assert manager.restart_attempts[real_bedrock_server.server_name] == 1
     finally:
         await manager.quiesce()
 
@@ -107,7 +109,9 @@ async def test_monitor_player_failure_resets_coherent_runtime(
 
     manager = app_context.bedrock_process_manager
     with monkeypatch.context() as fault:
-        fault.setattr(real_bedrock_server, "update_online_players", fail_scan)
+        fault.setattr(
+            real_bedrock_server.player_tracker, "update_online_players", fail_scan
+        )
         await manager.start()
         try:
             await asyncio.wait_for(scanned.wait(), 5)
@@ -123,7 +127,7 @@ async def test_probe_failure_does_not_stop_other_servers(
     await app_context.settings.set("monitoring.process_interval_sec", 1)
     manager = app_context.bedrock_process_manager
     other = app_context.get_server("other")
-    other.intentionally_stopped = True
+    other.process.intentionally_stopped = True
     await manager.add_server(other)
 
     async def fail_probe():

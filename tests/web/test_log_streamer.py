@@ -33,7 +33,7 @@ async def test_log_streamer_delivers_real_file_updates(
     streamer = app_context.log_streamer
     if server_log:
         topic = f"server_log:{real_bedrock_server.server_name}"
-        path = Path(real_bedrock_server.server_log_path)
+        path = Path(real_bedrock_server.paths.server_log_path)
     else:
         topic = "app_log"
         path = Path(app_context.log_dir) / "bedrock_server_manager.log"

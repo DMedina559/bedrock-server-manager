@@ -100,7 +100,7 @@ async def test_addon_activation_failure_restores_old_pack(
     real_bedrock_server, tmp_path, monkeypatch
 ):
     server = real_bedrock_server
-    world = Path(server.server_dir) / "worlds" / await server.get_world_name()
+    world = Path(server.paths.server_dir) / "worlds" / await server.get_world_name()
     old = world / "behavior_packs" / "Old_1.0.0"
     old.mkdir(parents=True)
     (old / "marker").write_text("old content")
@@ -112,17 +112,17 @@ async def test_addon_activation_failure_restores_old_pack(
     activation = world / "world_behavior_packs.json"
     activation.write_text("[]")
     monkeypatch.setattr(
-        server,
+        server.addons,
         "_scan_physical_packs",
         AsyncMock(return_value=[{"uuid": "same", "path": str(old)}]),
     )
     monkeypatch.setattr(
-        server,
+        server.addons,
         "_update_world_pack_json_file",
         AsyncMock(side_effect=FileOperationError("activation failed")),
     )
     with pytest.raises(FileOperationError):
-        await server._install_pack_from_extracted_data(str(source), "new.mcpack")
+        await server.addons._install_pack_from_extracted_data(str(source), "new.mcpack")
     assert (old / "marker").read_text() == "old content"
     assert activation.read_text() == "[]"
     assert not (world / "behavior_packs" / "New_2.0.0").exists()
@@ -218,12 +218,12 @@ async def test_invalid_world_archive_preserves_existing_world(
     from bedrock_server_manager.error import ExtractError
 
     server = real_bedrock_server
-    world = Path(server._worlds_base_dir_in_server) / "active"
+    world = Path(server.worlds._worlds_base_dir_in_server) / "active"
     world.mkdir(parents=True, exist_ok=True)
     marker = world / "level.dat"
     marker.write_bytes(b"previous world data")
     archive = tmp_path / "broken.mcworld"
     archive.write_bytes(b"not a zip")
     with pytest.raises(ExtractError):
-        await server.extract_mcworld(str(archive), "active")
+        await server.worlds.extract_mcworld(str(archive), "active")
     assert marker.read_bytes() == b"previous world data"

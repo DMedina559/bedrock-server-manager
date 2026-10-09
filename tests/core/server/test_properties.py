@@ -4,23 +4,23 @@ import pytest
 async def test_get_server_properties(real_bedrock_server):
     """Test retrieving server properties from file."""
     server = real_bedrock_server
-    with open(server.server_properties_path, "w") as f:
+    with open(server.paths.server_properties_path, "w") as f:
         f.write("key1=value1\n")
         f.write("key2=value2\n")
 
-    properties = await server.get_server_properties()
+    properties = await server.properties.get_server_properties()
     assert properties == {"key1": "value1", "key2": "value2"}
 
 
 async def test_get_server_properties_malformed_line(real_bedrock_server):
     """Test retrieving server properties ignores malformed lines."""
     server = real_bedrock_server
-    with open(server.server_properties_path, "w") as f:
+    with open(server.paths.server_properties_path, "w") as f:
         f.write("key1=value1\n")
         f.write("malformed\n")
         f.write("key2=value2\n")
 
-    properties = await server.get_server_properties()
+    properties = await server.properties.get_server_properties()
     assert properties == {"key1": "value1", "key2": "value2"}
 
 
@@ -31,33 +31,33 @@ async def test_get_server_properties_missing_file(real_bedrock_server):
 
     from bedrock_server_manager.error import AppFileNotFoundError
 
-    if os.path.exists(server.server_properties_path):
-        os.remove(server.server_properties_path)
+    if os.path.exists(server.paths.server_properties_path):
+        os.remove(server.paths.server_properties_path)
 
     with pytest.raises(AppFileNotFoundError):
-        await server.get_server_properties()
+        await server.properties.get_server_properties()
 
 
 async def test_get_server_property(real_bedrock_server):
     """Test retrieving a single property."""
     server = real_bedrock_server
-    with open(server.server_properties_path, "w") as f:
+    with open(server.paths.server_properties_path, "w") as f:
         f.write("key1=value1\n")
 
-    assert await server.get_server_property("key1") == "value1"
-    assert await server.get_server_property("non_existent") is None
+    assert await server.properties.get_server_property("key1") == "value1"
+    assert await server.properties.get_server_property("non_existent") is None
 
 
 async def test_set_server_property(real_bedrock_server):
     """Test setting a new or existing property."""
     server = real_bedrock_server
-    with open(server.server_properties_path, "w") as f:
+    with open(server.paths.server_properties_path, "w") as f:
         f.write("key1=value1\n")
 
-    await server.set_server_property("key2", "value2")
-    await server.set_server_property("key1", "updated_value")
+    await server.properties.set_server_property("key2", "value2")
+    await server.properties.set_server_property("key1", "updated_value")
 
-    with open(server.server_properties_path, "r") as f:
+    with open(server.paths.server_properties_path, "r") as f:
         lines = f.readlines()
         assert "key1=updated_value\n" in lines
         assert "key2=value2\n" in lines

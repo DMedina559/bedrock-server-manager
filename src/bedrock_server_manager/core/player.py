@@ -75,7 +75,7 @@ async def discover_and_store_players(  # noqa: C901
                 )
                 continue
 
-            players_in_log = await server_instance.scan_log_for_players()
+            players_in_log = await server_instance.player_tracker.scan_log_for_players()
 
             if players_in_log:
                 all_discovered_from_logs.extend(players_in_log)

@@ -37,7 +37,7 @@ async def test_manual_players_persist_and_update_without_duplicates(app_context)
 
 
 async def test_log_scan_persists_real_player_entries(app_context, real_bedrock_server):
-    Path(real_bedrock_server.server_log_path).write_text(
+    Path(real_bedrock_server.paths.server_log_path).write_text(
         "[INFO] Player connected: Steve, xuid: 1234\n[INFO] Player connected: Alex, xuid: 5678\n"
     )
     response = await scan_and_update_player_db(

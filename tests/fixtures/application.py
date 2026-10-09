@@ -227,7 +227,7 @@ def password_hashes():
 @pytest_asyncio.fixture
 async def populated_server(real_bedrock_server, valid_mcworld_zip):
     world = await real_bedrock_server.get_world_name()
-    await real_bedrock_server.extract_mcworld(str(valid_mcworld_zip), world)
+    await real_bedrock_server.worlds.extract_mcworld(str(valid_mcworld_zip), world)
     return real_bedrock_server
 
 

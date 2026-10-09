@@ -1,35 +1,25 @@
 from bedrock_server_manager.core.bedrock_server import BedrockServer
 
 
-def test_bedrock_server_composition(app_context):
-    """Test that the BedrockServer correctly inherits all properties and methods from mixins."""
+def test_bedrock_server_components(app_context):
     server = BedrockServer(
-        server_name="composed_server",
+        "composed_server",
         settings=app_context.settings,
         app_context=app_context,
+        state=app_context.state,
+        storage=app_context.storage,
     )
-
-    # Check Base
     assert server.server_name == "composed_server"
-
-    # Check Install/Update mixin
-    assert hasattr(server, "install_or_update")
-
-    # Check Properties mixin
-    assert hasattr(server, "get_server_property")
-
-    # Check Allowlist/Permissions mixin
-    assert hasattr(server, "get_allowlist")
-    assert hasattr(server, "get_formatted_permissions")
-
-    # Check World/Backup mixin
-    assert hasattr(server, "backup_all_data")
-    assert hasattr(server, "has_world_icon")
-
-    # Check Process/State mixin
-    assert hasattr(server, "start")
-    assert hasattr(server, "get_status")
-
-    # Check Player/Addon mixin
-    assert hasattr(server, "update_online_players")
-    assert hasattr(server, "list_installed_addons")
+    for component in (
+        server.process,
+        server.configuration,
+        server.properties,
+        server.allowlist,
+        server.permissions,
+        server.worlds,
+        server.addons,
+        server.backups,
+        server.player_tracker,
+    ):
+        assert component.server is server
+    assert not hasattr(server, "install_or_update")

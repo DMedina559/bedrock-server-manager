@@ -24,7 +24,7 @@ from bedrock_server_manager.api.models import (
 
 async def test_config_backup_and_restore_round_trip(app_context, populated_server):
     name = populated_server.server_name
-    properties = Path(populated_server.server_dir) / "server.properties"
+    properties = Path(populated_server.paths.server_dir) / "server.properties"
     original = properties.read_bytes()
     assert (
         await backup_config_file(
@@ -57,7 +57,7 @@ async def test_world_backup_and_restore_preserves_world_files(
 ):
     name = populated_server.server_name
     world = (
-        Path(populated_server.server_dir)
+        Path(populated_server.paths.server_dir)
         / "worlds"
         / await populated_server.get_world_name()
     )
@@ -89,19 +89,36 @@ async def test_backup_all_and_restore_all_preserve_configuration(
     app_context, populated_server
 ):
     name = populated_server.server_name
-    original = (Path(populated_server.server_dir) / "server.properties").read_bytes()
+    original = (
+        Path(populated_server.paths.server_dir) / "server.properties"
+    ).read_bytes()
     assert (
         await backup_all(BackupAllRequest(server_name=name), app_context=app_context)
     ).status == "success"
-    (Path(populated_server.server_dir) / "server.properties").write_text("changed")
+    (Path(populated_server.paths.server_dir) / "server.properties").write_text(
+        "changed"
+    )
     assert (
         await restore_all(RestoreAllRequest(server_name=name), app_context=app_context)
     ).status == "success"
     assert (
-        Path(populated_server.server_dir) / "server.properties"
+        Path(populated_server.paths.server_dir) / "server.properties"
     ).read_bytes() == original
     assert (
         await prune_old_backups(
             PruneOldBackupsRequest(server_name=name), app_context=app_context
         )
     ).status == "success"
+
+
+async def test_api_prunes_existing_properties_backups(app_context, real_bedrock_server):
+    server = real_bedrock_server
+    await server.settings.set("retention.backups", 3)
+    for _ in range(3):
+        await server.backups.backup_config("server.properties")
+    await server.settings.set("retention.backups", 1)
+    response = await prune_old_backups(
+        PruneOldBackupsRequest(server_name=server.server_name), app_context=app_context
+    )
+    assert response.status == "success"
+    assert len(await server.backups.list_backups("properties")) == 1

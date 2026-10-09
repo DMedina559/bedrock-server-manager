@@ -186,7 +186,7 @@ async def test_guarded_process():
 async def test_launch_detached_process(tmp_path: Path, real_bedrock_server):
     """Test launch_detached_process using the dummy executable."""
     server = real_bedrock_server
-    exe_path = server.bedrock_executable_path
+    exe_path = server.paths.bedrock_executable_path
     cmd = [exe_path]
     launcher_pid_file = tmp_path / "launcher.pid"
 
@@ -250,9 +250,9 @@ async def test_verify_process_identity_success(real_bedrock_server):
     server = real_bedrock_server
     await server.start()
     await verify_process_identity(
-        server._process.pid,
-        expected_executable_path=server.bedrock_executable_path,
-        expected_cwd=server.server_dir,
+        server.process._process.pid,
+        expected_executable_path=server.paths.bedrock_executable_path,
+        expected_cwd=server.paths.server_dir,
     )
 
 
@@ -277,7 +277,7 @@ async def test_verify_process_identity_mismatch(
     }
     key, value, message = criteria[criterion]
     with pytest.raises(ServerProcessError, match=message):
-        await verify_process_identity(server._process.pid, **{key: value})
+        await verify_process_identity(server.process._process.pid, **{key: value})
     assert await server.is_running()
 
 
@@ -321,9 +321,9 @@ async def test_get_verified_bedrock_process_success(real_bedrock_server):
     server = real_bedrock_server
     await server.start()
     process = await get_verified_bedrock_process(
-        server.server_name, server.server_dir, server.app_config_dir
+        server.server_name, server.paths.server_dir, server.paths.app_config_dir
     )
-    assert process.pid == server._process.pid
+    assert process.pid == server.process._process.pid
     assert process.is_running()
 
 
@@ -332,7 +332,7 @@ async def test_get_verified_bedrock_process_no_pid(real_bedrock_server):
     assert not Path(server.get_pid_file_path()).exists()
     assert (
         await get_verified_bedrock_process(
-            server.server_name, server.server_dir, server.app_config_dir
+            server.server_name, server.paths.server_dir, server.paths.app_config_dir
         )
         is None
     )
@@ -341,13 +341,13 @@ async def test_get_verified_bedrock_process_no_pid(real_bedrock_server):
 async def test_get_verified_bedrock_process_stale_pid(real_bedrock_server):
     server = real_bedrock_server
     await server.start()
-    pid = server._process.pid
+    pid = server.process._process.pid
     await server.stop()
     path = server.get_pid_file_path()
     await write_pid_to_file(path, pid)
     assert (
         await get_verified_bedrock_process(
-            server.server_name, server.server_dir, server.app_config_dir
+            server.server_name, server.paths.server_dir, server.paths.app_config_dir
         )
         is None
     )
@@ -375,7 +375,7 @@ async def test_get_verified_bedrock_process_invalid_args():
 async def test_terminate_process_by_pid_graceful(real_bedrock_server):
     server = real_bedrock_server
     await server.start()
-    child = server._process
+    child = server.process._process
     await terminate_process_by_pid(child.pid)
     import asyncio
 
@@ -442,7 +442,7 @@ async def test_dummy_launch_and_verify(tmp_path: Path, real_bedrock_server):
     """Test process lifecycle using the real dummy binary."""
     # Use real_bedrock_server fixture to set up a valid dummy binary
     server = real_bedrock_server
-    exe_path = server.bedrock_executable_path
+    exe_path = server.paths.bedrock_executable_path
     cmd = [exe_path]
 
     launcher_pid_file = tmp_path / "launcher.pid"

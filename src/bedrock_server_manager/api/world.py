@@ -142,7 +142,7 @@ async def export_world(
             logger.info(
                 f"API: Exporting world '{world_name_str}' to '{export_file_path}'..."
             )
-            await server.export_world(world_name_str, export_file_path)
+            await server.worlds.export_world(world_name_str, export_file_path)
             logger.info(
                 f"API: World for server '{server_name}' exported to '{export_file_path}'."
             )
@@ -219,7 +219,9 @@ async def import_world(
                 logger.info(
                     f"API: Importing world from '{selected_filename}' into server '{server_name}'..."
                 )
-                imported_world_name = await server.import_world(selected_file_path)
+                imported_world_name = await server.worlds.import_world(
+                    selected_file_path
+                )
             logger.info(
                 f"API: World import from '{selected_filename}' for server '{server_name}' completed."
             )
@@ -288,7 +290,7 @@ async def reset_world(
                 logger.info(
                     f"API: Attempting to delete world directory for world '{world_name_for_msg}'..."
                 )
-                await server.delete_world()
+                await server.worlds.delete_world()
             logger.info(
                 f"API: World '{world_name_for_msg}' for server '{server_name}' has been successfully reset."
             )

@@ -24,7 +24,7 @@ async def test_player_endpoints_use_persistent_database(
     )
     assert response.status_code == 200
     assert response.json()["count"] == 1
-    Path(real_bedrock_server.server_log_path).write_text(
+    Path(real_bedrock_server.paths.server_log_path).write_text(
         "[INFO] Player connected: Alex, xuid: 5678\n"
     )
     assert (await admin_auth_client.put("/api/players/scan")).status_code == 200

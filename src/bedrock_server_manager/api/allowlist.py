@@ -41,7 +41,7 @@ async def add_to_allowlist(
     )
     try:
         server = app_context.get_server(server_name)
-        added_count = await server.add_to_allowlist(new_players_data)
+        added_count = await server.allowlist.add_to_allowlist(new_players_data)
         return AddToAllowlistResponse.model_validate(
             {
                 "status": "success",
@@ -76,7 +76,7 @@ async def get_allowlist(
         raise MissingArgumentError("Server name cannot be empty.")
     try:
         server = app_context.get_server(server_name)
-        players = await server.get_allowlist()
+        players = await server.allowlist.get_allowlist()
         return GetAllowlistResponse.model_validate(
             {"status": "success", "players": players}
         )
@@ -123,7 +123,7 @@ async def remove_from_allowlist(
         server = app_context.get_server(server_name)
         removed_players, not_found_players = ([], [])
         for player in player_names:
-            if await server.remove_from_allowlist(player):
+            if await server.allowlist.remove_from_allowlist(player):
                 removed_players.append(player)
             else:
                 not_found_players.append(player)

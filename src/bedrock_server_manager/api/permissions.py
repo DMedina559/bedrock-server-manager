@@ -39,7 +39,7 @@ async def set_permissions(
         raise InvalidServerNameError("Server name cannot be empty.")
     try:
         server = app_context.get_server(server_name)
-        await server.set_player_permission(xuid, permission, player_name)
+        await server.permissions.set_player_permission(xuid, permission, player_name)
         return SetPermissionsResponse.model_validate(
             {
                 "status": "success",
@@ -81,7 +81,7 @@ async def get_permissions(
         permissions: List[Dict[str, Any]] = []
         try:
             storage = app_context.storage
-            permissions = await server.get_formatted_permissions(storage)
+            permissions = await server.permissions.get_formatted_permissions(storage)
         except AppFileNotFoundError:
             permissions = []
         existing_xuids = {p.get("xuid") for p in permissions if p.get("xuid")}

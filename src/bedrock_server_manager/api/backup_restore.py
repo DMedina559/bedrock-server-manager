@@ -5,7 +5,7 @@ This module offers a high-level interface for managing the backup and restoratio
 of Bedrock server data. It orchestrates calls to methods of the
 :class:`~bedrock_server_manager.core.bedrock_server.BedrockServer` class,
 primarily those provided by the
-:class:`~bedrock_server_manager.core.server.backup_restore_mixin.ServerBackupMixin`.
+:class:`~bedrock_server_manager.core.server.backup_restore.ServerBackups`.
 
 Key functionalities include:
     - Listing available backup files (:func:`~.list_backup_files`).
@@ -75,7 +75,7 @@ async def list_backup_files(
         raise InvalidServerNameError("Server name cannot be empty.")
     try:
         server = app_context.get_server(server_name)
-        backup_data = await server.list_backups(backup_type)
+        backup_data = await server.backups.list_backups(backup_type)
         return ListBackupFilesResponse.model_validate(
             {"status": "success", "backups": backup_data}
         )
@@ -122,7 +122,7 @@ async def backup_world(
     try:
         logger.info(f"API: Initiating world backup for server '{server_name}'.")
         try:
-            backup_file = await server._backup_world_data_internal()
+            backup_file = await server.backups.backup_world()
             return BackupWorldResponse.model_validate(
                 {
                     "status": "success",
@@ -183,7 +183,9 @@ async def backup_config_file(
             f"API: Initiating config file backup for '{filename_base}' on server '{server_name}'."
         )
         try:
-            backup_file = await server._backup_config_file_internal(filename_base)
+            backup_file = await server.backups.backup_config(filename_base)
+            if backup_file is None:
+                raise AppFileNotFoundError(filename_base, "Server configuration file")
             return BackupConfigFileResponse.model_validate(
                 {
                     "status": "success",
@@ -239,7 +241,7 @@ async def backup_all(
     try:
         logger.info(f"API: Initiating full backup for server '{server_name}'.")
         try:
-            backup_results = await server.backup_all_data()
+            backup_results = await server.backups.backup_all_data()
             return BackupAllResponse.model_validate(
                 {
                     "status": "success",
@@ -304,7 +306,7 @@ async def restore_all(
                 restart_on_success_only=True,
                 app_context=app_context,
             ):
-                restore_results = await server.restore_all_data_from_latest()
+                restore_results = await server.backups.restore_all_data_from_latest()
             if not restore_results:
                 return RestoreAllResponse.model_validate(
                     {
@@ -383,7 +385,7 @@ async def restore_world(
                 restart_on_success_only=True,
                 app_context=app_context,
             ):
-                await server.import_world(backup_file_path)
+                await server.worlds.import_world(backup_file_path)
             return RestoreWorldResponse.model_validate(
                 {
                     "status": "success",
@@ -453,9 +455,7 @@ async def restore_config_file(
                 restart_on_success_only=True,
                 app_context=app_context,
             ):
-                restored_file = await server._restore_config_file_internal(
-                    backup_file_path
-                )
+                restored_file = await server.backups.restore_config(backup_file_path)
             return RestoreConfigFileResponse.model_validate(
                 {
                     "status": "success",
@@ -513,8 +513,8 @@ async def prune_old_backups(
             f"API: Initiating pruning of old backups for server '{server_name}'."
         )
         try:
-            if not server.server_backup_directory or not os.path.isdir(
-                server.server_backup_directory
+            if not server.backups.server_backup_directory or not os.path.isdir(
+                server.backups.server_backup_directory
             ):
                 return PruneOldBackupsResponse.model_validate(
                     {
@@ -525,8 +525,8 @@ async def prune_old_backups(
             pruning_errors = []
             try:
                 world_name = await server.get_world_name()
-                world_name_prefix = f"{world_name}_backup_"
-                await server.prune_server_backups(world_name_prefix, "mcworld")
+                world_name_prefix = server.backups._world_prefix(world_name)
+                await server.backups.prune_server_backups(world_name_prefix, "mcworld")
             except Exception as e:
                 err_msg = f"world backups ({type(e).__name__})"
                 pruning_errors.append(err_msg)
@@ -535,13 +535,13 @@ async def prune_old_backups(
                     exc_info=True,
                 )
             config_file_types = {
-                "server.properties_backup_": "properties",
+                "server_backup_": "properties",
                 "allowlist_backup_": "json",
                 "permissions_backup_": "json",
             }
             for prefix, ext in config_file_types.items():
                 try:
-                    await server.prune_server_backups(prefix, ext)
+                    await server.backups.prune_server_backups(prefix, ext)
                 except Exception as e:
                     err_msg = f"config backups ({prefix}*.{ext}) ({type(e).__name__})"
                     pruning_errors.append(err_msg)

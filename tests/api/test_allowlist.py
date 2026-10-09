@@ -63,7 +63,7 @@ def test_allowlist_requests_reject_invalid_input(model, payload):
 
 
 async def test_allowlist_empty_removal_preserves_disk(app_context, real_bedrock_server):
-    path = Path(real_bedrock_server.server_dir) / "allowlist.json"
+    path = Path(real_bedrock_server.paths.server_dir) / "allowlist.json"
     original = path.read_bytes()
     result = await remove_from_allowlist(
         RemoveFromAllowlistRequest(
@@ -78,7 +78,7 @@ async def test_allowlist_empty_removal_preserves_disk(app_context, real_bedrock_
 async def test_allowlist_api_reports_corrupt_disk_data(
     app_context, real_bedrock_server
 ):
-    (Path(real_bedrock_server.server_dir) / "allowlist.json").write_text("broken")
+    (Path(real_bedrock_server.paths.server_dir) / "allowlist.json").write_text("broken")
     with pytest.raises(BSMError):
         await get_allowlist(
             GetAllowlistRequest(server_name=real_bedrock_server.server_name),

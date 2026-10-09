@@ -1,56 +1,25 @@
-# bedrock_server_manager/core/server/player_mixin.py
-"""
-Provides the :class:`.ServerPlayerMixin` for the
-:class:`~.core.bedrock_server.BedrockServer` class.
-
-This mixin is responsible for scanning a server's log files (typically
-``server_output.txt``) to identify and extract player connection information.
-Specifically, it looks for lines indicating a player connection to parse out
-player gamertags and their corresponding XUIDs. This information can be used,
-for example, to populate a player database or track server activity.
-"""
+"""Bedrock player component."""
 
 import asyncio
 import os
 import re
-from typing import TYPE_CHECKING, Any, Dict, Iterator, List, Optional, Tuple
+from typing import TYPE_CHECKING, Dict, Iterator, List, Optional, Tuple
 
 from ...error import FileOperationError
-from .base_server_mixin import BedrockServerBaseMixin
 
 if TYPE_CHECKING:
-    pass
+    from ..bedrock_server import BedrockServer
 
 
-class ServerPlayerMixin(BedrockServerBaseMixin):
-    """Provides methods for discovering player information by scanning server logs.
+class ServerPlayers:
+    """Player operations for one Bedrock server."""
 
-    This mixin extends :class:`.BedrockServerBaseMixin` and adds the capability
-    to parse the server's log file (typically located at
-    :attr:`~.BedrockServerBaseMixin.server_log_path`) for entries that indicate
-    player connections. It extracts player gamertags and their XUIDs from these
-    log entries.
+    def __init__(self, server: "BedrockServer") -> None:
+        self.server = server
+        self._log_file_cursor = 0
+        self._scan_log_cursor = 0
 
-    The primary method offered is :meth:`.scan_log_for_players`, which performs
-    this scanning operation.
-    """
-
-    def __init__(self, *args: Any, **kwargs: Any) -> None:
-        """Initializes the ServerPlayerMixin.
-
-        Calls ``super().__init__(*args, **kwargs)`` to participate in cooperative
-        multiple inheritance. It relies on attributes initialized by
-        :class:`.BedrockServerBaseMixin`, such as `server_name`,
-        `server_log_path` (used by :meth:`.scan_log_for_players`), and `logger`.
-
-        Args:
-            *args (Any): Variable length argument list passed to `super()`.
-            **kwargs (Any): Arbitrary keyword arguments passed to `super()`.
-        """
-        super().__init__(*args, **kwargs)
-        # Attributes from BedrockServerBaseMixin are available.
-
-    def _parse_player_log_events(  # noqa: C901
+    def _parse_player_log_events(
         self, start_cursor: int = 0
     ) -> Iterator[Tuple[Optional[str], Optional[str], Optional[str], int]]:
         """A generator that safely and incrementally parses the server log file.
@@ -65,34 +34,25 @@ class ServerPlayerMixin(BedrockServerBaseMixin):
             Tuple[str, str, str, int]: A tuple containing the event type ("connect" or "disconnect"),
             the player's name, the player's XUID, and the cursor position right after reading the line.
         """
-        log_file = self.server_log_path
+        log_file = self.server.paths.server_log_path
         if not os.path.isfile(log_file):
             return
-
         try:
             with open(log_file, "rb") as f:
                 f.seek(start_cursor)
-
                 while True:
                     cursor_before_line = f.tell()
                     line_bytes = f.readline()
-
                     if not line_bytes:
-                        # Reached EOF safely
-                        yield None, None, None, f.tell()
+                        yield (None, None, None, f.tell())
                         break
-
                     if not line_bytes.endswith(b"\n"):
-                        # Incomplete line, revert cursor and stop parsing for now
                         f.seek(cursor_before_line)
-                        yield None, None, None, f.tell()
+                        yield (None, None, None, f.tell())
                         break
-
                     line = line_bytes.decode("utf-8", errors="ignore")
-
-                    # Match connection
                     match_conn = re.search(
-                        r"Player connected:\s*([^,]+?)(?:,\s*|\s+)xuid:\s*(\d+)",
+                        "Player connected:\\s*([^,]+?)(?:,\\s*|\\s+)xuid:\\s*(\\d+)",
                         line,
                         re.IGNORECASE,
                     )
@@ -102,24 +62,21 @@ class ServerPlayerMixin(BedrockServerBaseMixin):
                             match_conn.group(2).strip(),
                         )
                         if name and xuid:
-                            yield "connect", name, xuid, f.tell()
+                            yield ("connect", name, xuid, f.tell())
                     else:
-                        # Match disconnection
                         match_disconn = re.search(
-                            r"Player disconnected:\s*([^,]+?)(?:,\s*|\s+)xuid:\s*(\d+)",
+                            "Player disconnected:\\s*([^,]+?)(?:,\\s*|\\s+)xuid:\\s*(\\d+)",
                             line,
                             re.IGNORECASE,
                         )
                         if match_disconn:
                             xuid = match_disconn.group(2).strip()
-                            # Disconnect log provides name and xuid in same format
                             name = match_disconn.group(1).strip()
                             if name and xuid:
-                                yield "disconnect", name, xuid, f.tell()
-
+                                yield ("disconnect", name, xuid, f.tell())
         except OSError as e:
-            self.logger.error(
-                f"Error parsing log file '{log_file}' for server '{self.server_name}': {e}",
+            self.server.logger.error(
+                f"Error parsing log file '{log_file}' for server '{self.server.server_name}': {e}",
                 exc_info=True,
             )
 
@@ -129,7 +86,7 @@ class ServerPlayerMixin(BedrockServerBaseMixin):
         """Scans the server's log file for player connection entries to extract gamertags and XUIDs asynchronously.
 
         This method reads the server's primary output log file (obtained via
-        :attr:`~.BedrockServerBaseMixin.server_log_path`) to find player connections.
+        :attr:`~.ServerResources.server_log_path`) to find player connections.
         It collects unique players based on their XUID to avoid duplicates.
 
         Args:
@@ -150,44 +107,31 @@ class ServerPlayerMixin(BedrockServerBaseMixin):
             FileOperationError: If an OS-level error occurs while trying to read
                 the log file (e.g., permission issues).
         """
-        if not getattr(self, "_scan_log_cursor", None):
-            self._scan_log_cursor = 0
-
-        log_file = self.server_log_path
-        self.logger.debug(
-            f"Server '{self.server_name}': Scanning log file for players: {log_file} (incremental={incremental}) asynchronously"
+        log_file = self.server.paths.server_log_path
+        self.server.logger.debug(
+            f"Server '{self.server.server_name}': Scanning log file for players: {log_file} (incremental={incremental}) asynchronously"
         )
-
-        start_pos = getattr(self, "_scan_log_cursor", 0) if incremental else 0
+        start_pos = self._scan_log_cursor if incremental else 0
         unique_players = {}
-
         try:
-            for (
-                event_type,
-                name,
-                xuid,
-                new_cursor,
-            ) in await asyncio.to_thread(
+            for event_type, name, xuid, new_cursor in await asyncio.to_thread(
                 lambda: list(self._parse_player_log_events(start_pos))
             ):
                 if event_type == "connect" and name and xuid:
                     unique_players[xuid] = name
-
                 if incremental:
                     self._scan_log_cursor = new_cursor
-
             found_players = [
                 {"name": name, "xuid": xuid} for xuid, name in unique_players.items()
             ]
-
             if found_players:
-                self.logger.debug(
-                    f"Server '{self.server_name}': Found {len(found_players)} unique player(s) in log."
+                self.server.logger.debug(
+                    f"Server '{self.server.server_name}': Found {len(found_players)} unique player(s) in log."
                 )
             return found_players
         except OSError as e:
-            self.logger.error(
-                f"Server '{self.server_name}': Failed to read log file '{log_file}' for player scanning: {e}"
+            self.server.logger.error(
+                f"Server '{self.server.server_name}': Failed to read log file '{log_file}' for player scanning: {e}"
             )
             raise FileOperationError(
                 f"Could not read log file for player scanning: {e}"
@@ -203,30 +147,17 @@ class ServerPlayerMixin(BedrockServerBaseMixin):
             List[Dict[str, str]]: The updated list of dictionaries for each currently
             online player, containing their "name" and "xuid".
         """
-        is_running = await self.is_running()  # type: ignore
-
+        is_running = await self.server.is_running()
         if not is_running:
-            players = getattr(self, "players", [])
-            if players:
-                self.logger.debug(
-                    f"Server '{self.server_name}' is stopped. Clearing online players list."
-                )
-                players.clear()
+            self.server.players = []
             return []
-
-        if not getattr(self, "_log_file_cursor", None):
-            self._log_file_cursor = 0
-        if not getattr(self, "players", None):
-            self.players: List[Dict[str, str]] = []  # type: ignore[has-type, no-redef]
-
         online_players: Dict[str, str] = {}
-        for p in self.players:  # type: ignore[has-type]
+        for p in self.server.players:
             if isinstance(p, dict):
                 p_xuid = p.get("xuid")
                 p_name = p.get("name")
                 if p_xuid and p_name:
                     online_players[str(p_xuid)] = str(p_name)
-
         events = await asyncio.to_thread(
             lambda: list(self._parse_player_log_events(self._log_file_cursor))
         )
@@ -236,14 +167,15 @@ class ServerPlayerMixin(BedrockServerBaseMixin):
             elif event_type == "disconnect" and xuid:
                 if xuid in online_players:
                     del online_players[xuid]
-
-            # Update cursor position to right after the parsed line
             self._log_file_cursor = new_cursor
-
         setattr(
-            self,
+            self.server,
             "players",
             [{"name": name, "xuid": xuid} for xuid, name in online_players.items()],
         )
+        return getattr(self.server, "players", [])
 
-        return getattr(self, "players", [])
+    def reset(self) -> None:
+        """Reset both log consumers when the process starts or stops."""
+        self._log_file_cursor = 0
+        self._scan_log_cursor = 0

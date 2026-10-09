@@ -143,7 +143,7 @@ async def import_addon(
                 logger.info(
                     f"API: Processing addon file '{addon_filename}' for server '{server_name}'..."
                 )
-                await server.process_addon_file(addon_file_path)
+                await server.addons.process_addon_file(addon_file_path)
                 logger.info(
                     f"API: Core addon processing completed for '{addon_filename}' on '{server_name}'."
                 )
@@ -181,7 +181,7 @@ async def list_installed_addons(
     server_name = request.server_name
     server = app_context.get_server(server_name)
     return ListInstalledAddonsResponse.model_validate(
-        {"status": "success", "addons": await server.list_installed_addons()}
+        {"status": "success", "addons": await server.addons.list_installed_addons()}
     )
 
 
@@ -220,7 +220,7 @@ async def enable_addon(
             restart_on_success_only=True,
             app_context=app_context,
         ):
-            await server.enable_addon(pack_uuid=pack_uuid, pack_type=pack_type)
+            await server.addons.enable_addon(pack_uuid=pack_uuid, pack_type=pack_type)
         return EnableAddonResponse.model_validate(
             {
                 "status": "success",
@@ -278,7 +278,7 @@ async def disable_addon(
             restart_on_success_only=True,
             app_context=app_context,
         ):
-            await server.disable_addon(pack_uuid=pack_uuid, pack_type=pack_type)
+            await server.addons.disable_addon(pack_uuid=pack_uuid, pack_type=pack_type)
         return DisableAddonResponse.model_validate(
             {
                 "status": "success",
@@ -337,7 +337,7 @@ async def update_subpack(
             restart_on_success_only=True,
             app_context=app_context,
         ):
-            await server.update_subpack(
+            await server.addons.update_subpack(
                 pack_uuid=pack_uuid, pack_type=pack_type, subpack_name=subpack_name
             )
         return UpdateSubpackResponse.model_validate(
@@ -397,7 +397,7 @@ async def uninstall_addon(
             restart_on_success_only=True,
             app_context=app_context,
         ):
-            await server.remove_addon(pack_uuid=pack_uuid, pack_type=pack_type)
+            await server.addons.remove_addon(pack_uuid=pack_uuid, pack_type=pack_type)
         return UninstallAddonResponse.model_validate(
             {
                 "status": "success",
@@ -455,7 +455,7 @@ async def reorder_addons(
             restart_on_success_only=True,
             app_context=app_context,
         ):
-            await server.reorder_addons(uuids=uuids, pack_type=pack_type)
+            await server.addons.reorder_addons(uuids=uuids, pack_type=pack_type)
         return ReorderAddonsResponse.model_validate(
             {
                 "status": "success",

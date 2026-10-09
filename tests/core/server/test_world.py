@@ -12,7 +12,7 @@ async def test_extract_mcworld(real_bedrock_server, tmp_path, valid_mcworld_zip)
     zip_path = valid_mcworld_zip
 
     extract_dir = tmp_path / "extracted_world"
-    await server.extract_mcworld(str(zip_path), str(extract_dir))
+    await server.worlds.extract_mcworld(str(zip_path), str(extract_dir))
 
     assert os.path.exists(extract_dir)
     assert os.path.exists(os.path.join(extract_dir, "level.dat"))
@@ -22,7 +22,7 @@ async def test_export_world(real_bedrock_server, tmp_path):
     """Test exporting a world offline."""
     server = real_bedrock_server
 
-    world_dir = os.path.join(server.server_dir, "worlds")
+    world_dir = os.path.join(server.paths.server_dir, "worlds")
     os.makedirs(world_dir, exist_ok=True)
 
     world_zip_path = create_mcworld(str(tmp_path), name="test_world")
@@ -36,7 +36,7 @@ async def test_export_world(real_bedrock_server, tmp_path):
 
     export_target = os.path.join(str(tmp_path), "exported_world.mcworld")
 
-    await server.export_world("test_world", export_target)
+    await server.worlds.export_world("test_world", export_target)
 
     assert os.path.exists(export_target)
     assert export_target.endswith(".mcworld")
@@ -46,7 +46,7 @@ async def test_live_export_world(real_bedrock_server, tmp_path):
     """Test live world export using save hold/query/resume."""
     server = real_bedrock_server
 
-    world_dir = os.path.join(server.server_dir, "worlds")
+    world_dir = os.path.join(server.paths.server_dir, "worlds")
     os.makedirs(world_dir, exist_ok=True)
 
     world_path = os.path.join(world_dir, "test_world")
@@ -64,8 +64,7 @@ async def test_live_export_world(real_bedrock_server, tmp_path):
     with open(icon_file, "wb") as f:
         f.write(b"Z" * 30)
 
-    log_file = os.path.join(server.server_dir, "server_output.txt")
-    server.server_log_path = log_file
+    log_file = os.path.join(server.paths.server_dir, "server_output.txt")
 
     sent_commands = []
 
@@ -88,7 +87,7 @@ async def test_live_export_world(real_bedrock_server, tmp_path):
             server, "get_world_name", new_callable=AsyncMock, return_value="test_world"
         ),
     ):
-        await server.export_world("test_world", export_target)
+        await server.worlds.export_world("test_world", export_target)
 
     assert os.path.exists(export_target)
     assert "save hold" in sent_commands
@@ -96,16 +95,16 @@ async def test_live_export_world(real_bedrock_server, tmp_path):
     assert "save resume" in sent_commands
 
     # Verify extracted mcworld contents and file truncation sizes
-    await server.extract_mcworld(export_target, "extracted_live")
+    await server.worlds.extract_mcworld(export_target, "extracted_live")
 
     ext_ldb = os.path.join(
-        server.server_dir, "worlds", "extracted_live", "db", "000001.ldb"
+        server.paths.server_dir, "worlds", "extracted_live", "db", "000001.ldb"
     )
     ext_level_dat = os.path.join(
-        server.server_dir, "worlds", "extracted_live", "level.dat"
+        server.paths.server_dir, "worlds", "extracted_live", "level.dat"
     )
     ext_icon = os.path.join(
-        server.server_dir, "worlds", "extracted_live", "world_icon.jpeg"
+        server.paths.server_dir, "worlds", "extracted_live", "world_icon.jpeg"
     )
 
     assert os.path.exists(ext_ldb)
@@ -120,7 +119,7 @@ async def test_live_export_world_finally_resume_on_timeout(
     """Test that save resume is executed in finally block even if save query times out."""
     server = real_bedrock_server
 
-    world_dir = os.path.join(server.server_dir, "worlds")
+    world_dir = os.path.join(server.paths.server_dir, "worlds")
     os.makedirs(world_dir, exist_ok=True)
     os.makedirs(os.path.join(world_dir, "test_world"), exist_ok=True)
 
@@ -135,7 +134,7 @@ async def test_live_export_world_finally_resume_on_timeout(
     from bedrock_server_manager.error import BackupRestoreError
 
     with pytest.raises(BackupRestoreError):
-        await server._live_export_world(
+        await server.worlds._live_export_world(
             "test_world", export_target, poll_interval=0.01, timeout=0.05
         )
 
@@ -147,12 +146,12 @@ async def test_live_export_world_finally_resume_on_timeout(
 async def test_delete_world(real_bedrock_server):
     """Test deleting the active world."""
     server = real_bedrock_server
-    world_dir = os.path.join(server.server_dir, "worlds", "test_world")
+    world_dir = os.path.join(server.paths.server_dir, "worlds", "test_world")
     os.makedirs(world_dir, exist_ok=True)
 
     assert os.path.exists(world_dir)
-    await server.set_server_property("level-name", "test_world")
-    assert await server.delete_world() is True
+    await server.properties.set_server_property("level-name", "test_world")
+    assert await server.worlds.delete_world() is True
 
     assert not os.path.exists(world_dir)
 
@@ -163,15 +162,15 @@ async def test_import_world(real_bedrock_server, tmp_path, valid_mcworld_zip):
 
     zip_path = valid_mcworld_zip
 
-    await server.set_server_property("level-name", "test_world")
-    world_name = await server.import_world(str(zip_path))
+    await server.properties.set_server_property("level-name", "test_world")
+    world_name = await server.worlds.import_world(str(zip_path))
 
     assert world_name == "test_world"
 
     # valid_mcworld_zip uses "Test World" so the extracted directory might be differently named,
     # but import_world copies it under the target world name or the zip name.
     # We'll just verify the level.dat exists in the imported directory
-    expected_world_dir = os.path.join(server.server_dir, "worlds", "test_world")
+    expected_world_dir = os.path.join(server.paths.server_dir, "worlds", "test_world")
     assert os.path.exists(expected_world_dir)
     assert os.path.exists(os.path.join(expected_world_dir, "level.dat"))
 
@@ -186,4 +185,4 @@ async def test_import_world_invalid(real_bedrock_server, tmp_path):
     from bedrock_server_manager.error import BackupRestoreError
 
     with pytest.raises(BackupRestoreError):
-        await server.import_world(str(invalid_path))
+        await server.worlds.import_world(str(invalid_path))

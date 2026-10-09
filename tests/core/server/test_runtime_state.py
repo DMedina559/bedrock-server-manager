@@ -16,7 +16,7 @@ async def test_process_probe_updates_runtime_and_stopped_probe_clears_stats(
 ):
     server = real_bedrock_server
     await server.start()
-    child = server._process
+    child = server.process._process
     assert await server.is_running()
     snapshot = server.state.runtime.get_server_runtime(server.server_name)
     assert snapshot.running and snapshot.pid == child.pid
@@ -43,18 +43,18 @@ async def test_running_probe_replaces_stale_process_identity(
     real_bedrock_server, monkeypatch
 ):
     server = real_bedrock_server
-    server._process = SimpleNamespace(pid=111, returncode=0)
+    server.process._process = SimpleNamespace(pid=111, returncode=0)
     recovered = SimpleNamespace(pid=222)
     monkeypatch.setattr(
-        "bedrock_server_manager.core.server.process_mixin.system_base.is_server_running",
+        "bedrock_server_manager.core.server.process.system_base.is_server_running",
         AsyncMock(return_value=True),
     )
     monkeypatch.setattr(
-        "bedrock_server_manager.core.server.process_mixin.system_process.get_verified_bedrock_process",
+        "bedrock_server_manager.core.server.process.system_process.get_verified_bedrock_process",
         AsyncMock(return_value=recovered),
     )
     assert await server.is_running()
-    assert server._process is recovered
+    assert server.process._process is recovered
     assert server.state.runtime.get_server_runtime(server.server_name).pid == 222
 
 
@@ -70,8 +70,8 @@ async def test_failed_start_reaps_child_and_closes_handles(
     write_pid = process.write_pid_to_file
 
     async def fail_after_pid_write(path, pid):
-        observed["child"] = server._process
-        observed["log"] = server._log_file_handle
+        observed["child"] = server.process._process
+        observed["log"] = server.process._log_file_handle
         await write_pid(path, pid)
         raise failure_type("Injected PID write failure")
 
@@ -86,8 +86,8 @@ async def test_failed_start_reaps_child_and_closes_handles(
             await server.start()
     assert observed["child"].returncode is not None
     assert observed["log"].closed
-    assert server._process is None
-    assert server._log_file_handle is None
+    assert server.process._process is None
+    assert server.process._log_file_handle is None
     assert not Path(server.get_pid_file_path()).exists()
     assert not server.state.runtime.get_server_runtime(server.server_name).running
     assert not await server.is_running()
@@ -106,7 +106,7 @@ async def test_cancel_during_spawn_retains_child_until_cleanup(
     async def gated_spawn(*args, **kwargs):
         child = await create_process(*args, **kwargs)
         observed["child"] = child
-        observed["log"] = server._log_file_handle
+        observed["log"] = server.process._log_file_handle
         started.set()
         await released.wait()
         return child
@@ -124,8 +124,8 @@ async def test_cancel_during_spawn_retains_child_until_cleanup(
                     await start
             assert observed["child"].returncode is not None
             assert observed["log"].closed
-            assert server._process is None
-            assert server._log_file_handle is None
+            assert server.process._process is None
+            assert server.process._log_file_handle is None
             assert not Path(server.get_pid_file_path()).exists()
             assert not server.state.runtime.get_server_runtime(
                 server.server_name

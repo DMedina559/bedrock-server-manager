@@ -38,12 +38,14 @@ async def test_overlapping_starts_retain_one_child(real_bedrock_server, monkeypa
 
     monkeypatch.setattr(server, "is_installed", AsyncMock(return_value=True))
     monkeypatch.setattr(
-        server, "is_running", AsyncMock(side_effect=lambda: server._process is not None)
+        server,
+        "is_running",
+        AsyncMock(side_effect=lambda: server.process._process is not None),
     )
     monkeypatch.setattr(server, "set_status_in_config", AsyncMock())
     monkeypatch.setattr("asyncio.create_subprocess_exec", spawn)
     monkeypatch.setattr(
-        "bedrock_server_manager.core.server.process_mixin.system_process.write_pid_to_file",
+        "bedrock_server_manager.core.server.process.system_process.write_pid_to_file",
         AsyncMock(),
     )
     starts = [asyncio.create_task(server.start()) for _ in range(2)]
@@ -60,8 +62,8 @@ async def test_overlapping_starts_retain_one_child(real_bedrock_server, monkeypa
         await asyncio.gather(*starts, return_exceptions=True)
         for handle in handles:
             handle.close()
-        server._process = None
-        server._log_file_handle = None
+        server.process._process = None
+        server.process._log_file_handle = None
 
 
 @pytest.mark.asyncio
@@ -122,7 +124,7 @@ async def test_async_backup_cancellation_retains_lock_until_thread_finishes(
         "bedrock_server_manager.core.files.shutil.copystat",
         lambda *args: None,
     )
-    server_dir = __import__("pathlib").Path(server.server_dir)
+    server_dir = __import__("pathlib").Path(server.paths.server_dir)
     (server_dir / "server.properties").write_text("test")
     tm = TaskManager(None)
     task_id = await tm.run_task(
