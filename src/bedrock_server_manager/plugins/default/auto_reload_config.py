@@ -10,8 +10,7 @@ from bedrock_server_manager.api.models.allowlist import (
     AddToAllowlistResponse,
     RemoveFromAllowlistResponse,
 )
-
-from ...logging import log_operation_error
+from bedrock_server_manager.logging import log_operation_error
 
 
 class AutoReloadPlugin(PluginBase):

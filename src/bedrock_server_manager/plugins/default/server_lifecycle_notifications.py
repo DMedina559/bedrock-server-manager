@@ -7,8 +7,7 @@ import asyncio
 from typing import Any
 
 from bedrock_server_manager import PluginBase, app_event
-
-from ...logging import log_operation_error
+from bedrock_server_manager.logging import log_operation_error
 
 
 class ServerLifecycleNotificationsPlugin(PluginBase):

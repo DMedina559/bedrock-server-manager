@@ -6,8 +6,7 @@ Plugin to send in-game notifications before world operations like export, import
 from typing import Any
 
 from bedrock_server_manager import PluginBase, app_event
-
-from ...logging import log_operation_error
+from bedrock_server_manager.logging import log_operation_error
 
 
 class WorldOperationNotificationsPlugin(PluginBase):

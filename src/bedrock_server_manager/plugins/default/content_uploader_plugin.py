@@ -12,9 +12,8 @@ from fastapi import APIRouter, Depends, File, Request, UploadFile
 from fastapi.responses import JSONResponse
 
 from bedrock_server_manager import PluginBase, app_event
+from bedrock_server_manager.logging import log_operation_error
 from bedrock_server_manager.web import get_admin_user
-
-from ...logging import log_operation_error
 
 # Define allowed extensions
 ALLOWED_EXTENSIONS = {".mcworld", ".mcpack", ".mcaddon"}
