@@ -3,6 +3,8 @@ import os
 
 import pytest
 
+from bedrock_server_manager.error import FileOperationError
+
 
 async def test_get_formatted_permissions(real_bedrock_server, app_context):
     """Test retrieving formatted permissions including names from a map."""
@@ -86,7 +88,7 @@ async def test_set_player_permission_unwritable_file(real_bedrock_server):
     os.chmod(permissions_path, 0o444)
     os.chmod(os.path.dirname(permissions_path), 0o555)
     try:
-        with pytest.raises(Exception):
+        with pytest.raises(FileOperationError, match="Failed to write permissions"):
             await server.set_player_permission("12345", "operator")
     finally:
         os.chmod(os.path.dirname(permissions_path), 0o755)

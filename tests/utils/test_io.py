@@ -1,135 +1,77 @@
 import asyncio
-import os
-import shutil
-import tempfile
-from unittest import mock
+from pathlib import Path
 
 import pytest
 
-from bedrock_server_manager.utils.io import (
-    load_json,
-    load_lines,
-    save_json,
-    save_lines,
-)
+from bedrock_server_manager.utils.io import load_json, load_lines, save_json, save_lines
 
 
-@pytest.fixture
-def temp_dir():
-    d = tempfile.mkdtemp()
-    yield d
-    shutil.rmtree(d)
+@pytest.mark.parametrize("kind", ["json", "lines"])
+async def test_atomic_save_round_trip(tmp_path, kind):
+    path = tmp_path / "nested" / f"round_trip.{kind}"
+    save, load = (save_json, load_json) if kind == "json" else (save_lines, load_lines)
+    data = (
+        {"key": "value", "unicode": "café", "list": [1, 2, 3]}
+        if kind == "json"
+        else ["line 1\n", "café\n"]
+    )
+    await save(data, str(path))
+    assert await load(str(path)) == data
+    assert not list(path.parent.glob("*.tmp"))
 
 
-async def test_save_and_load_json(temp_dir):
-    filepath = os.path.join(temp_dir, "test.json")
-    data = {"key": "value", "list": [1, 2, 3]}
-
-    await save_json(data, filepath)
-
-    assert os.path.exists(filepath)
-    assert not os.path.exists(filepath + ".tmp")
-
-    loaded_data = await load_json(filepath)
-    assert loaded_data == data
-
-
-async def test_save_json_concurrency(temp_dir):
-    """
-    Test 50 rapid concurrent saves to the same file.
-    Uses asyncio.Lock() to mimic real-world usage in BaseServerMixin
-    and prevent Windows PermissionError (WinError 5) during os.replace.
-    """
-    filepath = os.path.join(temp_dir, "concurrent.json")
-    lock = asyncio.Lock()
-
-    async def save_task(i):
-        data = {"count": i}
-        # Safely acquire the lock before doing the file operation
-        async with lock:
-            await save_json(data, filepath)
-
-    tasks = [save_task(i) for i in range(50)]
-    await asyncio.gather(*tasks)
-
-    # We just want to ensure it didn't crash and the file is valid JSON
-    assert os.path.exists(filepath)
-    loaded = await load_json(filepath)
-    assert "count" in loaded
+@pytest.mark.parametrize("kind", ["json", "lines"])
+async def test_atomic_save_concurrent_writers_leave_one_complete_result(tmp_path, kind):
+    path = tmp_path / f"concurrent.{kind}"
+    save, load = (save_json, load_json) if kind == "json" else (save_lines, load_lines)
+    candidates = [
+        (
+            {"writer": i, "payload": str(i) * 1000}
+            if kind == "json"
+            else [f"writer {i}\n", f"payload {i}\n"]
+        )
+        for i in range(50)
+    ]
+    # Unique temporary files and atomic replacement must protect concurrent callers.
+    await asyncio.gather(*(save(data, str(path)) for data in candidates))
+    assert await load(str(path)) in candidates
+    assert not list(tmp_path.glob("*.tmp"))
 
 
-async def test_save_json_fault_tolerance(temp_dir):
-    """
-    Mock a failure during the JSON dump to ensure the original file
-    is not overwritten and the tmp file is cleaned up.
-    """
-    filepath = os.path.join(temp_dir, "fault_test.json")
-    original_data = {"status": "original"}
+@pytest.mark.parametrize("kind", ["json", "lines"])
+@pytest.mark.parametrize("failure", ["serialization", "replacement"])
+async def test_atomic_save_failure_preserves_original_and_removes_temporary_file(
+    tmp_path, monkeypatch, kind, failure
+):
+    path = tmp_path / f"original.{kind}"
+    save, load = (save_json, load_json) if kind == "json" else (save_lines, load_lines)
+    original = {"state": "original"} if kind == "json" else ["original\n"]
+    replacement = {"state": "replacement"} if kind == "json" else ["replacement\n"]
+    await save(original, str(path))
+    original_bytes = path.read_bytes()
+    if failure == "serialization":
+        invalid = {"invalid": object()} if kind == "json" else [object()]
+        with pytest.raises(TypeError):
+            await save(invalid, str(path))
+    else:
+        observed = []
 
-    # Write the initial valid file
-    await save_json(original_data, filepath)
+        def fail_replace(source, target):
+            temporary = Path(source)
+            assert temporary.is_file()
+            assert temporary.read_bytes()
+            assert path.read_bytes() == original_bytes
+            observed.append(temporary)
+            raise OSError("Injected atomic replacement failure")
 
-    corrupt_data = {"status": "corrupting"}
-
-    # Force a failure during the open/dump phase
-    with mock.patch("builtins.open", side_effect=OSError("Disk failure")):
-        with pytest.raises(OSError, match="Disk failure"):
-            await save_json(corrupt_data, filepath)
-
-    # Verify original file is perfectly intact
-    loaded = await load_json(filepath)
-    assert loaded == original_data
-
-    # Verify temp file was cleaned up (or never successfully created)
-    assert not os.path.exists(filepath + ".tmp")
-
-
-async def test_save_and_load_lines(temp_dir):
-    filepath = os.path.join(temp_dir, "test.txt")
-    lines = ["line 1\n", "line 2\n", "line 3\n"]
-
-    await save_lines(lines, filepath)
-
-    assert os.path.exists(filepath)
-
-    loaded_lines = await load_lines(filepath)
-    assert loaded_lines == lines
-
-
-async def test_save_lines_concurrency(temp_dir):
-    """
-    Test 50 rapid concurrent line saves to the same file.
-    Uses asyncio.Lock() to prevent Windows locking errors.
-    """
-    filepath = os.path.join(temp_dir, "concurrent_lines.txt")
-    lock = asyncio.Lock()
-
-    async def save_task(i):
-        lines = [f"line {i}\n"]
-        # Safely acquire the lock before doing the file operation
-        async with lock:
-            await save_lines(lines, filepath)
-
-    tasks = [save_task(i) for i in range(50)]
-    await asyncio.gather(*tasks)
-
-    assert os.path.exists(filepath)
-    loaded = await load_lines(filepath)
-    assert len(loaded) == 1
-    assert loaded[0].startswith("line ")
-
-
-async def test_save_lines_fault_tolerance(temp_dir):
-    filepath = os.path.join(temp_dir, "fault_test_lines.txt")
-    original_lines = ["original\n"]
-
-    await save_lines(original_lines, filepath)
-
-    corrupt_lines = ["corrupting\n"]
-
-    with mock.patch("builtins.open", side_effect=OSError("Disk failure")):
-        with pytest.raises(OSError, match="Disk failure"):
-            await save_lines(corrupt_lines, filepath)
-
-    loaded = await load_lines(filepath)
-    assert loaded == original_lines
+        with monkeypatch.context() as fault:
+            fault.setattr("bedrock_server_manager.utils.io.os.replace", fail_replace)
+            with pytest.raises(OSError, match="Injected atomic replacement failure"):
+                await save(replacement, str(path))
+        assert len(observed) == 1
+        assert not observed[0].exists()
+    assert path.read_bytes() == original_bytes
+    assert await load(str(path)) == original
+    assert not list(tmp_path.glob("*.tmp"))
+    await save(replacement, str(path))
+    assert await load(str(path)) == replacement
