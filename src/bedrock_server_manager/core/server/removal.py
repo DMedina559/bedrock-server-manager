@@ -22,20 +22,20 @@ async def set_filesystem_permissions(server: "BedrockServer") -> None:
     """Sets appropriate filesystem permissions for the server's installation directory asynchronously."""
     if not await server.is_installed():
         raise AppFileNotFoundError(
-            server.server_dir,
+            server.paths.server_dir,
             "Cannot set permissions: Server installation directory or executable not found",
         )
     server.logger.info(
-        f"Setting filesystem permissions for server directory: {server.server_dir} asynchronously"
+        f"Setting filesystem permissions for server directory: {server.paths.server_dir} asynchronously"
     )
     try:
-        await system_base.set_server_folder_permissions(server.server_dir)
+        await system_base.set_server_folder_permissions(server.paths.server_dir)
         server.logger.info(
-            f"Successfully set permissions for server '{server.server_name}' at '{server.server_dir}'."
+            f"Successfully set permissions for server '{server.server_name}' at '{server.paths.server_dir}'."
         )
     except (MissingArgumentError, AppFileNotFoundError, PermissionsError) as e_perm:
         server.logger.error(
-            f"Failed to set permissions for '{server.server_dir}': {e_perm}"
+            f"Failed to set permissions for '{server.paths.server_dir}': {e_perm}"
         )
         raise
     except Exception as e_unexp:
@@ -53,16 +53,16 @@ async def delete_server_files(
     item_description_prefix: str = "server installation files for",
 ) -> bool:
     """Deletes the server's entire installation directory asynchronously."""
-    if not await aiofiles.ospath.exists(server.server_dir):
+    if not await aiofiles.ospath.exists(server.paths.server_dir):
         server.logger.info(
-            f"Server directory '{server.server_dir}' for '{server.server_name}' does not exist. Nothing to delete."
+            f"Server directory '{server.paths.server_dir}' for '{server.server_name}' does not exist. Nothing to delete."
         )
         return True
     server.logger.warning(
-        f"Attempting to delete {item_description_prefix} server '{server.server_name}' at '{server.server_dir}' asynchronously. THIS IS DESTRUCTIVE."
+        f"Attempting to delete {item_description_prefix} server '{server.server_name}' at '{server.paths.server_dir}' asynchronously. THIS IS DESTRUCTIVE."
     )
     return await system_base.delete_path_robustly(
-        server.server_dir, f"{item_description_prefix} '{server.server_name}'"
+        server.paths.server_dir, f"{item_description_prefix} '{server.server_name}'"
     )
 
 
@@ -75,7 +75,7 @@ async def _delete_all_data(server: "BedrockServer") -> None:
             f"Cannot delete running server '{server.server_name}'."
         )
 
-    paths = [server.server_dir, server.server_config_dir]
+    paths = [server.paths.server_dir, server.paths.server_config_dir]
     backup_root = server.settings.get("paths.backups")
     if backup_root:
         paths.append(os.path.join(backup_root, server.server_name))

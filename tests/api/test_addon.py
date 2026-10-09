@@ -48,7 +48,7 @@ async def test_addon_lifecycle_persists_world_activation(
     addon = next(pack for pack in await packs() if pack.name == "Valid BP Zip")
     assert addon.status == "ACTIVE"
     world = (
-        Path(populated_server.server_dir)
+        Path(populated_server.paths.server_dir)
         / "worlds"
         / await populated_server.get_world_name()
     )

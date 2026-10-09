@@ -20,7 +20,7 @@ async def test_permission_update_round_trip(admin_auth_client, real_bedrock_serv
         "456": "visitor",
     }
     disk = json.loads(
-        (Path(real_bedrock_server.server_dir) / "permissions.json").read_text()
+        (Path(real_bedrock_server.paths.server_dir) / "permissions.json").read_text()
     )
     assert {p["xuid"]: p["permission"] for p in disk} == {
         "123": "operator",
@@ -32,7 +32,7 @@ async def test_permission_update_round_trip(admin_auth_client, real_bedrock_serv
 async def test_invalid_permission_preserves_disk(
     admin_auth_client, real_bedrock_server, permission
 ):
-    path = Path(real_bedrock_server.server_dir) / "permissions.json"
+    path = Path(real_bedrock_server.paths.server_dir) / "permissions.json"
     original = path.read_bytes()
     response = await admin_auth_client.post(
         f"/api/server/{real_bedrock_server.server_name}/permissions/set",
@@ -65,7 +65,7 @@ async def test_permission_changes_require_moderator(
 async def test_missing_permissions_file_returns_empty_permissions(
     admin_auth_client, real_bedrock_server
 ):
-    (Path(real_bedrock_server.server_dir) / "permissions.json").unlink()
+    (Path(real_bedrock_server.paths.server_dir) / "permissions.json").unlink()
     response = await admin_auth_client.get(
         f"/api/server/{real_bedrock_server.server_name}/permissions/get"
     )

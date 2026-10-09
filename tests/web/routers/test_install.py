@@ -61,7 +61,7 @@ async def test_custom_install_rejects_unsafe_paths(admin_auth_client, filename):
 async def test_invalid_custom_path_preserves_existing_server(
     admin_auth_client, real_bedrock_server
 ):
-    executable = Path(real_bedrock_server.bedrock_executable_path)
+    executable = Path(real_bedrock_server.paths.bedrock_executable_path)
     original = executable.read_bytes()
     response = await admin_auth_client.post(
         "/api/server/install",
@@ -79,7 +79,7 @@ async def test_invalid_custom_path_preserves_existing_server(
 async def test_missing_custom_archive_preserves_existing_server(
     admin_auth_client, real_bedrock_server
 ):
-    executable = Path(real_bedrock_server.bedrock_executable_path)
+    executable = Path(real_bedrock_server.paths.bedrock_executable_path)
     original = executable.read_bytes()
     response = await admin_auth_client.post(
         "/api/server/install",
@@ -115,6 +115,6 @@ async def test_http_download_install_creates_runnable_persisted_server(
         assert response.status_code == 200
         assert response.json()["outcome"] == "started"
         assert await server.is_running()
-        assert server._process.returncode is None
+        assert server.process._process.returncode is None
     finally:
         await server.stop()

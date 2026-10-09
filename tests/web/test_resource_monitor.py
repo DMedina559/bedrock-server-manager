@@ -56,7 +56,7 @@ async def test_resource_monitor_broadcasts_live_process_then_stopped_state(
 ):
     server = real_bedrock_server
     await server.start()
-    child = server._process
+    child = server.process._process
     topic = f"resource-monitor:{server.server_name}"
     async with subscribed_socket(topic) as socket:
         async with asyncio.timeout(10):

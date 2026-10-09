@@ -11,11 +11,11 @@ async def test_http_lifecycle_controls_real_server(
     response = await admin_auth_client.post(base + "/start")
     assert response.status_code == 200
     assert response.json()["outcome"] == "started"
-    first_pid = real_bedrock_server._process.pid
+    first_pid = real_bedrock_server.process._process.pid
     assert (await admin_auth_client.post(base + "/start")).json()[
         "outcome"
     ] == "already_running"
-    assert real_bedrock_server._process.pid == first_pid
+    assert real_bedrock_server.process._process.pid == first_pid
     response = await admin_auth_client.post(
         base + "/send_command", json={"command": "__DUMMY__ PLAYER_JOIN HTTPPlayer"}
     )
@@ -24,7 +24,7 @@ async def test_http_lifecycle_controls_real_server(
         base + "/restart", json={"send_message": False}
     )
     assert response.status_code == 200
-    assert real_bedrock_server._process.pid != first_pid
+    assert real_bedrock_server.process._process.pid != first_pid
     assert (await admin_auth_client.post(base + "/stop")).json()["outcome"] == "stopped"
     assert not await real_bedrock_server.is_running()
     assert (await admin_auth_client.post(base + "/stop")).json()[

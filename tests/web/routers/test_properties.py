@@ -15,10 +15,12 @@ async def test_properties_round_trip_persists_user_values(
     result = (await admin_auth_client.get(base + "/get")).json()
     assert result["properties"]["server-name"] == "Integration Server"
     assert result["properties"]["max-players"] == "25"
-    text = (Path(real_bedrock_server.server_dir) / "server.properties").read_text()
+    text = (
+        Path(real_bedrock_server.paths.server_dir) / "server.properties"
+    ).read_text()
     assert "server-name=Integration Server" in text
     assert (
-        await real_bedrock_server.get_server_property("server-name")
+        await real_bedrock_server.properties.get_server_property("server-name")
         == "Integration Server"
     )
 
@@ -27,7 +29,7 @@ async def test_properties_round_trip_persists_user_values(
 async def test_invalid_property_update_preserves_disk(
     admin_auth_client, real_bedrock_server, value
 ):
-    path = Path(real_bedrock_server.server_dir) / "server.properties"
+    path = Path(real_bedrock_server.paths.server_dir) / "server.properties"
     original = path.read_bytes()
     response = await admin_auth_client.post(
         f"/api/server/{real_bedrock_server.server_name}/properties/set",
@@ -52,7 +54,7 @@ async def test_property_changes_require_admin(
 async def test_missing_properties_returns_not_found(
     admin_auth_client, real_bedrock_server
 ):
-    (Path(real_bedrock_server.server_dir) / "server.properties").unlink()
+    (Path(real_bedrock_server.paths.server_dir) / "server.properties").unlink()
     response = await admin_auth_client.get(
         f"/api/server/{real_bedrock_server.server_name}/properties/get"
     )

@@ -43,19 +43,19 @@ async def test_server_lifecycle_api_controls_real_process(
             StartServerRequest(server_name=name), app_context=app_context
         )
     ).outcome == "started"
-    first_pid = real_bedrock_server._process.pid
+    first_pid = real_bedrock_server.process._process.pid
     assert (
         await start_server(
             StartServerRequest(server_name=name), app_context=app_context
         )
     ).outcome == "already_running"
-    assert real_bedrock_server._process.pid == first_pid
+    assert real_bedrock_server.process._process.pid == first_pid
     result = await restart_server(
         RestartServerRequest(server_name=name, send_message=False),
         app_context=app_context,
     )
     assert result.outcome == "restarted"
-    assert real_bedrock_server._process.pid != first_pid
+    assert real_bedrock_server.process._process.pid != first_pid
     assert (
         await stop_server(StopServerRequest(server_name=name), app_context=app_context)
     ).outcome == "stopped"
@@ -112,7 +112,7 @@ async def test_server_runtime_stats_api_updates_summary(
         app_context=app_context,
     )
     assert response.status == "success"
-    assert (await real_bedrock_server.get_summary_info())["player_count"] == 1
+    assert (await real_bedrock_server.get_summary_info()).player_count == 1
 
 
 async def test_command_api_sends_to_actual_dummy_server(
@@ -140,7 +140,7 @@ async def test_blocked_command_is_rejected(app_context, real_bedrock_server):
 
 
 async def test_delete_api_removes_actual_installation(app_context, real_bedrock_server):
-    path = Path(real_bedrock_server.server_dir)
+    path = Path(real_bedrock_server.paths.server_dir)
     result = await delete_server_data(
         DeleteServerDataRequest(server_name=real_bedrock_server.server_name),
         app_context=app_context,

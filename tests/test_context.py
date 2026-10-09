@@ -40,7 +40,7 @@ async def test_remove_running_server_stops_process_and_removes_cache(
     app_context, real_bedrock_server
 ):
     await real_bedrock_server.start()
-    child = real_bedrock_server._process
+    child = real_bedrock_server.process._process
     assert child is not None
     await app_context.remove_server(real_bedrock_server.server_name)
     assert child.returncode is not None

@@ -22,7 +22,7 @@ async def test_custom_install_creates_runnable_persisted_server(
     assert response.status == "success"
     server = app_context.get_server("installed")
     assert await server.is_installed()
-    assert Path(server.bedrock_executable_path).is_file()
+    assert Path(server.paths.bedrock_executable_path).is_file()
     assert response.version == await server.get_version()
     with pytest.raises(UserInputError):
         await install_new_server(request, app_context=app_context)
@@ -64,9 +64,11 @@ async def test_update_downloads_real_archive_and_preserves_world(
         app_context=app_context,
     )
     server = app_context.get_server("updated")
-    await server.extract_mcworld(str(valid_mcworld_zip), await server.get_world_name())
+    await server.worlds.extract_mcworld(
+        str(valid_mcworld_zip), await server.get_world_name()
+    )
     marker = (
-        Path(server.server_dir)
+        Path(server.paths.server_dir)
         / "worlds"
         / await server.get_world_name()
         / "integration.txt"
@@ -79,4 +81,4 @@ async def test_update_downloads_real_archive_and_preserves_world(
     assert response.updated is True
     assert response.new_version == "1.26.45.1"
     assert marker.read_text() == "keep world"
-    assert list(Path(server.server_backup_directory).glob("*.mcworld"))
+    assert list(Path(server.backups.server_backup_directory).glob("*.mcworld"))

@@ -36,7 +36,7 @@ async def is_update_needed(
     try:
         downloader = BedrockDownloader(
             settings_obj=server.settings,
-            server_dir=server.server_dir,
+            server_dir=server.paths.server_dir,
             target_version=target,
         )
         available = (
@@ -113,7 +113,7 @@ async def _install_or_update(
         )
     downloader = BedrockDownloader(
         settings_obj=server.settings,
-        server_dir=server.server_dir,
+        server_dir=server.paths.server_dir,
         target_version=target_version_specification,
         server_zip_path=server_zip_path,
     )
@@ -132,10 +132,10 @@ async def _install_or_update(
             raise
         except Exception as e_perm:
             server.logger.error(
-                f"Failed to set permissions for '{server.server_dir}' during setup: {e_perm}. Installation may be incomplete."
+                f"Failed to set permissions for '{server.paths.server_dir}' during setup: {e_perm}. Installation may be incomplete."
             )
             raise PermissionsError(
-                f"Unexpected error setting permissions for '{server.server_dir}'."
+                f"Unexpected error setting permissions for '{server.paths.server_dir}'."
             ) from e_perm
         await server.set_version(actual_version_downloaded)
         await server.set_status_in_config(

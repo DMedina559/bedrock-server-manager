@@ -157,7 +157,7 @@ async def update_server(
             app_context=app_context,
         ):
             logger.info(f"API: Backing up '{server_name}' before update...")
-            await server.backup_all_data()
+            await server.backups.backup_all_data()
             logger.info(
                 f"API: Performing update for '{server_name}' to target '{target_version}'..."
             )

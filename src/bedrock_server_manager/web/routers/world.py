@@ -304,12 +304,12 @@ async def get_world_icon(
     logger.debug(f"Request to serve world icon for server '{server_name}'.")
     try:
         server = app_context.get_server(server_name)
-        icon_path = await server.get_world_icon_filesystem_path()
+        icon_path = await server.worlds.get_world_icon_filesystem_path()
 
         import aiofiles.ospath
 
         if (
-            await server.has_world_icon()
+            await server.worlds.has_world_icon()
             and icon_path
             and await aiofiles.ospath.isfile(icon_path)
         ):

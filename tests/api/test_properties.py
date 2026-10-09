@@ -35,7 +35,7 @@ async def test_property_api_updates_real_server_configuration(
 
 
 async def test_property_api_validates_before_writing(app_context, real_bedrock_server):
-    path = Path(real_bedrock_server.server_dir) / "server.properties"
+    path = Path(real_bedrock_server.paths.server_dir) / "server.properties"
     original = path.read_bytes()
     with pytest.raises(UserInputError):
         await set_properties(

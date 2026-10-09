@@ -9,7 +9,7 @@ from bedrock_server_manager.error import FileOperationError
 async def test_get_formatted_permissions(real_bedrock_server, app_context):
     """Test retrieving formatted permissions including names from a map."""
     server = real_bedrock_server
-    permissions_path = server.permissions_json_path
+    permissions_path = server.paths.permissions_json_path
 
     perm_data = [
         {"permission": "operator", "xuid": "12345"},
@@ -20,7 +20,7 @@ async def test_get_formatted_permissions(real_bedrock_server, app_context):
         json.dump(perm_data, f)
 
     await app_context.storage.save_players([{"xuid": "12345", "name": "player1"}])
-    formatted = await server.get_formatted_permissions(app_context.storage)
+    formatted = await server.permissions.get_formatted_permissions(app_context.storage)
 
     assert len(formatted) == 2
     # Sort order: 'p' comes before 'u' (player1 vs Unknown)
@@ -36,9 +36,9 @@ async def test_get_formatted_permissions(real_bedrock_server, app_context):
 async def test_set_player_permission_new_player(real_bedrock_server):
     """Test setting permission for a new player."""
     server = real_bedrock_server
-    await server.set_player_permission("12345", "operator", "player1")
+    await server.permissions.set_player_permission("12345", "operator", "player1")
 
-    permissions_path = server.permissions_json_path
+    permissions_path = server.paths.permissions_json_path
     with open(permissions_path, "r") as f:
         data = json.load(f)
         assert len(data) == 1
@@ -48,12 +48,12 @@ async def test_set_player_permission_new_player(real_bedrock_server):
 async def test_set_player_permission_update_existing(real_bedrock_server):
     """Test updating permission for an existing player."""
     server = real_bedrock_server
-    permissions_path = server.permissions_json_path
+    permissions_path = server.paths.permissions_json_path
     perm_data = [{"permission": "member", "xuid": "12345", "name": "existing"}]
     with open(permissions_path, "w") as f:
         json.dump(perm_data, f)
 
-    await server.set_player_permission("12345", "operator")
+    await server.permissions.set_player_permission("12345", "operator")
 
     with open(permissions_path, "r") as f:
         data = json.load(f)
@@ -65,12 +65,12 @@ async def test_set_player_permission_update_existing(real_bedrock_server):
 async def test_set_player_permission_visitor(real_bedrock_server):
     """Test setting permission to visitor updates them in the list."""
     server = real_bedrock_server
-    permissions_path = server.permissions_json_path
+    permissions_path = server.paths.permissions_json_path
     perm_data = [{"permission": "operator", "xuid": "12345"}]
     with open(permissions_path, "w") as f:
         json.dump(perm_data, f)
 
-    await server.set_player_permission("12345", "visitor")
+    await server.permissions.set_player_permission("12345", "visitor")
 
     with open(permissions_path, "r") as f:
         data = json.load(f)
@@ -81,7 +81,7 @@ async def test_set_player_permission_visitor(real_bedrock_server):
 async def test_set_player_permission_unwritable_file(real_bedrock_server):
     """Test setting permission fails gracefully if file is unwritable."""
     server = real_bedrock_server
-    permissions_path = server.permissions_json_path
+    permissions_path = server.paths.permissions_json_path
     with open(permissions_path, "w") as f:
         f.write("[]")
 
@@ -89,7 +89,7 @@ async def test_set_player_permission_unwritable_file(real_bedrock_server):
     os.chmod(os.path.dirname(permissions_path), 0o555)
     try:
         with pytest.raises(FileOperationError, match="Failed to write permissions"):
-            await server.set_player_permission("12345", "operator")
+            await server.permissions.set_player_permission("12345", "operator")
     finally:
         os.chmod(os.path.dirname(permissions_path), 0o755)
         os.chmod(permissions_path, 0o644)

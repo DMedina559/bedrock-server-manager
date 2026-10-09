@@ -81,7 +81,7 @@ class LogStreamer:
                             else None
                         )
                         if server:
-                            log_path = server.server_log_path
+                            log_path = server.paths.server_log_path
                             if await aiofiles.ospath.exists(log_path):
                                 files_to_watch[topic] = log_path
 

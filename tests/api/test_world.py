@@ -17,7 +17,7 @@ async def test_world_api_exports_imports_and_resets_actual_world(
     app_context, populated_server, tmp_path
 ):
     server = populated_server
-    world = Path(server.server_dir) / "worlds" / await server.get_world_name()
+    world = Path(server.paths.server_dir) / "worlds" / await server.get_world_name()
     marker = world / "integration.txt"
     marker.write_text("saved world")
     exported = await export_world(
@@ -49,7 +49,7 @@ async def test_invalid_world_import_preserves_live_content(
     app_context, populated_server, tmp_path
 ):
     server = populated_server
-    world = Path(server.server_dir) / "worlds" / await server.get_world_name()
+    world = Path(server.paths.server_dir) / "worlds" / await server.get_world_name()
     original = (world / "level.dat").read_bytes()
     broken = tmp_path / "broken.mcworld"
     broken.write_bytes(b"not an archive")

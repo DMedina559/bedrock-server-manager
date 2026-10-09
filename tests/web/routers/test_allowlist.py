@@ -16,7 +16,7 @@ async def test_allowlist_round_trip_persists_players(
     assert response.status_code == 200
     assert {p["name"] for p in response.json()["players"]} >= {"Steve", "Alex"}
     disk = json.loads(
-        (Path(real_bedrock_server.server_dir) / "allowlist.json").read_text()
+        (Path(real_bedrock_server.paths.server_dir) / "allowlist.json").read_text()
     )
     assert all(p["ignoresPlayerLimit"] for p in disk if p["name"] in {"Steve", "Alex"})
     response = await admin_auth_client.request(
@@ -27,7 +27,9 @@ async def test_allowlist_round_trip_persists_players(
         p["name"]
         for p in (await admin_auth_client.get(base + "/get")).json()["players"]
     }
-    assert "Steve" not in {p["name"] for p in await real_bedrock_server.get_allowlist()}
+    assert "Steve" not in {
+        p["name"] for p in await real_bedrock_server.allowlist.get_allowlist()
+    }
 
 
 @pytest.mark.parametrize(
@@ -52,7 +54,7 @@ async def test_allowlist_requires_authentication(
 async def test_allowlist_invalid_input_preserves_file(
     admin_auth_client, real_bedrock_server
 ):
-    path = Path(real_bedrock_server.server_dir) / "allowlist.json"
+    path = Path(real_bedrock_server.paths.server_dir) / "allowlist.json"
     original = path.read_bytes()
     response = await admin_auth_client.post(
         f"/api/server/{real_bedrock_server.server_name}/allowlist/add",
@@ -65,7 +67,7 @@ async def test_allowlist_invalid_input_preserves_file(
 async def test_allowlist_corrupt_file_returns_safe_error(
     admin_auth_client, real_bedrock_server
 ):
-    path = Path(real_bedrock_server.server_dir) / "allowlist.json"
+    path = Path(real_bedrock_server.paths.server_dir) / "allowlist.json"
     path.write_text("private broken JSON")
     response = await admin_auth_client.get(
         f"/api/server/{real_bedrock_server.server_name}/allowlist/get"
