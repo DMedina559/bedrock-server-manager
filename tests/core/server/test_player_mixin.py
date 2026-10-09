@@ -2,8 +2,6 @@ def test_parse_player_log_events(real_bedrock_server):
     """Test parsing log lines for player connect and disconnect events."""
     server = real_bedrock_server
 
-    # Mock is_running to return True so update_online_players doesn\'t clear the list
-
     lines = [
         "[2023-10-27 10:00:00] [INFO] Player connected: player1, xuid: 12345\n",
         "[2023-10-27 10:01:00] [INFO] Player connected: player2, xuid: 67890\n",
@@ -30,8 +28,6 @@ def test_parse_player_log_events_malformed(real_bedrock_server):
     """Test parsing log lines with malformed output."""
     server = real_bedrock_server
 
-    # Mock is_running to return True so update_online_players doesn\'t clear the list
-
     lines = [
         "[INFO] Player connected: player1, xuid: \n",
         "[INFO] Player connected: , xuid: 12345\n",
@@ -50,8 +46,6 @@ async def test_scan_log_for_players(real_bedrock_server):
     """Test scanning the log file for players."""
     server = real_bedrock_server
 
-    # Mock is_running to return True so update_online_players doesn\'t clear the list
-
     with open(server.server_log_path, "w") as f:
         f.write("[INFO] Player connected: player1, xuid: 12345\n")
         f.write("[INFO] Player connected: player2, xuid: 67890\n")
@@ -67,8 +61,6 @@ async def test_scan_log_for_players(real_bedrock_server):
 async def test_scan_log_for_players_incremental(real_bedrock_server):
     """Test scanning the log file incrementally avoids reading old lines."""
     server = real_bedrock_server
-
-    # Mock is_running to return True so update_online_players doesn\'t clear the list
 
     with open(server.server_log_path, "w") as f:
         f.write("[INFO] Player connected: player1, xuid: 12345\n")
@@ -99,19 +91,17 @@ async def test_scan_log_for_players_missing_file(real_bedrock_server):
 
 
 async def test_update_online_players(real_bedrock_server):
-    from unittest.mock import AsyncMock
+    import asyncio
 
-    real_bedrock_server.is_running = AsyncMock(return_value=True)
-    real_bedrock_server.is_running = AsyncMock(return_value=True)
-    """Test updating the online players property from the log."""
     server = real_bedrock_server
-
-    # Mock is_running to return True so update_online_players doesn\'t clear the list
-
-    with open(server.server_log_path, "w") as f:
-        f.write("[INFO] Player connected: player1, xuid: 12345\n")
-
-    players = await server.update_online_players()
-    assert len(players) == 1
-    assert players[0]["name"] == "player1"
-    assert getattr(server, "players", []) == players
+    await server.start()
+    await server.send_command("__DUMMY__ PLAYER_JOIN IntegrationPlayer")
+    async with asyncio.timeout(5):
+        while not await server.update_online_players():
+            await asyncio.sleep(0.01)
+    assert server.players == [{"name": "IntegrationPlayer", "xuid": "2535413537906883"}]
+    await server.send_command("__DUMMY__ PLAYER_LEAVE IntegrationPlayer")
+    async with asyncio.timeout(5):
+        while await server.update_online_players():
+            await asyncio.sleep(0.01)
+    assert server.players == []

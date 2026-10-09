@@ -1,129 +1,105 @@
-"""
-Tests for the logging.py module.
-"""
-
 import logging
 import os
-import tempfile
-import time
-from unittest.mock import patch
+import warnings
 
+import pytest
+
+from bedrock_server_manager import logging as bsm_logging
+from bedrock_server_manager.config import bcm_config
 from bedrock_server_manager.logging import _prune_old_logs, log_separator, setup_logging
 
 
-def test_prune_old_logs():
-    """Test that old logs are correctly pruned to respect retention limit."""
-    with tempfile.TemporaryDirectory() as tmpdir:
-        # Create 7 dummy log files with distinct modified times
-        for i in range(1, 8):
-            fpath = os.path.join(tmpdir, f"bedrock_server_manager_{i}.log")
-            with open(fpath, "w") as f:
-                f.write("test")
-            os.utime(fpath, (time.time() + i * 10, time.time() + i * 10))
-
-        _prune_old_logs(tmpdir, keep=5)
-
-        remaining = [
-            f for f in os.listdir(tmpdir) if f.startswith("bedrock_server_manager_")
-        ]
-        # Just check that it pruned down to 5
-        assert len(remaining) <= 5
-
-
-def test_setup_logging_creates_handlers():
-    """Test setup_logging successfully configures handlers."""
-    with tempfile.TemporaryDirectory() as tmpdir:
-        import bedrock_server_manager.logging as bsm_logging
-
-        bsm_logging._logging_configured = False
-
-        with patch(
-            "bedrock_server_manager.logging.get_config_dir", return_value=tmpdir
-        ):
-            with patch(
-                "bedrock_server_manager.logging.load_config",
-                return_value={"logging_level": "DEBUG"},
-            ):
-                logger = setup_logging(force_reconfigure=True)
-
-                # It should add a console handler and a file handler
-                assert len(logger.handlers) >= 2
-
-                # Verify file handler exists and writes to the correct path
-                file_handlers = [
-                    h for h in logger.handlers if isinstance(h, logging.FileHandler)
-                ]
-                assert len(file_handlers) >= 1
-                assert file_handlers[0].baseFilename.startswith(
-                    os.path.join(tmpdir, "logs", "bedrock_server_manager_")
-                )
-
-                # Clean up handlers so tempdir can be removed on Windows
-                for handler in file_handlers:
-                    handler.close()
-                    logger.removeHandler(handler)
-
-
-def test_setup_logging_skips_if_already_configured():
-    """Test setup_logging skips if already configured and not forced."""
-    import bedrock_server_manager.logging as bsm_logging
-
-    bsm_logging._logging_configured = True
-
-    with patch("logging.getLogger") as mock_get_logger:
-        with patch("bedrock_server_manager.logging.load_config", return_value={}):
-            with patch(
-                "bedrock_server_manager.logging.get_config_dir", return_value="/tmp"
-            ):
-                setup_logging()
-
-                # Should get the logger and just return it without doing the setup work
-                mock_get_logger.return_value.addHandler.assert_not_called()
-
-
-def test_setup_logging_fallback_on_error():
-    """Test setup_logging uses fallback if creating the directory fails."""
-    import bedrock_server_manager.logging as bsm_logging
-
+@pytest.fixture(autouse=True)
+def isolated_logging():
+    root = logging.getLogger()
+    handlers, level, disabled = root.handlers[:], root.level, root.disabled
+    configured = bsm_logging._logging_configured
+    warnings_handler = logging._warnings_showwarning
+    warning_logger = logging.getLogger("py.warnings")
+    warning_handlers = warning_logger.handlers[:]
+    root.handlers = []
+    root.disabled = False
     bsm_logging._logging_configured = False
-
-    # Try to write to a path that isn't allowed (e.g. root without sudo)
-    with patch("os.makedirs", side_effect=OSError("Permission denied")):
-        with patch("bedrock_server_manager.logging.load_config", return_value={}):
-            with patch(
-                "bedrock_server_manager.logging.get_config_dir",
-                return_value="/root/invalid",
-            ):
-                logger = logging.getLogger()
-                # Ensure root logger has no handlers so the fallback is triggered
-                logger.handlers.clear()
-
-                logger = setup_logging(force_reconfigure=True)
-
-                # Should at least have a stream handler as fallback
-                assert any(
-                    isinstance(h, logging.StreamHandler) for h in logger.handlers
-                )
+    with warnings.catch_warnings():
+        try:
+            yield root
+        finally:
+            for handler in root.handlers[:]:
+                handler.close()
+                root.removeHandler(handler)
+            root.handlers = handlers
+            root.setLevel(level)
+            root.disabled = disabled
+            bsm_logging._logging_configured = configured
+            logging._warnings_showwarning = warnings_handler
+            warning_logger.handlers = warning_handlers
 
 
-def test_log_separator():
-    """Test log_separator writes correctly to active file handlers."""
-    logger = logging.getLogger("test_separator")
+def test_prune_old_logs(tmp_path):
+    for i in range(7):
+        path = tmp_path / f"bedrock_server_manager_{i}.log"
+        path.write_text(f"log {i}")
+        os.utime(path, (1000000000 + i, 1000000000 + i))
+    unrelated = tmp_path / "server.log"
+    unrelated.write_text("retain unrelated logs")
+    _prune_old_logs(str(tmp_path), keep=5)
+    # Pruning reserves a slot for the log created immediately afterward.
+    assert {path.name for path in tmp_path.glob("bedrock_server_manager_*.log")} == {
+        f"bedrock_server_manager_{i}.log" for i in range(3, 7)
+    }
+    assert unrelated.read_text() == "retain unrelated logs"
 
-    with tempfile.TemporaryDirectory() as tmpdir:
-        log_path = os.path.join(tmpdir, "test.log")
-        file_handler = logging.FileHandler(log_path)
-        logger.addHandler(file_handler)
 
+def test_setup_logging_writes_configured_output(isolated_bcm_config, capsys):
+    config = bcm_config.load_config()
+    config["logging_level"] = "DEBUG"
+    bcm_config.save_config(config)
+    logger = setup_logging(force_reconfigure=True)
+    logger.debug("debug message from real configuration")
+    log_separator(logger, app_name="TestApp", app_version="1.0")
+    for handler in logger.handlers:
+        handler.flush()
+    files = list((isolated_bcm_config / "logs").glob("bedrock_server_manager_*.log"))
+    assert len(files) == 1
+    content = files[0].read_text()
+    assert "DEBUG - root - debug message from real configuration" in content
+    assert "TestApp v1.0" in content
+    assert "Operating System" in content
+    assert "Timestamp" in content
+    assert "DEBUG: debug message from real configuration" in capsys.readouterr().out
+    assert len(logger.handlers) == 2
+
+
+def test_setup_logging_reuses_existing_handlers(isolated_bcm_config):
+    logger = setup_logging()
+    original = tuple(logger.handlers)
+    assert setup_logging() is logger
+    assert tuple(logger.handlers) == original
+    assert len(list((isolated_bcm_config / "logs").glob("*.log"))) == 1
+
+
+def test_setup_logging_falls_back_when_directory_is_a_file(tmp_path, capsys):
+    blocked = tmp_path / "blocked"
+    blocked.write_text("not a directory")
+    logger = setup_logging(force_reconfigure=True, config_dir=str(blocked))
+    logger.warning("fallback remains usable")
+    output = capsys.readouterr()
+    assert "Could not create log directory" in output.err
+    assert "fallback remains usable" in output.out
+    assert len(logger.handlers) == 1
+    assert not isinstance(logger.handlers[0], logging.FileHandler)
+    assert not bsm_logging._logging_configured
+
+
+def test_log_separator(tmp_path):
+    logger = logging.Logger("test_separator")
+    path = tmp_path / "separator.log"
+    handler = logging.FileHandler(path)
+    logger.addHandler(handler)
+    try:
         log_separator(logger, app_name="TestApp", app_version="1.0")
-
-        file_handler.flush()
-        file_handler.close()
-        logger.removeHandler(file_handler)
-
-        with open(log_path, "r") as f:
-            content = f.read()
-
-        assert "TestApp v1.0" in content
-        assert "Operating System" in content
-        assert "Timestamp" in content
+        assert "TestApp v1.0" in path.read_text()
+        assert "Python Version" in path.read_text()
+    finally:
+        handler.close()
+        logger.removeHandler(handler)

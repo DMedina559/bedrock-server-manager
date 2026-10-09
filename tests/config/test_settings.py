@@ -6,7 +6,7 @@ from bedrock_server_manager.error import ConfigurationError
 
 
 async def test_settings_initialization(app_context, isolated_bcm_config):
-    """Test Settings initializes properties correctly without loading."""
+    """Settings binds to shared state without maintaining a second cache."""
     base_dir = isolated_bcm_config
     test_config_dir = base_dir / "test_config"
     test_data_dir = base_dir / "test_data"
@@ -16,7 +16,7 @@ async def test_settings_initialization(app_context, isolated_bcm_config):
         app_context=app_context,
     )
     assert settings.app_context == app_context
-    assert settings._settings == {}
+    assert settings._settings["web"]["port"] == app_context.settings.get("web.port")
 
 
 async def test_settings_load_populates_defaults(app_context, db, isolated_bcm_config):
@@ -104,17 +104,26 @@ async def test_settings_set(settings, db):
         assert custom_setting.value["plugin"]["enabled"] is True
 
 
-async def test_settings_set_no_change_skips_write(settings, monkeypatch):
-    """Test setting the same value skips database write."""
-    from unittest.mock import AsyncMock
+async def test_settings_set_no_change_skips_write(settings, db):
+    from sqlalchemy import event
 
-    mock_flush = AsyncMock()
-    monkeypatch.setattr(settings.storage, "flush", mock_flush)
+    statements = []
 
-    current_val = settings.get("web.port")
-    await settings.set("web.port", current_val)
+    def record(connection, cursor, statement, parameters, context, executemany):
+        statements.append(statement)
 
-    mock_flush.assert_not_called()
+    event.listen(db.engine.sync_engine, "before_cursor_execute", record)
+    try:
+        current_val = settings.get("web.port")
+        await settings.set("web.port", current_val)
+        assert not statements
+        await settings.set("web.port", current_val + 1)
+        assert any(
+            statement.lstrip().upper().startswith(("INSERT", "UPDATE"))
+            for statement in statements
+        )
+    finally:
+        event.remove(db.engine.sync_engine, "before_cursor_execute", record)
 
 
 async def test_settings_set_conflict_raises_error(settings):

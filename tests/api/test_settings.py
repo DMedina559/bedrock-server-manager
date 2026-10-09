@@ -1,12 +1,12 @@
-from unittest.mock import patch
-
-"""
-Integration tests for the API functions in bedrock_server_manager/api/settings.py.
-"""
-
-
 import pytest
 
+from bedrock_server_manager.api.models import (
+    GetAllGlobalSettingsRequest,
+    GetGlobalSettingRequest,
+    ReloadGlobalSettingsRequest,
+    SetCustomGlobalSettingRequest,
+    SetGlobalSettingRequest,
+)
 from bedrock_server_manager.api.settings import (
     get_all_global_settings,
     get_global_setting,
@@ -14,73 +14,43 @@ from bedrock_server_manager.api.settings import (
     set_custom_global_setting,
     set_global_setting,
 )
-from bedrock_server_manager.context import AppContext
-from bedrock_server_manager.error import MissingArgumentError
+from bedrock_server_manager.error import UserInputError
 
 
-async def test_get_global_setting_success(app_context: AppContext):
-    """Test retrieving a global setting successfully."""
-    with patch.object(
-        app_context.settings, "get", return_value="test_value"
-    ) as mock_get:
-        result = await get_global_setting("test_key", app_context)
-
-        assert result["status"] == "success"
-        assert result["value"] == "test_value"
-        mock_get.assert_called_once_with("test_key")
-
-
-async def test_get_global_setting_empty_key(app_context: AppContext):
-    """Test retrieving a setting with an empty key raises error."""
-    with pytest.raises(MissingArgumentError):
-        await get_global_setting("", app_context)
-
-
-async def test_get_all_global_settings_success(app_context: AppContext):
-    """Test retrieving all global settings successfully."""
-    app_context.settings._settings = {"key1": "value1", "key2": "value2"}
-
-    result = await get_all_global_settings(app_context)
-
-    assert result["status"] == "success"
-    assert result["key1"] == "value1"
-    assert result["key2"] == "value2"
+async def test_global_settings_round_trip_through_database(app_context):
+    await set_global_setting(
+        SetGlobalSettingRequest(key="retention.downloads", value=7),
+        app_context=app_context,
+    )
+    await set_custom_global_setting(
+        SetCustomGlobalSettingRequest(key="integration", value={"nested": [1, True]}),
+        app_context=app_context,
+    )
+    await reload_global_settings(ReloadGlobalSettingsRequest(), app_context=app_context)
+    assert (
+        await get_global_setting(
+            GetGlobalSettingRequest(key="retention.downloads"), app_context=app_context
+        )
+    ).value == 7
+    assert (
+        await get_global_setting(
+            GetGlobalSettingRequest(key="custom.integration"), app_context=app_context
+        )
+    ).value == {"nested": [1, True]}
+    snapshot = await get_all_global_settings(
+        GetAllGlobalSettingsRequest(), app_context=app_context
+    )
+    assert snapshot.settings["retention"]["downloads"] == 7
 
 
-async def test_set_global_setting_success(app_context: AppContext):
-    """Test setting a global setting successfully."""
-    with patch.object(app_context.settings, "set") as mock_set:
-        result = await set_global_setting("test_key", "new_value", app_context)
-
-        assert result["status"] == "success"
-        assert "test_key" in result["message"]
-        mock_set.assert_called_once_with("test_key", "new_value")
-
-
-async def test_set_global_setting_empty_key(app_context: AppContext):
-    """Test setting a global setting with an empty key raises error."""
-    with pytest.raises(MissingArgumentError):
-        await set_global_setting("", "value", app_context)
-
-
-async def test_set_custom_global_setting_success(app_context: AppContext):
-    """Test setting a custom global setting successfully."""
-    with patch.object(app_context.settings, "set") as mock_set:
-        result = await set_custom_global_setting("test_key", "custom_val", app_context)
-
-        assert result["status"] == "success"
-        # custom. should be prepended
-        assert "custom.test_key" in result["message"]
-        mock_set.assert_called_once_with("custom.test_key", "custom_val")
-
-
-async def test_reload_global_settings_success(app_context: AppContext):
-    """Test reloading global settings successfully."""
-    with patch.object(app_context, "reload") as mock_app_reload:
-        with patch.object(app_context.settings, "reload") as mock_settings_reload:
-
-            result = await reload_global_settings(app_context)
-
-            assert result["status"] == "success"
-            mock_app_reload.assert_called_once()
-            mock_settings_reload.assert_called_once()
+@pytest.mark.parametrize("value", [-1, "invalid", True])
+async def test_invalid_setting_preserves_memory_and_database(app_context, value):
+    original = app_context.settings.get("retention.downloads")
+    with pytest.raises(UserInputError):
+        await set_global_setting(
+            SetGlobalSettingRequest(key="retention.downloads", value=value),
+            app_context=app_context,
+        )
+    assert app_context.settings.get("retention.downloads") == original
+    await reload_global_settings(ReloadGlobalSettingsRequest(), app_context=app_context)
+    assert app_context.settings.get("retention.downloads") == original

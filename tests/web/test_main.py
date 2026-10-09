@@ -10,10 +10,6 @@ def test_run_web_server_default_config(app_context, monkeypatch):
     mock_run = MagicMock()
     monkeypatch.setattr("uvicorn.Server.run", mock_run)
 
-    # Needs to bypass actual application creation because it loads routers
-    # we just mock create_web_app here since it's already tested
-    monkeypatch.setattr("bedrock_server_manager.web.main.create_web_app", MagicMock())
-
     run_web_server(app_context)
 
     mock_run.assert_called_once()
@@ -29,7 +25,6 @@ async def test_run_web_server_cli_args(app_context, monkeypatch):
     """Test run_web_server prefers CLI args over settings."""
     mock_run = MagicMock()
     monkeypatch.setattr("uvicorn.Server.run", mock_run)
-    monkeypatch.setattr("bedrock_server_manager.web.main.create_web_app", MagicMock())
 
     await app_context.settings.set("web.host", "10.0.0.1")
     await app_context.settings.set("web.port", 8080)
@@ -50,12 +45,14 @@ def test_run_web_server_invalid_host_type(app_context, monkeypatch):
 
 
 async def test_run_web_server_invalid_port_setting(app_context, monkeypatch):
-    """Test run_web_server falls back to default port if setting is invalid."""
+    """Invalid persisted settings are rejected before web startup."""
     mock_run = MagicMock()
     monkeypatch.setattr("uvicorn.Server.run", mock_run)
-    monkeypatch.setattr("bedrock_server_manager.web.main.create_web_app", MagicMock())
 
-    await app_context.settings.set("web.port", "invalid")
+    from pydantic import ValidationError
+
+    with pytest.raises(ValidationError):
+        await app_context.settings.set("web.port", "invalid")
 
     run_web_server(app_context)
 
@@ -67,7 +64,6 @@ def test_run_web_server_exception_propagation(app_context, monkeypatch):
     """Test run_web_server logs and re-raises exceptions during startup."""
     mock_run = MagicMock(side_effect=RuntimeError("Server crashed"))
     monkeypatch.setattr("uvicorn.Server.run", mock_run)
-    monkeypatch.setattr("bedrock_server_manager.web.main.create_web_app", MagicMock())
 
     with pytest.raises(RuntimeError, match="Server crashed"):
         run_web_server(app_context)

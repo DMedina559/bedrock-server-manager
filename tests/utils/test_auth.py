@@ -173,3 +173,55 @@ async def test_authenticate_user_not_found(app_context, db):
     app_context._db = db
     result = await authenticate_user(app_context, "ghost_user", "password")
     assert result is None
+
+
+async def test_token_cache_fill_preserves_full_profile(app_context):
+    async with app_context.storage.transaction() as session:
+        user = await app_context.storage.user_repo.create_user(
+            session, "profile", "hash", "user"
+        )
+        user.full_name = "Full Name"
+        user.email = "user@example.com"
+    token = await create_access_token(data={"sub": "profile"}, app_context=app_context)
+    assert await _get_user_from_token(app_context, token) is not None
+    cached = app_context.state.users.get("profile")
+    assert cached.full_name == "Full Name" and cached.email == "user@example.com"
+
+
+async def test_token_cache_fill_cannot_overwrite_concurrent_disable(
+    app_context, monkeypatch
+):
+    import asyncio
+
+    async with app_context.storage.transaction() as session:
+        user = await app_context.storage.user_repo.create_user(
+            session, "racing", "hash", "user"
+        )
+        await session.flush()
+        user_id = user.id
+    token = await create_access_token(data={"sub": "racing"}, app_context=app_context)
+    entered = asyncio.Event()
+    release = asyncio.Event()
+    original = app_context.storage.user_repo.get_user_by_username
+    first = True
+
+    async def delayed(session, username):
+        nonlocal first
+        record = await original(session, username)
+        if first and username == "racing":
+            first = False
+            entered.set()
+            await release.wait()
+        return record
+
+    monkeypatch.setattr(app_context.storage.user_repo, "get_user_by_username", delayed)
+    lookup = asyncio.create_task(_get_user_from_token(app_context, token))
+    await entered.wait()
+    disable = asyncio.create_task(
+        app_context.user_service.update_account(action="disable", user_id=user_id)
+    )
+    await asyncio.sleep(0)
+    release.set()
+    await asyncio.gather(lookup, disable)
+    assert not app_context.state.users.get("racing").is_active
+    assert await _get_user_from_token(app_context, token) is None

@@ -19,10 +19,22 @@ These routes interface with the underlying settings management logic in
 import logging
 
 from fastapi import APIRouter, Depends, HTTPException, status
+from pydantic import ValidationError
+
+from bedrock_server_manager.api.models import (
+    GetAllGlobalSettingsRequest,
+    ReloadGlobalSettingsRequest,
+    SetGlobalSettingRequest,
+)
 
 from ...api import settings as settings_api
 from ...context import AppContext
-from ...error import BSMError, MissingArgumentError, UserInputError
+from ...error import (
+    AppFileNotFoundError,
+    BSMError,
+    MissingArgumentError,
+    UserInputError,
+)
 from ..deps import get_admin_user, get_app_context
 from ..schemas import SettingItemResponse, SettingsResponse, UserResponse
 
@@ -40,29 +52,24 @@ router = APIRouter(tags=["Application Settings"])
 async def get_all_settings(
     current_user: UserResponse = Depends(get_admin_user),
     app_context: AppContext = Depends(get_app_context),
-):
+) -> SettingsResponse:
     """
     Retrieves all global application settings.
     """
     identity = current_user.username
     logger.info(f"API: Get global settings request by '{identity}'.")
     try:
-        result = await settings_api.get_all_global_settings(app_context=app_context)
-        if result.get("status") == "success":
-            return SettingsResponse(
-                status="success",
-                settings={
-                    k: v for k, v in result.items() if k not in ("status", "message")
-                },
-                message=result.get("message"),
-            )
-        else:
-            # This case might indicate an internal issue with settings loading
-            raise HTTPException(
-                status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-                detail=result.get("message", "Failed to retrieve settings."),
-            )
+        result = await settings_api.get_all_global_settings(
+            request=GetAllGlobalSettingsRequest(), app_context=app_context
+        )
+        return SettingsResponse(
+            status="success",
+            settings=result.settings,
+            message=result.message,
+        )
     except HTTPException:
+        raise
+    except ValidationError:
         raise
     except Exception as e:
         logger.error(f"API Get Settings: Unexpected error. {e}", exc_info=True)
@@ -82,7 +89,7 @@ async def post_set_setting(
     payload: SettingItemResponse,
     current_user: UserResponse = Depends(get_admin_user),
     app_context: AppContext = Depends(get_app_context),
-):
+) -> SettingsResponse:
     """
     Sets a specific global application setting.
     """
@@ -99,23 +106,16 @@ async def post_set_setting(
     try:
 
         result = await settings_api.set_global_setting(
-            key=payload.key, value=payload.value, app_context=app_context
+            request=SetGlobalSettingRequest(key=payload.key, value=payload.value),
+            app_context=app_context,
         )
-        if result.get("status") == "success":
-
-            return SettingsResponse(
-                status="success",
-                message=result.get("message", "Setting updated successfully."),
-                setting=SettingItemResponse(
-                    key=payload.key, value=payload.value
-                ),  # Return the set item - No change needed here as it already matches BaseApiResponse for status/message
-            )
-        else:
-            # Errors from settings_api.set_global_setting should ideally raise specific BSMError types
-            raise HTTPException(
-                status_code=status.HTTP_400_BAD_REQUEST,  # Or 500 if it's a save error
-                detail=result.get("message", "Failed to set setting."),
-            )
+        return SettingsResponse(
+            status=result.status,
+            message=result.message,
+            setting=SettingItemResponse(
+                key=payload.key, value=payload.value
+            ),  # Return the set item - No change needed here as it already matches BaseApiResponse for status/message
+        )
     except (
         UserInputError,
         MissingArgumentError,
@@ -124,11 +124,15 @@ async def post_set_setting(
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(e))
     except HTTPException:
         raise
+    except AppFileNotFoundError:
+        raise
     except BSMError as e:  # Catch other BSM specific errors (e.g., ConfigWriteError)
         logger.error(f"API Set Setting '{payload.key}': BSMError. {e}", exc_info=True)
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail=str(e)
         )
+    except ValidationError:
+        raise
     except Exception as e:
         logger.error(
             f"API Set Setting '{payload.key}': Unexpected error. {e}", exc_info=True
@@ -148,33 +152,32 @@ async def post_set_setting(
 async def put_reload_settings(
     current_user: UserResponse = Depends(get_admin_user),
     app_context: AppContext = Depends(get_app_context),
-):
+) -> SettingsResponse:
     """
     Forces a reload of global application settings and logging configuration.
     """
     identity = current_user.username
     logger.info(f"API: Reload global settings request by '{identity}'.")
     try:
-        result = await settings_api.reload_global_settings(app_context=app_context)
-        if result.get("status") == "success":
-            return SettingsResponse(
-                status="success",
-                message=result.get("message", "Settings reloaded successfully."),
-                # No other specific fields like 'settings' or 'setting' for this response
-            )
-        else:
-            # Errors from settings_api.reload_global_settings
-            raise HTTPException(
-                status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-                detail=result.get("message", "Failed to reload settings."),
-            )
+        result = await settings_api.reload_global_settings(
+            request=ReloadGlobalSettingsRequest(), app_context=app_context
+        )
+        return SettingsResponse(
+            status=result.status,
+            message=result.message,
+            # No other specific fields like 'settings' or 'setting' for this response
+        )
     except HTTPException:
+        raise
+    except AppFileNotFoundError:
         raise
     except BSMError as e:  # E.g. ConfigLoadError
         logger.error(f"API Reload Settings: BSMError. {e}", exc_info=True)
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail=str(e)
         )
+    except ValidationError:
+        raise
     except Exception as e:
         logger.error(f"API Reload Settings: Unexpected error. {e}", exc_info=True)
         raise HTTPException(

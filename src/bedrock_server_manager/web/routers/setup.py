@@ -10,7 +10,6 @@ import logging
 
 from fastapi import APIRouter, Depends, HTTPException, status
 from fastapi.responses import JSONResponse
-from sqlalchemy.exc import IntegrityError
 
 from ...context import AppContext
 from ...utils import (
@@ -34,7 +33,7 @@ router = APIRouter(
 )
 async def get_setup_status(
     app_context: AppContext = Depends(get_app_context),
-):
+) -> SetupStatusResponse:
     """
     Returns whether the application needs initial setup.
     """
@@ -59,68 +58,30 @@ async def create_first_user(
             detail="Application has already been set up.",
         )
 
-    async with app_context.storage.transaction() as session:
-        hashed_password = get_password_hash(data.password)
-
-        try:
-            user = await app_context.storage.user_repo.create_user(
-                session,
-                username=data.username,
-                hashed_password=hashed_password,
-                role="admin",
-            )
-
-            logger.info(f"First user '{data.username}' created with admin role.")
-
-            # Reset the setup cache since an admin user now exists
-            app_context._needs_setup = False
-
-            # Log the user in by creating an access token and returning it
-            access_token = await create_access_token(
-                data={"sub": user.username}, app_context=app_context
-            )
-
-            # Create the JSON response
-            response = JSONResponse(
-                content={
-                    "status": "success",
-                    "message": "Admin account created and logged in successfully.",
-                    "access_token": access_token,
-                    "token_type": "bearer",
-                },
-                status_code=status.HTTP_200_OK,
-            )
-            response.set_cookie(
-                key="access_token_cookie",
-                value=access_token,
-                httponly=True,
-                samesite="lax",
-                path="/",
-            )
-            return response
-
-        except IntegrityError:
-            await session.rollback()
-            logger.warning(
-                f"Setup failed: Username '{data.username}' already exists (should not happen for first user)."
-            )
-            raise HTTPException(
-                status_code=status.HTTP_400_BAD_REQUEST,
-                detail={
-                    "status": "error",
-                    "message": "Username already exists. Please choose a different one.",
-                },
-            )
-        except Exception as e:
-            await session.rollback()
-            logger.error(
-                f"An unexpected error occurred during first user creation: {e}",
-                exc_info=True,
-            )
-            raise HTTPException(
-                status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-                detail={
-                    "status": "error",
-                    "message": "An unexpected server error occurred during setup.",
-                },
-            )
+    record = await app_context.user_service.create_account(
+        data.username, get_password_hash(data.password), first_admin=True
+    )
+    if record is None:
+        raise HTTPException(
+            status_code=400, detail="Could not create the first account."
+        )
+    app_context._needs_setup = False
+    access_token = await create_access_token(
+        data={"sub": record.username}, app_context=app_context
+    )
+    response = JSONResponse(
+        content={
+            "status": "success",
+            "message": "Admin account created and logged in successfully.",
+            "access_token": access_token,
+            "token_type": "bearer",
+        }
+    )
+    response.set_cookie(
+        key="access_token_cookie",
+        value=access_token,
+        httponly=True,
+        samesite="lax",
+        path="/",
+    )
+    return response

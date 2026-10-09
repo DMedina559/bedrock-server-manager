@@ -8,7 +8,9 @@ from typing import Any, Callable, Dict, List, Optional
 
 from fastapi import WebSocket, WebSocketDisconnect
 
+from ..state.models import UserInfoState
 from .schemas import UserResponse
+from .schemas.websocket import json_payload
 
 logger = logging.getLogger(__name__)
 
@@ -33,7 +35,11 @@ class DataProvider:
 class ConnectionManager:
     """Manages WebSocket connections, topic-based subscriptions, and data providers."""
 
-    def __init__(self) -> None:
+    def __init__(
+        self, user_provider: Callable[[str], UserInfoState | None] | None = None
+    ) -> None:
+        self.user_provider = user_provider
+        self.io_timeout = 5.0
         # Maps a unique client ID to its Client object
         self.active_connections: Dict[str, Client] = {}
         # Maps a topic to a list of client IDs subscribed to it
@@ -68,6 +74,39 @@ class ConnectionManager:
 
             logger.info(f"Client disconnected: {client_id}")
 
+    async def revoke_user(self, username: str) -> None:
+        for client in list(self.active_connections.values()):
+            if client.user.username == username:
+                try:
+                    await asyncio.wait_for(
+                        client.websocket.close(
+                            code=1008, reason="Account authorization changed"
+                        ),
+                        timeout=self.io_timeout,
+                    )
+                except Exception:
+                    logger.exception("Could not close revoked connection %s", client.id)
+                finally:
+                    await self.disconnect(client.id)
+
+    async def refresh_authorization(self, client_id: str) -> bool:
+        client = self.active_connections.get(client_id)
+        if client is None:
+            return False
+        if self.user_provider is None:
+            return True
+        user = self.user_provider(client.user.username)
+        if (
+            user is None
+            or not user.is_active
+            or user.id != client.user.id
+            or user.role != client.user.role
+        ):
+            await self.revoke_user(client.user.username)
+            return False
+        client.user = UserResponse.model_validate(user, from_attributes=True)
+        return True
+
     async def subscribe(self, client_id: str, topic: str):
         """Subscribes a client to a given topic."""
         if topic not in self.subscriptions:
@@ -89,12 +128,19 @@ class ConnectionManager:
         logger.info(
             f"Shutting down {len(self.active_connections)} active WebSocket connections."
         )
-        # Create a copy of the values to avoid RuntimeError: dictionary changed size during iteration
-        for client in list(self.active_connections.values()):
+
+        async def close(client: Client) -> None:
             try:
-                await client.websocket.close(code=1001, reason="Server shutting down")
-            except Exception as e:
-                logger.error(f"Error closing websocket for client {client.id}: {e}")
+                await asyncio.wait_for(
+                    client.websocket.close(code=1001, reason="Server shutting down"),
+                    timeout=self.io_timeout,
+                )
+            except Exception as error:
+                logger.error(f"Error closing websocket for client {client.id}: {error}")
+
+        await asyncio.gather(
+            *(close(client) for client in list(self.active_connections.values()))
+        )
         self.active_connections.clear()
         self.subscriptions.clear()
         self.data_providers.clear()
@@ -148,10 +194,15 @@ class ConnectionManager:
 
     async def send_to_client(self, data: Any, client_id: str):
         """Sends a JSON message to a single client."""
+        encoded = json.dumps(json_payload(data).value, allow_nan=False)
+        if not await self.refresh_authorization(client_id):
+            return
         if client_id in self.active_connections:
             client = self.active_connections[client_id]
             try:
-                await client.websocket.send_text(json.dumps(data))
+                await asyncio.wait_for(
+                    client.websocket.send_text(encoded), timeout=self.io_timeout
+                )
             except (WebSocketDisconnect, RuntimeError) as e:
                 # Catch both normal disconnection and the "WebSocket is not connected" RuntimeError
                 logger.info(

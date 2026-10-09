@@ -42,14 +42,10 @@ class AutoupdatePlugin(PluginBase):
 
         try:
             # Check if the server has autoupdate enabled in its settings
-            result = await self.api.get_server_setting(
-                server_name, "settings.autoupdate"
+            result = await self.api.server.get_setting(
+                request={"server_name": server_name, "key": "settings.autoupdate"}
             )
-            autoupdate_enabled = (
-                result.get("value", False)
-                if result.get("status") == "success"
-                else False
-            )
+            autoupdate_enabled = result.value if result.status == "success" else False
 
             if not autoupdate_enabled:
                 self.logger.info(
@@ -62,13 +58,13 @@ class AutoupdatePlugin(PluginBase):
             )
 
             # Call the main API to perform the update. We run it in a thread so it doesn't block the async loop.
-            update_result = await self.api.update_server(
-                server_name=server_name, send_message=False
+            update_result = await self.api.install.update_server(
+                request={"server_name": server_name, "send_message": False}
             )
 
-            if update_result.get("status") == "success":
-                if update_result.get("updated", False):
-                    new_version = update_result.get("new_version", "N/A")
+            if update_result.status == "success":
+                if update_result.updated:
+                    new_version = update_result.new_version
                     self.logger.info(
                         f"Autoupdate successful for '{server_name}'. New version: {new_version}"
                     )
@@ -78,7 +74,7 @@ class AutoupdatePlugin(PluginBase):
                     )
             else:
                 # Log the failure but allow the server to attempt to start with its current version.
-                error_message = update_result.get("message", "Unknown error")
+                error_message = update_result.message
                 self.logger.error(
                     f"Autoupdate process failed for '{server_name}': {error_message}. Server will start with current version."
                 )

@@ -1,10 +1,18 @@
 import logging
-from typing import Any, Dict, Optional
 
 from ..context import AppContext
-from ..error import UserInputError
+from ..error import BSMError, UserInputError
 from ..plugins.api_bridge import api_method
+from ..plugins.api_contract import validate_contract
 from ..plugins.event_trigger import trigger_event
+from .models.ban import (
+    AddServerBanRequest,
+    AddServerBanResponse,
+    GetServerBansRequest,
+    GetServerBansResponse,
+    RemoveServerBanRequest,
+    RemoveServerBanResponse,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -16,69 +24,82 @@ logger = logging.getLogger(__name__)
     identity_keys=("server_name", "xuid"),
 )
 async def add_server_ban(
-    app_context: AppContext,
-    server_name: str,
-    player_name: str,
-    xuid: str,
-    reason: Optional[str] = None,
-) -> Dict[str, Any]:
-    """Adds a player to the server ban list."""
-    if not server_name or not player_name or not xuid:
+    request: AddServerBanRequest, *, app_context: AppContext
+) -> AddServerBanResponse:
+    """Adds a player to the server ban list.
+
+    Accepts AddServerBanRequest and returns AddServerBanResponse.
+    Invalid requests fail validation before side effects; operation failures raise application exceptions.
+    """
+    server_name = request.server_name
+    player_name = request.player_name
+    xuid = request.xuid
+    reason = request.reason
+    if not server_name or not player_name or (not xuid):
         raise UserInputError("server_name, player_name, and xuid are required.")
-
     if not getattr(app_context, "_storage", None):
-        return {"status": "error", "message": "Database is not initialized."}
-
+        raise BSMError("Database is not initialized.")
     logger.info(
         f"API: Adding ban for player '{player_name}' ({xuid}) on server '{server_name}'."
     )
     ban_res = await app_context.server_service.add_server_ban(
         server_name=server_name, player_name=player_name, xuid=xuid, reason=reason
     )
-    return {
-        "status": "success" if ban_res.success else "error",
-        "message": ban_res.message,
-    }
+    if not ban_res.success:
+        raise BSMError(ban_res.message)
+    return AddServerBanResponse.model_validate(
+        {"status": "success", "message": ban_res.message}
+    )
 
 
+@validate_contract
 @trigger_event(
     before="before_remove_server_ban",
     after="after_remove_server_ban",
     identity_keys=("server_name", "xuid"),
 )
 async def remove_server_ban(
-    app_context: AppContext, server_name: str, xuid: str
-) -> Dict[str, Any]:
-    """Removes a player from the server ban list."""
+    request: RemoveServerBanRequest, *, app_context: AppContext
+) -> RemoveServerBanResponse:
+    """Removes a player from the server ban list.
+
+    Accepts RemoveServerBanRequest and returns RemoveServerBanResponse.
+    Invalid requests fail validation before side effects; operation failures raise application exceptions.
+    """
+    server_name = request.server_name
+    xuid = request.xuid
     if not server_name or not xuid:
         raise UserInputError("server_name and xuid are required.")
-
     if not getattr(app_context, "_storage", None):
-        return {"status": "error", "message": "Database is not initialized."}
-
+        raise BSMError("Database is not initialized.")
     logger.info(f"API: Removing ban for XUID '{xuid}' on server '{server_name}'.")
     ban_res = await app_context.server_service.remove_server_ban(
         server_name=server_name, xuid=xuid
     )
-    return {
-        "status": "success" if ban_res.success else "error",
-        "message": ban_res.message,
-    }
+    if not ban_res.success:
+        raise BSMError(ban_res.message)
+    return RemoveServerBanResponse.model_validate(
+        {"status": "success", "message": ban_res.message}
+    )
 
 
 @api_method("get_server_bans")
-async def get_server_bans(app_context: AppContext, server_name: str) -> Dict[str, Any]:
-    """Retrieves all bans for a specific server."""
+async def get_server_bans(
+    request: GetServerBansRequest, *, app_context: AppContext
+) -> GetServerBansResponse:
+    """Retrieves all bans for a specific server.
+
+    Accepts GetServerBansRequest and returns GetServerBansResponse.
+    Invalid requests fail validation before side effects; operation failures raise application exceptions.
+    """
+    server_name = request.server_name
     if not server_name:
         raise UserInputError("server_name is required.")
-
     if not getattr(app_context, "_storage", None):
-        return {"status": "error", "message": "Database is not initialized."}
-
+        raise BSMError("Database is not initialized.")
     ban_res = await app_context.server_service.get_server_bans(server_name=server_name)
     if not ban_res.success:
-        return {"status": "error", "message": ban_res.message}
-    return {
-        "status": "success",
-        "bans": [ban.model_dump() for ban in (ban_res.bans or [])],
-    }
+        raise BSMError(ban_res.message)
+    return GetServerBansResponse.model_validate(
+        {"status": "success", "bans": [ban.model_dump() for ban in ban_res.bans or []]}
+    )

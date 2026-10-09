@@ -10,19 +10,19 @@ thread-local event stack protection.
 Test Flow (A -> B -> A'):
 1. Event A ('before_server_start'):
    - This plugin's `before_server_start` handler is called.
-   - It then calls `self.api.backup_all()`.
+   - It then calls `self.api.backup_restore.backup_all()`.
 
 2. Event B ('before_backup'):
-   - The `self.api.backup_all()` call internally triggers the 'before_backup' event.
+   - The `self.api.backup_restore.backup_all()` call internally triggers the 'before_backup' event.
    - This plugin's `before_backup` handler is called.
-   - It then attempts to call `self.api.start_server()` for the same server.
+   - It then attempts to call `self.api.server.start()` for the same server.
 
 3. Event A' ('before_server_start' - Recursive Attempt):
-   - The `self.api.start_server()` call from Event B would normally try to
+   - The `self.api.server.start()` call from Event B would normally try to
      trigger the 'before_server_start' event again.
    - **Expected Behavior:** The PluginManager should detect that 'before_server_start'
      is already in the current thread's event stack and will *skip dispatching
-     the event handlers* for this second, recursive attempt. The `api.start_server()`
+     the event handlers* for this second, recursive attempt. The `api.server.start()`
      function itself will continue its execution (and might report "server already
      running" or attempt to start another instance depending on system state,
      which is separate from the event guard test).
@@ -31,7 +31,7 @@ What to look for in the logs:
 - The "--- LOOP TEST ---" messages from this plugin.
 - A DEBUG message from `bedrock_server_manager.plugins.plugin_manager` similar to:
   "Skipping recursive event trigger for 'before_server_start'."
-- The "--- LOOP TEST (B): Recursive self.api.start_server() call completed..." message,
+- The "--- LOOP TEST (B): Recursive self.api.server.start() call completed..." message,
   indicating the API call didn't crash due to an event stack overflow.
 """
 
@@ -57,7 +57,7 @@ class RecursiveLoopPlugin(PluginBase):
             f"Plugin '{self.name}' v{self.version} loaded. "
             "This plugin tests event loop protection. To run the test, start any server "
             "in a way that does NOT set the GUARD_VARIABLE for the initial start trigger "
-            "(e.g., direct CLI call, or if api.start_server uses trigger_event)."
+            "(e.g., direct CLI call, or if api.server.start uses trigger_event)."
         )
         self.logger.warning(
             f"Plugin '{self.name}': This plugin will intentionally attempt to create an "
@@ -73,13 +73,17 @@ class RecursiveLoopPlugin(PluginBase):
             f"--- LOOP TEST (EVENT A - Handler Call): 'before_server_start' entered for server '{server_name}'."
         )
         self.logger.info(
-            "--- LOOP TEST (A->B): From 'before_server_start', calling self.api.backup_all() to trigger 'before_backup'."
+            "--- LOOP TEST (A->B): From 'before_server_start', calling self.api.backup_restore.backup_all() to trigger 'before_backup'."
         )
         try:
-            await self.api.backup_all(server_name=server_name)
+            (
+                await self.api.backup_restore.backup_all(
+                    request={"server_name": server_name}
+                )
+            ).model_dump(mode="python")
         except Exception as e:
             self.logger.error(
-                f"--- LOOP TEST (EVENT A): API call self.api.backup_all() failed unexpectedly: {e}",
+                f"--- LOOP TEST (EVENT A): API call self.api.backup_restore.backup_all() failed unexpectedly: {e}",
                 exc_info=True,
             )
 
@@ -97,17 +101,17 @@ class RecursiveLoopPlugin(PluginBase):
         )
         self.logger.info(
             "--- LOOP TEST (B->A' - Recursive Attempt): From 'before_backup', DANGEROUS CALL! "
-            "Attempting self.api.start_server() to re-trigger 'before_server_start' event dispatch."
+            "Attempting self.api.server.start() to re-trigger 'before_server_start' event dispatch."
         )
         try:
-            # This call to api.start_server() will attempt to trigger 'before_server_start' again.
+            # This call to api.server.start() will attempt to trigger 'before_server_start' again.
             # The PluginManager's event stack guard should prevent the *handlers* for this
             # recursive 'before_server_start' from executing.
-            # The api.start_server() function itself will still run its internal logic.
-            await self.api.start_server(server_name=server_name)
+            # The api.server.start() function itself will still run its internal logic.
+            await self.api.server.start({"server_name": server_name})
 
             self.logger.info(
-                "--- LOOP TEST (EVENT B): Recursive self.api.start_server() call completed. "
+                "--- LOOP TEST (EVENT B): Recursive self.api.server.start() call completed. "
                 "This indicates the API call itself did not crash. "
                 "Crucially, check application DEBUG logs for a message like "
                 "'Skipping recursive event trigger for before_server_start' from PluginManager. "
@@ -115,7 +119,7 @@ class RecursiveLoopPlugin(PluginBase):
             )
         except Exception as e:
             self.logger.error(
-                f"--- LOOP TEST (EVENT B): Recursive API call self.api.start_server() failed unexpectedly: {e}",
+                f"--- LOOP TEST (EVENT B): Recursive API call self.api.server.start() failed unexpectedly: {e}",
                 exc_info=True,
             )
 

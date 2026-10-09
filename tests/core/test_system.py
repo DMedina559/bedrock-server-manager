@@ -1,10 +1,10 @@
 """Tests for the base system utilities in bedrock_server_manager.core.system.base."""
 
+import asyncio
 import os
 import stat
 import subprocess
 import sys
-import time
 from pathlib import Path
 from typing import Any, cast
 from unittest.mock import AsyncMock, MagicMock, patch
@@ -66,11 +66,9 @@ def test_can_manage_services():
     assert isinstance(can_manage_services(), bool)
 
 
-async def test_check_internet_connectivity_success():
-    """Test checking internet connectivity when it succeeds."""
-    # Assuming the sandbox has internet access.
-    # Otherwise we can mock aiohttp.ClientSession.get.
-    await check_internet_connectivity()
+async def test_check_internet_connectivity_success(mock_http_server):
+    """Check connectivity through a local HTTP endpoint without public network access."""
+    await check_internet_connectivity(url=mock_http_server.url)
 
 
 @patch("aiohttp.ClientSession.get", side_effect=TimeoutError)
@@ -246,7 +244,7 @@ async def test_is_server_running_false():
         )
 
 
-def test_resource_monitor_real_process():
+async def test_resource_monitor_real_process():
     """Test ResourceMonitor with a real short-lived process."""
     monitor = ResourceMonitor()
 
@@ -254,7 +252,7 @@ def test_resource_monitor_real_process():
     process = subprocess.Popen([sys.executable, "-c", "import time; time.sleep(2)"])
     try:
         # Give psutil time to hook into it
-        time.sleep(0.1)
+        await asyncio.sleep(0.1)
         ps_proc = psutil.Process(process.pid)
 
         stats = monitor.get_stats(ps_proc)
@@ -268,7 +266,7 @@ def test_resource_monitor_real_process():
         assert stats["pid"] == process.pid
 
         # Test a second time to ensure baseline was set and we get valid CPU diff
-        time.sleep(0.5)
+        await asyncio.sleep(0.5)
         stats2 = monitor.get_stats(ps_proc)
         assert stats2 is not None
         assert isinstance(stats2["cpu_percent"], float)

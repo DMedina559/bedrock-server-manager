@@ -37,6 +37,6 @@ repos:
     rev: v2.3.1
     hooks:
       - id: mypy
-        additional_dependencies: [types-requests, types-PyYAML]
+        additional_dependencies: [types-requests, types-PyYAML, "pydantic>=2.9,<3"]
         pass_filenames: false
         args: ["."]

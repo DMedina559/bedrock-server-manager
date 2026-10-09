@@ -32,13 +32,9 @@ class SettingsService:
 
     async def update_setting(self, key: str, value: Any) -> None:
         """Updates a setting value in AppState and registers dirty state for persistence."""
-        if self.get(key) == value:
-            return
-
         async with self.state.settings.get_lock(key):
-            self.state.settings.set(key, value)
-            if self.settings is not None:
-                self.settings._settings = self.state.settings.to_dict()
+            if not self.state.settings.set(key, value):
+                return
 
         changeset = ChangeSet()
         changeset.add_setting(key)

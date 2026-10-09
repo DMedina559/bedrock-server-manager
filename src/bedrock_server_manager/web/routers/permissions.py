@@ -1,12 +1,20 @@
 import logging
 from typing import Dict
 
-from fastapi import APIRouter, Depends, HTTPException, status
+from fastapi import APIRouter, Depends, status
 from fastapi.responses import JSONResponse
+from pydantic import ValidationError
+
+from bedrock_server_manager.api.models import (
+    GetPermissionsRequest,
+    SetPermissionsRequest,
+)
 
 from ...api import permissions as permissions_api
+from ...api.errors import error_response
+from ...api.models.common import APIErrorResponse, ErrorEnvelope
 from ...context import AppContext
-from ...error import BSMError, UserInputError
+from ...error import AppFileNotFoundError, UserInputError
 from ..deps import get_app_context, get_moderator_user, validate_server_exists
 from ..schemas import (
     PermissionsGetResponse,
@@ -32,32 +40,42 @@ async def post_permissions_set(
     server_name: str = Depends(validate_server_exists),
     current_user: UserResponse = Depends(get_moderator_user),
     app_context: AppContext = Depends(get_app_context),
-):
+) -> PermissionsUpdateResponse | JSONResponse:
     permission_entries = payload.permissions
     errors: Dict[str, str] = {}
     success_count = 0
+    error_statuses: list[int] = []
 
     for item in permission_entries:
         try:
             result = await permissions_api.set_permissions(
-                server_name=server_name,
-                xuid=item.xuid,
-                player_name=item.name,
-                permission=item.permission_level,
+                request=SetPermissionsRequest.model_validate(
+                    {
+                        "server_name": server_name,
+                        "xuid": item.xuid,
+                        "player_name": item.name,
+                        "permission": item.permission_level,
+                    }
+                ),
                 app_context=app_context,
             )
-            if result.get("status") == "success":
+            if result.status == "success":
                 success_count += 1
             else:
-                errors[item.xuid] = result.get(
-                    "message", "Unknown error setting permission."
+                errors[item.xuid] = result.message
+        except Exception as error:
+            errors[item.xuid] = error_response(error).message
+            error_statuses.append(
+                404
+                if isinstance(error, AppFileNotFoundError)
+                else (
+                    400 if isinstance(error, (ValidationError, UserInputError)) else 500
                 )
-        except UserInputError as e:
-            errors[item.xuid] = str(e)
-        except BSMError as e:
-            errors[item.xuid] = str(e)
-        except Exception:
-            errors[item.xuid] = "An unexpected server error occurred."
+            )
+            if error_statuses[-1] == 500:
+                logger.error(
+                    "Permission update failed for %s", item.xuid, exc_info=True
+                )
 
     if not errors:
         return PermissionsUpdateResponse(
@@ -65,24 +83,26 @@ async def post_permissions_set(
             message=f"Permissions updated for {success_count} player(s).",
         )
 
-    final_status_code = status.HTTP_400_BAD_REQUEST
-    error_values = list(errors.values())
-    if any("not found" in err_msg.lower() for err_msg in error_values):
-        final_status_code = status.HTTP_404_NOT_FOUND
-    is_internal_server_error = any(
-        "unexpected" in err_msg.lower() or "bsmerror" in err_msg.lower()
-        for err_msg in error_values
+    final_status_code = (
+        500 if 500 in error_statuses else 404 if 404 in error_statuses else 400
     )
-    if is_internal_server_error:
-        final_status_code = status.HTTP_500_INTERNAL_SERVER_ERROR
 
     return JSONResponse(
         status_code=final_status_code,
-        content=PermissionsUpdateResponse(
-            status="error",
-            message="Errors occurred setting permissions.",
-            errors=errors,
-        ).model_dump(),
+        content=ErrorEnvelope(
+            error=APIErrorResponse(
+                code=(
+                    "internal_error"
+                    if final_status_code == 500
+                    else "not_found" if final_status_code == 404 else "validation_error"
+                ),
+                message="Errors occurred setting permissions.",
+                details={
+                    "errors": {key: value for key, value in errors.items()},
+                    "updated": success_count,
+                },
+            )
+        ).model_dump(mode="json"),
     )
 
 
@@ -95,19 +115,9 @@ async def get_permissions(
     server_name: str = Depends(validate_server_exists),
     current_user: UserResponse = Depends(get_moderator_user),
     app_context: AppContext = Depends(get_app_context),
-):
+) -> PermissionsGetResponse:
     result = await permissions_api.get_permissions(
-        server_name=server_name, app_context=app_context
+        request=GetPermissionsRequest.model_validate({"server_name": server_name}),
+        app_context=app_context,
     )
-    if result.get("status") == "success":
-        return PermissionsGetResponse(
-            status=result["status"], permissions=result.get("permissions", [])
-        )
-    if "not found" in result.get("message", "").lower():
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND, detail=result.get("message")
-        )
-    raise HTTPException(
-        status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-        detail=result.get("message", "Failed to get server permissions."),
-    )
+    return result

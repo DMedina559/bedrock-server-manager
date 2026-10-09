@@ -10,12 +10,15 @@ It also handles periodic tasks like player scanning from logs.
 
 import asyncio
 import logging
-from typing import TYPE_CHECKING, Any, Dict, Optional
+from typing import TYPE_CHECKING, Any, Callable, Dict, Optional
 
 from ..error import BSMError, FileOperationError
 from .player import save_player_data
 
 if TYPE_CHECKING:
+    from ..config.settings import Settings
+    from ..db.storage import Storage
+    from ..plugins.api_bridge import AppAPI
     from .bedrock_server import BedrockServer
 
 
@@ -39,10 +42,10 @@ class BedrockProcessManager:
 
     def __init__(
         self,
-        settings: Any,
-        storage: Any,
-        server_provider: Optional[Any] = None,
-        api: Optional[Any] = None,
+        settings: "Settings",
+        storage: "Storage",
+        server_provider: Optional[Callable[[str], "BedrockServer"]] = None,
+        api: Optional["AppAPI"] = None,
     ):
         """Initializes the BedrockProcessManager with explicit dependencies."""
         self.settings = settings
@@ -58,7 +61,7 @@ class BedrockProcessManager:
 
     async def start(self):
         """Call this from the main thread to start monitoring."""
-        if self.monitoring_task is None:
+        if self.monitoring_task is None or self.monitoring_task.done():
             self.monitoring_task = asyncio.create_task(self._monitor_servers())
 
     async def add_server(self, server: "BedrockServer"):
@@ -85,14 +88,8 @@ class BedrockProcessManager:
             self.logger.info(f"Removing server '{server_name}' from process manager.")
             del self.servers[server_name]
 
-    async def shutdown(self):
-        """Shuts down all managed servers concurrently and stops the monitoring task.
-
-        This method:
-        1. Sets the shutdown event for the monitoring task and cancels it immediately.
-        2. Spawns tasks to stop all currently running servers concurrently with exception handling.
-        """
-
+    async def quiesce(self) -> None:
+        """Stop monitoring and automatic restarts before draining operations."""
         self.logger.info("Shutdown signal received. Stopping server monitoring.")
         self._shutdown_event.set()
 
@@ -102,6 +99,16 @@ class BedrockProcessManager:
                 await asyncio.wait_for(self.monitoring_task, timeout=2)
             except (asyncio.TimeoutError, asyncio.CancelledError):
                 pass
+
+    async def shutdown(self):
+        """Shuts down all managed servers concurrently and stops the monitoring task.
+
+        This method:
+        1. Sets the shutdown event for the monitoring task and cancels it immediately.
+        2. Spawns tasks to stop all currently running servers concurrently with exception handling.
+        """
+
+        await self.quiesce()
 
         # Concurrently shut down all servers
         self.logger.info("ProcessManager: Stopping all running servers concurrently...")
@@ -114,7 +121,9 @@ class BedrockProcessManager:
                     return
 
                 try:
-                    await self.api.stop_server(server_name)
+                    if self.api is None:
+                        raise BSMError("Process manager API is not available.")
+                    await self.api.server.stop({"server_name": server_name})
                 except Exception as e:
                     self.logger.error(
                         f"ProcessManager: Error stopping '{server_name}' via API: {e}. Attempting direct stop."
@@ -232,7 +241,11 @@ class BedrockProcessManager:
             self.player_scan_counter += monitoring_interval
             for server_name, server in list(self.servers.items()):
                 # Determine run state
-                is_running = await server.is_running()
+                try:
+                    is_running = await server.is_running()
+                except Exception:
+                    self.logger.exception("Could not probe server '%s'", server_name)
+                    continue
 
                 if not is_running:
                     if not server.intentionally_stopped:
@@ -240,7 +253,12 @@ class BedrockProcessManager:
                             f"Monitored server '{server.server_name}' has crashed."
                         )
                         server.failure_count += 1
-                        await self._try_restart_server(server)
+                        try:
+                            await self._try_restart_server(server)
+                        except Exception:
+                            self.logger.exception(
+                                "Could not recover server '%s'", server_name
+                            )
                     else:
                         self.logger.info(
                             f"Server '{server.server_name}' was stopped intentionally. Removing from monitoring."
@@ -263,10 +281,16 @@ class BedrockProcessManager:
                             )
                             # Call the API bridge to handle events and websockets properly
                             try:
-                                await self.api.update_server_player_stats(
-                                    server.server_name,
-                                    server.player_count,
-                                    server.players,
+                                if self.api is None:
+                                    raise BSMError(
+                                        "Process manager API is not available."
+                                    )
+                                await self.api.server.update_player_stats(
+                                    request={
+                                        "server_name": server.server_name,
+                                        "player_count": server.player_count,
+                                        "players": server.players,
+                                    }
                                 )
                             except Exception as e:
                                 self.logger.warning(
@@ -276,18 +300,22 @@ class BedrockProcessManager:
                         # Enforce bans
                         if server.players:
                             try:
-                                ban_res = await self.api.get_server_bans(
-                                    server_name=server.server_name,
+                                if self.api is None:
+                                    raise BSMError(
+                                        "Process manager API is not available."
+                                    )
+                                ban_res = await self.api.ban.get_server_bans(
+                                    request={"server_name": server.server_name}
                                 )
 
-                                if ban_res.get("status") == "success":
-                                    bans = ban_res.get("bans", [])
-                                    banned_xuids = {b["xuid"]: b for b in bans}
+                                if ban_res.status == "success":
+                                    bans = ban_res.bans
+                                    banned_xuids = {b.xuid: b for b in bans}
                                     for p in server.players:
                                         xuid = p.get("xuid")
                                         if xuid in banned_xuids:
                                             reason = (
-                                                banned_xuids[xuid].get("reason")
+                                                banned_xuids[xuid].reason
                                                 or "You have been banned from this server."
                                             )
                                             p_name = p.get("name", "Unknown")
@@ -321,8 +349,8 @@ class BedrockProcessManager:
                                     players,
                                 )
                     except Exception as e:
-                        server.player_count = 0
                         server.players = []
+                        server.player_count = len(server.players)
                         self.logger.error(
                             f"Error processing players for server '{server.server_name}': {e}"
                         )

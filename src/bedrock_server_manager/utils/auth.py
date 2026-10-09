@@ -146,23 +146,40 @@ async def _get_user_from_token(
 
         # 2. Fall back to database query if user not found in AppState
         try:
-            async with app_context.storage.transaction() as session:
-                user_resp = await _get_and_update_user_from_db(
-                    app_context, session, username
-                )
-                if user_resp is not None:
-                    # Sync into AppState so subsequent checks hit memory
-                    u_state = UserInfoState(
-                        id=user_resp.id,
-                        username=user_resp.username,
-                        role=user_resp.role,
-                        theme=user_resp.theme,
-                        is_active=user_resp.is_active,
-                    )
-                    async with app_context.state.users.get_lock(user_resp.username):
-                        app_context.state.users.set(u_state)
-                        app_context.state.users.remove_dirty_user(user_resp.username)
-                return user_resp
+            async with app_context.storage.write_lock:
+                async with app_context.state.users.get_lock(username):
+                    # A committed account mutation may have populated the cache
+                    # while this lookup was waiting for the shared write lock.
+                    cached = app_context.state.users.get(username)
+                    if cached is not None:
+                        if not cached.is_active:
+                            return None
+                        return UserResponse.model_validate(
+                            {
+                                "id": cached.id or 0,
+                                "username": cached.username,
+                                "identity_type": "jwt",
+                                "role": cached.role,
+                                "is_active": cached.is_active,
+                                "theme": cached.theme,
+                            }
+                        )
+                    async with app_context.storage.transaction() as session:
+                        user_resp = await _get_and_update_user_from_db(
+                            app_context, session, username
+                        )
+                        if user_resp is None:
+                            return None
+                        user = await app_context.storage.user_repo.get_user_by_username(
+                            session, username
+                        )
+                        u_state = UserInfoState.model_validate(
+                            user, from_attributes=True
+                        )
+                    # Preserve the complete profile and publish after last_seen commits.
+                    app_context.state.users.set(u_state)
+                    app_context.state.users.remove_dirty_user(username)
+                    return user_resp
         except Exception as db_err:
             logger.warning(f"Failed DB fallback lookup for user '{username}': {db_err}")
             return None

@@ -1,11 +1,14 @@
 from typing import Any, Dict, List, Optional
 
-from pydantic import BaseModel, Field
+from pydantic import Field, JsonValue
 
+from ...api.models.common import APIRequest, PlayerInfo, ServerSummary
+from ...api.models.player import PlayerScanDetails
+from ...api.models.system import ProcessInfo
 from .base import BaseApiResponse
 
 
-class CommandPayload(BaseModel):
+class CommandPayload(APIRequest):
     """Request model for sending a command to a server."""
 
     command: str = Field(
@@ -13,14 +16,14 @@ class CommandPayload(BaseModel):
     )
 
 
-class ServerSettingItemPayload(BaseModel):
+class ServerSettingItemPayload(APIRequest):
     """Request model for a single server setting key-value pair."""
 
     key: str = Field(
         ...,
         description="The dot-notation key of the setting (e.g., 'settings.autoupdate').",
     )
-    value: Any = Field(..., description="The new value for the setting.")
+    value: JsonValue = Field(..., description="The new value for the setting.")
 
 
 class ServerSettingsResponse(BaseApiResponse):
@@ -32,7 +35,7 @@ class ServerSettingsResponse(BaseApiResponse):
     setting: Optional[ServerSettingItemPayload] = None
 
 
-class AddPlayersPayload(BaseModel):
+class AddPlayersPayload(APIRequest):
     """Request model for manually adding players to the database.
 
     Each string in the 'players' list should be in the format "gamertag:xuid".
@@ -44,23 +47,7 @@ class AddPlayersPayload(BaseModel):
     )
 
 
-class ServerSchemaResponse(BaseModel):
-    """
-    Schema representing server information in lists.
-
-    Attributes:
-        name (str): The server's name.
-        status (str): The server's status (e.g., "Running", "Stopped").
-        version (str): The installed version of the server.
-        player_count (int): The number of players currently online.
-        players (list): The list of players currently online.
-    """
-
-    name: str
-    status: str
-    version: str
-    player_count: int
-    players: List[Dict[str, str]] = Field(default_factory=list)
+ServerSchemaResponse = ServerSummary
 
 
 # --- Specific Response Models replacing GeneralApiResponse ---
@@ -69,7 +56,7 @@ class ServerSchemaResponse(BaseModel):
 class ServersListResponse(BaseApiResponse):
     """Response model for lists of server data."""
 
-    servers: Optional[List[ServerSchemaResponse]] = None
+    servers: Optional[List[ServerSummary]] = None
 
 
 class AppInfoResponse(BaseApiResponse):
@@ -81,13 +68,13 @@ class AppInfoResponse(BaseApiResponse):
 class PlayerListResponse(BaseApiResponse):
     """Response model for player lists."""
 
-    players: Optional[List[Dict[str, Any]]] = None
+    players: Optional[List[PlayerInfo]] = None
 
 
 class AddPlayersResponse(BaseApiResponse):
     """Response model for adding players, typically returns just inherited fields or single item data."""
 
-    details: Optional[Dict[str, Any]] = None
+    details: Optional[PlayerScanDetails] = None
     count: Optional[int] = None
 
 
@@ -100,4 +87,4 @@ class ServerRunningStatusResponse(BaseApiResponse):
 class ServerProcessInfoResponse(BaseApiResponse):
     """Response model for server process info."""
 
-    process_info: Optional[Dict[str, Any]] = None
+    process_info: Optional[ProcessInfo] = None

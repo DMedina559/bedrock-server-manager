@@ -171,7 +171,10 @@ def test_save_config_error(isolated_bcm_config, monkeypatch, caplog):
         raise OSError("Permission denied")
 
     monkeypatch.setattr("os.makedirs", mock_makedirs)
-    bcm_config.save_config({"key": "value"})
+    from bedrock_server_manager.error import ConfigurationError
+
+    with pytest.raises(ConfigurationError):
+        bcm_config.save_config({"key": "value"})
 
     assert "Failed to save configuration file" in caplog.text
 
@@ -197,3 +200,47 @@ async def test_needs_setup(app_context):
         await db.commit()
 
     assert app_context.needs_setup is False
+
+
+@pytest.mark.parametrize(
+    "data",
+    [
+        {"logging_level": "BAD"},
+        {"db_url": "invalid"},
+        {"custom": float("nan")},
+        {"custom": object()},
+    ],
+)
+def test_invalid_save_preserves_existing_file(data, isolated_bcm_config):
+    from pathlib import Path
+
+    from bedrock_server_manager.error import ConfigurationError
+
+    bcm_config.save_config({"custom": "valid"})
+    path = Path(bcm_config.get_config_path())
+    before = path.read_bytes()
+    with pytest.raises(ConfigurationError):
+        bcm_config.save_config(data)
+    assert path.read_bytes() == before
+
+
+def test_replace_failure_preserves_previous_file(isolated_bcm_config, monkeypatch):
+    from pathlib import Path
+
+    from bedrock_server_manager.error import ConfigurationError
+
+    bcm_config.save_config({"custom": "old"})
+    path = Path(bcm_config.get_config_path())
+    before = path.read_bytes()
+    monkeypatch.setattr(
+        bcm_config.os, "replace", lambda *args: (_ for _ in ()).throw(OSError("fail"))
+    )
+    with pytest.raises(ConfigurationError):
+        bcm_config.save_config({"custom": "new"})
+    assert path.read_bytes() == before
+    assert not list(path.parent.glob(".bsm-config-*"))
+
+
+def test_set_config_value_supports_nested_paths(isolated_bcm_config):
+    bcm_config.set_config_value("extension.nested.value", 42)
+    assert bcm_config.get_config_value("extension.nested.value") == 42

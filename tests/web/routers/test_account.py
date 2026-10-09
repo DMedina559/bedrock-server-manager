@@ -2,20 +2,20 @@
 Integration tests for the account router endpoints.
 """
 
-from fastapi.testclient import TestClient
+from httpx2 import AsyncClient
 
 from bedrock_server_manager.db.models import User as UserModel
 
 
-async def test_get_account_api_unauthorized(unauth_client: TestClient):
+async def test_get_account_api_unauthorized(unauth_client: AsyncClient):
     """Test getting account details without authentication."""
-    response = unauth_client.get("/api/account")
+    response = await unauth_client.get("/api/account")
     assert response.status_code == 401
 
 
-async def test_get_account_api_success(auth_client: TestClient, test_user: UserModel):
+async def test_get_account_api_success(auth_client: AsyncClient, test_user: UserModel):
     """Test getting account details with valid authentication."""
-    response = auth_client.get("/api/account")
+    response = await auth_client.get("/api/account")
     assert response.status_code == 200
     data = response.json()
     assert data["username"] == test_user.username
@@ -23,10 +23,10 @@ async def test_get_account_api_success(auth_client: TestClient, test_user: UserM
 
 
 async def test_post_update_theme_success(
-    auth_client: TestClient, test_user: UserModel, db_session
+    auth_client: AsyncClient, test_user: UserModel, db_session
 ):
     """Test updating user theme successfully."""
-    response = auth_client.post(
+    response = await auth_client.post(
         "/api/account/theme",
         json={"theme": "dark"},
     )
@@ -39,10 +39,10 @@ async def test_post_update_theme_success(
 
 
 async def test_post_update_profile_success(
-    auth_client: TestClient, test_user: UserModel, db_session
+    auth_client: AsyncClient, test_user: UserModel, db_session
 ):
     """Test updating user profile successfully."""
-    response = auth_client.post(
+    response = await auth_client.post(
         "/api/account/profile",
         json={"full_name": "Test User Full", "email": "test@example.com"},
     )
@@ -56,10 +56,10 @@ async def test_post_update_profile_success(
 
 
 async def test_post_change_password_success(
-    auth_client: TestClient, test_user: UserModel, db_session
+    auth_client: AsyncClient, test_user: UserModel, db_session
 ):
     """Test changing user password successfully."""
-    response = auth_client.post(
+    response = await auth_client.post(
         "/api/account/change-password",
         json={"current_password": "testpassword", "new_password": "newpassword123"},
     )
@@ -73,20 +73,20 @@ async def test_post_change_password_success(
 
 
 async def test_post_change_password_incorrect_current(
-    auth_client: TestClient, test_user: UserModel
+    auth_client: AsyncClient, test_user: UserModel
 ):
     """Test changing password with incorrect current password."""
-    response = auth_client.post(
+    response = await auth_client.post(
         "/api/account/change-password",
         json={"current_password": "wrongpassword", "new_password": "newpassword123"},
     )
     assert response.status_code == 400
-    assert "Incorrect current password" in response.json()["detail"]
+    assert "Incorrect current password" in response.json()["error"]["message"]
 
 
-async def test_post_change_password_validation_error(auth_client: TestClient):
+async def test_post_change_password_validation_error(auth_client: AsyncClient):
     """Test changing password with missing fields."""
-    response = auth_client.post(
+    response = await auth_client.post(
         "/api/account/change-password",
         json={"current_password": "testpassword"},  # missing new_password
     )

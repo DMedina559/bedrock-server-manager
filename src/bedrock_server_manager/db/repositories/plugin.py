@@ -2,28 +2,27 @@
 Repository for managing Plugin database entity persistence.
 """
 
-from typing import Any, Dict, List, Optional
+from typing import List
 
+from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.future import select
 
 from ...state.models import PluginInfoState
+from ..database import Database
 from ..models import Plugin
 
 
 class PluginRepository:
     """Handles database persistence for plugin configurations."""
 
-    def __init__(self, db: Any = None):
+    def __init__(self, db: Database | None = None):
         self.db = db
 
     async def get_all_plugins(
         self,
-        session: Any,
-        plugin_settings_map: Optional[Dict[str, Dict[str, Any]]] = None,
+        session: AsyncSession,
     ) -> List[PluginInfoState]:
         """Retrieves all plugins from the database as PluginInfoState models."""
-        if plugin_settings_map is None:
-            plugin_settings_map = {}
         result = await session.execute(select(Plugin))
         plugins = []
         for p in result.scalars().all():
@@ -34,12 +33,11 @@ class PluginRepository:
                 version=str(p.version) if p.version else None,
                 author=str(p.author) if p.author else None,
                 description=str(p.description) if p.description else None,
-                settings=plugin_settings_map.get(p_name, {}),
             )
             plugins.append(p_info)
         return plugins
 
-    async def save_plugin(self, session: Any, p_info: PluginInfoState) -> None:
+    async def save_plugin(self, session: AsyncSession, p_info: PluginInfoState) -> None:
         """Persists or updates a single PluginInfoState record."""
         result = await session.execute(
             select(Plugin).filter_by(plugin_name=p_info.plugin_name)

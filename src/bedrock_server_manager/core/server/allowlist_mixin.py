@@ -9,6 +9,7 @@ from ...error import (
     MissingArgumentError,
 )
 from ...utils.io import load_json, save_json
+from ..data import ALLOWLIST
 from .base_server_mixin import BedrockServerBaseMixin
 
 
@@ -34,7 +35,10 @@ class ServerAllowlistMixin(BedrockServerBaseMixin):
             try:
                 loaded_data = await load_json(self.allowlist_json_path)
                 if isinstance(loaded_data, list):
-                    allowlist_entries = loaded_data
+                    allowlist_entries = [
+                        entry.model_dump(mode="json", exclude_unset=True)
+                        for entry in ALLOWLIST.validate_python(loaded_data)
+                    ]
                 elif loaded_data:
                     self.logger.warning(
                         f"Allowlist file '{self.allowlist_json_path}' is not a JSON list. Treating as empty."

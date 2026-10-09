@@ -21,15 +21,14 @@ It is designed to work in conjunction with other mixins of the
       when processing ``.mcworld`` files found within ``.mcaddon`` archives.
 """
 
-import asyncio
 import glob
 import json
 import os
 import re
 import shutil
-import tempfile
 import zipfile
-from typing import TYPE_CHECKING, Any, Dict, List, Optional, Tuple
+from pathlib import Path
+from typing import TYPE_CHECKING, Any, Dict, List, Optional
 
 import aiofiles
 import aiofiles.os
@@ -44,6 +43,9 @@ from ...error import (
     UserInputError,
 )
 from ...utils.io import load_json, save_json
+from ...utils.threads import run_in_thread
+from ..files import extract_archive, file_transaction, temporary_directory
+from ..manifests import PackManifest
 from .base_server_mixin import BedrockServerBaseMixin
 
 
@@ -514,7 +516,7 @@ class ServerAddonMixin(BedrockServerBaseMixin):
         export_filename = f"{safe_pack_name}_{pack_version}.mcpack"
         export_file_path = os.path.join(export_dir, export_filename)
 
-        await aiofiles.os.makedirs(export_dir, exist_ok=True)
+        await run_in_thread(os.makedirs, export_dir, exist_ok=True)
 
         try:
             # Create the zip archive, ensuring paths inside are relative.
@@ -531,7 +533,7 @@ class ServerAddonMixin(BedrockServerBaseMixin):
                             archive_name = os.path.relpath(file_path, pack_source_path)
                             zipf.write(file_path, archive_name)
 
-            await asyncio.to_thread(_do_export)
+            await run_in_thread(_do_export)
 
             self.logger.info(
                 f"Successfully exported addon '{pack_name}' to '{export_file_path}'."
@@ -603,7 +605,7 @@ class ServerAddonMixin(BedrockServerBaseMixin):
             pack_source_path = target_pack["path"]
             try:
                 self.logger.debug(f"Deleting pack folder: {pack_source_path}")
-                await asyncio.to_thread(shutil.rmtree, pack_source_path)
+                await run_in_thread(shutil.rmtree, pack_source_path)
                 self.logger.info(f"Successfully deleted files for pack '{pack_name}'.")
             except OSError as e:
                 raise FileOperationError(
@@ -641,13 +643,8 @@ class ServerAddonMixin(BedrockServerBaseMixin):
             f"Server '{self.server_name}': Processing .mcaddon '{os.path.basename(mcaddon_file_path)}'."
         )
 
-        # Use a temporary directory to handle the extraction.
-        temp_dir = tempfile.mkdtemp(prefix=f"mcaddon_{self.server_name}_")
-        self.logger.debug(
-            f"Created temporary directory for .mcaddon extraction: {temp_dir}"
-        )
-
-        try:
+        async with temporary_directory() as temporary:
+            temp_dir = str(temporary)
             # Extract the archive.
             try:
                 self.logger.info(
@@ -656,9 +653,9 @@ class ServerAddonMixin(BedrockServerBaseMixin):
 
                 def _extract():
                     with zipfile.ZipFile(mcaddon_file_path, "r") as zip_ref:
-                        zip_ref.extractall(temp_dir)
+                        extract_archive(zip_ref, temp_dir)
 
-                await asyncio.to_thread(_extract)
+                await run_in_thread(_extract)
                 self.logger.debug(
                     f"Successfully extracted '{os.path.basename(mcaddon_file_path)}'."
                 )
@@ -673,18 +670,6 @@ class ServerAddonMixin(BedrockServerBaseMixin):
 
             # Delegate to process the extracted contents.
             await self._process_extracted_mcaddon_contents(temp_dir)
-
-        finally:
-            # Ensure the temporary directory is cleaned up.
-            if os.path.isdir(temp_dir):
-                try:
-                    self.logger.debug(f"Cleaning up temp directory: {temp_dir}")
-                    shutil.rmtree(temp_dir)
-                except OSError as e:
-                    self.logger.warning(
-                        f"Could not remove temp directory '{temp_dir}': {e}",
-                        exc_info=True,
-                    )
 
     async def _process_extracted_mcaddon_contents(  # noqa: C901
         self, temp_dir_with_extracted_files: str
@@ -723,7 +708,7 @@ class ServerAddonMixin(BedrockServerBaseMixin):
         )
 
         # Process any .mcworld files found.
-        mcworld_files_found = await asyncio.to_thread(
+        mcworld_files_found = await run_in_thread(
             glob.glob, os.path.join(temp_dir_with_extracted_files, "*.mcworld")
         )
         if mcworld_files_found:
@@ -750,7 +735,7 @@ class ServerAddonMixin(BedrockServerBaseMixin):
                     ) from e
 
         # Process any .mcpack files found.
-        mcpack_files_found = await asyncio.to_thread(
+        mcpack_files_found = await run_in_thread(
             glob.glob, os.path.join(temp_dir_with_extracted_files, "*.mcpack")
         )
         if mcpack_files_found:
@@ -772,7 +757,7 @@ class ServerAddonMixin(BedrockServerBaseMixin):
 
         # Process any folders that look like packs (contain manifest.json).
         found_pack_folders = []
-        for item in await asyncio.to_thread(os.listdir, temp_dir_with_extracted_files):
+        for item in await run_in_thread(os.listdir, temp_dir_with_extracted_files):
             item_path = os.path.join(temp_dir_with_extracted_files, item)
             if await aiofiles.ospath.isdir(item_path) and await aiofiles.ospath.isfile(
                 os.path.join(item_path, "manifest.json")
@@ -832,20 +817,16 @@ class ServerAddonMixin(BedrockServerBaseMixin):
             f"Server '{self.server_name}': Processing .mcpack '{mcpack_filename}'."
         )
 
-        temp_dir = tempfile.mkdtemp(prefix=f"mcpack_{self.server_name}_")
-        self.logger.debug(
-            f"Created temporary directory for .mcpack extraction: {temp_dir}"
-        )
-
-        try:
+        async with temporary_directory() as temporary:
+            temp_dir = str(temporary)
             try:
                 self.logger.info(f"Extracting '{mcpack_filename}' to temp dir...")
 
                 def _extract():
                     with zipfile.ZipFile(mcpack_file_path, "r") as zip_ref:
-                        zip_ref.extractall(temp_dir)
+                        extract_archive(zip_ref, temp_dir)
 
-                await asyncio.to_thread(_extract)
+                await run_in_thread(_extract)
                 self.logger.debug(f"Successfully extracted '{mcpack_filename}'.")
             except zipfile.BadZipFile as e:
                 raise ExtractError(
@@ -876,17 +857,6 @@ class ServerAddonMixin(BedrockServerBaseMixin):
             await self._install_pack_from_extracted_data(
                 install_source_dir, mcpack_file_path
             )
-
-        finally:
-            if os.path.isdir(temp_dir):
-                try:
-                    self.logger.debug(f"Cleaning up temp directory: {temp_dir}")
-                    shutil.rmtree(temp_dir)
-                except OSError as e:
-                    self.logger.warning(
-                        f"Could not remove temp directory '{temp_dir}': {e}",
-                        exc_info=True,
-                    )
 
     async def _install_pack_from_extracted_data(  # noqa: C901
         self, extracted_pack_dir: str, original_mcpack_path: str
@@ -936,9 +906,11 @@ class ServerAddonMixin(BedrockServerBaseMixin):
 
         try:
             # Get metadata from the manifest.
-            pack_type, uuid, version_list, addon_name, _subpacks = (
-                await self._extract_manifest_info(extracted_pack_dir)
-            )
+            manifest = await self._extract_manifest_info(extracted_pack_dir)
+            pack_type = manifest.pack_type
+            uuid = manifest.header.uuid
+            version_list = manifest.header.version
+            addon_name = manifest.header.name
             self.logger.info(
                 f"Manifest for '{original_mcpack_filename}': Type='{pack_type}', UUID='{uuid}', Version='{version_list}', Name='{addon_name}'"
             )
@@ -963,8 +935,8 @@ class ServerAddonMixin(BedrockServerBaseMixin):
                 active_world_dir, "world_resource_packs.json"
             )
 
-            await aiofiles.os.makedirs(behavior_packs_target_base, exist_ok=True)
-            await aiofiles.os.makedirs(resource_packs_target_base, exist_ok=True)
+            await run_in_thread(os.makedirs, behavior_packs_target_base, exist_ok=True)
+            await run_in_thread(os.makedirs, resource_packs_target_base, exist_ok=True)
 
             # Create a unique, file-safe folder name for this specific version of the addon.
             version_str = ".".join(map(str, version_list))
@@ -1010,31 +982,25 @@ class ServerAddonMixin(BedrockServerBaseMixin):
             existing_physical_packs = await self._scan_physical_packs(
                 active_world_dir, pack_folder_name
             )
-            for existing_pack in existing_physical_packs:
-                if existing_pack["uuid"] == uuid:
-                    existing_path = existing_pack["path"]
-                    if existing_path != target_install_path:
-                        self.logger.info(
-                            f"Removing existing pack installation for UUID '{uuid}' at: {existing_path}"
-                        )
-                        await asyncio.to_thread(shutil.rmtree, existing_path)
-
-            # Perform a clean install by removing the target directory if it already exists.
-            if await aiofiles.ospath.isdir(target_install_path):
-                self.logger.debug(
-                    f"Removing existing target directory: {target_install_path}"
-                )
-                await asyncio.to_thread(shutil.rmtree, target_install_path)
-
-            await asyncio.to_thread(
-                shutil.copytree, extracted_pack_dir, target_install_path
-            )
-            self.logger.debug(f"Copied pack contents to '{target_install_path}'.")
-
-            # Activate the pack by adding it to the world's JSON file.
-            await self._update_world_pack_json_file(
-                target_world_json_file, uuid, version_list
-            )
+            async with temporary_directory(active_world_dir) as staging:
+                staged_pack = staging / "pack"
+                await run_in_thread(shutil.copytree, extracted_pack_dir, staged_pack)
+                async with file_transaction(active_world_dir) as transaction:
+                    for existing_pack in existing_physical_packs:
+                        if (
+                            existing_pack["uuid"] == uuid
+                            and existing_pack["path"] != target_install_path
+                        ):
+                            await run_in_thread(
+                                transaction.retire, Path(existing_pack["path"])
+                            )
+                    await run_in_thread(
+                        transaction.replace, staged_pack, Path(target_install_path)
+                    )
+                    await run_in_thread(transaction.watch, Path(target_world_json_file))
+                    await self._update_world_pack_json_file(
+                        target_world_json_file, uuid, version_list
+                    )
             self.logger.info(
                 f"Successfully installed and activated {pack_type_friendly_name} pack '{addon_name}' v{version_str} for server '{self.server_name}'."
             )
@@ -1060,148 +1026,22 @@ class ServerAddonMixin(BedrockServerBaseMixin):
                 f"Unexpected error processing pack '{original_mcpack_filename}' for server '{self.server_name}': {e_unexp}"
             ) from e_unexp
 
-    async def _extract_manifest_info(  # noqa: C901
-        self, extracted_pack_dir: str
-    ) -> Tuple[str, str, List[int], str, List[Dict[str, Any]]]:
-        """Extracts and validates key information from a pack's ``manifest.json`` file.
-
-        This method reads the ``manifest.json`` located in the ``extracted_pack_dir``,
-        parses its JSON content, and extracts essential metadata about the pack.
-        It specifically looks for the pack's display name, UUID, version (as a
-        three-part integer list), type ('data' or 'script' for behavior packs,
-        'resources' for resource packs), and any associated subpacks.
-
-        Args:
-            extracted_pack_dir (str): The absolute path to the directory
-                containing the ``manifest.json`` file for the pack.
-
-        Returns:
-            Tuple[str, str, List[int], str, List[Dict[str, Any]]]: A tuple containing:
-                - ``pack_type`` (str): The type of the pack, normalized to lowercase
-                  (e.g., 'data', 'resources').
-                - ``uuid`` (str): The pack's unique identifier (UUID).
-                - ``version`` (List[int]): The pack's version, as a list of three
-                  integers (e.g., ``[1, 0, 0]``).
-                - ``name`` (str): The human-readable display name of the pack.
-                - ``subpacks`` (List[Dict[str, Any]]): A list of dictionaries representing
-                  the subpacks, extracted directly from the manifest.
-
-        Raises:
-            AppFileNotFoundError: If ``manifest.json`` is not found within
-                ``extracted_pack_dir`` or is not a file.
-            ConfigParseError: If the ``manifest.json`` content is not valid JSON,
-                is not a JSON object, or is missing essential fields (e.g.,
-                ``header.uuid``, ``header.version``, ``header.name``,
-                ``modules`` array, or a valid ``modules[0].type``).
-            FileOperationError: If an OS-level error occurs while trying to read
-                the ``manifest.json`` file (e.g., permission issues).
-            UserInputError: If the pack type specified in the manifest's module
-                section is not 'data', 'script' or 'resources' (case-insensitive).
-        """
+    async def _extract_manifest_info(self, extracted_pack_dir: str) -> PackManifest:
+        """Read and validate normalized metadata from a pack manifest."""
         manifest_file = os.path.join(extracted_pack_dir, "manifest.json")
-        self.logger.debug(f"Attempting to read manifest file: {manifest_file}")
-
         if not await aiofiles.ospath.isfile(manifest_file):
             raise AppFileNotFoundError(manifest_file, "Manifest file")
-
         try:
-            async with aiofiles.open(manifest_file, "r", encoding="utf-8") as f:
-                manifest_data = json.loads(await f.read())
-
-            if not isinstance(manifest_data, dict):
-                raise ConfigParseError("Manifest content is not a valid JSON object.")
-
-            header = manifest_data.get("header")
-            if not isinstance(header, dict):
-                raise ConfigParseError("Manifest missing or invalid 'header' object.")
-
-            # Extract required fields from the header.
-            uuid_val = header.get("uuid")
-            version_val = header.get("version")
-            name_val = header.get("name")
-
-            if isinstance(version_val, str):
-                try:
-                    version_val = [int(part) for part in version_val.split(".")]
-                    while len(version_val) < 3:
-                        version_val.append(0)
-                    version_val = version_val[:3]
-                except ValueError:
-                    version_val = None
-
-            # Extract the pack type from the modules section.
-            modules = manifest_data.get("modules")
-            if not isinstance(modules, list) or not modules:
-                raise ConfigParseError("Manifest missing or invalid 'modules' array.")
-            first_module = modules[0]
-            if not isinstance(first_module, dict):
-                raise ConfigParseError(
-                    "First item in 'modules' array is not a valid object."
-                )
-            pack_type_val = first_module.get("type")
-
-            # Some manifests don't use 'type' directly in the first module, but it can be inferred
-            if not pack_type_val and "description" in first_module:
-                if "resources" in str(first_module["description"]).lower():
-                    pack_type_val = "resources"
-                elif (
-                    "data" in str(first_module["description"]).lower()
-                    or "behavior" in str(first_module["description"]).lower()
-                ):
-                    pack_type_val = "data"
-
-            # If pack_type_val is still somehow missing but we have subpacks, assume it's a resource pack since
-            # subpacks are predominantly used for different resource resolutions
-            if not pack_type_val and manifest_data.get("subpacks"):
-                pack_type_val = "resources"
-
-            # Extract subpacks
-            subpacks_val = manifest_data.get("subpacks", [])
-            if not isinstance(subpacks_val, list):
-                subpacks_val = []
-
-            # Support for subpacks where the root manifest only acts as a container
-            # Sometimes 'name' is in the header, sometimes we just default it.
-            # Some root manifests with subpacks don't declare a module.
-            if not name_val or not isinstance(name_val, str):
-                name_val = "Unknown Subpack Container"
-
-            # Validate the extracted fields to ensure they exist and have the correct type.
-            if not (
-                uuid_val
-                and isinstance(uuid_val, str)
-                and version_val
-                and isinstance(version_val, list)
-                and len(version_val) == 3
-                and all(isinstance(v, int) for v in version_val)
-                and pack_type_val
-                and isinstance(pack_type_val, str)
-            ):
-                missing_details = f"uuid: {uuid_val}, version: {version_val}, name: {name_val}, type: {pack_type_val}"
-                raise ConfigParseError(
-                    f"Invalid manifest structure in {manifest_file}. Details: {missing_details}"
-                )
-
-            pack_type_cleaned = pack_type_val.lower()
-            # Minecraft uses 'data' (or 'script') for behavior packs and 'resources' for resource packs.
-            if pack_type_cleaned not in ("data", "resources", "script"):
-                raise UserInputError(
-                    f"Pack type '{pack_type_cleaned}' from manifest is not 'data', 'script' or 'resources'."
-                )
-
-            self.logger.debug(
-                f"Extracted manifest: Type='{pack_type_cleaned}', UUID='{uuid_val}', Version='{version_val}', Name='{name_val}', Subpacks='{len(subpacks_val)}'"
-            )
-            return pack_type_cleaned, uuid_val, version_val, name_val, subpacks_val
-
-        except ValueError as e:
+            async with aiofiles.open(manifest_file, "r", encoding="utf-8") as source:
+                return PackManifest.model_validate_json(await source.read())
+        except ValueError as error:
             raise ConfigParseError(
-                f"Invalid JSON in manifest '{manifest_file}': {e}"
-            ) from e
-        except OSError as e:
+                f"Invalid manifest '{manifest_file}': {error}"
+            ) from error
+        except OSError as error:
             raise FileOperationError(
-                f"Cannot read manifest file '{manifest_file}': {e}"
-            ) from e
+                f"Cannot read manifest '{manifest_file}': {error}"
+            ) from error
 
     async def _update_world_pack_json_file(  # noqa: C901
         self, world_json_file_path: str, pack_uuid: str, pack_version_list: List[int]
@@ -1320,8 +1160,8 @@ class ServerAddonMixin(BedrockServerBaseMixin):
             packs_list.append({"pack_id": pack_uuid, "version": pack_version_list})
 
         try:
-            await aiofiles.os.makedirs(
-                os.path.dirname(world_json_file_path), exist_ok=True
+            await run_in_thread(
+                os.makedirs, os.path.dirname(world_json_file_path), exist_ok=True
             )
             lock = self.get_file_lock(world_json_file_path)
             async with lock:
@@ -1372,13 +1212,18 @@ class ServerAddonMixin(BedrockServerBaseMixin):
             return []
 
         installed_packs = []
-        for pack_dir_name in await asyncio.to_thread(os.listdir, pack_base_dir):
+        for pack_dir_name in await run_in_thread(os.listdir, pack_base_dir):
             pack_full_path = os.path.join(pack_base_dir, pack_dir_name)
             if os.path.isdir(pack_full_path):
                 try:
-                    _pack_type, uuid, version, name, subpacks = (
-                        await self._extract_manifest_info(pack_full_path)
-                    )
+                    manifest = await self._extract_manifest_info(pack_full_path)
+                    uuid = manifest.header.uuid
+                    version = manifest.header.version
+                    name = manifest.header.name
+                    subpacks = [
+                        item.model_dump(mode="json", exclude_unset=True)
+                        for item in manifest.subpacks
+                    ]
 
                     # If name is generic "pack.name", attempt to resolve from folder structure
                     if name == "pack.name":

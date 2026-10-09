@@ -26,9 +26,11 @@ class WorldOperationNotificationsPlugin(PluginBase):
     async def _is_server_running(self, server_name: str) -> bool:
         """Checks if a server is currently running via the API."""
         try:
-            response = await self.api.get_server_running_status(server_name=server_name)
-            if response and response.get("status") == "success":
-                return bool(response.get("is_running", False))
+            response = await self.api.system.get_server_running_status(
+                request={"server_name": server_name}
+            )
+            if response and response.status == "success":
+                return bool(response.is_running)
             self.logger.warning(
                 f"Could not determine running status for '{server_name}'. API: {response}"
             )
@@ -52,7 +54,9 @@ class WorldOperationNotificationsPlugin(PluginBase):
                 else:
                     command = message
 
-                await self.api.send_command(server_name=server_name, command=command)
+                await self.api.server.send_command(
+                    request={"server_name": server_name, "command": command}
+                )
                 self.logger.info(
                     f"Sent {context} warning to '{server_name}': {message}"
                 )
@@ -75,11 +79,11 @@ class WorldOperationNotificationsPlugin(PluginBase):
         self.logger.debug(
             f"Handling before_world_export for '{server_name}' to '{export_dir}'."
         )
-        summary = await self.api.get_server_summary(server_name=server_name)
+        summary = await self.api.server.get_summary(
+            request={"server_name": server_name}
+        )
         player_count = (
-            summary.get("summary", {}).get("player_count", 0)
-            if summary.get("status") == "success"
-            else 0
+            summary.summary.player_count if summary.status == "success" else 0
         )
         if player_count > 0:
             await self._send_ingame_warning(
@@ -97,11 +101,11 @@ class WorldOperationNotificationsPlugin(PluginBase):
         self.logger.debug(
             f"Handling before_world_import for '{server_name}' from '{file_path}'."
         )
-        summary = await self.api.get_server_summary(server_name=server_name)
+        summary = await self.api.server.get_summary(
+            request={"server_name": server_name}
+        )
         player_count = (
-            summary.get("summary", {}).get("player_count", 0)
-            if summary.get("status") == "success"
-            else 0
+            summary.summary.player_count if summary.status == "success" else 0
         )
         if player_count > 0:
             await self._send_ingame_warning(
@@ -119,11 +123,11 @@ class WorldOperationNotificationsPlugin(PluginBase):
         self.logger.warning(
             f"Critical operation: World reset initiated for server '{server_name}'."
         )
-        summary = await self.api.get_server_summary(server_name=server_name)
+        summary = await self.api.server.get_summary(
+            request={"server_name": server_name}
+        )
         player_count = (
-            summary.get("summary", {}).get("player_count", 0)
-            if summary.get("status") == "success"
-            else 0
+            summary.summary.player_count if summary.status == "success" else 0
         )
         if player_count > 0:
             await self._send_ingame_warning(

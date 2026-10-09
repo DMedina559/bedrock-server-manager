@@ -53,6 +53,13 @@ from ..error import (
     SystemError,
     UserInputError,
 )
+from ..utils.threads import run_in_thread
+from .files import (
+    extract_archive,
+    file_transaction,
+    temporary_directory,
+    validate_archive,
+)
 from .system import base as system_base
 from .system import find_files
 
@@ -128,7 +135,7 @@ async def prune_old_downloads(download_dir: str, download_keep: int):  # noqa: C
             failed_deletions = []
             for file_path_str in files_to_delete:
                 try:
-                    await aiofiles.os.remove(file_path_str)
+                    await run_in_thread(os.remove, file_path_str)
                     logger.info(f"Deleted old download: {file_path_str}")
                     deleted_count += 1
                 except OSError as e_unlink:
@@ -533,46 +540,52 @@ class BedrockDownloader:
             ) from e
 
         try:
+            async with temporary_directory(target_dir or ".") as staging:
+                download_path = staging / "download.zip"
 
-            headers = {
-                "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36"
-            }
-            # Use a streaming request to handle large files efficiently.
-            timeout = aiohttp.ClientTimeout(total=600, connect=30, sock_read=60)
-            async with aiohttp.ClientSession(
-                timeout=timeout, headers=headers
-            ) as session:
-                async with session.get(self.resolved_download_url) as response:
-                    response.raise_for_status()
-                    self.logger.debug(
-                        f"Download request successful (status {response.status}). Writing to file."
-                    )
-                    total_size = int(response.headers.get("content-length", 0))
-                    bytes_written = 0
-                    async with aiofiles.open(self.zip_file_path, "wb") as f:
-                        # Write the file in chunks to avoid high memory usage.
-                        async for chunk in response.content.iter_chunked(8192 * 4):
-                            await f.write(chunk)
-                            bytes_written += len(chunk)
-                    self.logger.info(
-                        f"Successfully downloaded {bytes_written} bytes to: {self.zip_file_path}"
-                    )
-                    if total_size != 0 and bytes_written != total_size:
-                        self.logger.warning(
-                            f"Downloaded size ({bytes_written}) does not match content-length ({total_size}). File might be incomplete."
+                headers = {
+                    "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36"
+                }
+                # Use a streaming request to handle large files efficiently.
+                timeout = aiohttp.ClientTimeout(total=600, connect=30, sock_read=60)
+                async with aiohttp.ClientSession(
+                    timeout=timeout, headers=headers
+                ) as session:
+                    async with session.get(self.resolved_download_url) as response:
+                        response.raise_for_status()
+                        self.logger.debug(
+                            f"Download request successful (status {response.status}). Writing to file."
                         )
+                        total_size = int(response.headers.get("content-length", 0))
+                        bytes_written = 0
+                        async with aiofiles.open(download_path, "wb") as f:
+                            # Write the file in chunks to avoid high memory usage.
+                            async for chunk in response.content.iter_chunked(8192 * 4):
+                                await f.write(chunk)
+                                bytes_written += len(chunk)
+                        self.logger.info(
+                            f"Successfully downloaded {bytes_written} bytes to: {self.zip_file_path}"
+                        )
+                        if total_size != 0 and bytes_written != total_size:
+                            raise InternetConnectivityError(
+                                f"Downloaded size ({bytes_written}) does not match content-length ({total_size}). File might be incomplete."
+                            )
+
+                def validate() -> None:
+                    with zipfile.ZipFile(download_path) as archive:
+                        validate_archive(archive)
+                        bad = archive.testzip()
+                        if bad is not None:
+                            raise zipfile.BadZipFile(f"Corrupt archive entry: {bad}")
+
+                await run_in_thread(validate)
+                await run_in_thread(os.replace, download_path, self.zip_file_path)
         except (aiohttp.ClientError, asyncio.TimeoutError, TimeoutError) as e:
-            # Clean up partial download on failure.
-            if await aiofiles.ospath.exists(self.zip_file_path):
-                try:
-                    await aiofiles.os.remove(self.zip_file_path)
-                except OSError as rm_err:
-                    self.logger.warning(
-                        f"Could not remove incomplete file '{self.zip_file_path}': {rm_err}"
-                    )
             raise InternetConnectivityError(
                 f"Download failed for '{self.resolved_download_url}': {e}"
             ) from e
+        except InternetConnectivityError:
+            raise
         except OSError as e:
             raise FileOperationError(
                 f"Cannot write to file '{self.zip_file_path}': {e}"
@@ -631,7 +644,9 @@ class BedrockDownloader:
                 exc_info=True,
             )
 
-    def _update_server_properties_from_zip(self, zip_ref: zipfile.ZipFile) -> None:
+    def _update_server_properties_from_zip(
+        self, zip_ref: zipfile.ZipFile, target_dir: Path | None = None
+    ) -> None:
         """Updates the server.properties file by applying existing user values
         on top of the fresh file from the zip archive.
 
@@ -661,7 +676,7 @@ class BedrockDownloader:
             self.logger.warning(
                 f"Could not read existing server.properties to merge new properties: {e}"
             )
-            return
+            raise
 
         # 2. Extract properties from zip and merge
         try:
@@ -699,7 +714,15 @@ class BedrockDownloader:
                     merged_lines.append(f"{k}={user_properties[k]}")
 
             # 4. Write back out to disk
-            with open(server_properties_path, "w", encoding="utf-8") as f:
+            with open(
+                (
+                    (target_dir / "server.properties")
+                    if target_dir
+                    else server_properties_path
+                ),
+                "w",
+                encoding="utf-8",
+            ) as f:
                 f.write("\n".join(merged_lines) + "\n")
 
             self.logger.info(
@@ -708,6 +731,7 @@ class BedrockDownloader:
 
         except Exception as e:
             self.logger.warning(f"Could not merge new server.properties from zip: {e}")
+            raise
 
     def get_actual_version(self) -> Optional[str]:
         """Returns the resolved actual version string of the server.
@@ -775,54 +799,55 @@ class BedrockDownloader:
         )
 
         try:
-            await asyncio.to_thread(os.makedirs, self.server_dir, exist_ok=True)
+            await run_in_thread(os.makedirs, self.server_dir, exist_ok=True)
         except OSError as e:
             raise FileOperationError(
                 f"Cannot create target directory '{self.server_dir}' for extraction: {e}"
             ) from e
 
-        def _do_extract():
-            with zipfile.ZipFile(self.zip_file_path, "r") as zip_ref:
-                if is_update:
-                    self.logger.debug(
-                        f"Update mode: Excluding items matching: {self.PRESERVED_ITEMS_ON_UPDATE}"
-                    )
-                    extracted_count, skipped_count = 0, 0
-                    for member in zip_ref.infolist():
-                        member_path = member.filename.replace("\\", "/")
-                        should_extract = not any(
-                            member_path == item or member_path.startswith(item)
-                            for item in self.PRESERVED_ITEMS_ON_UPDATE
-                        )
-                        if should_extract:
-                            zip_ref.extract(member, path=self.server_dir)
-                            extracted_count += 1
-                        else:
-                            self.logger.debug(
-                                f"Skipping extraction of preserved item: {member_path}"
-                            )
-                            skipped_count += 1
-
-                    self._update_server_properties_from_zip(zip_ref)
-
-                    self.logger.info(
-                        f"Update extraction complete. Extracted {extracted_count} items, skipped {skipped_count} preserved items."
-                    )
-                else:
-                    self.logger.debug("Fresh install mode: Extracting all files...")
-                    zip_ref.extractall(self.server_dir)
-                    self.logger.info(
-                        f"Successfully extracted all files to: {self.server_dir}"
-                    )
-
         try:
-            await asyncio.to_thread(_do_extract)
-        except zipfile.BadZipFile as e:
-            raise ExtractError(f"Invalid ZIP file: '{self.zip_file_path}'. {e}") from e
-        except (OSError, IOError) as e:
-            raise FileOperationError(f"Error during file extraction: {e}") from e
-        except Exception as e:
-            raise ExtractError(f"Unexpected error during extraction: {e}") from e
+            async with temporary_directory(Path(self.server_dir).parent) as staging:
+
+                archive_path = self.zip_file_path
+
+                def prepare() -> None:
+                    with zipfile.ZipFile(archive_path, "r") as archive:
+                        members = [
+                            member
+                            for member in archive.infolist()
+                            if not is_update
+                            or not any(
+                                member.filename.replace("\\", "/") == item
+                                or member.filename.replace("\\", "/").startswith(item)
+                                for item in self.PRESERVED_ITEMS_ON_UPDATE
+                            )
+                        ]
+                        extract_archive(archive, staging, members)
+                        if is_update:
+                            self._update_server_properties_from_zip(archive, staging)
+
+                await run_in_thread(prepare)
+                async with file_transaction(
+                    Path(self.server_dir).parent
+                ) as transaction:
+
+                    def install() -> None:
+                        for entry in sorted(staging.rglob("*")):
+                            target = Path(self.server_dir) / entry.relative_to(staging)
+                            if entry.is_dir():
+                                transaction.mkdir(target)
+                            else:
+                                transaction.replace(entry, target)
+
+                    await run_in_thread(install)
+        except zipfile.BadZipFile as error:
+            raise ExtractError(
+                f"Invalid ZIP file: '{self.zip_file_path}'. {error}"
+            ) from error
+        except OSError as error:
+            raise FileOperationError(
+                f"Error during file extraction: {error}"
+            ) from error
 
     async def full_server_setup(self, is_update: bool) -> str:
         """Performs the complete server setup asynchronously."""
@@ -845,10 +870,10 @@ class BedrockDownloader:
         )
         if self._version_type == "CUSTOM":
             self.logger.debug("Custom version specified, skipping download URL lookup.")
-            await asyncio.to_thread(self._get_version_from_url)
+            await run_in_thread(self._get_version_from_url)
         else:
             await self._lookup_bedrock_download_url()
-            await asyncio.to_thread(self._get_version_from_url)
+            await run_in_thread(self._get_version_from_url)
 
         if not self.actual_version:
             raise DownloadError("Could not determine actual version from resolved URL.")
@@ -870,7 +895,7 @@ class BedrockDownloader:
                 )
 
             self.zip_file_path = self.server_zip_path
-            await asyncio.to_thread(self._get_version_from_url)
+            await run_in_thread(self._get_version_from_url)
 
             self.specific_download_dir = str(Path(self.server_zip_path).parent)
             self.logger.debug(
@@ -891,11 +916,9 @@ class BedrockDownloader:
         await system_base.check_internet_connectivity()
 
         try:
-            await asyncio.to_thread(os.makedirs, self.server_dir, exist_ok=True)
+            await run_in_thread(os.makedirs, self.server_dir, exist_ok=True)
             if self.base_download_dir:
-                await asyncio.to_thread(
-                    os.makedirs, self.base_download_dir, exist_ok=True
-                )
+                await run_in_thread(os.makedirs, self.base_download_dir, exist_ok=True)
         except OSError as e:
             raise FileOperationError(
                 f"Failed to create required directories asynchronously: {e}"
@@ -920,9 +943,7 @@ class BedrockDownloader:
             f"Using specific download subdirectory: {self.specific_download_dir}"
         )
         try:
-            await asyncio.to_thread(
-                os.makedirs, self.specific_download_dir, exist_ok=True
-            )
+            await run_in_thread(os.makedirs, self.specific_download_dir, exist_ok=True)
         except OSError as e:
             raise FileOperationError(
                 f"Failed to create download subdirectory '{self.specific_download_dir}': {e}"

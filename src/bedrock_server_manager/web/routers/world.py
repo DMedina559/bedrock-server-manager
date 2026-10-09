@@ -5,6 +5,14 @@ import aiofiles.ospath
 import bsm_frontend
 from fastapi import APIRouter, Depends, HTTPException, status
 from fastapi.responses import FileResponse
+from pydantic import ValidationError
+
+from bedrock_server_manager.api.models import (
+    ExportWorldRequest,
+    ImportWorldRequest,
+    ListAvailableWorldsRequest,
+    ResetWorldRequest,
+)
 
 from ...api import application as app_api
 from ...api import world as world_api
@@ -21,7 +29,8 @@ from ..deps import (
     get_moderator_user,
     validate_server_exists,
 )
-from ..schemas import ActionResponse, ContentListResponse, FileNamePayload, UserResponse
+from ..schemas import ContentListResponse, FileNamePayload, UserResponse
+from ..schemas.base import TaskAcceptedResponse
 
 logger = logging.getLogger(__name__)
 
@@ -41,27 +50,24 @@ STATIC_DIR = bsm_frontend.get_static_dir()
 async def get_worlds_list(
     current_user: UserResponse = Depends(get_moderator_user),
     app_context: AppContext = Depends(get_app_context),
-):
+) -> ContentListResponse:
     """
     Retrieves a list of available .mcworld template files.
     """
     identity = current_user.username
     logger.info(f"API: List available worlds request by user '{identity}'.")
     try:
-        api_result = await app_api.list_available_worlds(app_context=app_context)
-        if api_result.get("status") == "success":
-            full_paths = api_result.get("files", [])
-            basenames = [os.path.basename(p) for p in full_paths]
-            return ContentListResponse(
-                status="success", files=basenames, message=api_result.get("message")
-            )
-        else:
-            logger.warning(f"API: Error listing worlds: {api_result.get('message')}")
-            raise HTTPException(
-                status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-                detail=api_result.get("message", "Failed to list worlds."),
-            )
+        api_result = await app_api.list_available_worlds(
+            request=ListAvailableWorldsRequest(), app_context=app_context
+        )
+        full_paths = api_result.files
+        basenames = [os.path.basename(p) for p in full_paths]
+        return ContentListResponse(
+            status="success", files=basenames, message=api_result.message
+        )
     except HTTPException:
+        raise
+    except ValidationError:
         raise
     except Exception as e:
         logger.error(
@@ -76,7 +82,7 @@ async def get_worlds_list(
 @router.post(
     "/api/server/{server_name}/world/install",
     operation_id="install_world",
-    response_model=ActionResponse,
+    response_model=TaskAcceptedResponse,
     status_code=status.HTTP_202_ACCEPTED,
     tags=["Content Management"],
 )
@@ -85,7 +91,7 @@ async def post_world_install(
     server_name: str = Depends(validate_server_exists),
     current_user: UserResponse = Depends(get_admin_user),
     app_context: AppContext = Depends(get_app_context),
-):
+) -> TaskAcceptedResponse:
     """
     Initiates a background task to install a world from a .mcworld file to a server.
     """
@@ -133,13 +139,14 @@ async def post_world_install(
         task_id = await app_context.task_manager.run_task(
             world_api.import_world,
             username=current_user.username,
-            server_name=server_name,
-            selected_file_path=full_world_file_path,
             app_context=app_context,
+            request=ImportWorldRequest(
+                server_name=server_name, selected_file_path=full_world_file_path
+            ),
         )
 
-        return ActionResponse(
-            status="pending",
+        return TaskAcceptedResponse(
+            status="accepted",
             message=f"World install from '{selected_filename}' for server '{server_name}' initiated in background.",
             task_id=task_id,
         )
@@ -147,6 +154,8 @@ async def post_world_install(
         raise
     except UserInputError as e:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(e))
+    except AppFileNotFoundError:
+        raise
     except BSMError as e:
         logger.error(
             f"API Install World '{server_name}': Pre-check BSMError: {e}", exc_info=True
@@ -155,6 +164,8 @@ async def post_world_install(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail=str(e)
         )
     except HTTPException:
+        raise
+    except ValidationError:
         raise
     except Exception as e:
         logger.error(
@@ -169,7 +180,7 @@ async def post_world_install(
 @router.post(
     "/api/server/{server_name}/world/export",
     operation_id="export_world",
-    response_model=ActionResponse,
+    response_model=TaskAcceptedResponse,
     status_code=status.HTTP_202_ACCEPTED,
     tags=["Content Management"],
 )
@@ -177,7 +188,7 @@ async def post_world_export(
     server_name: str = Depends(validate_server_exists),
     current_user: UserResponse = Depends(get_admin_user),
     app_context: AppContext = Depends(get_app_context),
-):
+) -> TaskAcceptedResponse:
     """
     Initiates a background task to export the active world of a server to a .mcworld file.
     """
@@ -197,12 +208,12 @@ async def post_world_export(
         task_id = await app_context.task_manager.run_task(
             world_api.export_world,
             username=current_user.username,
-            server_name=server_name,
             app_context=app_context,
+            request=ExportWorldRequest(server_name=server_name),
         )
 
-        return ActionResponse(
-            status="pending",
+        return TaskAcceptedResponse(
+            status="accepted",
             message=f"World export for server '{server_name}' initiated in background.",
             task_id=task_id,
         )
@@ -211,6 +222,8 @@ async def post_world_export(
     except UserInputError as e:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(e))
     except HTTPException:
+        raise
+    except ValidationError:
         raise
     except Exception as e:
         logger.error(
@@ -225,7 +238,7 @@ async def post_world_export(
 @router.delete(
     "/api/server/{server_name}/world/reset",
     operation_id="reset_world",
-    response_model=ActionResponse,
+    response_model=TaskAcceptedResponse,
     status_code=status.HTTP_202_ACCEPTED,
     tags=["Server Management"],
 )
@@ -233,7 +246,7 @@ async def delete_world_reset(
     server_name: str = Depends(validate_server_exists),
     current_user: UserResponse = Depends(get_admin_user),
     app_context: AppContext = Depends(get_app_context),
-):
+) -> TaskAcceptedResponse:
     """
     Initiates a background task to reset a server's world.
     """
@@ -251,12 +264,12 @@ async def delete_world_reset(
         task_id = await app_context.task_manager.run_task(
             world_api.reset_world,
             username=current_user.username,
-            server_name=server_name,
             app_context=app_context,
+            request=ResetWorldRequest(server_name=server_name),
         )
 
-        return ActionResponse(
-            status="pending",
+        return TaskAcceptedResponse(
+            status="accepted",
             message=f"World reset for server '{server_name}' initiated in background.",
             task_id=task_id,
         )
@@ -265,6 +278,8 @@ async def delete_world_reset(
     except UserInputError as e:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(e))
     except HTTPException:
+        raise
+    except ValidationError:
         raise
     except Exception as e:
         logger.error(
@@ -336,6 +351,8 @@ async def get_world_icon(
             )
 
     except HTTPException:
+        raise
+    except ValidationError:
         raise
     except Exception as e:
         logger.error(

@@ -1,80 +1,49 @@
-from unittest.mock import MagicMock, patch
-
-from sqlalchemy import select
+from sqlalchemy import inspect, text
 from sqlalchemy.ext.asyncio import AsyncEngine, AsyncSession
 
 from bedrock_server_manager.db.database import Database
 
 
 async def test_database_initialization_with_url():
-    """Test Database initialization with an explicit URL."""
-    db = Database(db_url="sqlite+aiosqlite:///:memory:")
-    db.initialize()
+    database = Database(db_url="sqlite+aiosqlite:///:memory:")
+    database.initialize()
+    try:
+        assert isinstance(database.engine, AsyncEngine)
+        assert database.SessionLocal is not None
+        assert not database._tables_created
+    finally:
+        await database.shutdown()
 
-    assert db.engine is not None
-    assert isinstance(db.engine, AsyncEngine)
-    assert db.SessionLocal is not None
-    assert not db._tables_created
-    await db.shutdown()
 
-
-async def test_database_session_manager(db):
-    """Test that session_manager yields a session and ensures tables are created."""
-    assert not db._tables_created
-
+async def test_session_manager_uses_migrated_schema(db):
     async with db.session_manager() as session:
-        assert session is not None
         assert isinstance(session, AsyncSession)
-        assert db._tables_created  # Should trigger _ensure_tables_created
-
-        # Test basic query to ensure tables exist
-        from bedrock_server_manager.db.models import User
-
-        result = await session.execute(select(User))
-        users = result.scalars().all()
-        assert isinstance(users, list)
-
-
-async def test_ensure_tables_created_idempotent(db):
-    """Test _ensure_tables_created only runs migrations once."""
-    assert not db._tables_created
-
-    await db._ensure_tables_created()
-    assert db._tables_created
-
-    # Run again, should not execute migrations
-    await db._ensure_tables_created()
-    assert db._tables_created
+        version = (
+            await session.execute(text("SELECT version_num FROM alembic_version"))
+        ).scalar_one()
+        assert version
+        tables = await session.run_sync(
+            lambda sync: inspect(sync.bind).get_table_names()
+        )
+        assert {"users", "servers", "alembic_version"}.issubset(tables)
 
 
-@patch("alembic.command.upgrade")
-async def test_ensure_tables_created_runs_alembic(mock_upgrade, monkeypatch, tmp_path):
-    """Test _ensure_tables_created triggers Alembic upgrade when tables are missing."""
-    db_path = tmp_path / "isolated.db"
-    db = Database(f"sqlite+aiosqlite:///{db_path}")
-    db.initialize()
-    db._tables_created = False
-
-    import importlib.resources
-
-    monkeypatch.setattr(
-        importlib.resources,
-        "files",
-        MagicMock(
-            return_value=MagicMock(
-                joinpath=MagicMock(return_value=tmp_path / "alembic.ini")
-            )
-        ),
-    )
-
-    await db._ensure_tables_created()
-
-    mock_upgrade.assert_called_once()
-    assert db._tables_created
-    await db.shutdown()
-
-
-async def test_database_close(db):
-    """Test database connection is disposed properly."""
-    assert db.engine is not None
-    await db.shutdown()
+async def test_real_migrations_are_idempotent_and_persist_on_reopen(tmp_path):
+    url = f"sqlite+aiosqlite:///{tmp_path / 'migration.db'}"
+    versions = []
+    for _ in range(2):
+        database = Database(url)
+        database.initialize()
+        try:
+            async with database.session_manager() as session:
+                versions.append(
+                    (
+                        await session.execute(
+                            text("SELECT version_num FROM alembic_version")
+                        )
+                    ).scalar_one()
+                )
+            await database._ensure_tables_created()
+        finally:
+            await database.shutdown()
+    assert versions[0] == versions[1]

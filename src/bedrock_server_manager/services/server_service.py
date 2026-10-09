@@ -3,10 +3,14 @@
 Service managing server domain state mutations and business rules.
 """
 
-from typing import TYPE_CHECKING, Any, Dict, Optional
+from typing import TYPE_CHECKING, Dict, Optional
 
+from pydantic import JsonValue
+
+from ..error import ConfigParseError
 from ..state.changeset import ChangeSet
 from ..state.models import BanResult, ServerConfigState
+from ..state.updates import ServerUpdate
 
 if TYPE_CHECKING:
     from ..db.storage import Storage
@@ -35,39 +39,31 @@ class ServerService:
     async def register_or_update_server(
         self,
         server_name: str,
-        installed_version: str = "UNKNOWN",
-        status: str = "UNKNOWN",
+        installed_version: Optional[str] = None,
+        status: Optional[str] = None,
         autoupdate: Optional[bool] = None,
         autostart: Optional[bool] = None,
         target_version: Optional[str] = None,
-        custom: Optional[Dict[str, Any]] = None,
+        custom: Optional[Dict[str, JsonValue]] = None,
     ) -> ServerConfigState:
         """Registers or updates server state model while maintaining dirty tracking."""
         async with self.state.servers.get_lock(server_name):
             existing = self.state.servers.get(server_name)
-            if existing:
-                updated_dict = existing.model_dump()
-                updated_dict["installed_version"] = installed_version
-                updated_dict["status"] = status
-                if autoupdate is not None:
-                    updated_dict["autoupdate"] = autoupdate
-                if autostart is not None:
-                    updated_dict["autostart"] = autostart
-                if target_version is not None:
-                    updated_dict["target_version"] = target_version
-                if custom is not None:
-                    updated_dict["custom"] = custom
-                config = ServerConfigState(**updated_dict)
-            else:
-                config = ServerConfigState(
-                    server_name=server_name,
-                    installed_version=installed_version,
-                    status=status,
-                    autoupdate=autoupdate if autoupdate is not None else False,
-                    autostart=autostart if autostart is not None else False,
-                    target_version=target_version or "UNKNOWN",
-                    custom=custom or {},
-                )
+            values: dict[str, object] = {"server_name": server_name}
+            for name, value in (
+                ("installed_version", installed_version),
+                ("status", status),
+                ("autoupdate", autoupdate),
+                ("autostart", autostart),
+                ("target_version", target_version),
+                ("custom", custom),
+            ):
+                if value is not None:
+                    values[name] = value
+            update = ServerUpdate.model_validate(values)
+            data = existing.model_dump() if existing else {}
+            data.update(update.model_dump(exclude_unset=True))
+            config = ServerConfigState.model_validate(data)
 
             self.state.servers.set(config)
 
@@ -77,6 +73,40 @@ class ServerService:
         await self.storage.apply_changeset(self.state, changeset)
 
         return config
+
+    async def update_setting(
+        self, server_name: str, key: str, value: JsonValue
+    ) -> None:
+        """Apply a single configuration path to the latest validated snapshot."""
+        parts = key.split(".")
+        roots = {
+            "server_info": {"installed_version", "status"},
+            "settings": {"autoupdate", "autostart", "target_version"},
+        }
+        async with self.state.servers.get_lock(server_name):
+            record = self.state.servers.get(server_name) or ServerConfigState(
+                server_name=server_name
+            )
+            data = record.model_dump()
+            if parts[0] == "custom":
+                current = data
+                for part in parts[:-1]:
+                    current = current.setdefault(part, {})
+                    if not isinstance(current, dict):
+                        raise ConfigParseError(
+                            "Configuration path conflicts with an existing value."
+                        )
+                current[parts[-1]] = value
+            elif len(parts) == 2 and parts[1] in roots.get(parts[0], set()):
+                data[parts[1]] = value
+            else:
+                raise ConfigParseError(
+                    "Unknown server configuration path. Use custom for extension settings."
+                )
+            self.state.servers.set(ServerConfigState.model_validate(data))
+        changeset = ChangeSet()
+        changeset.add_server(server_name)
+        await self.storage.apply_changeset(self.state, changeset)
 
     async def set_autostart(self, server_name: str, enabled: bool) -> None:
         """Sets server autostart flag."""

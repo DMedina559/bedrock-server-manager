@@ -1,113 +1,69 @@
-from unittest.mock import AsyncMock
+from pathlib import Path
 
+import pytest
+from pydantic import ValidationError
+
+from bedrock_server_manager.api.models import (
+    AddPlayersManuallyRequest,
+    GetAllKnownPlayersRequest,
+    ScanAndUpdatePlayerDbRequest,
+)
 from bedrock_server_manager.api.player import (
     add_players_manually,
     get_all_known_players,
     scan_and_update_player_db,
 )
-from bedrock_server_manager.error import BSMError, UserInputError
+from bedrock_server_manager.error import UserInputError
 
 
-async def test_add_players_manually_success(app_context, monkeypatch):
-    """Test add_players_manually parses input lists and routes saves."""
-    mock_save = AsyncMock()
-    monkeypatch.setattr("bedrock_server_manager.api.player.save_player_data", mock_save)
-
-    result = await add_players_manually(["user1:1234", "user2:5678"], app_context)
-
-    assert result["status"] == "success"
-    assert result["count"] == 2
-    mock_save.assert_called_once()
-
-
-async def test_add_players_manually_invalid_input(app_context):
-    """Test add_players_manually catches bad inputs directly."""
-    result = await add_players_manually([], app_context)
-    assert result["status"] == "error"
-    assert "non-empty list" in result["message"]
-
-
-async def test_add_players_manually_parse_error(app_context, monkeypatch):
-    """Test add_players_manually catches UserInputError from the parse_player_string core util."""
-
-    def mock_parse(*args):
-        raise UserInputError("Bad formatting")
-
-    monkeypatch.setattr(
-        "bedrock_server_manager.api.player.parse_player_string", mock_parse
+async def test_manual_players_persist_and_update_without_duplicates(app_context):
+    response = await add_players_manually(
+        AddPlayersManuallyRequest(player_strings=["Steve:1234", "Alex:5678"]),
+        app_context=app_context,
     )
-
-    result = await add_players_manually(["bad_format"], app_context)
-
-    assert result["status"] == "error"
-    assert "Invalid player data: Bad formatting" in result["message"]
-
-
-async def test_add_players_manually_no_db(app_context, monkeypatch):
-    """Test add_players_manually errors properly if no db initialized."""
-    # We must patch the underlying hidden variable accessed by the property getter
-    monkeypatch.setattr(type(app_context), "storage", None)
-    result = await add_players_manually(["player1:123"], app_context)
-    assert result["status"] == "error"
-    assert "not initialized" in result["message"]
-
-
-async def test_get_all_known_players_success(app_context, monkeypatch):
-    """Test get_all_known_players loads generic players array via mock."""
-    mock_get = AsyncMock(return_value=[{"name": "p1"}, {"name": "p2"}])
-    monkeypatch.setattr("bedrock_server_manager.api.player.get_known_players", mock_get)
-
-    result = await get_all_known_players(app_context)
-
-    assert result["status"] == "success"
-    assert len(result["players"]) == 2
-
-
-async def test_get_all_known_players_no_db(app_context, monkeypatch):
-    """Test get_all_known_players errors properly if no db initialized."""
-    monkeypatch.setattr(type(app_context), "storage", None)
-    result = await get_all_known_players(app_context)
-    assert result["status"] == "error"
-    assert "not initialized" in result["message"]
-
-
-async def test_scan_and_update_player_db_success(app_context, monkeypatch):
-    """Test scan_and_update_player_db delegates correctly generating complex stats mapping."""
-    mock_discover = AsyncMock(
-        return_value={
-            "total_entries_in_logs": 5,
-            "unique_players_submitted_for_saving": 2,
-            "actually_saved_or_updated_in_db": 1,
-            "scan_errors": [],
-        }
+    assert response.count == 2
+    await add_players_manually(
+        AddPlayersManuallyRequest(player_strings=["Renamed:1234"]),
+        app_context=app_context,
     )
-    monkeypatch.setattr(
-        "bedrock_server_manager.api.player.discover_and_store_players", mock_discover
+    await app_context.reload()
+    response = await get_all_known_players(
+        GetAllKnownPlayersRequest(), app_context=app_context
     )
-
-    result = await scan_and_update_player_db(app_context)
-
-    assert result["status"] == "success"
-    assert result["details"]["actually_saved_or_updated_in_db"] == 1
-    assert "actually saved/updated" in result["message"].lower()
+    assert {player.xuid: player.name for player in response.players} == {
+        "1234": "Renamed",
+        "5678": "Alex",
+    }
 
 
-async def test_scan_and_update_player_db_bsm_error(app_context, monkeypatch):
-    """Test scan_and_update_player_db formats underlying errors."""
-    mock_discover = AsyncMock(side_effect=BSMError("Base DB Broken"))
-    monkeypatch.setattr(
-        "bedrock_server_manager.api.player.discover_and_store_players", mock_discover
+async def test_log_scan_persists_real_player_entries(app_context, real_bedrock_server):
+    Path(real_bedrock_server.server_log_path).write_text(
+        "[INFO] Player connected: Steve, xuid: 1234\n[INFO] Player connected: Alex, xuid: 5678\n"
     )
+    response = await scan_and_update_player_db(
+        ScanAndUpdatePlayerDbRequest(), app_context=app_context
+    )
+    assert response.details.scan_errors == []
+    assert response.details.unique_players_submitted_for_saving == 2
+    players = await get_all_known_players(
+        GetAllKnownPlayersRequest(), app_context=app_context
+    )
+    assert {player.name for player in players.players} == {"Steve", "Alex"}
 
-    result = await scan_and_update_player_db(app_context)
 
-    assert result["status"] == "error"
-    assert "Base DB Broken" in result["message"]
+async def test_invalid_player_string_does_not_save_partial_input(app_context):
+    with pytest.raises(UserInputError):
+        await add_players_manually(
+            AddPlayersManuallyRequest(player_strings=["Steve:1234", "invalid"]),
+            app_context=app_context,
+        )
+    assert (
+        await get_all_known_players(
+            GetAllKnownPlayersRequest(), app_context=app_context
+        )
+    ).players == []
 
 
-async def test_scan_and_update_player_db_no_db(app_context, monkeypatch):
-    """Test scan_and_update_player_db errors properly if no db initialized."""
-    monkeypatch.setattr(type(app_context), "storage", None)
-    result = await scan_and_update_player_db(app_context)
-    assert result["status"] == "error"
-    assert "not initialized" in result["message"]
+def test_empty_player_list_is_rejected():
+    with pytest.raises(ValidationError):
+        AddPlayersManuallyRequest(player_strings=[])

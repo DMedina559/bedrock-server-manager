@@ -1,25 +1,23 @@
-# src/bedrock_server_manager/plugins/runtime.py
-"""
-Runtime management objects for plugin execution (PluginRuntime vs PluginState).
-"""
+"""Validated plugin runtime snapshots; execution handles stay in PluginManager."""
 
-from typing import List, Optional
+from typing import Literal
 
-from pydantic import BaseModel, Field
+from pydantic import ConfigDict, Field
+
+from ..state.models import PersistentRecord
+
+PluginStatus = Literal["LOADED", "DISABLED", "ERROR", "UNLOADED", "UNKNOWN"]
 
 
-class PluginRuntime(BaseModel):
-    """
-    Ephemeral runtime tracking for loaded plugins.
-    Separates running process handles and modules from persistent PluginInfoState.
-    """
-
+class PluginRuntime(PersistentRecord):
+    model_config = ConfigDict(frozen=True)
     plugin_name: str
-    loaded: bool = False
-    status: str = "UNLOADED"  # LOADED, DISABLED, ERROR, UNLOADED
-    module_name: Optional[str] = None
-    error_message: Optional[str] = None
-    registered_events: List[str] = Field(default_factory=list)
-    active_tasks: List[str] = Field(default_factory=list)
+    status: PluginStatus = "UNLOADED"
+    module_name: str | None = None
+    error_message: str | None = None
+    registered_events: list[str] = Field(default_factory=list)
+    active_tasks: list[str] = Field(default_factory=list)
 
-    model_config = {"arbitrary_types_allowed": True}
+    @property
+    def loaded(self) -> bool:
+        return self.status == "LOADED"

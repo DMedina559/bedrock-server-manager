@@ -9,14 +9,26 @@ import logging
 import os
 from typing import Any, Dict, Optional, Set
 
-from pydantic import BaseModel, Field, PrivateAttr
+from pydantic import BaseModel, ConfigDict, Field, JsonValue, PrivateAttr, TypeAdapter
 
 from ..error import ConfigurationError
+from .validation import json_equal
 
 logger = logging.getLogger(__name__)
 
 
-class PathsSettings(BaseModel):
+class SettingsRecord(BaseModel):
+    model_config = ConfigDict(
+        extra="forbid",
+        strict=True,
+        frozen=True,
+        validate_default=True,
+        allow_inf_nan=False,
+        revalidate_instances="always",
+    )
+
+
+class PathsSettings(SettingsRecord):
     servers: str = ""
     content: str = ""
     downloads: str = ""
@@ -25,38 +37,59 @@ class PathsSettings(BaseModel):
     themes: str = ""
 
 
-class RetentionSettings(BaseModel):
-    backups: int = 3
-    downloads: int = 3
+class RetentionSettings(SettingsRecord):
+    backups: int = Field(default=3, ge=0)
+    downloads: int = Field(default=3, ge=0)
 
 
-class MonitoringSettings(BaseModel):
-    max_retries: int = 3
-    process_interval_sec: int = 10
-    player_interval_sec: int = 10
+class MonitoringSettings(SettingsRecord):
+    max_retries: int = Field(default=3, ge=0)
+    process_interval_sec: int = Field(default=10, gt=0)
+    player_interval_sec: int = Field(default=10, gt=0)
 
 
-class WebSettings(BaseModel):
+class WebSettings(SettingsRecord):
     host: str = "127.0.0.1"
-    port: int = 11325
-    token_expires_weeks: int = 4
+    port: int = Field(default=11325, ge=1, le=65535)
+    token_expires_weeks: int = Field(default=4, gt=0)
     jwt_secret_key: Optional[str] = None
 
 
 class SettingsState(BaseModel):
+    model_config = ConfigDict(
+        extra="forbid",
+        strict=True,
+        validate_assignment=True,
+        validate_default=True,
+        allow_inf_nan=False,
+        revalidate_instances="always",
+    )
     paths: PathsSettings = Field(default_factory=PathsSettings)
     retention: RetentionSettings = Field(default_factory=RetentionSettings)
     monitoring: MonitoringSettings = Field(default_factory=MonitoringSettings)
     web: WebSettings = Field(default_factory=WebSettings)
-    custom: Dict[str, Any] = Field(default_factory=dict)
-    plugin_settings: Dict[str, Dict[str, Any]] = Field(default_factory=dict)
+    custom: Dict[str, JsonValue] = Field(default_factory=dict)
+    plugin_settings: Dict[str, Dict[str, JsonValue]] = Field(default_factory=dict)
 
     _dirty: bool = PrivateAttr(default=False)
     _dirty_keys: Set[str] = PrivateAttr(default_factory=set)
     _locks: Dict[str, asyncio.Lock] = PrivateAttr(default_factory=dict)
 
+    def __getattribute__(self, name: str) -> Any:
+        value = super().__getattribute__(name)
+        # Public container reads are snapshots. Persist mutations through set().
+        if name in {"custom", "plugin_settings"}:
+            return copy.deepcopy(value)
+        return value
+
+    def __setattr__(self, name: str, value: Any) -> None:
+        super().__setattr__(name, value)
+        if name in type(self).model_fields and self.__pydantic_private__ is not None:
+            self.mark_dirty(name)
+
     def get_lock(self, key: str = "global") -> asyncio.Lock:
-        root_key = key.split(".")[0]
+        # Every setter validates/replaces a whole snapshot; use one shared lock.
+        root_key = "global"
         if root_key not in self._locks:
             self._locks[root_key] = asyncio.Lock()
         return self._locks[root_key]
@@ -114,13 +147,17 @@ class SettingsState(BaseModel):
         root_key = parts[0]
 
         if (
-            not hasattr(self, root_key)
+            root_key not in type(self).model_fields
             and root_key not in self.custom
             and root_key not in self.plugin_settings
         ):
             return default
 
-        obj: Any = getattr(self, root_key, None)
+        obj: Any = (
+            getattr(self, root_key, None)
+            if root_key in type(self).model_fields
+            else None
+        )
         if obj is None and root_key in self.custom:
             obj = self.custom[root_key]
             parts = parts[1:]
@@ -132,7 +169,7 @@ class SettingsState(BaseModel):
 
         for part in parts:
             if isinstance(obj, BaseModel):
-                if hasattr(obj, part):
+                if part in type(obj).model_fields:
                     obj = getattr(obj, part)
                 else:
                     return default
@@ -151,78 +188,40 @@ class SettingsState(BaseModel):
 
         return obj
 
-    def set(self, key: str, value: Any) -> None:
-        """Sets a setting value using dot-notation, updating models and dirty state."""
+    def set(self, key: str, value: Any) -> bool:
+        """Validate a complete updated snapshot before mutating live settings."""
         parts = key.split(".")
-        for part in parts:
-            if part.startswith("_") or "__" in part:
-                raise ConfigurationError(
-                    f"Access to private/dunder key '{key}' is forbidden."
-                )
-
-        current_value = self.get(key)
-        if current_value == value:
-            return
-
-        root_key = parts[0]
-
-        if hasattr(self, root_key):
-            root_attr = getattr(self, root_key)
-            if isinstance(root_attr, BaseModel):
-                if len(parts) == 2 and hasattr(root_attr, parts[1]):
-                    setattr(root_attr, parts[1], value)
-                else:
-                    # Deep nested dict or custom updates on sub-model
-                    sub_dict = root_attr.model_dump()
-                    curr = sub_dict
-                    for p in parts[1:-1]:
-                        if not isinstance(curr, dict) or (
-                            p in curr and not isinstance(curr[p], dict)
-                        ):
-                            raise ConfigurationError(
-                                f"Cannot set key '{key}' because path conflict."
-                            )
-                        curr = curr.setdefault(p, {})
-                    if not isinstance(curr, dict):
-                        raise ConfigurationError(
-                            f"Cannot set key '{key}' because path conflict."
-                        )
-                    curr[parts[-1]] = value
-                    new_sub_model = type(root_attr)(**sub_dict)
-                    setattr(self, root_key, new_sub_model)
-            elif isinstance(root_attr, dict):
-                curr = root_attr
-                for p in parts[1:-1]:
-                    if not isinstance(curr, dict) or (
-                        p in curr and not isinstance(curr[p], dict)
-                    ):
-                        raise ConfigurationError(
-                            f"Cannot set key '{key}' because path conflict."
-                        )
-                    curr = curr.setdefault(p, {})
-                if not isinstance(curr, dict):
-                    raise ConfigurationError(
-                        f"Cannot set key '{key}' because path conflict."
-                    )
-                curr[parts[-1]] = value
+        if any(not part or part.startswith("_") or "__" in part for part in parts):
+            raise ConfigurationError(f"Invalid setting key '{key}'.")
+        data = self.model_dump(mode="python")
+        if parts[0] in type(self).model_fields:
+            target = data
+            dirty_key = parts[0]
+        elif parts[0] in data["custom"]:
+            target = data["custom"]
+            dirty_key = "custom"
+        elif parts[0] in data["plugin_settings"]:
+            target = data["plugin_settings"]
+            dirty_key = "plugin_settings"
         else:
-            # Belongs in custom settings
-            curr = self.custom
-            for p in parts[:-1]:
-                if not isinstance(curr, dict) or (
-                    p in curr and not isinstance(curr[p], dict)
-                ):
-                    raise ConfigurationError(
-                        f"Cannot set key '{key}' because path conflict."
-                    )
-                curr = curr.setdefault(p, {})
-            if not isinstance(curr, dict):
+            target = data["custom"]
+            dirty_key = "custom"
+        current = target
+        for part in parts[:-1]:
+            child = current.setdefault(part, {})
+            if not isinstance(child, dict):
                 raise ConfigurationError(
                     f"Cannot set key '{key}' because path conflict."
                 )
-            curr[parts[-1]] = value
-
-        self.mark_dirty(root_key)
+            current = child
+        current[parts[-1]] = value
+        updated = type(self).model_validate(data)
+        if json_equal(self.to_dict(), updated.to_dict()):
+            return False
+        for name in type(self).model_fields:
+            if name == dirty_key:
+                setattr(self, name, getattr(updated, name))
+        return True
 
     def to_dict(self) -> Dict[str, Any]:
         """Exports settings state into a dictionary matching database key/value structure."""
@@ -279,12 +278,36 @@ class SettingsState(BaseModel):
             elif v is not None or k not in merged:
                 merged[k] = v
 
-        inst = cls(
-            paths=PathsSettings(**merged.get("paths", {})),
-            retention=RetentionSettings(**merged.get("retention", {})),
-            monitoring=MonitoringSettings(**merged.get("monitoring", {})),
-            web=WebSettings(**merged.get("web", {})),
-            custom=merged.get("custom", {}),
-            plugin_settings=merged.get("plugin_settings", {}),
-        )
+        monitoring = merged.get("monitoring", {})
+        if "max_retiries" in monitoring:
+            legacy_retries = monitoring.pop("max_retiries")
+            supplied = unflattened.get("monitoring", {})
+            if "max_retries" not in supplied:
+                monitoring["max_retries"] = legacy_retries
+
+        # Normalize only known legacy numeric settings at the DB load boundary.
+        numeric_fields = {
+            "retention": ("backups", "downloads"),
+            "monitoring": (
+                "max_retries",
+                "process_interval_sec",
+                "player_interval_sec",
+            ),
+            "web": ("port", "token_expires_weeks"),
+        }
+        integer = TypeAdapter(int)
+        for section, fields in numeric_fields.items():
+            if isinstance(merged.get(section), dict):
+                for name in fields:
+                    value = merged[section].get(name)
+                    if isinstance(value, str):
+                        merged[section][name] = integer.validate_python(value)
+
+        # Old extension roots have an explicit migration into the custom namespace.
+        for name in tuple(merged):
+            if name not in cls.model_fields:
+                logger.warning("Migrating legacy settings root %s into custom", name)
+                merged["custom"].setdefault(name, merged.pop(name))
+        inst = cls.model_validate(merged)
+        inst.clear_dirty()
         return inst

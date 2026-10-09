@@ -1,22 +1,23 @@
 from typing import Any
 
+from pydantic import BaseModel, JsonValue, TypeAdapter
 
-def _sanitize_for_json(data: Any) -> Any:
-    """
-    Recursively sanitizes data to make it JSON serializable.
-    Converts complex objects to their string representation.
-    """
-    if isinstance(data, (str, int, float, bool, type(None))):
-        return data
-    if isinstance(data, dict):
-        return {_sanitize_for_json(k): _sanitize_for_json(v) for k, v in data.items()}
-    if isinstance(data, (list, tuple)):
-        return [_sanitize_for_json(item) for item in data]
-    # For any other type, convert to string
-    try:
-        return str(data)
-    except Exception:
-        return f"<Unserializable object of type {type(data).__name__}>"
+_json_payload: TypeAdapter[JsonValue] = TypeAdapter(JsonValue)
+
+
+def _sanitize_for_json(data: Any) -> JsonValue:
+    """Serialize declared data; reject opaque runtime objects instead of stringifying."""
+
+    def convert(value: Any) -> Any:
+        if isinstance(value, BaseModel):
+            return value.model_dump(mode="json")
+        if isinstance(value, dict):
+            return {key: convert(item) for key, item in value.items()}
+        if isinstance(value, (list, tuple)):
+            return [convert(item) for item in value]
+        return value
+
+    return _json_payload.validate_python(convert(data), strict=True)
 
 
 async def broadcast_event(app_context: Any, event_name: str, event_data: dict):
@@ -25,14 +26,18 @@ async def broadcast_event(app_context: Any, event_name: str, event_data: dict):
         return
 
     connection_manager = app_context.connection_manager
-    sanitized_data = _sanitize_for_json(event_data)
-
-    if "app_context" in sanitized_data:
-        del sanitized_data["app_context"]
-    if "current_user" in sanitized_data:
-        sanitized_data["current_user"] = str(sanitized_data["current_user"])
-    if "event" in sanitized_data:
-        del sanitized_data["event"]
+    public_data = {
+        key: value
+        for key, value in event_data.items()
+        if key
+        not in {
+            "app_context",
+            "current_user",
+            "event",
+            "_triggering_plugin",
+        }
+    }
+    sanitized_data = _sanitize_for_json(public_data)
 
     message = {
         "type": "event",

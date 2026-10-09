@@ -3,21 +3,21 @@
 Structured ChangeSet representation for capturing state mutations across domain boundaries.
 """
 
+from dataclasses import dataclass, field
 from typing import Set
 
-from pydantic import BaseModel, Field
 
-
-class ChangeSet(BaseModel):
+@dataclass
+class ChangeSet:
     """
     Captures modified entity keys across application domains.
     Used by Storage and Service boundaries to persist and broadcast targeted mutations.
     """
 
-    settings_changed: Set[str] = Field(default_factory=set)
-    servers_changed: Set[str] = Field(default_factory=set)
-    plugins_changed: Set[str] = Field(default_factory=set)
-    users_changed: Set[str] = Field(default_factory=set)
+    settings_changed: Set[str] = field(default_factory=set)
+    servers_changed: Set[str] = field(default_factory=set)
+    plugins_changed: Set[str] = field(default_factory=set)
+    users_changed: Set[str] = field(default_factory=set)
 
     def is_empty(self) -> bool:
         """Returns True if no entity changes are recorded."""

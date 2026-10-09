@@ -3,6 +3,8 @@ import os
 
 import pytest
 
+from bedrock_server_manager.error import ConfigParseError, FileOperationError
+
 
 async def test_get_allowlist(real_bedrock_server):
     """Test retrieving allowlist from file."""
@@ -41,7 +43,7 @@ async def test_get_allowlist_invalid_json(real_bedrock_server):
     with open(allowlist_path, "w") as f:
         f.write("{invalid_json}")
 
-    with pytest.raises(Exception):
+    with pytest.raises(ConfigParseError, match="Invalid JSON in allowlist"):
         await server.get_allowlist()
 
 
@@ -143,7 +145,7 @@ async def test_add_to_allowlist_unwritable_file(real_bedrock_server):
     players_to_add = [{"name": "player2", "xuid": "67890"}]
 
     try:
-        with pytest.raises(Exception):
+        with pytest.raises(FileOperationError, match="Failed to write allowlist"):
             await server.add_to_allowlist(players_to_add)
     finally:
         os.chmod(os.path.dirname(allowlist_path), 0o755)
@@ -186,7 +188,7 @@ async def test_remove_from_allowlist_unwritable_file(real_bedrock_server):
     os.chmod(os.path.dirname(allowlist_path), 0o555)
 
     try:
-        with pytest.raises(Exception):
+        with pytest.raises(FileOperationError, match="Failed to write allowlist"):
             await server.remove_from_allowlist("player1")
     finally:
         os.chmod(os.path.dirname(allowlist_path), 0o755)

@@ -1,11 +1,14 @@
 import ast
 import datetime
 import inspect
+import json
 import os
 from typing import Any, Dict, List
 
 import bedrock_server_manager
 from bedrock_server_manager import PluginBase, __version__, app_event
+from bedrock_server_manager.api import models as api_models
+from bedrock_server_manager.plugins.api_types import API_METHODS
 
 
 class APIDocsGenerator(PluginBase):
@@ -38,8 +41,11 @@ class APIDocsGenerator(PluginBase):
             # --- API Docs ---
             api_list = self.api.list_available_apis()
             api_markdown_content = self._format_api_markdown(api_list)
-            backup_dir = await self.api.get_global_setting("paths.backups")
-            backup_dir = backup_dir.get("value")
+            backup_dir = (
+                await self.api.settings.get_global_setting({"key": "paths.backups"})
+            ).value
+            if not isinstance(backup_dir, str):
+                raise ValueError("Backup path must be a string")
 
             api_output_path = os.path.join(backup_dir, "PLUGIN_API_REFERENCE.md")
 
@@ -134,15 +140,46 @@ class APIDocsGenerator(PluginBase):
                                         first_line_doc = docstring.split("\n")[0]
 
                                         # Extract function parameters from AST
-                                        params = []
+                                        params: list[dict[str, Any]] = []
 
                                         # Handle positional args
-                                        for arg in node.args.args:
+                                        for arg in (
+                                            node.args.args + node.args.kwonlyargs
+                                        ):
                                             p_name = arg.arg
                                             # Simple heuristic: if it's 'self' or 'cls', skip it.
                                             # We also hide 'app_context' since plugins don't usually need it directly from kwargs.
                                             if p_name in ("self", "cls", "app_context"):
                                                 continue
+
+                                            if p_name == "request" and isinstance(
+                                                arg.annotation, ast.Name
+                                            ):
+                                                model = getattr(
+                                                    api_models, arg.annotation.id, None
+                                                )
+                                                if model is not None:
+                                                    params.append(
+                                                        {
+                                                            "name": "request",
+                                                            "type_obj": arg.annotation.id,
+                                                        }
+                                                    )
+                                                    params.extend(
+                                                        {
+                                                            "name": (
+                                                                "plugin_name"
+                                                                if field_name
+                                                                == "target_plugin_name"
+                                                                else field_name
+                                                            ),
+                                                            "type_obj": self._format_type_hint(
+                                                                field.annotation
+                                                            ),
+                                                        }
+                                                        for field_name, field in model.model_fields.items()
+                                                    )
+                                                    continue
 
                                             # Determine type if annotated
                                             p_type = "Any"
@@ -175,6 +212,12 @@ class APIDocsGenerator(PluginBase):
                                             return_type = "Any"
                                             if node.returns:
                                                 return_type = ast.unparse(node.returns)
+                                                if isinstance(
+                                                    node.returns, ast.Name
+                                                ) and hasattr(
+                                                    api_models, node.returns.id
+                                                ):
+                                                    return_type = node.returns.id
 
                                             after_params.append(
                                                 {
@@ -223,6 +266,8 @@ class APIDocsGenerator(PluginBase):
         Takes the list of API details and converts it into a formatted Markdown string.
         """
         lines = [
+            "# Available plugin APIs",
+            "",
             f"> _This was auto-generated by the `api_docs_generator` plugin on {datetime.datetime.now(datetime.UTC).strftime('%Y-%m-%d %H:%M:%S UTC')}._",
             f"> _Application Version: {__version__}_",
             "\n---",
@@ -237,6 +282,14 @@ class APIDocsGenerator(PluginBase):
         for api_func in sorted_api_list:
             name = api_func.get("name", "Unknown Function")
             domain = api_func.get("domain", "")
+            name = next(
+                (
+                    public
+                    for public, registered in API_METHODS.get(domain, {}).items()
+                    if registered == name
+                ),
+                name,
+            )
             docstring = api_func.get("docstring", "No description.")
             params = api_func.get("parameters", [])
             is_async = api_func.get("is_async", True)
@@ -266,6 +319,49 @@ class APIDocsGenerator(PluginBase):
             )
             lines.append(f"- **Description:** {docstring}\n")
 
+            if api_func.get("contract_version") == 2:
+                request_model = api_func["request_model"]
+                response_model = api_func["response_model"]
+                request_schema = api_func["request_schema"]
+                properties = request_schema.get("properties", {})
+                required = request_schema.get("required", [])
+                examples = {
+                    field: properties[field]["examples"][0]
+                    for field in required
+                    if properties.get(field, {}).get("examples")
+                }
+                payload_line = (
+                    f"payload = {examples!r}"
+                    if len(examples) == len(required)
+                    else "payload = {...}  # Supply required request fields below."
+                )
+                lines.append(f"- **Returns:** `{response_model}`\n")
+                lines.append(
+                    "Runtime context and plugin identity are injected by the bridge. "
+                    "Failures raise application exceptions; plugin cancellation raises "
+                    "`APICancelledError`.\n"
+                )
+                lines.append(
+                    f"```python\nfrom bedrock_server_manager.api.models import {request_model}\n"
+                    f"{payload_line}\n"
+                    f"request = {request_model}(**payload)\n"
+                    f"result = {signature_prefix}{full_name}(request)\n"
+                    'data = result.model_dump(mode="json")\n```'
+                )
+                for label, schema_key in (
+                    ("Request schema", "request_schema"),
+                    ("Response schema", "response_schema"),
+                    ("Transport error schema", "error_schema"),
+                ):
+                    schema = api_func.get(schema_key)
+                    if schema:
+                        lines.append(f"\n**{label}:**\n")
+                        lines.append(
+                            "```json\n"
+                            + json.dumps(schema, indent=2, sort_keys=True)
+                            + "\n```"
+                        )
+
             filtered_params = [p for p in params if p["name"] != "app_context"]
             if filtered_params:
                 lines.append("**Parameters:**\n")
@@ -288,6 +384,8 @@ class APIDocsGenerator(PluginBase):
         Takes the list of Event details and converts it into a formatted Markdown string.
         """
         lines = [
+            "# Available plugin events",
+            "",
             f"> _This was auto-generated by the `api_docs_generator` plugin on {datetime.datetime.now(datetime.UTC).strftime('%Y-%m-%d %H:%M:%S UTC')}._",
             f"> _Application Version: {__version__}_",
             "\n---",

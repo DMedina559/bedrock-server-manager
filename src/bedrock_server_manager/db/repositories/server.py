@@ -2,28 +2,33 @@
 Repository for managing Server database entity persistence.
 """
 
-from typing import Any, List, Optional, cast
+from typing import List, Optional, cast
 
+from pydantic import JsonValue
 from sqlalchemy import delete
+from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.future import select
+from sqlalchemy.orm.attributes import flag_modified
 
 from ...state.models import ServerConfigState
+from ...state.validation import json_equal
+from ..database import Database
 from ..models import Server, ServerBan
 
 
 class ServerRepository:
     """Handles database persistence for server configurations."""
 
-    def __init__(self, db: Any = None):
+    def __init__(self, db: Database | None = None):
         self.db = db
 
-    async def get_all_servers(self, session: Any) -> List[ServerConfigState]:
+    async def get_all_servers(self, session: AsyncSession) -> List[ServerConfigState]:
         """Retrieves all servers from the database as ServerConfigState models."""
         result = await session.execute(select(Server))
         servers = []
         for s in result.scalars().all():
             s_name = str(s.server_name)
-            custom_dict: dict[str, Any] = (
+            custom_dict: dict[str, JsonValue] = (
                 dict(s.custom) if isinstance(s.custom, dict) else {}
             )
             cfg = ServerConfigState(
@@ -39,7 +44,7 @@ class ServerRepository:
         return servers
 
     async def get_server_by_name(
-        self, session: Any, server_name: str
+        self, session: AsyncSession, server_name: str
     ) -> Optional[Server]:
         """Retrieves a Server SQLAlchemy model record by server_name."""
         result = await session.execute(
@@ -47,16 +52,18 @@ class ServerRepository:
         )
         return cast(Optional[Server], result.scalar_one_or_none())
 
-    async def save_server(self, session: Any, cfg: ServerConfigState) -> None:
+    async def save_server(self, session: AsyncSession, cfg: ServerConfigState) -> None:
         """Persists or updates a single ServerConfigState record."""
-        server_record: Any = await self.get_server_by_name(session, cfg.server_name)
+        server_record = await self.get_server_by_name(session, cfg.server_name)
         if server_record:
             server_record.installed_version = cfg.installed_version
             server_record.status = cfg.status
             server_record.autoupdate = cfg.autoupdate
             server_record.autostart = cfg.autostart
             server_record.target_version = cfg.target_version
-            server_record.custom = cfg.custom
+            if not json_equal(server_record.custom, cfg.custom):
+                server_record.custom = cfg.custom
+                flag_modified(server_record, "custom")
         else:
             server_record = Server(
                 server_name=cfg.server_name,
@@ -69,7 +76,7 @@ class ServerRepository:
             )
             session.add(server_record)
 
-    async def delete_server(self, session: Any, server_name: str) -> bool:
+    async def delete_server(self, session: AsyncSession, server_name: str) -> bool:
         """Deletes a server record and its associated bans from the database."""
         db_server = await self.get_server_by_name(session, server_name)
         if db_server:

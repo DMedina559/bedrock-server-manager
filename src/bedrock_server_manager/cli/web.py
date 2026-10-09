@@ -17,6 +17,11 @@ import logging
 
 import click
 
+from bedrock_server_manager.api.models import (
+    StartWebServerRequest,
+    StopWebServerRequest,
+)
+
 from ..api import web as web_api
 from ..error import BSMError
 from .utils import handle_api_response as _handle_api_response
@@ -88,35 +93,19 @@ def start_web_server(ctx: click.Context, host: str, port: int, debug: bool, mode
 
     try:
         response = web_api.start_web_server(
-            host=host,
-            port=port,
-            debug=debug,
-            mode=mode,
+            request=StartWebServerRequest.model_validate(
+                {"host": host, "port": port, "debug": debug, "mode": mode}
+            ),
             app_context=app_context,
         )
 
         # In 'direct' mode, start_web_server (which calls bsm.start_web_ui_direct)
         # is blocking. So, we'll only reach here after it stops or if mode is 'detached'.
         if mode == "detached":
-            if response.get("status") == "error":
-                message = response.get("message", "An unknown error occurred.")
-                click.secho(f"Error: {message}", fg="red")
-                raise click.Abort()
-            else:
-                pid = response.get("pid", "N/A")
-                message = response.get(
-                    "message",
-                    f"Web server start initiated in detached mode (PID: {pid}).",
-                )
-                click.secho(f"Success: {message}", fg="green")
-        elif (
-            response and response.get("status") == "error"
-        ):  # Should only happen if direct mode itself fails to launch
-            message = response.get(
-                "message", "Failed to start web server in direct mode."
+            _handle_api_response(
+                response,
+                f"Web server start initiated in detached mode (PID: {response.pid}).",
             )
-            click.secho(f"Error: {message}", fg="red")
-            raise click.Abort()
 
     except BSMError as e:  # Catch errors from API if they propagate
         click.secho(f"Failed to start web server: {e}", fg="red")
@@ -141,7 +130,9 @@ def stop_web_server(ctx: click.Context):
     app_context = ctx.obj["app_context"]
     click.echo("Attempting to stop the web server...")
     try:
-        response = web_api.stop_web_server(app_context=app_context)
+        response = web_api.stop_web_server(
+            request=StopWebServerRequest(), app_context=app_context
+        )
         _handle_api_response(response, "Web server stopped successfully.")
     except BSMError as e:
         click.secho(f"An error occurred: {e}", fg="red")

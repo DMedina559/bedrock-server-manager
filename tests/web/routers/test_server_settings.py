@@ -1,142 +1,46 @@
-from unittest.mock import AsyncMock, patch
-
-from fastapi.testclient import TestClient
-
-from bedrock_server_manager.error import BSMError, InvalidServerNameError
+import pytest
 
 
-def test_get_server_settings_unauthorized(
-    unauth_client: TestClient, real_bedrock_server
+async def test_server_settings_round_trip_survives_reload(
+    admin_auth_client, real_bedrock_server, app_context
 ):
-    response = unauth_client.get(
-        f"/api/server/{real_bedrock_server.server_name}/settings/get"
+    base = f"/api/server/{real_bedrock_server.server_name}/settings"
+    response = await admin_auth_client.post(
+        base + "/set", json={"key": "settings.autoupdate", "value": True}
     )
-    assert response.status_code == 401
+    assert response.status_code == 200
+    assert (await admin_auth_client.get(base + "/get")).json()["settings"]["settings"][
+        "autoupdate"
+    ] is True
+    from bedrock_server_manager.state.app_state import AppState
+
+    restored = AppState()
+    await app_context.storage.load_state(restored)
+    assert restored.servers.get(real_bedrock_server.server_name).autoupdate is True
 
 
-def test_get_server_settings_success(
-    admin_auth_client: TestClient, real_bedrock_server
+async def test_user_can_read_but_not_change_server_settings(
+    auth_client, real_bedrock_server
 ):
-    with patch(
-        "bedrock_server_manager.core.bedrock_server.BedrockServer._load_server_config",
-        new_callable=AsyncMock,
-    ) as mock_load:
-        mock_load.side_effect = None
-        mock_load.return_value = {"settings": {"autoupdate": True}}
-
-        response = admin_auth_client.get(
-            f"/api/server/{real_bedrock_server.server_name}/settings/get"
+    base = f"/api/server/{real_bedrock_server.server_name}/settings"
+    assert (await auth_client.get(base + "/get")).status_code == 200
+    assert (
+        await auth_client.post(
+            base + "/set", json={"key": "settings.autoupdate", "value": True}
         )
-        assert response.status_code == 200
-        data = response.json()
-        assert data["status"] == "success"
-        assert data["settings"]["settings"]["autoupdate"] is True
+    ).status_code == 403
 
 
-def test_get_server_settings_not_found(
-    admin_auth_client: TestClient, real_bedrock_server
+@pytest.mark.parametrize(
+    "payload",
+    [{"key": "settings.autoupdate", "value": "invalid"}, {"key": "", "value": True}],
+)
+async def test_invalid_server_setting_preserves_state(
+    admin_auth_client, real_bedrock_server, payload
 ):
-    with patch(
-        "bedrock_server_manager.utils.server.validate_server", return_value=True
-    ):
-        with patch("bedrock_server_manager.context.AppContext.get_server") as mock_get:
-            mock_get.side_effect = InvalidServerNameError(
-                real_bedrock_server.server_name
-            )
-
-            response = admin_auth_client.get(
-                f"/api/server/{real_bedrock_server.server_name}/settings/get"
-            )
-            assert response.status_code == 404
-            assert "not found" in response.json()["detail"].lower()
-
-
-def test_get_server_settings_exception(
-    admin_auth_client: TestClient, real_bedrock_server
-):
-    with patch(
-        "bedrock_server_manager.utils.server.validate_server", return_value=True
-    ):
-        with patch("bedrock_server_manager.context.AppContext.get_server") as mock_get:
-            mock_get.side_effect = Exception("System Crash")
-
-            response = admin_auth_client.get(
-                f"/api/server/{real_bedrock_server.server_name}/settings/get"
-            )
-            assert response.status_code == 500
-            assert "unexpected error" in response.json()["detail"].lower()
-
-
-def test_post_set_server_setting_unauthorized(
-    unauth_client: TestClient, real_bedrock_server
-):
-    response = unauth_client.post(
-        f"/api/server/{real_bedrock_server.server_name}/settings/set",
-        json={"key": "settings.autoupdate", "value": False},
+    original = await real_bedrock_server.get_autoupdate()
+    response = await admin_auth_client.post(
+        f"/api/server/{real_bedrock_server.server_name}/settings/set", json=payload
     )
-    assert response.status_code == 401
-
-
-def test_post_set_server_setting_forbidden(
-    auth_client: TestClient, real_bedrock_server
-):
-    response = auth_client.post(
-        f"/api/server/{real_bedrock_server.server_name}/settings/set",
-        json={"key": "settings.autoupdate", "value": False},
-    )
-    assert response.status_code == 403
-
-
-def test_post_set_server_setting_success(
-    admin_auth_client: TestClient, real_bedrock_server
-):
-    with patch(
-        "bedrock_server_manager.core.bedrock_server.BedrockServer._manage_json_config"
-    ) as mock_manage:
-        response = admin_auth_client.post(
-            f"/api/server/{real_bedrock_server.server_name}/settings/set",
-            json={"key": "settings.autoupdate", "value": False},
-        )
-        assert response.status_code == 200
-        data = response.json()
-        assert data["status"] == "success"
-        assert data["setting"]["key"] == "settings.autoupdate"
-        mock_manage.assert_called_once_with(
-            key="settings.autoupdate", operation="write", value=False
-        )
-
-
-def test_post_set_server_setting_not_found(
-    admin_auth_client: TestClient, real_bedrock_server
-):
-    with patch(
-        "bedrock_server_manager.utils.server.validate_server", return_value=True
-    ):
-        with patch("bedrock_server_manager.context.AppContext.get_server") as mock_get:
-            mock_get.side_effect = InvalidServerNameError(
-                real_bedrock_server.server_name
-            )
-
-            response = admin_auth_client.post(
-                f"/api/server/{real_bedrock_server.server_name}/settings/set",
-                json={"key": "settings.autoupdate", "value": False},
-            )
-            assert response.status_code == 404
-            assert "not found" in response.json()["detail"].lower()
-
-
-def test_post_set_server_setting_bsm_error(
-    admin_auth_client: TestClient, real_bedrock_server
-):
-    with patch(
-        "bedrock_server_manager.utils.server.validate_server", return_value=True
-    ):
-        with patch("bedrock_server_manager.context.AppContext.get_server") as mock_get:
-            mock_get.side_effect = BSMError("Corrupted config")
-
-            response = admin_auth_client.post(
-                f"/api/server/{real_bedrock_server.server_name}/settings/set",
-                json={"key": "settings.autoupdate", "value": False},
-            )
-            assert response.status_code == 500
-            assert "Corrupted config" in response.json()["detail"]
+    assert response.status_code in {400, 422}
+    assert await real_bedrock_server.get_autoupdate() == original

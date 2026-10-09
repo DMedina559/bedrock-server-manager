@@ -25,7 +25,7 @@ class LifecycleTestPlugin(PluginBase):
             )
 
             try:
-                async with self.api.server_lifecycle_manager(
+                async with self.api.runtime.server_lifecycle_manager(
                     server_name, stop_before=True, start_after=True
                 ):
                     self.logger.info(

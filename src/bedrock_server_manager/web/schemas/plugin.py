@@ -1,11 +1,13 @@
 from typing import Any, Dict, List, Optional
 
-from pydantic import BaseModel, Field
+from pydantic import Field, JsonValue
 
+from ...api.models.common import APIRequest
+from ...api.models.plugins import PluginInfo
 from .base import BaseApiResponse
 
 
-class PluginStatusSetPayload(BaseModel):
+class PluginStatusSetPayload(APIRequest):
     """Request model for setting a plugin's enabled status."""
 
     enabled: bool = Field(
@@ -13,7 +15,7 @@ class PluginStatusSetPayload(BaseModel):
     )
 
 
-class TriggerEventPayload(BaseModel):
+class TriggerEventPayload(APIRequest):
     """Request model for triggering a custom plugin event."""
 
     event_name: str = Field(
@@ -21,7 +23,7 @@ class TriggerEventPayload(BaseModel):
         min_length=1,
         description="The namespaced name of the event to trigger (e.g., 'myplugin:myevent').",
     )
-    payload: Optional[Dict[str, Any]] = Field(
+    payload: Optional[Dict[str, JsonValue]] = Field(
         default=None, description="Optional dictionary payload for the event."
     )
 
@@ -35,7 +37,7 @@ class PluginPagesResponse(BaseApiResponse):
 class PluginStatusesResponse(BaseApiResponse):
     """Response model for plugin statuses."""
 
-    plugins: Optional[Dict[str, Dict[str, Any]]] = None
+    plugins: Optional[Dict[str, PluginInfo]] = None
 
 
 class TriggerEventResponse(BaseApiResponse):

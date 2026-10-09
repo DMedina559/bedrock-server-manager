@@ -18,7 +18,6 @@ Key components:
 
 import collections.abc
 import logging
-import os
 from typing import TYPE_CHECKING, Any, Dict, Optional, cast
 
 if TYPE_CHECKING:
@@ -102,7 +101,11 @@ class Settings:
         self.data_dir = data_dir
         self.config_dir = config_dir
         self.app_context = app_context
-        self._settings: Dict[str, Any] = {}
+
+    @property
+    def _settings(self) -> Dict[str, Any]:
+        """Compatibility snapshot derived from live state, never a second cache."""
+        return self.state.settings.to_dict() if self.app_context is not None else {}
 
     @property
     def state(self) -> "AppState":
@@ -158,7 +161,7 @@ class Settings:
                     "token_expires_weeks": 4,
                 },
                 "monitoring": {
-                    "max_retiries": 3,
+                    "max_retries": 3,
                     "process_interval_sec": 10,
                     "player_interval_sec": 10,
                 },
@@ -169,31 +172,9 @@ class Settings:
             dict: A dictionary of default settings with a nested structure.
         """
 
-        return {
-            "paths": {
-                "servers": os.path.join(self.data_dir, "servers"),
-                "content": os.path.join(self.data_dir, "content"),
-                "downloads": os.path.join(self.data_dir, ".downloads"),
-                "backups": os.path.join(self.data_dir, "backups"),
-                "plugins": os.path.join(self.data_dir, "plugins"),
-                "themes": os.path.join(self.data_dir, "themes"),
-            },
-            "retention": {
-                "backups": 3,
-                "downloads": 3,
-            },
-            "monitoring": {
-                "max_retiries": 3,
-                "process_interval_sec": 10,
-                "player_interval_sec": 10,
-            },
-            "web": {
-                "host": "127.0.0.1",
-                "port": 11325,
-                "token_expires_weeks": 4,
-            },
-            "custom": {},
-        }
+        from ..state.settings import SettingsState
+
+        return SettingsState.create_defaults(self.data_dir).to_dict()
 
     def get(self, key: str, default: Any = None) -> Any:
         """Retrieves a setting value using dot-notation for nested access."""
@@ -203,7 +184,6 @@ class Settings:
     async def load(self) -> None:
         """Loads settings from the database asynchronously."""
         await self.storage.load_state(self.state)
-        self._settings = self.state.settings.to_dict()
 
     async def set(self, key: str, value: Any) -> None:
         """Sets a configuration value using dot-notation asynchronously via SettingsService."""
@@ -212,7 +192,6 @@ class Settings:
 
             raise BSMError("Settings.set accessed without an associated app_context.")
         await self.app_context.settings_service.update_setting(key, value)
-        self._settings = self.state.settings.to_dict()
 
     async def reload(self):
         """Reloads the settings from the database asynchronously."""

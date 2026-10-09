@@ -1,146 +1,64 @@
-from unittest.mock import MagicMock
-
 import pytest
 
-from bedrock_server_manager.plugins.api_bridge import (
-    _api_registry,
-    api_method,
-    create_app_api,
+from bedrock_server_manager.api.models.settings import (
+    GetGlobalSettingRequest,
+    SetCustomGlobalSettingRequest,
 )
+from bedrock_server_manager.plugins.api_bridge import create_app_api
 
 
-@pytest.fixture(autouse=True)
-def clear_api_registry():
-    """Fixture to ensure the global API registry is cleared before each test and restored afterwards."""
-    original_registry = _api_registry.copy()
-    _api_registry.clear()
-    yield
-    _api_registry.clear()
-    _api_registry.update(original_registry)
+async def test_plugin_api_calls_real_settings_and_persistence(app_context):
+    api = create_app_api("test_plugin", app_context)
+    response = await api.settings.set_custom_global_setting(
+        SetCustomGlobalSettingRequest(key="bridge", value={"saved": True})
+    )
+    assert response.status == "success"
+    await app_context.settings.reload()
+    response = await api.settings.get_global_setting(
+        GetGlobalSettingRequest(key="custom.bridge")
+    )
+    assert response.value == {"saved": True}
 
 
-def test_api_method_decorator():
-    """Test the api_method decorator correctly registers a function in the global registry."""
+async def test_plugin_api_delivers_actual_events(app_context, plugin_factory):
+    plugin = await plugin_factory(
+        "listener",
+        "from bedrock_server_manager import PluginBase\nclass Listener(PluginBase):\n    version = '1.0'\n",
+    )
+    api = plugin.api
+    received = []
 
-    @api_method("my_test_api")
-    def my_test_function():
-        return "hello"
+    async def listener(*args, **kwargs):
+        received.append((args, kwargs))
 
-    my_test_function.__module__ = "bedrock_server_manager.api.server"
-    # Re-apply decorator to trigger registration with the fake module
-    my_test_function = api_method("my_test_api")(my_test_function)
-
-    assert "my_test_api" in _api_registry
-    assert _api_registry["my_test_api"][0] == my_test_function
-    assert my_test_function() == "hello"
-
-
-def test_api_method_decorator_overwrite_warning(caplog):
-    """Test api_method logs a warning when a function name is overwritten."""
-
-    @api_method("my_test_api")
-    def my_test_function():
-        return "hello"
-
-    my_test_function.__module__ = "bedrock_server_manager.api.server"
-    api_method("my_test_api")(my_test_function)
-
-    @api_method("my_test_api")
-    def my_new_test_function():
-        return "world"
-
-    my_new_test_function.__module__ = "bedrock_server_manager.api.server"
-    api_method("my_test_api")(my_new_test_function)
-
-    assert "Overwriting existing API function 'my_test_api'" in caplog.text
+    api.listen_for_event("integration_event", listener)
+    await api.send_event("integration_event", 1, key="value")
+    assert len(received) == 1
+    assert received[0][0] == (1,)
+    assert received[0][1]["key"] == "value"
+    assert received[0][1]["_triggering_plugin"] == "listener"
 
 
-def test_getattr_success(app_context):
-    """Test AppAPI successfully dynamically looks up and invokes a registered API function."""
-
-    @api_method("my_test_api")
-    def my_test_function():
-        return "hello"
-
-    my_test_function.__module__ = "bedrock_server_manager.api.server"
-    api_method("my_test_api")(my_test_function)
-
-    plugin_api = create_app_api("test_plugin", app_context)
-    assert plugin_api.my_test_api() == "hello"
+def test_plugin_api_describes_actual_registry(app_context):
+    api = create_app_api("test_plugin", app_context)
+    descriptions = api.list_available_apis()
+    assert any(item["name"] == "start_server" for item in descriptions)
+    for description in descriptions:
+        assert all(
+            item["name"] not in {"app_context", "plugin_name"}
+            for item in description["parameters"]
+        )
 
 
-def test_getattr_fail(app_context):
-    """Test AppAPI throws an AttributeError when invoking an unregistered function."""
-    plugin_api = create_app_api("test_plugin", app_context)
+def test_unregistered_api_is_not_exposed(app_context):
+    api = create_app_api("test_plugin", app_context)
     with pytest.raises(AttributeError):
-        plugin_api.non_existent_api()
+        api.nonexistent_api()
 
 
-def test_list_available_apis(app_context):
-    """Test AppAPI correctly describes the available registered API functions."""
-
-    @api_method("my_test_api")
-    def my_test_function(param1: str, param2: int = 5) -> str:
-        """This is a test function."""
-        return f"{param1}, {param2}"
-
-    my_test_function.__module__ = "bedrock_server_manager.api.server"
-    api_method("my_test_api")(my_test_function)
-
-    plugin_api = create_app_api("test_plugin", app_context)
-    api_list = plugin_api.list_available_apis()
-
-    assert len(api_list) == 1
-    assert api_list[0]["name"] == "my_test_api"
-    assert api_list[0]["docstring"] == "This is a test function."
-    assert len(api_list[0]["parameters"]) == 2
-    assert api_list[0]["parameters"][0]["name"] == "param1"
-    assert api_list[0]["parameters"][1]["name"] == "param2"
-    assert api_list[0]["parameters"][1]["default"] == 5
-
-
-def test_listen_for_event(app_context, monkeypatch):
-    """Test AppAPI properly bridges event listener registrations to the PluginManager."""
-    mock_plugin_manager = MagicMock()
-    # Mocking internal properties due to getter
-    monkeypatch.setattr(app_context, "_plugin_manager", mock_plugin_manager)
-    plugin_api = create_app_api("test_plugin", app_context)
-
-    def my_callback():
-        pass
-
-    plugin_api.listen_for_event("my_event", my_callback)
-    mock_plugin_manager.register_app_event_listener.assert_called_once_with(
-        "my_event", my_callback, "test_plugin"
-    )
-
-
-async def test_send_event(app_context, monkeypatch):
-    """Test AppAPI properly bridges custom event triggers to the PluginManager."""
-    from unittest.mock import AsyncMock
-
-    mock_plugin_manager = MagicMock()
-    mock_plugin_manager.trigger_event = AsyncMock()
-    monkeypatch.setattr(app_context, "_plugin_manager", mock_plugin_manager)
-
-    mock_broadcast = MagicMock()
-    # It seems to be complaining about ModuleNotFoundError during import in the test
-    # Because sys.modules mocking of util replaces the actual module, we need to mock async_broadcast_event directly
-    # on the module level if it's imported there, but since we mocked the module, the imported function will be a MagicMock
-    import sys
-    import types
-
-    mock_util = types.ModuleType("bedrock_server_manager.plugins.util")
-    mock_util.broadcast_event = AsyncMock()
-    sys.modules["bedrock_server_manager.plugins.util"] = mock_util
-
-    from bedrock_server_manager.plugins import api_bridge
-
-    monkeypatch.setattr(api_bridge, "broadcast_event", mock_broadcast, raising=False)
-
-    plugin_api = create_app_api("test_plugin", app_context)
-
-    await plugin_api.send_event("my_event", 1, 2, key="value")
-    mock_plugin_manager.trigger_event.assert_called_once_with(
-        "my_event", 1, 2, key="value", _triggering_plugin="test_plugin"
-    )
+async def test_plugin_cannot_supply_runtime_dependencies(app_context):
+    api = create_app_api("test_plugin", app_context)
+    with pytest.raises(TypeError, match="injected"):
+        await api.settings.get_global_setting(
+            {"key": "web.port"}, app_context=app_context
+        )

@@ -47,6 +47,8 @@ import aiofiles.os
 import aiofiles.ospath
 import aiohttp
 
+from ...utils.threads import run_in_thread
+
 try:
     import psutil
 
@@ -120,7 +122,7 @@ async def find_files(
         else:
             return [str(p) for p in files]
 
-    return await asyncio.to_thread(_find)
+    return await run_in_thread(_find)
 
 
 def can_manage_services() -> bool:
@@ -281,7 +283,7 @@ async def set_server_folder_permissions(server_dir: str) -> None:  # noqa: C901
                 f"Unexpected error during permission setup: {e}"
             ) from e
 
-    await asyncio.to_thread(_set_perms)
+    await run_in_thread(_set_perms)
 
 
 async def is_server_running(server_name: str, server_dir: str, config_dir: str) -> bool:
@@ -403,7 +405,7 @@ async def delete_path_robustly(path_to_delete: str, item_description: str) -> bo
         try:
             if not os.access(path_to_delete, os.W_OK):
                 os.chmod(path_to_delete, stat.S_IWRITE | stat.S_IWUSR)
-            await aiofiles.os.remove(path_to_delete)
+            await run_in_thread(os.remove, path_to_delete)
             logger.info(
                 f"Successfully deleted {item_description} file: {path_to_delete}"
             )
@@ -424,7 +426,7 @@ async def delete_path_robustly(path_to_delete: str, item_description: str) -> bo
             shutil.rmtree(path_to_delete, onerror=_handle_remove_readonly_onerror)
 
         try:
-            await asyncio.to_thread(_rmtree)
+            await run_in_thread(_rmtree)
             logger.info(
                 f"Successfully deleted {item_description} directory: {path_to_delete}"
             )

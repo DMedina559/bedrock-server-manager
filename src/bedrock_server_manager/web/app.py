@@ -8,9 +8,11 @@ from typing import Any
 
 import bsm_frontend
 from fastapi import FastAPI
+from fastapi.exceptions import RequestValidationError, ResponseValidationError
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.staticfiles import StaticFiles
+from starlette.exceptions import HTTPException as StarletteHTTPException
 
+from ..api.models.common import APIErrorResponse, ErrorEnvelope
 from ..config import get_installed_version
 from ..context import AppContext
 from . import routers
@@ -25,30 +27,31 @@ def create_web_app(app_context: AppContext) -> FastAPI:  # noqa: C901
     settings = app_context.settings
     plugin_manager = app_context.plugin_manager
 
-    asyncio.run(plugin_manager.load_plugins())
-
     @asynccontextmanager
     async def lifespan(app: FastAPI):
         # Startup logic goes here
         app_context = app.state.app_context
-        app_context.loop = asyncio.get_running_loop()
-        await app_context.bedrock_process_manager.start()
-        app_context.resource_monitor.start()
-        await app_context.api.update_server_statuses()
+        try:
+            app_context.loop = asyncio.get_running_loop()
+            await plugin_manager.load_plugins()
+            await app_context.bedrock_process_manager.start()
+            app_context.resource_monitor.start()
+            await app_context.api.application.update_server_statuses(request={})
 
-        await app_context.plugin_manager.trigger_guarded_event("on_manager_startup")
-        await app_context.plugin_manager.start_plugin_tasks()
+            await app_context.plugin_manager.trigger_guarded_event("on_manager_startup")
+            await app_context.plugin_manager.start_plugin_tasks()
 
-        # Initialize and start LogStreamer
-        log_streamer = app_context.log_streamer
-        log_streamer.start()
+            # Initialize and start LogStreamer
+            log_streamer = app_context.log_streamer
+            log_streamer.start()
 
-        yield
-        # Shutdown logic goes here
-        logger.info("Running web app shutdown hooks...")
+            yield
+        finally:
+            # Shutdown logic goes here
+            logger.info("Running web app shutdown hooks...")
 
-        await app_context.shutdown()
-        logger.info("Web app shutdown hooks complete.")
+            await app_context.shutdown()
+            logger.info("Web app shutdown hooks complete.")
 
     version = get_installed_version()
 
@@ -64,7 +67,87 @@ def create_web_app(app_context: AppContext) -> FastAPI:  # noqa: C901
             "deepLinking": True,
         },
         lifespan=lifespan,
+        responses={
+            code: {"model": ErrorEnvelope}
+            for code in (400, 401, 403, 404, 409, 422, 500)
+        },
     )
+    from fastapi.responses import JSONResponse
+    from pydantic import ValidationError
+
+    from ..api.errors import error_response
+    from ..error import (
+        APICancelledError,
+        AppFileNotFoundError,
+        BSMError,
+        UserInputError,
+    )
+    from ..plugins.api_contract import APIResponseValidationError
+
+    async def api_error_handler(request, error):
+        headers = None
+        if isinstance(error, RequestValidationError):
+            status_code = 422
+            payload = APIErrorResponse(
+                code="validation_error",
+                message="Invalid request.",
+                details={
+                    "errors": [
+                        {"location": list(item["loc"]), "code": item["type"]}
+                        for item in error.errors()
+                    ]
+                },
+            )
+        elif isinstance(error, StarletteHTTPException):
+            status_code = error.status_code
+            headers = error.headers
+            code = {
+                400: "validation_error",
+                401: "unauthorized",
+                403: "forbidden",
+                404: "not_found",
+                409: "conflict",
+                422: "validation_error",
+            }.get(status_code, "http_error")
+            if status_code >= 500:
+                code = "internal_error"
+            message = (
+                error.detail
+                if isinstance(error.detail, str) and status_code < 500
+                else "An unexpected error occurred."
+            )
+            payload = APIErrorResponse.model_validate(
+                {"code": code, "message": message}
+            )
+        else:
+            if isinstance(error, ValidationError):
+                status_code = 422
+            elif isinstance(error, AppFileNotFoundError):
+                status_code = 404
+            elif isinstance(error, APICancelledError):
+                status_code = 409
+            elif isinstance(error, UserInputError):
+                status_code = 400
+            else:
+                status_code = 500
+                logger.error("API operation failed", exc_info=error)
+            payload = error_response(error)
+        return JSONResponse(
+            status_code=status_code,
+            headers=headers,
+            content=ErrorEnvelope(error=payload).model_dump(mode="json"),
+        )
+
+    for exception_type in (
+        ValidationError,
+        BSMError,
+        APIResponseValidationError,
+        RequestValidationError,
+        ResponseValidationError,
+        StarletteHTTPException,
+    ):
+        app.add_exception_handler(exception_type, api_error_handler)
+
     app.state.app_context = app_context
 
     # --- CORS Middleware ---
@@ -170,45 +253,6 @@ def create_web_app(app_context: AppContext) -> FastAPI:  # noqa: C901
     for router in routers.all_routers:
         app.include_router(router)
 
-    # --- Dynamically include FastAPI routers from plugins ---
-    if plugin_manager.plugin_fastapi_routers:
-        logger.info(
-            f"Found {len(plugin_manager.plugin_fastapi_routers)} FastAPI router(s) from plugins. Attempting to include them."
-        )
-        for i, router in enumerate(plugin_manager.plugin_fastapi_routers):
-            try:
-                if hasattr(router, "routes"):
-                    app.include_router(router)
-                    logger.info(
-                        f"Successfully included FastAPI router (prefix: '{router.prefix}') from a plugin."
-                    )
-                else:
-                    logger.warning(
-                        f"Plugin provided an object at index {i} that is not a valid FastAPI APIRouter."
-                    )
-            except Exception as e:
-                logger.error(
-                    f"Failed to include a FastAPI router from a plugin: {e}",
-                    exc_info=True,
-                )
-    else:
-        logger.info("No additional FastAPI routers found from plugins.")
-
-    # --- Dynamically mount static directories from plugins ---
-    if plugin_manager.plugin_static_mounts:
-        logger.info(
-            f"Found {len(plugin_manager.plugin_static_mounts)} static mount configurations from plugins."
-        )
-        for mount_path, dir_path, name in plugin_manager.plugin_static_mounts:
-            try:
-                app.mount(mount_path, StaticFiles(directory=dir_path), name=name)
-                logger.info(
-                    f"Mounted static directory '{dir_path}' at '{mount_path}' (name: '{name}')."
-                )
-            except Exception as e:
-                logger.error(
-                    f"Failed to mount static directory '{dir_path}' at '{mount_path}': {e}",
-                    exc_info=True,
-                )
+    plugin_manager.bind_web_app(app)
 
     return app

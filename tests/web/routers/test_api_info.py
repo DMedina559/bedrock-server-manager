@@ -1,239 +1,62 @@
-"""
-Integration tests for the api_info router endpoints.
-"""
-
-from unittest.mock import patch
-
-from fastapi.testclient import TestClient
-
-from bedrock_server_manager.error import BSMError
+from pathlib import Path
 
 
-def test_get_server_running_status_success(
-    auth_client: TestClient, real_bedrock_server
+async def test_server_status_and_listing_follow_real_process(
+    auth_client, real_bedrock_server
 ):
-    with patch(
-        "bedrock_server_manager.api.system.get_server_running_status"
-    ) as mock_status:
-        mock_status.return_value = {
-            "status": "success",
-            "is_running": True,
-            "message": "Server is running.",
-        }
-
-        response = auth_client.get(
-            f"/api/server/{real_bedrock_server.server_name}/status"
-        )
-
-        assert response.status_code == 200
-        data = response.json()
-        assert data["status"] == "success"
-        assert data["running"] is True
-
-
-def test_get_server_running_status_error(auth_client: TestClient, real_bedrock_server):
-    with patch(
-        "bedrock_server_manager.api.system.get_server_running_status"
-    ) as mock_status:
-        mock_status.side_effect = BSMError("Unable to fetch status")
-
-        response = auth_client.get(
-            f"/api/server/{real_bedrock_server.server_name}/status"
-        )
-
-        assert response.status_code == 500
-        assert "Unable to fetch status" in response.json()["detail"]
-
-
-def test_get_validate_server_success(auth_client: TestClient, real_bedrock_server):
-    with patch("bedrock_server_manager.utils.server.validate_server") as mock_validate:
-        mock_validate.return_value = True
-
-        response = auth_client.get(
-            f"/api/server/{real_bedrock_server.server_name}/validate"
-        )
-
-        assert response.status_code == 200
-        assert response.json()["status"] == "success"
-
-
-def test_get_validate_server_not_found(auth_client: TestClient, real_bedrock_server):
-    with patch("bedrock_server_manager.utils.server.validate_server") as mock_validate:
-        mock_validate.return_value = False
-
-        response = auth_client.get(
-            f"/api/server/{real_bedrock_server.server_name}/validate"
-        )
-
-        assert response.status_code == 404
-
-
-def test_get_server_process_info_success(auth_client: TestClient, real_bedrock_server):
-    with patch(
-        "bedrock_server_manager.api.system.get_bedrock_process_info"
-    ) as mock_info:
-        mock_info.return_value = {
-            "status": "success",
-            "process_info": {"cpu": 10.5, "mem": 1024, "threads": 5},
-        }
-
-        response = auth_client.get(
-            f"/api/server/{real_bedrock_server.server_name}/process_info"
-        )
-
-        assert response.status_code == 200
-        data = response.json()
-        assert data["status"] == "success"
-        assert data["process_info"]["cpu"] == 10.5
-
-
-def test_put_scan_players_success(admin_auth_client: TestClient):
-    with patch(
-        "bedrock_server_manager.api.player.scan_and_update_player_db"
-    ) as mock_scan:
-        mock_scan.return_value = {
-            "status": "success",
-            "message": "Scanned 1 player",
-            "details": {"test_server": 1},
-        }
-
-        response = admin_auth_client.put("/api/players/scan")
-
-        assert response.status_code == 200
-        data = response.json()
-        assert data["status"] == "success"
-        assert data["details"] == {"test_server": 1}
-
-
-def test_get_all_players_success(admin_auth_client: TestClient):
-    with patch("bedrock_server_manager.api.player.get_all_known_players") as mock_get:
-        mock_get.return_value = {
-            "status": "success",
-            "players": [{"xuid": "123", "name": "Steve"}],
-            "message": "Success",
-        }
-
-        response = admin_auth_client.get("/api/players/get")
-
-        assert response.status_code == 200
-        data = response.json()
-        assert data["status"] == "success"
-        assert len(data["players"]) == 1
-
-
-async def test_put_prune_downloads_success(
-    admin_auth_client: TestClient, tmp_path, app_context
-):
-    downloads_dir = tmp_path / "downloads"
-    downloads_dir.mkdir()
-    target_dir = downloads_dir / "test_target"
-    target_dir.mkdir()
-    await app_context.settings.set("paths.downloads", str(downloads_dir))
-
-    with patch("bedrock_server_manager.api.misc.prune_download_cache") as mock_prune:
-        mock_prune.return_value = {
-            "status": "success",
-            "files_deleted": 2,
-            "files_kept": 1,
-        }
-
-        response = admin_auth_client.put(
-            "/api/downloads/prune", json={"directory": "test_target", "keep": 1}
-        )
-
-        assert response.status_code == 200
-        data = response.json()
-        assert data["status"] == "success"
-        assert data["files_deleted"] == 2
-
-
-async def test_put_prune_downloads_invalid_path(
-    admin_auth_client: TestClient, tmp_path, app_context
-):
-    downloads_dir = tmp_path / "downloads"
-    downloads_dir.mkdir()
-    await app_context.settings.set("paths.downloads", str(downloads_dir))
-
-    response = admin_auth_client.put(
-        "/api/downloads/prune", json={"directory": "../../etc/passwd", "keep": 1}
-    )
-
-    assert response.status_code == 400
-
-
-def test_get_servers_list_success(auth_client: TestClient):
-    from unittest.mock import AsyncMock
-
-    with patch(
-        "bedrock_server_manager.api.application.get_all_servers_data",
-        new_callable=AsyncMock,
-    ) as mock_list:
-        mock_list.return_value = {
-            "status": "success",
-            "servers": [
-                {
-                    "name": "test_server",
-                    "status": "running",
-                    "version": "1.20.0",
-                    "player_count": 0,
-                }
-            ],
-        }
-
-        response = auth_client.get("/api/servers")
-
-        assert response.status_code == 200
-        data = response.json()
-        assert data["status"] == "success"
-        assert len(data["servers"]) == 1
-
-
-def test_get_system_info_success(unauth_client: TestClient):
-    with patch(
-        "bedrock_server_manager.api.application.get_system_and_app_info"
-    ) as mock_info:
-        mock_info.return_value = {
-            "status": "success",
-            "os": "Linux",
-            "version": "1.0.0",
-        }
-
-        response = unauth_client.get("/api/info")
-
-        assert response.status_code == 200
-        data = response.json()
-        assert data["status"] == "success"
-        assert data["info"]["os"] == "Linux"
-
-
-async def test_get_themes_success(unauth_client: TestClient, tmp_path, app_context):
-    themes_dir = tmp_path / "themes"
-    themes_dir.mkdir()
-    (themes_dir / "custom1.css").touch()
-    await app_context.settings.set("paths.themes", str(themes_dir))
-
-    response = unauth_client.get("/api/info/themes")
-
+    base = f"/api/server/{real_bedrock_server.server_name}"
+    assert (await auth_client.get(base + "/validate")).status_code == 200
+    assert (await auth_client.get(base + "/status")).json()["running"] is False
+    await real_bedrock_server.start()
+    assert (await auth_client.get(base + "/status")).json()["running"] is True
+    response = await auth_client.get("/api/servers")
     assert response.status_code == 200
-    data = response.json()
-    assert data["status"] == "success"
-    assert "custom1" in data["themes"]
-    assert "default" == data["themes"][0]
+    assert response.json()["servers"][0]["name"] == real_bedrock_server.server_name
+    await real_bedrock_server.stop()
+    assert (await auth_client.get(base + "/status")).json()["running"] is False
 
 
-def test_post_add_players_success(admin_auth_client: TestClient):
-    with patch("bedrock_server_manager.api.player.add_players_manually") as mock_add:
-        mock_add.return_value = {
-            "status": "success",
-            "message": "Added 1 player",
-            "count": 1,
-        }
+async def test_player_endpoints_use_persistent_database(
+    admin_auth_client, app_context, real_bedrock_server
+):
+    response = await admin_auth_client.post(
+        "/api/players/add", json={"players": ["Steve:1234"]}
+    )
+    assert response.status_code == 200
+    assert response.json()["count"] == 1
+    Path(real_bedrock_server.server_log_path).write_text(
+        "[INFO] Player connected: Alex, xuid: 5678\n"
+    )
+    assert (await admin_auth_client.put("/api/players/scan")).status_code == 200
+    await app_context.reload()
+    response = await admin_auth_client.get("/api/players/get")
+    assert response.status_code == 200
+    assert {player["name"] for player in response.json()["players"]} == {
+        "Steve",
+        "Alex",
+    }
 
-        response = admin_auth_client.post(
-            "/api/players/add", json={"players": ["123456789,Steve"]}
-        )
 
-        assert response.status_code == 200
-        data = response.json()
-        assert data["status"] == "success"
-        assert data["count"] == 1
+async def test_system_info_and_real_custom_themes(unauth_client, app_context, tmp_path):
+    response = await unauth_client.get("/api/info")
+    assert response.status_code == 200
+    assert response.json()["info"]["app_version"]
+    themes = tmp_path / "themes"
+    themes.mkdir()
+    (themes / "integration.css").write_text("body {}")
+    await app_context.settings.set("paths.themes", str(themes))
+    response = await unauth_client.get("/api/info/themes")
+    assert response.status_code == 200
+    assert response.json()["themes"][0] == "default"
+    assert "integration" in response.json()["themes"]
+
+
+async def test_information_endpoints_enforce_roles(unauth_client, auth_client):
+    assert (await unauth_client.get("/api/servers")).status_code == 401
+    assert (
+        await auth_client.post("/api/players/add", json={"players": ["Steve:1234"]})
+    ).status_code == 403
+
+
+async def test_unknown_server_validation(auth_client):
+    assert (await auth_client.get("/api/server/missing/validate")).status_code == 404

@@ -5,7 +5,7 @@ Defines the central application context.
 
 from __future__ import annotations
 
-from logging import Logger
+from logging import Logger, getLogger
 from typing import TYPE_CHECKING, Any, Dict, Optional
 
 from sqlalchemy import inspect, select
@@ -20,6 +20,10 @@ if TYPE_CHECKING:
     from .db.storage import Storage
     from .plugins.api_bridge import AppAPI
     from .plugins.plugin_manager import PluginManager
+    from .services.plugin_service import PluginService
+    from .services.server_service import ServerService
+    from .services.settings_service import SettingsService
+    from .services.user_service import UserService
     from .state.app_state import AppState
     from .web.log_streamer import LogStreamer
     from .web.resource_monitor import ResourceMonitor
@@ -70,10 +74,10 @@ class AppContext:
         self._needs_setup: Optional[bool] = None
 
         self._pre_app_config_cache: Optional[Dict[str, Any]] = None
-        self._settings_service: Optional[Any] = None
-        self._server_service: Optional[Any] = None
-        self._plugin_service: Optional[Any] = None
-        self._user_service: Optional[Any] = None
+        self._settings_service: Optional["SettingsService"] = None
+        self._server_service: Optional["ServerService"] = None
+        self._plugin_service: Optional["PluginService"] = None
+        self._user_service: Optional["UserService"] = None
 
     async def load(self):
         """
@@ -129,11 +133,11 @@ class AppContext:
             await self._plugin_manager.reload()
 
         if self._resource_monitor is not None:
-            self._resource_monitor.stop()
+            await self._resource_monitor.shutdown()
             self._resource_monitor.start()
 
         if self._log_streamer is not None:
-            self._log_streamer.stop()
+            await self._log_streamer.shutdown()
             self._log_streamer.start()
 
     async def flush(self):
@@ -147,28 +151,44 @@ class AppContext:
         """
         Shuts down application context components and flushes pending state to storage.
         """
-        if self._bedrock_process_manager is not None:
-            await self._bedrock_process_manager.shutdown()
-
-        if self._plugin_manager is not None:
-            await self._plugin_manager.shutdown()
-
+        errors: list[Exception] = []
         if self._task_manager is not None:
-            await self._task_manager.shutdown()
-
-        if self._resource_monitor is not None:
-            self._resource_monitor.stop()
-
-        if self._log_streamer is not None:
-            self._log_streamer.stop()
-
-        if self._connection_manager is not None:
-            await self._connection_manager.shutdown()
-
-        await self.flush()
-
-        if self._db is not None:
-            await self._db.shutdown()
+            self._task_manager.begin_shutdown()
+        for producer in (self._bedrock_process_manager, self._plugin_manager):
+            if producer is not None:
+                try:
+                    await producer.quiesce()
+                except Exception as error:
+                    errors.append(error)
+        components = (
+            self._task_manager,
+            self._plugin_manager,
+            self._bedrock_process_manager,
+            self._resource_monitor,
+            self._log_streamer,
+            self._connection_manager,
+        )
+        for component in components:
+            if component is not None:
+                try:
+                    await component.shutdown()
+                except Exception as error:
+                    errors.append(error)
+                    getLogger(__name__).exception(
+                        "Component shutdown failed: %s", type(component).__name__
+                    )
+        try:
+            await self.flush()
+        except Exception as error:
+            errors.append(error)
+        finally:
+            if self._db is not None:
+                try:
+                    await self._db.shutdown()
+                except Exception as error:
+                    errors.append(error)
+        if errors:
+            raise ExceptionGroup("Application shutdown failed", errors)
 
     @property
     def pre_app_config(self) -> Dict[str, Any]:
@@ -386,7 +406,9 @@ class AppContext:
         if self._connection_manager is None:
             from .web.websocket_manager import ConnectionManager
 
-            self._connection_manager = ConnectionManager()
+            self._connection_manager = ConnectionManager(
+                user_provider=self.state.users.get
+            )
         return self._connection_manager
 
     @property
@@ -423,46 +445,50 @@ class AppContext:
         self._log_streamer = value
 
     @property
-    def settings_service(self):
+    def settings_service(self) -> "SettingsService":
         """Returns the SettingsService instance."""
         if self._settings_service is None:
             from .services.settings_service import SettingsService
 
             self._settings_service = SettingsService(
-                state=self._state, storage=self._storage, settings=self.settings
+                state=self.state, storage=self.storage, settings=self.settings
             )
         return self._settings_service
 
     @property
-    def server_service(self):
+    def server_service(self) -> "ServerService":
         """Returns the ServerService instance."""
         if self._server_service is None:
             from .services.server_service import ServerService
 
-            self._server_service = ServerService(
-                state=self._state, storage=self._storage
-            )
+            self._server_service = ServerService(state=self.state, storage=self.storage)
         return self._server_service
 
     @property
-    def plugin_service(self):
+    def plugin_service(self) -> "PluginService":
         """Returns the PluginService instance."""
         if self._plugin_service is None:
             from .services.plugin_service import PluginService
 
-            self._plugin_service = PluginService(
-                state=self._state, storage=self._storage
-            )
+            self._plugin_service = PluginService(state=self.state, storage=self.storage)
         return self._plugin_service
 
     @property
-    def user_service(self):
+    def user_service(self) -> "UserService":
         """Returns the UserService instance."""
         if self._user_service is None:
             from .services.user_service import UserService
 
-            self._user_service = UserService(state=self._state, storage=self._storage)
+            self._user_service = UserService(
+                state=self.state,
+                storage=self.storage,
+                revoke_connections=self._revoke_user_connections,
+            )
         return self._user_service
+
+    async def _revoke_user_connections(self, username: str) -> None:
+        if self._connection_manager is not None:
+            await self._connection_manager.revoke_user(username)
 
     @property
     def bedrock_process_manager(self) -> "BedrockProcessManager":

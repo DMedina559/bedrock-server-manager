@@ -1,191 +1,116 @@
-"""
-Integration tests for the backup_restore router endpoints.
-"""
+import zipfile
+from pathlib import Path
 
-from unittest.mock import patch
-
-from fastapi.testclient import TestClient
+import pytest
 
 
-def test_put_prune_backups_success(admin_auth_client: TestClient, real_bedrock_server):
-    with patch(
-        "bedrock_server_manager.web.tasks.TaskManager.run_task"
-    ) as mock_run_task:
-        mock_run_task.return_value = "test_task_id"
-        response = admin_auth_client.put(
-            f"/api/server/{real_bedrock_server.server_name}/backups/prune"
-        )
-        assert response.status_code == 202
-        data = response.json()
-        assert data["status"] == "pending"
-        assert data["task_id"] == "test_task_id"
-
-
-def test_get_list_server_backups_world_success(
-    admin_auth_client: TestClient, real_bedrock_server
+async def test_http_config_backup_restore_completes_real_tasks(
+    admin_auth_client, app_context, populated_server, wait_for_task
 ):
-    with patch(
-        "bedrock_server_manager.api.backup_restore.list_backup_files"
-    ) as mock_api:
-        mock_api.return_value = {
-            "status": "success",
-            "backups": ["/path/to/backup1.zip", "/path/to/backup2.zip"],
-        }
-        response = admin_auth_client.get(
-            f"/api/server/{real_bedrock_server.server_name}/backup/list/world"
-        )
-        assert response.status_code == 200
-        data = response.json()
-        assert data["status"] == "success"
-        assert data["backups"] == ["backup1.zip", "backup2.zip"]
+    base = f"/api/server/{populated_server.server_name}"
+    properties = Path(populated_server.server_dir) / "server.properties"
+    original = properties.read_bytes()
+    response = await admin_auth_client.post(
+        base + "/backup/action",
+        json={"backup_type": "config", "file_to_backup": "server.properties"},
+    )
+    assert response.status_code == 202
+    await wait_for_task(app_context, response.json()["task_id"])
+    backups = (await admin_auth_client.get(base + "/backup/list/properties")).json()[
+        "backups"
+    ]
+    assert backups
+    properties.write_text("server-name=changed\n")
+    response = await admin_auth_client.post(
+        base + "/restore/action",
+        json={"restore_type": "properties", "backup_file": backups[0]},
+    )
+    assert response.status_code == 202
+    await wait_for_task(app_context, response.json()["task_id"])
+    assert properties.read_bytes() == original
 
 
-def test_get_list_server_backups_all_success(
-    admin_auth_client: TestClient, real_bedrock_server
+@pytest.mark.parametrize("kind", ["world", "all"])
+async def test_http_backups_create_real_archives(
+    admin_auth_client, app_context, populated_server, wait_for_task, kind
 ):
-    with patch(
-        "bedrock_server_manager.api.backup_restore.list_backup_files"
-    ) as mock_api:
-        mock_api.return_value = {
-            "status": "success",
-            "backups": {
-                "world": ["/path/to/backup1.zip"],
-                "properties": ["/path/to/props.bak"],
-            },
-        }
-        response = admin_auth_client.get(
-            f"/api/server/{real_bedrock_server.server_name}/backup/list/all"
-        )
-        assert response.status_code == 200
-        data = response.json()
-        assert data["status"] == "success"
-        assert data["details"]["all_backups"]["world"] == ["backup1.zip"]
-        assert data["details"]["all_backups"]["properties"] == ["props.bak"]
+    base = f"/api/server/{populated_server.server_name}"
+    response = await admin_auth_client.post(
+        base + "/backup/action", json={"backup_type": kind}
+    )
+    assert response.status_code == 202
+    await wait_for_task(app_context, response.json()["task_id"])
+    assert list(Path(populated_server.server_backup_directory).glob("*.mcworld"))
+    response = await admin_auth_client.put(base + "/backups/prune")
+    assert response.status_code == 202
+    await wait_for_task(app_context, response.json()["task_id"])
 
 
-def test_get_list_server_backups_not_found(
-    admin_auth_client: TestClient, real_bedrock_server
+@pytest.mark.parametrize(
+    "filename", ["../outside.properties", "/outside.properties", "missing.properties"]
+)
+async def test_restore_rejects_unsafe_or_missing_files(
+    admin_auth_client, real_bedrock_server, filename
 ):
-    with patch(
-        "bedrock_server_manager.api.backup_restore.list_backup_files"
-    ) as mock_api:
-        mock_api.return_value = {
-            "status": "error",
-            "message": "Server backups not found.",
-        }
-        response = admin_auth_client.get(
-            f"/api/server/{real_bedrock_server.server_name}/backup/list/world"
-        )
-        assert response.status_code == 404
-        assert "not found" in response.json()["detail"]
+    response = await admin_auth_client.post(
+        f"/api/server/{real_bedrock_server.server_name}/restore/action",
+        json={"restore_type": "properties", "backup_file": filename},
+    )
+    assert response.status_code in {400, 404, 422}
 
 
-def test_post_backup_action_world_success(
-    admin_auth_client: TestClient, real_bedrock_server
-):
-    with patch(
-        "bedrock_server_manager.web.tasks.TaskManager.run_task"
-    ) as mock_run_task:
-        mock_run_task.return_value = "test_task_id"
-        response = admin_auth_client.post(
-            f"/api/server/{real_bedrock_server.server_name}/backup/action",
-            json={"backup_type": "world"},
-        )
-        assert response.status_code == 202
-        data = response.json()
-        assert data["status"] == "pending"
-        assert data["task_id"] == "test_task_id"
-
-
-def test_post_backup_action_config_missing_file(
-    admin_auth_client: TestClient, real_bedrock_server
-):
-    response = admin_auth_client.post(
+async def test_backups_require_admin(auth_client, real_bedrock_server):
+    response = await auth_client.post(
         f"/api/server/{real_bedrock_server.server_name}/backup/action",
-        json={"backup_type": "config"},
+        json={"backup_type": "all"},
     )
-    assert response.status_code == 400
-    assert "Missing or invalid 'file_to_backup'" in response.json()["detail"]
+    assert response.status_code == 403
 
 
-def test_post_restore_action_all_success(
-    admin_auth_client: TestClient, real_bedrock_server
+async def test_world_backup_restores_running_server_and_restarts(
+    admin_auth_client, app_context, populated_server, wait_for_task
 ):
-    with patch(
-        "bedrock_server_manager.web.tasks.TaskManager.run_task"
-    ) as mock_run_task:
-        mock_run_task.return_value = "test_task_id"
-        response = admin_auth_client.post(
-            f"/api/server/{real_bedrock_server.server_name}/restore/action",
-            json={"restore_type": "all"},
-        )
-        assert response.status_code == 202
-        data = response.json()
-        assert data["status"] == "pending"
-        assert data["task_id"] == "test_task_id"
-
-
-async def test_post_restore_action_world_success(
-    admin_auth_client: TestClient, app_context, tmp_path, real_bedrock_server
-):
-    backups_dir = tmp_path / "backups"
-    server_backups_dir = backups_dir / real_bedrock_server.server_name
-    server_backups_dir.mkdir(parents=True)
-    backup_file = server_backups_dir / "world_backup.zip"
-    backup_file.touch()
-
-    await app_context.settings.set("paths.backups", str(backups_dir))
-
-    with patch(
-        "bedrock_server_manager.web.tasks.TaskManager.run_task"
-    ) as mock_run_task:
-        mock_run_task.return_value = "test_task_id"
-        response = admin_auth_client.post(
-            f"/api/server/{real_bedrock_server.server_name}/restore/action",
-            json={"restore_type": "world", "backup_file": "world_backup.zip"},
-        )
-        assert response.status_code == 202
-        data = response.json()
-        assert data["status"] == "pending"
-        assert data["task_id"] == "test_task_id"
-
-
-def test_post_restore_action_invalid_type(
-    admin_auth_client: TestClient, real_bedrock_server
-):
-    response = admin_auth_client.post(
-        f"/api/server/{real_bedrock_server.server_name}/restore/action",
-        json={"restore_type": "invalid_type", "backup_file": "world_backup.zip"},
+    server = populated_server
+    base = f"/api/server/{server.server_name}"
+    world = Path(server.server_dir) / "worlds" / await server.get_world_name()
+    marker = world / "integration.txt"
+    marker.write_text("original world")
+    pack_files = {
+        path.relative_to(world).as_posix(): path.read_bytes()
+        for path in world.rglob("manifest.json")
+    }
+    assert pack_files
+    response = await admin_auth_client.post(
+        base + "/backup/action", json={"backup_type": "world"}
     )
-    assert response.status_code == 400
-    assert "Invalid 'restore_type'" in response.json()["detail"]
-
-
-async def test_post_restore_action_path_traversal(
-    admin_auth_client: TestClient, app_context, tmp_path, real_bedrock_server
-):
-    backups_dir = tmp_path / "backups"
-    await app_context.settings.set("paths.backups", str(backups_dir))
-
-    response = admin_auth_client.post(
-        f"/api/server/{real_bedrock_server.server_name}/restore/action",
-        json={"restore_type": "world", "backup_file": "../../etc/passwd"},
+    assert response.status_code == 202
+    await wait_for_task(app_context, response.json()["task_id"])
+    archive = next(Path(server.server_backup_directory).glob("*.mcworld"))
+    with zipfile.ZipFile(archive) as backup:
+        assert backup.read("integration.txt") == b"original world"
+        for name, content in pack_files.items():
+            assert backup.read(name) == content
+    assert (await admin_auth_client.post(base + "/start")).status_code == 200
+    first_child = server._process
+    assert await server.is_running()
+    marker.write_text("changed world")
+    for name in pack_files:
+        (world / name).unlink()
+    response = await admin_auth_client.post(
+        base + "/restore/action",
+        json={"restore_type": "world", "backup_file": archive.name},
     )
-    assert response.status_code == 400
-    assert "Invalid 'backup_file' path" in response.json()["detail"]
-
-
-async def test_post_restore_action_file_not_found(
-    admin_auth_client: TestClient, app_context, tmp_path, real_bedrock_server
-):
-    backups_dir = tmp_path / "backups"
-    server_backups_dir = backups_dir / real_bedrock_server.server_name
-    server_backups_dir.mkdir(parents=True)
-    await app_context.settings.set("paths.backups", str(backups_dir))
-
-    response = admin_auth_client.post(
-        f"/api/server/{real_bedrock_server.server_name}/restore/action",
-        json={"restore_type": "world", "backup_file": "missing.zip"},
+    assert response.status_code == 202
+    await wait_for_task(app_context, response.json()["task_id"])
+    assert marker.read_text() == "original world"
+    for name, content in pack_files.items():
+        assert (world / name).read_bytes() == content
+    assert first_child.returncode is not None
+    assert await server.is_running()
+    assert server._process.pid != first_child.pid
+    response = await admin_auth_client.post(
+        base + "/restart", json={"send_message": False}
     )
-    assert response.status_code == 404
-    assert "not found" in response.json()["detail"]
+    assert response.status_code == 200
+    assert response.json()["outcome"] == "restarted"
+    assert marker.read_text() == "original world"

@@ -1,6 +1,6 @@
 import logging
+import math
 import re
-from typing import Any, Dict
 
 from ..context import AppContext
 from ..error import (
@@ -11,24 +11,31 @@ from ..error import (
 )
 from ..plugins.api_bridge import api_method
 from ..plugins.event_trigger import trigger_event
-from .server import server_lifecycle_manager
+from ..plugins.runtime_capabilities import server_lifecycle_manager
+from .models.properties import (
+    GetPropertiesRequest,
+    GetPropertiesResponse,
+    SetPropertiesRequest,
+    SetPropertiesResponse,
+    ValidatePropertyValueRequest,
+    ValidatePropertyValueResponse,
+)
 
 logger = logging.getLogger(__name__)
 
 
 @api_method("get_properties")
-async def get_properties(server_name: str, app_context: AppContext) -> Dict[str, Any]:
+async def get_properties(
+    request: GetPropertiesRequest, *, app_context: AppContext
+) -> GetPropertiesResponse:
     """Retrieves the current server properties for a given server.
 
-    Args:
-        server_name (str): The name of the server.
-        app_context (AppContext): The application context.
-
-    Returns:
-        Dict[str, Any]: A dictionary containing the parsed server properties.
+    Accepts GetPropertiesRequest and returns GetPropertiesResponse.
+    Invalid requests fail validation before side effects; operation failures raise application exceptions.
     """
+    server_name = request.server_name
     if not server_name:
-        return {"status": "error", "message": "Server name cannot be empty."}
+        raise BSMError("Server name cannot be empty.")
     import aiofiles
 
     try:
@@ -39,70 +46,74 @@ async def get_properties(server_name: str, app_context: AppContext) -> Dict[str,
             server.server_properties_path, "r", encoding="utf-8"
         ) as f:
             raw_content = await f.read()
-        return {
-            "status": "success",
-            "properties": properties,
-            "raw_content": raw_content,
-        }
-    except AppFileNotFoundError as e:
-        return {"status": "error", "message": str(e)}
+        return GetPropertiesResponse.model_validate(
+            {"status": "success", "properties": properties, "raw_content": raw_content}
+        )
+    except AppFileNotFoundError:
+        raise
     except BSMError as e:
         logger.error(
             f"API: Failed to get properties for '{server_name}': {e}", exc_info=True
         )
-        return {"status": "error", "message": f"Failed to get properties: {e}"}
+        raise
     except Exception as e:
         logger.error(
             f"API: Unexpected error getting properties for '{server_name}': {e}",
             exc_info=True,
         )
-        return {"status": "error", "message": f"Unexpected error: {e}"}
+        raise
 
 
 @api_method("validate_property_value")
-def validate_property_value(  # noqa: C901
-    property_name: str, value: str
-) -> Dict[str, str]:
+def validate_property_value(
+    request: ValidatePropertyValueRequest,
+) -> ValidatePropertyValueResponse:
     """Validates a specific server property value before it gets applied.
 
-    Args:
-        property_name (str): The name of the property to validate.
-        value (str): The proposed value for the property.
-
-    Returns:
-        Dict[str, str]: A dictionary indicating success or validation error message.
+    Accepts ValidatePropertyValueRequest and returns ValidatePropertyValueResponse.
+    Invalid requests fail validation before side effects; operation failures raise application exceptions.
     """
+    property_name = request.property_name
+    value = request.value
     logger.debug(
         f"API: Validating server property: '{property_name}', Value: '{value}'"
     )
     if value is None:
         value = ""
-    # Strings without semicolon
     if property_name in ("server-name", "level-name", "level-seed"):
         if ";" in value:
-            return {
-                "status": "error",
-                "message": f"{property_name} cannot contain semicolons.",
-            }
+            return ValidatePropertyValueResponse.model_validate(
+                {
+                    "status": "success",
+                    "valid": False,
+                    "message": f"{property_name} cannot contain semicolons.",
+                }
+            )
         if property_name == "server-name" and len(value) > 100:
-            return {
-                "status": "error",
-                "message": f"{property_name} is too long (max 100 chars).",
-            }
+            return ValidatePropertyValueResponse.model_validate(
+                {
+                    "status": "success",
+                    "valid": False,
+                    "message": f"{property_name} is too long (max 100 chars).",
+                }
+            )
         if property_name == "level-name":
-            # level-name has extra file-name invalid character checks typically, but keeping it simpler based on existing regex
-            if not re.fullmatch(r"[a-zA-Z0-9_\-]+", value.replace(" ", "_")):
-                return {
-                    "status": "error",
-                    "message": f"{property_name}: use letters, numbers, underscore, hyphen.",
-                }
+            if not re.fullmatch("[a-zA-Z0-9_\\-]+", value.replace(" ", "_")):
+                return ValidatePropertyValueResponse.model_validate(
+                    {
+                        "status": "success",
+                        "valid": False,
+                        "message": f"{property_name}: use letters, numbers, underscore, hyphen.",
+                    }
+                )
             if len(value) > 80:
-                return {
-                    "status": "error",
-                    "message": f"{property_name} is too long (max 80 chars).",
-                }
-
-    # Booleans
+                return ValidatePropertyValueResponse.model_validate(
+                    {
+                        "status": "success",
+                        "valid": False,
+                        "message": f"{property_name} is too long (max 80 chars).",
+                    }
+                )
     elif property_name in (
         "force-gamemode",
         "allow-cheats",
@@ -134,62 +145,85 @@ def validate_property_value(  # noqa: C901
         "allow-player-joining",
     ):
         if value.lower() not in ("true", "false"):
-            return {
-                "status": "error",
-                "message": f"{property_name}: Must be 'true' or 'false'.",
-            }
-
-    # Enums
+            return ValidatePropertyValueResponse.model_validate(
+                {
+                    "status": "success",
+                    "valid": False,
+                    "message": f"{property_name}: Must be 'true' or 'false'.",
+                }
+            )
     elif property_name == "gamemode":
         if value.lower() not in ("survival", "creative", "adventure"):
-            return {
-                "status": "error",
-                "message": f"{property_name}: Must be 'survival', 'creative', or 'adventure'.",
-            }
+            return ValidatePropertyValueResponse.model_validate(
+                {
+                    "status": "success",
+                    "valid": False,
+                    "message": f"{property_name}: Must be 'survival', 'creative', or 'adventure'.",
+                }
+            )
     elif property_name == "difficulty":
         if value.lower() not in ("peaceful", "easy", "normal", "hard"):
-            return {
-                "status": "error",
-                "message": f"{property_name}: Must be 'peaceful', 'easy', 'normal', or 'hard'.",
-            }
+            return ValidatePropertyValueResponse.model_validate(
+                {
+                    "status": "success",
+                    "valid": False,
+                    "message": f"{property_name}: Must be 'peaceful', 'easy', 'normal', or 'hard'.",
+                }
+            )
     elif property_name == "transport":
         if value.lower() not in ("raknet", "nethernet"):
-            return {
-                "status": "error",
-                "message": f"{property_name}: Must be 'raknet' or 'nethernet'.",
-            }
+            return ValidatePropertyValueResponse.model_validate(
+                {
+                    "status": "success",
+                    "valid": False,
+                    "message": f"{property_name}: Must be 'raknet' or 'nethernet'.",
+                }
+            )
     elif property_name == "default-player-permission-level":
         if value.lower() not in ("visitor", "member", "operator"):
-            return {
-                "status": "error",
-                "message": f"{property_name}: Must be 'visitor', 'member', or 'operator'.",
-            }
+            return ValidatePropertyValueResponse.model_validate(
+                {
+                    "status": "success",
+                    "valid": False,
+                    "message": f"{property_name}: Must be 'visitor', 'member', or 'operator'.",
+                }
+            )
     elif property_name == "content-log-level":
         if value.lower() not in ("error", "warning", "info", "verbose"):
-            return {
-                "status": "error",
-                "message": f"{property_name}: Must be 'error', 'warning', 'info', or 'verbose'.",
-            }
+            return ValidatePropertyValueResponse.model_validate(
+                {
+                    "status": "success",
+                    "valid": False,
+                    "message": f"{property_name}: Must be 'error', 'warning', 'info', or 'verbose'.",
+                }
+            )
     elif property_name == "compression-algorithm":
         if value.lower() not in ("zlib", "snappy"):
-            return {
-                "status": "error",
-                "message": f"{property_name}: Must be 'zlib' or 'snappy'.",
-            }
+            return ValidatePropertyValueResponse.model_validate(
+                {
+                    "status": "success",
+                    "valid": False,
+                    "message": f"{property_name}: Must be 'zlib' or 'snappy'.",
+                }
+            )
     elif property_name == "chat-restriction":
         if value.lower() not in ("none", "dropped", "disabled"):
-            return {
-                "status": "error",
-                "message": f"{property_name}: Must be 'None', 'Dropped', or 'Disabled'.",
-            }
+            return ValidatePropertyValueResponse.model_validate(
+                {
+                    "status": "success",
+                    "valid": False,
+                    "message": f"{property_name}: Must be 'None', 'Dropped', or 'Disabled'.",
+                }
+            )
     elif property_name == "script-debugger-auto-attach":
         if value.lower() not in ("disabled", "connect", "listen"):
-            return {
-                "status": "error",
-                "message": f"{property_name}: Must be 'disabled', 'connect', or 'listen'.",
-            }
-
-    # Integers with specific ranges
+            return ValidatePropertyValueResponse.model_validate(
+                {
+                    "status": "success",
+                    "valid": False,
+                    "message": f"{property_name}: Must be 'disabled', 'connect', or 'listen'.",
+                }
+            )
     elif property_name in (
         "server-port",
         "server-portv6",
@@ -215,7 +249,7 @@ def validate_property_value(  # noqa: C901
         try:
             num_val = int(value)
             if property_name in ("server-port", "server-portv6"):
-                if not (1 <= num_val <= 65535):
+                if not 1 <= num_val <= 65535:
                     raise ValueError("Must be a number 1-65535.")
             elif property_name == "max-players":
                 if num_val < 1:
@@ -224,7 +258,7 @@ def validate_property_value(  # noqa: C901
                 if num_val < 5:
                     raise ValueError("Must be an integer >= 5.")
             elif property_name == "tick-distance":
-                if not (4 <= num_val <= 12):
+                if not 4 <= num_val <= 12:
                     raise ValueError("Must be between 4 and 12.")
             elif property_name in (
                 "player-idle-timeout",
@@ -241,10 +275,10 @@ def validate_property_value(  # noqa: C901
                 if num_val < 0:
                     raise ValueError("Must be a non-negative integer.")
             elif property_name == "compression-threshold":
-                if not (0 <= num_val <= 65535):
+                if not 0 <= num_val <= 65535:
                     raise ValueError("Must be a number 0-65535.")
             elif property_name == "force-inbound-debug-port":
-                if not (1 <= num_val <= 65535):
+                if not 1 <= num_val <= 65535:
                     raise ValueError("Must be a number 1-65535.")
             elif property_name in (
                 "diagnostics-capture-max-files",
@@ -253,9 +287,13 @@ def validate_property_value(  # noqa: C901
                 if num_val < 1:
                     raise ValueError("Must be a positive integer >= 1.")
         except (ValueError, TypeError) as e:
-            return {"status": "error", "message": f"{property_name}: {str(e)}"}
-
-    # Floats / Scalars
+            return ValidatePropertyValueResponse.model_validate(
+                {
+                    "status": "success",
+                    "valid": False,
+                    "message": f"{property_name}: {str(e)}",
+                }
+            )
     elif property_name in (
         "player-position-acceptance-threshold",
         "player-movement-action-direction-threshold",
@@ -263,27 +301,37 @@ def validate_property_value(  # noqa: C901
     ):
         try:
             float_val = float(value)
+            if not math.isfinite(float_val):
+                raise ValueError("Must be a finite number.")
             if property_name == "player-movement-action-direction-threshold":
-                if not (0.0 <= float_val <= 1.0):
+                if not 0.0 <= float_val <= 1.0:
                     raise ValueError("Must be in range [0, 1].")
         except (ValueError, TypeError) as e:
             msg = str(e) if str(e).startswith("Must") else "Must be a number."
-            return {"status": "error", "message": f"{property_name}: {msg}"}
-
-    # Special handling
+            return ValidatePropertyValueResponse.model_validate(
+                {
+                    "status": "success",
+                    "valid": False,
+                    "message": f"{property_name}: {msg}",
+                }
+            )
     elif property_name == "server-build-radius-ratio":
         if value.lower() != "disabled":
             try:
                 float_val = float(value)
-                if not (0.0 <= float_val <= 1.0):
+                if not 0.0 <= float_val <= 1.0:
                     raise ValueError("Must be in range [0.0, 1.0].")
             except (ValueError, TypeError):
-                return {
-                    "status": "error",
-                    "message": f"{property_name}: Must be 'Disabled' or a number in range [0.0, 1.0].",
-                }
-
-    return {"status": "success"}
+                return ValidatePropertyValueResponse.model_validate(
+                    {
+                        "status": "success",
+                        "valid": False,
+                        "message": f"{property_name}: Must be 'Disabled' or a number in range [0.0, 1.0].",
+                    }
+                )
+    return ValidatePropertyValueResponse.model_validate(
+        {"status": "success", "valid": True, "message": None}
+    )
 
 
 @api_method("set_properties")
@@ -293,37 +341,32 @@ def validate_property_value(  # noqa: C901
     identity_keys=("server_name",),
 )
 async def set_properties(
-    server_name: str,
-    properties_to_update: Dict[str, str],
-    app_context: AppContext,
-    restart_after_modify: bool = False,
-) -> Dict[str, str]:
+    request: SetPropertiesRequest, *, app_context: AppContext
+) -> SetPropertiesResponse:
     """Sets one or multiple server properties for a given server.
 
-    Args:
-        server_name (str): The name of the server.
-        properties_to_update (Dict[str, str]): A dictionary of property keys and new values.
-        app_context (AppContext): The application context.
-        restart_after_modify (bool, optional): Whether to restart the server if running. Defaults to False.
-
-    Returns:
-        Dict[str, str]: A dictionary with the status and result message.
+    Accepts SetPropertiesRequest and returns SetPropertiesResponse.
+    Invalid requests fail validation before side effects; operation failures raise application exceptions.
     """
+    server_name = request.server_name
+    properties_to_update = request.properties_to_update
+    restart_after_modify = request.restart_after_modify
     if not server_name:
         raise InvalidServerNameError("Server name required.")
     if not isinstance(properties_to_update, dict):
         raise TypeError("Properties must be a dict.")
-
     try:
         for name, val_str in properties_to_update.items():
             val_res = validate_property_value(
-                name, str(val_str) if val_str is not None else ""
-            )
-            if val_res.get("status") == "error":
-                raise UserInputError(
-                    f"Validation failed for '{name}': {val_res.get('message')}"
+                request=ValidatePropertyValueRequest(
+                    property_name=name,
+                    value=str(val_str) if val_str is not None else "",
                 )
-
+            )
+            if not val_res.valid:
+                raise UserInputError(
+                    f"Validation failed for '{name}': {val_res.message}"
+                )
         async with server_lifecycle_manager(
             server_name,
             stop_before=restart_after_modify,
@@ -333,20 +376,17 @@ async def set_properties(
             server = app_context.get_server(server_name)
             for prop_name, prop_value in properties_to_update.items():
                 await server.set_server_property(prop_name, prop_value)
-
-        return {
-            "status": "success",
-            "message": "Server properties updated successfully.",
-        }
-
+        return SetPropertiesResponse.model_validate(
+            {"status": "success", "message": "Server properties updated successfully."}
+        )
     except (BSMError, FileNotFoundError, UserInputError) as e:
         logger.error(
             f"API: Failed to modify properties for '{server_name}': {e}", exc_info=True
         )
-        return {"status": "error", "message": f"Failed to modify properties: {e}"}
+        raise
     except Exception as e:
         logger.error(
             f"API: Unexpected error modifying properties for '{server_name}': {e}",
             exc_info=True,
         )
-        return {"status": "error", "message": f"Unexpected error: {e}"}
+        raise

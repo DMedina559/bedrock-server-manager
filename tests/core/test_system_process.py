@@ -2,7 +2,7 @@
 
 import os
 from pathlib import Path
-from unittest.mock import AsyncMock, MagicMock, patch
+from unittest.mock import MagicMock, patch
 
 import psutil
 import pytest
@@ -246,48 +246,39 @@ async def test_is_process_running_no_psutil():
         await is_process_running(1234)
 
 
-@patch("bedrock_server_manager.core.system.process.PSUTIL_AVAILABLE", True)
-@patch("psutil.Process")
-async def test_verify_process_identity_success(mock_process_class):
-    """Test verify_process_identity when all criteria match."""
-    mock_proc = MagicMock()
-    mock_proc.name.return_value = "my_app"
-    mock_proc.exe.return_value = "/path/to/my_app"
-    mock_proc.cwd.return_value = "/path/to"
-    mock_proc.cmdline.return_value = ["/path/to/my_app", "--arg1"]
-    mock_process_class.return_value = mock_proc
-
-    # Should not raise any exception
+async def test_verify_process_identity_success(real_bedrock_server):
+    server = real_bedrock_server
+    await server.start()
     await verify_process_identity(
-        1234,
-        expected_executable_path="/path/to/my_app",
-        expected_cwd="/path/to",
-        expected_command_args="--arg1",
+        server._process.pid,
+        expected_executable_path=server.bedrock_executable_path,
+        expected_cwd=server.server_dir,
     )
 
 
-@patch("bedrock_server_manager.core.system.process.PSUTIL_AVAILABLE", True)
-@patch("psutil.Process")
-async def test_verify_process_identity_mismatch(mock_process_class):
-    """Test verify_process_identity when criteria do not match."""
-    mock_proc = MagicMock()
-    mock_proc.name.return_value = "my_app"
-    mock_proc.exe.return_value = "/wrong/path/my_app"
-    mock_proc.cwd.return_value = "/wrong/cwd"
-    mock_proc.cmdline.return_value = ["/wrong/path/my_app"]
-    mock_process_class.return_value = mock_proc
-
-    with pytest.raises(ServerProcessError) as exc_info:
-        await verify_process_identity(
-            1234,
-            expected_executable_path="/path/to/my_app",
-            expected_cwd="/path/to",
-            expected_command_args="--arg1",
-        )
-
-    assert "Executable path mismatch" in str(exc_info.value)
-    assert "CWD mismatch" in str(exc_info.value)
-    assert "Argument mismatch" in str(exc_info.value)
+@pytest.mark.parametrize("criterion", ["executable", "cwd", "arguments"])
+async def test_verify_process_identity_mismatch(
+    real_bedrock_server, tmp_path, criterion
+):
+    server = real_bedrock_server
+    await server.start()
+    criteria = {
+        "executable": (
+            "expected_executable_path",
+            str(tmp_path / "other"),
+            "Executable path mismatch",
+        ),
+        "cwd": ("expected_cwd", str(tmp_path), "CWD mismatch"),
+        "arguments": (
+            "expected_command_args",
+            ["--not-a-server-argument"],
+            "Argument mismatch",
+        ),
+    }
+    key, value, message = criteria[criterion]
+    with pytest.raises(ServerProcessError, match=message):
+        await verify_process_identity(server._process.pid, **{key: value})
+    assert await server.is_running()
 
 
 @patch("bedrock_server_manager.core.system.process.PSUTIL_AVAILABLE", True)
@@ -326,105 +317,41 @@ async def test_verify_process_identity_missing_args():
 # --- High Level Verification Tests ---
 
 
-@patch("bedrock_server_manager.core.system.process.PSUTIL_AVAILABLE", True)
-@patch(
-    "bedrock_server_manager.core.system.process.get_bedrock_server_pid_file_path",
-    new_callable=AsyncMock,
-)
-@patch(
-    "bedrock_server_manager.core.system.process.read_pid_from_file",
-    new_callable=AsyncMock,
-)
-@patch(
-    "bedrock_server_manager.core.system.process.is_process_running",
-    new_callable=AsyncMock,
-)
-@patch(
-    "bedrock_server_manager.core.system.process.verify_process_identity",
-    new_callable=AsyncMock,
-)
-@patch("psutil.Process")
-async def test_get_verified_bedrock_process_success(
-    mock_psutil_process,
-    mock_verify,
-    mock_is_running,
-    mock_read_pid,
-    mock_get_pid_path,
-):
-    """Test get_verified_bedrock_process on success."""
-    mock_get_pid_path.return_value = "/config/myserver/bedrock_myserver.pid"
-    mock_read_pid.return_value = 1234
-    mock_is_running.return_value = True
+async def test_get_verified_bedrock_process_success(real_bedrock_server):
+    server = real_bedrock_server
+    await server.start()
+    process = await get_verified_bedrock_process(
+        server.server_name, server.server_dir, server.app_config_dir
+    )
+    assert process.pid == server._process.pid
+    assert process.is_running()
 
-    mock_proc = MagicMock()
-    mock_psutil_process.return_value = mock_proc
 
-    with patch("aiofiles.ospath.isdir", new_callable=AsyncMock, return_value=True):
-        result = await get_verified_bedrock_process(
-            "myserver", "/server/dir", "/config"
+async def test_get_verified_bedrock_process_no_pid(real_bedrock_server):
+    server = real_bedrock_server
+    assert not Path(server.get_pid_file_path()).exists()
+    assert (
+        await get_verified_bedrock_process(
+            server.server_name, server.server_dir, server.app_config_dir
         )
+        is None
+    )
 
-    assert result == mock_proc
-    mock_verify.assert_called_once()
 
-
-@patch("bedrock_server_manager.core.system.process.PSUTIL_AVAILABLE", True)
-@patch(
-    "bedrock_server_manager.core.system.process.get_bedrock_server_pid_file_path",
-    new_callable=AsyncMock,
-)
-@patch(
-    "bedrock_server_manager.core.system.process.read_pid_from_file",
-    new_callable=AsyncMock,
-)
-async def test_get_verified_bedrock_process_no_pid(mock_read_pid, mock_get_pid_path):
-    """Test get_verified_bedrock_process when no PID file exists."""
-    mock_get_pid_path.return_value = "/config/myserver/bedrock_myserver.pid"
-    mock_read_pid.return_value = None
-
-    with patch("aiofiles.ospath.isdir", new_callable=AsyncMock, return_value=True):
-        result = await get_verified_bedrock_process(
-            "myserver", "/server/dir", "/config"
+async def test_get_verified_bedrock_process_stale_pid(real_bedrock_server):
+    server = real_bedrock_server
+    await server.start()
+    pid = server._process.pid
+    await server.stop()
+    path = server.get_pid_file_path()
+    await write_pid_to_file(path, pid)
+    assert (
+        await get_verified_bedrock_process(
+            server.server_name, server.server_dir, server.app_config_dir
         )
-
-    assert result is None
-
-
-@patch("bedrock_server_manager.core.system.process.PSUTIL_AVAILABLE", True)
-@patch(
-    "bedrock_server_manager.core.system.process.get_bedrock_server_pid_file_path",
-    new_callable=AsyncMock,
-)
-@patch(
-    "bedrock_server_manager.core.system.process.read_pid_from_file",
-    new_callable=AsyncMock,
-)
-@patch(
-    "bedrock_server_manager.core.system.process.is_process_running",
-    new_callable=AsyncMock,
-)
-@patch(
-    "bedrock_server_manager.core.system.process.remove_pid_file_if_exists",
-    new_callable=AsyncMock,
-)
-async def test_get_verified_bedrock_process_stale_pid(
-    mock_remove_pid,
-    mock_is_running,
-    mock_read_pid,
-    mock_get_pid_path,
-):
-    """Test get_verified_bedrock_process when PID is stale (not running)."""
-    mock_get_pid_path.return_value = "/config/myserver/bedrock_myserver.pid"
-    mock_read_pid.return_value = 1234
-    mock_is_running.return_value = False
-
-    with patch("aiofiles.ospath.isdir", new_callable=AsyncMock, return_value=True):
-        result = await get_verified_bedrock_process(
-            "myserver", "/server/dir", "/config"
-        )
-
-    assert result is None
-    mock_remove_pid.assert_called_once_with("/config/myserver/bedrock_myserver.pid")
+        is None
+    )
+    assert not Path(path).exists()
 
 
 @patch("bedrock_server_manager.core.system.process.PSUTIL_AVAILABLE", False)
@@ -445,18 +372,16 @@ async def test_get_verified_bedrock_process_invalid_args():
 # --- Process Termination Tests ---
 
 
-@patch("bedrock_server_manager.core.system.process.PSUTIL_AVAILABLE", True)
-@patch("psutil.Process")
-async def test_terminate_process_by_pid_graceful(mock_process_class):
-    """Test terminate_process_by_pid graceful shutdown."""
-    mock_proc = MagicMock()
-    mock_process_class.return_value = mock_proc
+async def test_terminate_process_by_pid_graceful(real_bedrock_server):
+    server = real_bedrock_server
+    await server.start()
+    child = server._process
+    await terminate_process_by_pid(child.pid)
+    import asyncio
 
-    await terminate_process_by_pid(1234)
-
-    mock_proc.terminate.assert_called_once()
-    mock_proc.wait.assert_called_once_with(timeout=5)
-    mock_proc.kill.assert_not_called()
+    await asyncio.wait_for(child.wait(), 5)
+    assert child.returncode is not None
+    assert not await is_process_running(child.pid)
 
 
 @patch("bedrock_server_manager.core.system.process.PSUTIL_AVAILABLE", True)
@@ -541,7 +466,45 @@ async def test_dummy_launch_and_verify(tmp_path: Path, real_bedrock_server):
     await terminate_process_by_pid(pid)
 
     # 5. Verify process is no longer running
-    import time
+    import asyncio
 
-    time.sleep(0.5)
+    await asyncio.sleep(0.5)
     assert await is_process_running(pid) is False
+
+
+async def test_detached_child_survives_launcher_event_loop(tmp_path):
+    import asyncio
+    import sys
+
+    from bedrock_server_manager.utils.threads import run_in_thread
+
+    request = tmp_path / "request"
+    acknowledgement = tmp_path / "acknowledgement"
+    child_script = tmp_path / "child.py"
+    child_script.write_text(
+        "import sys, time\n"
+        "from pathlib import Path\n"
+        "request, acknowledgement = map(Path, sys.argv[1:])\n"
+        "deadline = time.monotonic() + 10\n"
+        "while not request.exists() and time.monotonic() < deadline:\n"
+        "    time.sleep(0.01)\n"
+        "if request.exists():\n"
+        "    acknowledgement.write_text('child survived')\n"
+    )
+    command = [sys.executable, str(child_script), str(request), str(acknowledgement)]
+    pid_file = tmp_path / "launcher.pid"
+
+    def launch_on_temporary_loop():
+        return asyncio.run(launch_detached_process(command, str(pid_file)))
+
+    try:
+        pid = await run_in_thread(launch_on_temporary_loop)
+        assert int(pid_file.read_text()) == pid
+        # The launching loop has closed before the child receives this request.
+        request.touch()
+        async with asyncio.timeout(5):
+            while not acknowledgement.exists():
+                await asyncio.sleep(0.01)
+        assert acknowledgement.read_text() == "child survived"
+    finally:
+        request.touch()

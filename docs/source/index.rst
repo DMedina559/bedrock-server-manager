@@ -62,6 +62,7 @@ Browse through the sections below to find various information about Bedrock Serv
 
    plugins/introduction.md
    developer/plugins/introduction.md
+   developer/plugins/contracts.md
    plugins/plugin_apis.md
    plugins/plugin_events.md
    developer/plugins/plugin_base

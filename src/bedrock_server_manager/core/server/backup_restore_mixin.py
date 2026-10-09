@@ -20,10 +20,8 @@ world, and :class:`~.core.server.world_mixin.ServerWorldMixin` methods for world
 export and import operations.
 """
 
-import asyncio
 import os
 import re
-import shutil
 from typing import Any, Dict, List, Optional, Union
 
 from ...error import (
@@ -35,6 +33,8 @@ from ...error import (
     UserInputError,
 )
 from ...utils import get_timestamp
+from ...utils.threads import run_in_thread
+from ..files import atomic_copy_file
 from ..system import find_files
 from .base_server_mixin import BedrockServerBaseMixin
 
@@ -204,7 +204,7 @@ class ServerBackupMixin(BedrockServerBaseMixin):
                 f"Invalid backup type: '{backup_type}'. Must be one of {valid_types}."
             )
 
-        if not await asyncio.to_thread(os.path.isdir, server_bck_dir):
+        if not await run_in_thread(os.path.isdir, server_bck_dir):
             self.logger.warning(
                 f"Backup directory not found: '{server_bck_dir}'. Returning empty result."
             )
@@ -280,7 +280,7 @@ class ServerBackupMixin(BedrockServerBaseMixin):
             f"extension '{file_extension}', configured to keep {backup_keep_count}."
         )
 
-        if not await asyncio.to_thread(os.path.isdir, server_bck_dir):
+        if not await run_in_thread(os.path.isdir, server_bck_dir):
             self.logger.info(
                 f"Backup directory '{server_bck_dir}' for server '{self.server_name}' not found. Nothing to prune."
             )
@@ -327,7 +327,7 @@ class ServerBackupMixin(BedrockServerBaseMixin):
                 for old_backup_path in files_to_delete:
                     try:
                         self.logger.debug(f"Removing old backup: {old_backup_path}")
-                        await asyncio.to_thread(os.remove, old_backup_path)
+                        await run_in_thread(os.remove, old_backup_path)
                         deleted_count += 1
                     except OSError as e_del:
                         self.logger.error(
@@ -418,7 +418,7 @@ class ServerBackupMixin(BedrockServerBaseMixin):
         if not os.path.isdir(active_world_dir_path):
             raise AppFileNotFoundError(active_world_dir_path, "Active world directory")
 
-        await asyncio.to_thread(os.makedirs, server_bck_dir, exist_ok=True)
+        await run_in_thread(os.makedirs, server_bck_dir, exist_ok=True)
 
         timestamp = get_timestamp()
         # Sanitize the world name to ensure it's a valid filename component.
@@ -513,7 +513,7 @@ class ServerBackupMixin(BedrockServerBaseMixin):
             )
             return None
 
-        await asyncio.to_thread(
+        await run_in_thread(
             os.makedirs, server_bck_dir, exist_ok=True
         )  # Ensures backup directory exists
 
@@ -524,8 +524,8 @@ class ServerBackupMixin(BedrockServerBaseMixin):
 
         try:
             # copy2 preserves metadata like modification time.
-            await asyncio.to_thread(
-                shutil.copy2, file_to_backup_path, backup_destination_path
+            await run_in_thread(
+                atomic_copy_file, file_to_backup_path, backup_destination_path
             )
             self.logger.info(
                 f"Config file '{config_filename_in_server_dir}' backed up to '{backup_destination_path}'."
@@ -591,7 +591,7 @@ class ServerBackupMixin(BedrockServerBaseMixin):
 
         # Ensure the main backup directory for this server exists.
         try:
-            await asyncio.to_thread(os.makedirs, server_bck_dir, exist_ok=True)
+            await run_in_thread(os.makedirs, server_bck_dir, exist_ok=True)
         except OSError as e_mkdir:
             raise FileOperationError(
                 f"Failed to create server backup directory '{server_bck_dir}' for server '{self.server_name}': {e_mkdir}"
@@ -707,8 +707,8 @@ class ServerBackupMixin(BedrockServerBaseMixin):
             f"Restoring '{backup_filename_basename}' as '{target_filename_in_server}' into '{self.server_dir}'..."
         )
         try:
-            await asyncio.to_thread(
-                shutil.copy2, backup_config_file_path, target_restore_path
+            await run_in_thread(
+                atomic_copy_file, backup_config_file_path, target_restore_path
             )
             self.logger.info(f"Successfully restored config to: {target_restore_path}")
             return target_restore_path
@@ -791,6 +791,50 @@ class ServerBackupMixin(BedrockServerBaseMixin):
             []
         )  # To collect names of components that failed to restore
 
+        # Restore standard configuration files
+        config_files_to_restore = [
+            "server.properties",
+            "allowlist.json",
+            "permissions.json",
+        ]
+        for original_conf_name in config_files_to_restore:
+            try:
+                name_part, ext_part = os.path.splitext(original_conf_name)
+                backup_prefix = f"{name_part}_backup_"  # e.g., "server_backup_"
+                backup_extension = ext_part.lstrip(".")  # e.g., "properties"
+
+                # Find backups for this specific config file type, sorted newest first
+                candidate_backups = await self._find_and_sort_backups(
+                    os.path.join(server_bck_dir, f"{backup_prefix}*.{backup_extension}")
+                )
+
+                if candidate_backups:
+                    latest_config_backup_path = candidate_backups[0]  # Newest is first
+                    self.logger.info(
+                        f"Found latest backup for '{original_conf_name}': {os.path.basename(latest_config_backup_path)}"
+                    )
+                    restored_config_path = await self._restore_config_file_internal(
+                        latest_config_backup_path
+                    )
+                    restore_results[original_conf_name] = restored_config_path
+                else:
+                    self.logger.info(
+                        f"No backups found for '{original_conf_name}' for server '{self.server_name}'. Skipping restore."
+                    )
+                    restore_results[original_conf_name] = None
+            except (
+                Exception
+            ) as e_conf_restore:  # Catch broad exceptions for each config file
+                self.logger.error(
+                    f"Failed to restore '{original_conf_name}' for server '{self.server_name}': {e_conf_restore}",
+                    exc_info=True,
+                )
+                failures.append(
+                    f"{original_conf_name} ({type(e_conf_restore).__name__})"
+                )
+                restore_results[original_conf_name] = None
+
+        # Resolve the active world using the restored server.properties.
         # Restore World
         try:
             world_backup_files = await self._find_and_sort_backups(
@@ -839,49 +883,6 @@ class ServerBackupMixin(BedrockServerBaseMixin):
             )
             failures.append(f"World ({type(e_world_restore).__name__})")
             restore_results["world"] = None
-
-        # Restore standard configuration files
-        config_files_to_restore = [
-            "server.properties",
-            "allowlist.json",
-            "permissions.json",
-        ]
-        for original_conf_name in config_files_to_restore:
-            try:
-                name_part, ext_part = os.path.splitext(original_conf_name)
-                backup_prefix = f"{name_part}_backup_"  # e.g., "server_backup_"
-                backup_extension = ext_part.lstrip(".")  # e.g., "properties"
-
-                # Find backups for this specific config file type, sorted newest first
-                candidate_backups = await self._find_and_sort_backups(
-                    os.path.join(server_bck_dir, f"{backup_prefix}*.{backup_extension}")
-                )
-
-                if candidate_backups:
-                    latest_config_backup_path = candidate_backups[0]  # Newest is first
-                    self.logger.info(
-                        f"Found latest backup for '{original_conf_name}': {os.path.basename(latest_config_backup_path)}"
-                    )
-                    restored_config_path = await self._restore_config_file_internal(
-                        latest_config_backup_path
-                    )
-                    restore_results[original_conf_name] = restored_config_path
-                else:
-                    self.logger.info(
-                        f"No backups found for '{original_conf_name}' for server '{self.server_name}'. Skipping restore."
-                    )
-                    restore_results[original_conf_name] = None
-            except (
-                Exception
-            ) as e_conf_restore:  # Catch broad exceptions for each config file
-                self.logger.error(
-                    f"Failed to restore '{original_conf_name}' for server '{self.server_name}': {e_conf_restore}",
-                    exc_info=True,
-                )
-                failures.append(
-                    f"{original_conf_name} ({type(e_conf_restore).__name__})"
-                )
-                restore_results[original_conf_name] = None
 
         if failures:
             # If any component failed to restore, raise an error summarizing them.

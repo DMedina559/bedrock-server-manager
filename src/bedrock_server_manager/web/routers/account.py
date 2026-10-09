@@ -34,7 +34,9 @@ router = APIRouter(
 
 
 @router.get("/api/account", operation_id="get_account", response_model=UserResponse)
-async def get_account_api(user: UserResponse = Depends(get_current_user)):
+async def get_account_api(
+    user: UserResponse = Depends(get_current_user),
+) -> UserResponse:
     """
     Retrieves the current user's account details.
     """
@@ -51,33 +53,15 @@ async def post_update_theme(
     theme_update: ThemeUpdatePayload,
     user: UserResponse = Depends(get_current_user),
     app_context: AppContext = Depends(get_app_context),
-):
+) -> BaseApiResponse | JSONResponse:
     """
     Updates the current user's preferred theme.
     """
-    # Match apply_changeset's lock order so a pending flush cannot restore
-    # the old cached theme after this database write.
-    async with app_context.storage._flush_lock:
-        async with app_context.state.users.get_lock(user.username):
-            async with app_context.storage.transaction() as session:
-                db_user: Any = await app_context.storage.user_repo.get_user_by_username(
-                    session, user.username
-                )
-                if not db_user:
-                    return JSONResponse(
-                        status_code=404, content={"message": "UserResponse not found"}
-                    )
-                db_user.theme = theme_update.theme
-
-            # Publish only after commit succeeds. Preserve pending edits to other
-            # account fields and their dirty flag.
-            cached_user = app_context.state.users.get(user.username)
-            if cached_user is not None:
-                was_dirty = user.username in app_context.state.users.dirty_users
-                cached_user.theme = theme_update.theme
-                app_context.state.users.set(cached_user)
-                if not was_dirty:
-                    app_context.state.users.remove_dirty_user(user.username)
+    result = await app_context.user_service.update_account(
+        action="theme", username=user.username, values={"theme": theme_update.theme}
+    )
+    if result is None:
+        return JSONResponse(status_code=404, content={"message": "User not found"})
 
     return BaseApiResponse(status="success", message="Theme updated successfully")
 
@@ -91,21 +75,18 @@ async def post_update_profile(
     profile_update: ProfileUpdatePayload,
     user: UserResponse = Depends(get_current_user),
     app_context: AppContext = Depends(get_app_context),
-):
+) -> BaseApiResponse | JSONResponse:
     """
     Updates the current user's profile information (name, email).
     """
-    async with app_context.storage.transaction() as session:
-        db_user: Any = await app_context.storage.user_repo.get_user_by_username(
-            session, user.username
-        )
-        if db_user:
-            db_user.full_name = profile_update.full_name
-            db_user.email = profile_update.email
-            return BaseApiResponse(
-                status="success", message="Profile updated successfully"
-            )
-    return JSONResponse(status_code=404, content={"message": "UserResponse not found"})
+    result = await app_context.user_service.update_account(
+        action="profile",
+        username=user.username,
+        values=profile_update.model_dump(),
+    )
+    if result is None:
+        return JSONResponse(status_code=404, content={"message": "User not found"})
+    return BaseApiResponse(status="success", message="Profile updated successfully")
 
 
 @router.post(
@@ -118,7 +99,7 @@ async def post_change_password(
     data: ChangePasswordPayload,
     user: UserResponse = Depends(get_current_user),
     app_context: AppContext = Depends(get_app_context),
-):
+) -> BaseApiResponse:
     """
     Changes the current user's password.
     """

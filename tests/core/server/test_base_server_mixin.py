@@ -33,7 +33,7 @@ def test_missing_app_context():
 
 async def test_missing_base_dir_setting(app_context):
     """Test that missing the base directory setting raises an error."""
-    await app_context.settings.set("paths.servers", None)
+    await app_context.settings.set("paths.servers", "")
     with pytest.raises(ConfigurationError, match="BASE_DIR not configured"):
         BedrockServerBaseMixin(
             server_name="test_server",

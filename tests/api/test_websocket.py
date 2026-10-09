@@ -1,71 +1,69 @@
-from unittest.mock import AsyncMock, MagicMock
-
-import pytest
+import asyncio
+import json
 
 from bedrock_server_manager.plugins.api_bridge import create_app_api
+from bedrock_server_manager.utils.auth import create_access_token
 
 
-@pytest.fixture
-def mock_app_context():
-    context = MagicMock()
-    context.connection_manager = MagicMock()
-    context.connection_manager.broadcast_to_topic = AsyncMock()
-    context.connection_manager.send_to_user = AsyncMock()
-    context.connection_manager.send_to_client = AsyncMock()
-    context.connection_manager.publish_ws_event = AsyncMock()
-    return context
+async def test_plugin_websocket_api_delivers_real_frames(
+    websocket_client, app_context, test_user
+):
+    api = create_app_api("integration", app_context)
+    token = await create_access_token(app_context, {"sub": test_user.username})
+    async with websocket_client() as socket:
+        await socket.send(json.dumps({"action": "authenticate", "token": token}))
+        assert json.loads(await socket.recv())["status"] == "success"
+        await socket.send(json.dumps({"action": "subscribe", "topic": "integration"}))
+        assert json.loads(await socket.recv())["status"] == "success"
+        response = await api.websocket.websocket_broadcast(
+            {"topic": "integration", "data": {"value": 1}}
+        )
+        assert response.status == "success"
+        async with asyncio.timeout(5):
+            frame = json.loads(await socket.recv())
+        assert frame == {
+            "type": "broadcast",
+            "topic": "integration",
+            "data": {"value": 1},
+        }
+        await api.websocket.websocket_send_to_user(
+            {"username": test_user.username, "data": {"value": 2}}
+        )
+        async with asyncio.timeout(5):
+            assert json.loads(await socket.recv()) == {"value": 2}
+        client_id = next(iter(app_context.connection_manager.active_connections))
+        await api.websocket.websocket_send_to_client(
+            {"client_id": client_id, "data": {"value": 3}}
+        )
+        async with asyncio.timeout(5):
+            assert json.loads(await socket.recv()) == {"value": 3}
 
 
-async def test_websocket_api_bridge(mock_app_context):
-    api = create_app_api("test_plugin", mock_app_context)
-
-    # Broadcast
-    res = await api.websocket.broadcast("my_topic", {"key": "val"})
-    assert res["status"] == "success"
-    mock_app_context.connection_manager.broadcast_to_topic.assert_called_once_with(
-        "my_topic", {"type": "broadcast", "topic": "my_topic", "data": {"key": "val"}}
+async def test_plugin_provider_registration_serves_actual_requests(
+    websocket_client, app_context, test_user, plugin_factory
+):
+    plugin = await plugin_factory(
+        "provider",
+        "from bedrock_server_manager import PluginBase\nclass Provider(PluginBase):\n    version = '1.0'\n",
     )
 
-    # Send to user
-    res = await api.websocket.send_to_user("admin", {"msg": "hi"})
-    assert res["status"] == "success"
-    mock_app_context.connection_manager.send_to_user.assert_called_once_with(
-        "admin", {"msg": "hi"}
-    )
+    def provider():
+        return {"value": 7}
 
-    # Send to client
-    res = await api.websocket.send_to_client("client123", {"msg": "direct"})
-    assert res["status"] == "success"
-    mock_app_context.connection_manager.send_to_client.assert_called_once_with(
-        {"msg": "direct"}, "client123"
-    )
-
-    # Register data provider
-    def my_handler(data):
-        return "ok"
-
-    res = await api.websocket.register_data_provider("my_data", my_handler)
-    assert res["status"] == "success"
-    mock_app_context.connection_manager.register_data_provider.assert_called_once_with(
-        topic="my_data", handler=my_handler, plugin_name="test_plugin"
-    )
-
-    # Unregister data provider
-    res = await api.websocket.unregister_data_provider("my_data")
-    assert res["status"] == "success"
-    mock_app_context.connection_manager.unregister_data_provider.assert_called_once_with(
-        "my_data"
-    )
-
-    # Publish ws event
-    res = await api.websocket.publish_ws_event("custom_evt", {"foo": "bar"})
-    assert res["status"] == "success"
-    mock_app_context.connection_manager.publish_ws_event.assert_called_once_with(
-        "custom_evt", {"foo": "bar"}
-    )
-
-    # Test list_available_apis works without error
-    available = api.list_available_apis()
-    assert isinstance(available, list)
-    websocket_apis = [a for a in available if a["domain"] == "websocket"]
-    assert len(websocket_apis) > 0
+    await plugin.api.runtime.register_data_provider("integration", provider)
+    token = await create_access_token(app_context, {"sub": test_user.username})
+    async with websocket_client() as socket:
+        await socket.send(json.dumps({"action": "authenticate", "token": token}))
+        assert json.loads(await socket.recv())["status"] == "success"
+        await socket.send(
+            json.dumps({"action": "request_data", "topic": "integration"})
+        )
+        frame = json.loads(await socket.recv())
+        assert frame["data"] == {"value": 7}
+        await plugin.api.websocket.websocket_unregister_data_provider(
+            {"topic": "integration"}
+        )
+        await socket.send(
+            json.dumps({"action": "request_data", "topic": "integration"})
+        )
+        assert json.loads(await socket.recv())["status"] == "error"

@@ -5,6 +5,7 @@ Provides a decorator for triggering plugin events and broadcasting them.
 import functools
 import inspect
 import logging
+from copy import deepcopy
 from typing import (
     Any,
     Awaitable,
@@ -18,6 +19,10 @@ from typing import (
     overload,
 )
 
+from pydantic import BaseModel, ValidationError
+
+from ..error import APICancelledError
+from .api_contract import APIResponseValidationError, get_contract
 from .cancellable_event import CancellableEvent
 from .util import broadcast_event
 
@@ -70,11 +75,27 @@ def trigger_event(
 
     def decorator(func: Callable[P, Awaitable[R]]) -> Callable[P, Awaitable[R]]:
         sig = inspect.signature(func)
+        contract = get_contract(func)
 
         def get_event_kwargs(*args: Any, **kwargs: Any) -> dict:
             bound_args = sig.bind(*args, **kwargs)
             bound_args.apply_defaults()
-            return dict(bound_args.arguments)
+            event_kwargs = dict(bound_args.arguments)
+            request = event_kwargs.get("request")
+            if isinstance(request, BaseModel):
+                # Preserve field-based event payloads and recursion identities.
+                request = deepcopy(request)
+                event_kwargs["request"] = request
+                event_kwargs.update(
+                    {
+                        name: getattr(request, name)
+                        for name in type(request).model_fields
+                        if not type(request).model_fields[name].exclude
+                    }
+                )
+                if "target_plugin_name" in event_kwargs:
+                    event_kwargs["plugin_name"] = event_kwargs.pop("target_plugin_name")
+            return event_kwargs
 
         @functools.wraps(func)
         async def wrapper(*args: P.args, **kwargs: P.kwargs) -> R:
@@ -89,6 +110,10 @@ def trigger_event(
                 await app_context.plugin_manager.trigger_event(before, **plugin_kwargs)
                 await broadcast_event(app_context, before, event_kwargs)
                 if cancellable_event.is_cancelled:
+                    if "request" in sig.parameters:
+                        raise APICancelledError(
+                            cancellable_event.cancel_reason or "Canceled by plugin"
+                        )
                     return cast(
                         R,
                         {
@@ -99,9 +124,16 @@ def trigger_event(
                     )
 
             result = await cast(Awaitable[R], func(*args, **kwargs))
+            if contract:
+                try:
+                    result = cast(R, contract[1].model_validate(result))
+                except ValidationError as error:
+                    raise APIResponseValidationError(
+                        f"API {func.__name__} produced invalid output"
+                    ) from error
 
             if after and app_context:
-                event_kwargs["result"] = result
+                event_kwargs["result"] = deepcopy(result)
                 plugin_kwargs = dict(event_kwargs)
                 plugin_kwargs.pop("app_context", None)
                 await app_context.plugin_manager.trigger_event(after, **plugin_kwargs)
@@ -109,6 +141,7 @@ def trigger_event(
 
             return result
 
+        setattr(wrapper, "__validates_api_response__", contract is not None)
         return wrapper
 
     if _func is None:

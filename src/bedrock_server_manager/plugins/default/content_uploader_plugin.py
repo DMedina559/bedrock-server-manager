@@ -42,9 +42,11 @@ class ContentUploaderPlugin(PluginBase):
         )
 
         try:
-            setting_result = await self.api.get_global_setting(key="paths.content")
-            if setting_result and setting_result.get("status") == "success":
-                path_str = setting_result.get("value")
+            setting_result = await self.api.settings.get_global_setting(
+                request={"key": "paths.content"}
+            )
+            if setting_result and setting_result.status == "success":
+                path_str = setting_result.value
                 if path_str and isinstance(path_str, str):
                     MODULE_CONTENT_DIR_PATH = Path(path_str)
                     self.logger.info(
@@ -205,11 +207,11 @@ class ContentUploaderPlugin(PluginBase):
 
                     if file_ext == ".mcworld":
                         self.logger.info(
-                            f'Placeholder: Post-upload, would call self.api.import_world(server_name, "{destination_path}")'
+                            f'Placeholder: Post-upload, would call self.api.world.import_world(server_name, "{destination_path}")'
                         )
                     elif file_ext in [".mcpack", ".mcaddon"]:
                         self.logger.info(
-                            f'Placeholder: Post-upload, would call self.api.import_addon(server_name, "{destination_path}")'
+                            f'Placeholder: Post-upload, would call self.api.addon.import_addon(server_name, "{destination_path}")'
                         )
 
             except Exception as e:

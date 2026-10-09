@@ -21,7 +21,6 @@ plugin system.
 import asyncio
 import logging
 import os
-from typing import Any, Dict
 
 from ..context import AppContext
 from ..error import (
@@ -33,27 +32,40 @@ from ..error import (
     ServerNotRunningError,
 )
 from ..plugins.api_bridge import api_method
+from ..plugins.api_contract import validate_contract
 from ..plugins.event_trigger import trigger_event
+from ..plugins.runtime_capabilities import server_lifecycle_manager
 from ..utils import list_content_files
-from .server import server_lifecycle_manager
+from .models.addon import (
+    DisableAddonRequest,
+    DisableAddonResponse,
+    EnableAddonRequest,
+    EnableAddonResponse,
+    ImportAddonRequest,
+    ImportAddonResponse,
+    ListAvailableAddonsRequest,
+    ListAvailableAddonsResponse,
+    ListInstalledAddonsRequest,
+    ListInstalledAddonsResponse,
+    ReorderAddonsRequest,
+    ReorderAddonsResponse,
+    UninstallAddonRequest,
+    UninstallAddonResponse,
+    UpdateSubpackRequest,
+    UpdateSubpackResponse,
+)
 
 logger = logging.getLogger(__name__)
 
 
 @api_method("list_available_addons")
-async def list_available_addons(app_context: AppContext) -> Dict[str, Any]:
+async def list_available_addons(
+    request: ListAvailableAddonsRequest, *, app_context: AppContext
+) -> ListAvailableAddonsResponse:
     """Lists available .mcaddon and .mcpack files from the content directory.
 
-    Scans the ``addons`` sub-folder within the application's global content directory.
-
-    Returns:
-        Dict[str, Any]: A dictionary with the operation result.
-        On success: ``{"status": "success", "files": List[str]}`` where `files` is a
-        list of absolute paths to ``.mcaddon`` or ``.mcpack`` files.
-        On error: ``{"status": "error", "message": "<error_message>"}``.
-
-    Raises:
-        FileError: If the content directory is not configured or accessible.
+    Accepts ListAvailableAddonsRequest and returns ListAvailableAddonsResponse.
+    Invalid requests fail validation before side effects; operation failures raise application exceptions.
     """
     logger.debug("API: Requesting list of available addons.")
     try:
@@ -61,13 +73,14 @@ async def list_available_addons(app_context: AppContext) -> Dict[str, Any]:
         addons = await list_content_files(
             content_dir, "addons", [".mcpack", ".mcaddon"]
         )
-        return {"status": "success", "files": addons}
-    except FileError as e:
-        # Handle specific file-related errors.
-        return {"status": "error", "message": str(e)}
+        return ListAvailableAddonsResponse.model_validate(
+            {"status": "success", "files": addons}
+        )
+    except FileError:
+        raise
     except Exception as e:
         logger.error(f"API: Unexpected error listing addons: {e}", exc_info=True)
-        return {"status": "error", "message": f"Unexpected error: {str(e)}"}
+        raise
 
 
 @api_method("import_addon")
@@ -76,81 +89,43 @@ async def list_available_addons(app_context: AppContext) -> Dict[str, Any]:
     after="after_addon_import",
     identity_keys=("server_name", "addon_file_path"),
 )
-async def import_addon(  # noqa: C901
-    server_name: str,
-    addon_file_path: str,
-    app_context: AppContext,
-    stop_start_server: bool = True,
-    restart_only_on_success: bool = True,
-) -> Dict[str, str]:
+async def import_addon(
+    request: ImportAddonRequest, *, app_context: AppContext
+) -> ImportAddonResponse:
     """Installs an addon to a specified Bedrock server.
 
-    This function handles the import and installation of an addon file
-    (.mcaddon or .mcpack) into the server's addon directories. It is
-    thread-safe, using a lock to prevent concurrent addon operations which
-    could lead to corrupted files. It calls
-    :meth:`~.core.bedrock_server.BedrockServer.process_addon_file` for the
-    core processing logic.
-
-    The function can optionally manage the server's lifecycle by stopping it
-    before the installation and restarting it after, using the
-    :func:`~bedrock_server_manager.api.server.server_lifecycle_manager`.
-    Triggers ``before_addon_import`` and ``after_addon_import`` plugin events.
-
-    Args:
-        server_name (str): The name of the server to install the addon on.
-        addon_file_path (str): The absolute path to the addon file
-            (``.mcaddon`` or ``.mcpack``).
-        stop_start_server (bool, optional): If ``True``, the server will be stopped
-            before installation and started afterward. Defaults to ``True``.
-        restart_only_on_success (bool, optional): If ``True`` and `stop_start_server`
-            is ``True``, the server will only be restarted if the addon installation
-            succeeds. Defaults to ``True``.
-
-    Returns:
-        Dict[str, str]: A dictionary with the operation result.
-        Possible statuses: "success", "error", or "skipped" (if lock not acquired).
-        On success: ``{"status": "success", "message": "Addon '<filename>' installed..."}``
-        On error: ``{"status": "error", "message": "<error_message>"}``.
-
-    Raises:
-        MissingArgumentError: If `server_name` or `addon_file_path` is not provided.
-        AppFileNotFoundError: If the file at `addon_file_path` does not exist.
-        InvalidServerNameError: If the server name is not valid (raised from BedrockServer).
-        BSMError: Propagates errors from underlying operations, including
-            :class:`~.error.UserInputError` (unsupported addon type),
-            :class:`~.error.ExtractError`, :class:`~.error.FileOperationError`,
-            or errors from server stop/start.
+    Accepts ImportAddonRequest and returns ImportAddonResponse.
+    Invalid requests fail validation before side effects; operation failures raise application exceptions.
     """
+    server_name = request.server_name
+    addon_file_path = request.addon_file_path
+    stop_start_server = request.stop_start_server
+    restart_only_on_success = request.restart_only_on_success
     if not server_name:
         raise MissingArgumentError("Server name cannot be empty.")
     if not addon_file_path:
         raise MissingArgumentError("Addon file path cannot be empty.")
     if not os.path.isfile(addon_file_path):
         raise AppFileNotFoundError(addon_file_path, "Addon file")
-
     server = app_context.get_server(server_name)
-
     try:
         await server.operation_lock.acquire(timeout=300)
     except asyncio.TimeoutError:
         logger.warning(
             f"An operation for '{server_name}' is already in progress. Skipping concurrent import."
         )
-        return {
-            "status": "skipped",
-            "message": "An addon operation is already in progress.",
-        }
-
+        return ImportAddonResponse.model_validate(
+            {
+                "status": "skipped",
+                "message": "An addon operation is already in progress.",
+            }
+        )
     try:
         addon_filename = os.path.basename(addon_file_path)
         logger.info(
-            f"API: Initiating addon import for '{server_name}' from '{addon_filename}'. "
-            f"Stop/Start: {stop_start_server}, RestartOnSuccess: {restart_only_on_success}"
+            f"API: Initiating addon import for '{server_name}' from '{addon_filename}'. Stop/Start: {stop_start_server}, RestartOnSuccess: {restart_only_on_success}"
         )
-
         try:
-            # If the server is running, send a warning message to players.
             if await server.is_running():
                 try:
                     await server.send_command("say Installing addon...")
@@ -158,8 +133,6 @@ async def import_addon(  # noqa: C901
                     logger.warning(
                         f"API: Failed to send addon installation warning to '{server_name}': {e}"
                     )
-
-            # Use a context manager to handle the server's start/stop lifecycle.
             async with server_lifecycle_manager(
                 server_name,
                 stop_before=stop_start_server,
@@ -170,58 +143,46 @@ async def import_addon(  # noqa: C901
                 logger.info(
                     f"API: Processing addon file '{addon_filename}' for server '{server_name}'..."
                 )
-                # Delegate the core file extraction and placement to the server instance.
                 await server.process_addon_file(addon_file_path)
                 logger.info(
                     f"API: Core addon processing completed for '{addon_filename}' on '{server_name}'."
                 )
-
             message = f"Addon '{addon_filename}' installed successfully for server '{server_name}'."
             if stop_start_server:
                 message += " Server stop/start cycle handled."
-            return {"status": "success", "message": message}
-
+            return ImportAddonResponse.model_validate(
+                {"status": "success", "message": message}
+            )
         except BSMError as e:
-            # Handle application-specific errors.
             logger.error(
                 f"API: Addon import failed for '{addon_filename}' on '{server_name}': {e}",
                 exc_info=True,
             )
-            return {
-                "status": "error",
-                "message": f"Error installing addon '{addon_filename}': {e}",
-            }
-
+            raise
         except Exception as e:
-            # Handle any other unexpected errors.
             logger.error(
                 f"API: Unexpected error during addon import for '{server_name}': {e}",
                 exc_info=True,
             )
-            return {
-                "status": "error",
-                "message": f"Unexpected error installing addon: {e}",
-            }
-
+            raise
     finally:
         server.operation_lock.release()
 
 
 @api_method("list_installed_addons")
 async def list_installed_addons(
-    server_name: str, app_context: AppContext
-) -> Dict[str, Any]:
+    request: ListInstalledAddonsRequest, *, app_context: AppContext
+) -> ListInstalledAddonsResponse:
     """Lists all addons for a server's active world.
 
-    Args:
-        server_name (str): The name of the server.
-        app_context (AppContext): The application context.
-
-    Returns:
-        Dict[str, Any]: A dictionary containing the addon lists.
+    Accepts ListInstalledAddonsRequest and returns ListInstalledAddonsResponse.
+    Invalid requests fail validation before side effects; operation failures raise application exceptions.
     """
+    server_name = request.server_name
     server = app_context.get_server(server_name)
-    return {"status": "success", "addons": await server.list_installed_addons()}
+    return ListInstalledAddonsResponse.model_validate(
+        {"status": "success", "addons": await server.list_installed_addons()}
+    )
 
 
 @api_method("enable_addon")
@@ -231,32 +192,26 @@ async def list_installed_addons(
     identity_keys=("server_name", "pack_uuid"),
 )
 async def enable_addon(
-    server_name: str,
-    pack_uuid: str,
-    pack_type: str,
-    app_context: AppContext,
-) -> Dict[str, str]:
+    request: EnableAddonRequest, *, app_context: AppContext
+) -> EnableAddonResponse:
     """Enables a disabled addon for a server's active world.
 
-    Args:
-        server_name (str): The name of the server.
-        pack_uuid (str): The UUID of the pack to enable.
-        pack_type (str): The type of the pack.
-        app_context (AppContext): The application context.
-
-    Returns:
-        Dict[str, str]: Status of the operation.
+    Accepts EnableAddonRequest and returns EnableAddonResponse.
+    Invalid requests fail validation before side effects; operation failures raise application exceptions.
     """
+    server_name = request.server_name
+    pack_uuid = request.pack_uuid
+    pack_type = request.pack_type
     server = app_context.get_server(server_name)
-
     try:
         await server.operation_lock.acquire(timeout=300)
     except asyncio.TimeoutError:
-        return {
-            "status": "skipped",
-            "message": "An addon operation is already in progress.",
-        }
-
+        return EnableAddonResponse.model_validate(
+            {
+                "status": "skipped",
+                "message": "An addon operation is already in progress.",
+            }
+        )
     try:
         async with server_lifecycle_manager(
             server_name,
@@ -266,22 +221,24 @@ async def enable_addon(
             app_context=app_context,
         ):
             await server.enable_addon(pack_uuid=pack_uuid, pack_type=pack_type)
-        return {
-            "status": "success",
-            "message": f"Successfully enabled pack '{pack_uuid}'.",
-        }
+        return EnableAddonResponse.model_validate(
+            {
+                "status": "success",
+                "message": f"Successfully enabled pack '{pack_uuid}'.",
+            }
+        )
     except BSMError as e:
         logger.error(
             f"API: Error enabling addon '{pack_uuid}' on '{server_name}': {e}",
             exc_info=True,
         )
-        return {"status": "error", "message": str(e)}
+        raise
     except Exception as e:
         logger.error(
             f"API: Unexpected error enabling addon '{pack_uuid}' on '{server_name}': {e}",
             exc_info=True,
         )
-        return {"status": "error", "message": str(e)}
+        raise
     finally:
         server.operation_lock.release()
 
@@ -293,32 +250,26 @@ async def enable_addon(
     identity_keys=("server_name", "pack_uuid"),
 )
 async def disable_addon(
-    server_name: str,
-    pack_uuid: str,
-    pack_type: str,
-    app_context: AppContext,
-) -> Dict[str, str]:
+    request: DisableAddonRequest, *, app_context: AppContext
+) -> DisableAddonResponse:
     """Disables an active addon for a server's active world, preserving files.
 
-    Args:
-        server_name (str): The name of the server.
-        pack_uuid (str): The UUID of the pack to disable.
-        pack_type (str): The type of the pack.
-        app_context (AppContext): The application context.
-
-    Returns:
-        Dict[str, str]: Status of the operation.
+    Accepts DisableAddonRequest and returns DisableAddonResponse.
+    Invalid requests fail validation before side effects; operation failures raise application exceptions.
     """
+    server_name = request.server_name
+    pack_uuid = request.pack_uuid
+    pack_type = request.pack_type
     server = app_context.get_server(server_name)
-
     try:
         await server.operation_lock.acquire(timeout=300)
     except asyncio.TimeoutError:
-        return {
-            "status": "skipped",
-            "message": "An addon operation is already in progress.",
-        }
-
+        return DisableAddonResponse.model_validate(
+            {
+                "status": "skipped",
+                "message": "An addon operation is already in progress.",
+            }
+        )
     try:
         async with server_lifecycle_manager(
             server_name,
@@ -328,60 +279,56 @@ async def disable_addon(
             app_context=app_context,
         ):
             await server.disable_addon(pack_uuid=pack_uuid, pack_type=pack_type)
-        return {
-            "status": "success",
-            "message": f"Successfully disabled pack '{pack_uuid}'.",
-        }
+        return DisableAddonResponse.model_validate(
+            {
+                "status": "success",
+                "message": f"Successfully disabled pack '{pack_uuid}'.",
+            }
+        )
     except BSMError as e:
         logger.error(
             f"API: Error disabling addon '{pack_uuid}' on '{server_name}': {e}",
             exc_info=True,
         )
-        return {"status": "error", "message": str(e)}
+        raise
     except Exception as e:
         logger.error(
             f"API: Unexpected error disabling addon '{pack_uuid}' on '{server_name}': {e}",
             exc_info=True,
         )
-        return {"status": "error", "message": str(e)}
+        raise
     finally:
         server.operation_lock.release()
 
 
+@validate_contract
 @trigger_event(
     before="before_addon_subpack_update",
     after="after_addon_subpack_update",
     identity_keys=("server_name", "pack_uuid"),
 )
 async def update_subpack(
-    server_name: str,
-    pack_uuid: str,
-    pack_type: str,
-    subpack_name: str,
-    app_context: AppContext,
-) -> Dict[str, str]:
+    request: UpdateSubpackRequest, *, app_context: AppContext
+) -> UpdateSubpackResponse:
     """Updates the active subpack for an addon on a server's active world.
 
-    Args:
-        server_name (str): The name of the server.
-        pack_uuid (str): The UUID of the pack.
-        pack_type (str): The type of the pack.
-        subpack_name (str): The folder name of the target subpack.
-        app_context (AppContext): The application context.
-
-    Returns:
-        Dict[str, str]: Status of the operation.
+    Accepts UpdateSubpackRequest and returns UpdateSubpackResponse.
+    Invalid requests fail validation before side effects; operation failures raise application exceptions.
     """
+    server_name = request.server_name
+    pack_uuid = request.pack_uuid
+    pack_type = request.pack_type
+    subpack_name = request.subpack_name
     server = app_context.get_server(server_name)
-
     try:
         await server.operation_lock.acquire(timeout=300)
     except asyncio.TimeoutError:
-        return {
-            "status": "skipped",
-            "message": "An addon operation is already in progress.",
-        }
-
+        return UpdateSubpackResponse.model_validate(
+            {
+                "status": "skipped",
+                "message": "An addon operation is already in progress.",
+            }
+        )
     try:
         async with server_lifecycle_manager(
             server_name,
@@ -393,58 +340,55 @@ async def update_subpack(
             await server.update_subpack(
                 pack_uuid=pack_uuid, pack_type=pack_type, subpack_name=subpack_name
             )
-        return {
-            "status": "success",
-            "message": f"Successfully updated subpack for pack '{pack_uuid}'.",
-        }
+        return UpdateSubpackResponse.model_validate(
+            {
+                "status": "success",
+                "message": f"Successfully updated subpack for pack '{pack_uuid}'.",
+            }
+        )
     except BSMError as e:
         logger.error(
             f"API: Error updating subpack for addon '{pack_uuid}' on '{server_name}': {e}",
             exc_info=True,
         )
-        return {"status": "error", "message": str(e)}
+        raise
     except Exception as e:
         logger.error(
             f"API: Unexpected error updating subpack for addon '{pack_uuid}' on '{server_name}': {e}",
             exc_info=True,
         )
-        return {"status": "error", "message": str(e)}
+        raise
     finally:
         server.operation_lock.release()
 
 
+@validate_contract
 @trigger_event(
     before="before_addon_uninstall",
     after="after_addon_uninstall",
     identity_keys=("server_name", "pack_uuid"),
 )
 async def uninstall_addon(
-    server_name: str,
-    pack_uuid: str,
-    pack_type: str,
-    app_context: AppContext,
-) -> Dict[str, str]:
+    request: UninstallAddonRequest, *, app_context: AppContext
+) -> UninstallAddonResponse:
     """Uninstalls an addon for a server's active world, deleting its files.
 
-    Args:
-        server_name (str): The name of the server.
-        pack_uuid (str): The UUID of the pack to uninstall.
-        pack_type (str): The type of the pack.
-        app_context (AppContext): The application context.
-
-    Returns:
-        Dict[str, str]: Status of the operation.
+    Accepts UninstallAddonRequest and returns UninstallAddonResponse.
+    Invalid requests fail validation before side effects; operation failures raise application exceptions.
     """
+    server_name = request.server_name
+    pack_uuid = request.pack_uuid
+    pack_type = request.pack_type
     server = app_context.get_server(server_name)
-
     try:
         await server.operation_lock.acquire(timeout=300)
     except asyncio.TimeoutError:
-        return {
-            "status": "skipped",
-            "message": "An addon operation is already in progress.",
-        }
-
+        return UninstallAddonResponse.model_validate(
+            {
+                "status": "skipped",
+                "message": "An addon operation is already in progress.",
+            }
+        )
     try:
         async with server_lifecycle_manager(
             server_name,
@@ -454,22 +398,24 @@ async def uninstall_addon(
             app_context=app_context,
         ):
             await server.remove_addon(pack_uuid=pack_uuid, pack_type=pack_type)
-        return {
-            "status": "success",
-            "message": f"Successfully uninstalled pack '{pack_uuid}'.",
-        }
+        return UninstallAddonResponse.model_validate(
+            {
+                "status": "success",
+                "message": f"Successfully uninstalled pack '{pack_uuid}'.",
+            }
+        )
     except BSMError as e:
         logger.error(
             f"API: Error uninstalling addon '{pack_uuid}' on '{server_name}': {e}",
             exc_info=True,
         )
-        return {"status": "error", "message": str(e)}
+        raise
     except Exception as e:
         logger.error(
             f"API: Unexpected error uninstalling addon '{pack_uuid}' on '{server_name}': {e}",
             exc_info=True,
         )
-        return {"status": "error", "message": str(e)}
+        raise
     finally:
         server.operation_lock.release()
 
@@ -481,32 +427,26 @@ async def uninstall_addon(
     identity_keys=("server_name",),
 )
 async def reorder_addons(
-    server_name: str,
-    uuids: list[str],
-    pack_type: str,
-    app_context: AppContext,
-) -> Dict[str, str]:
+    request: ReorderAddonsRequest, *, app_context: AppContext
+) -> ReorderAddonsResponse:
     """Reorders the active addons for a server's active world.
 
-    Args:
-        server_name (str): The name of the server.
-        uuids (list[str]): The exact list of active UUIDs in their new order.
-        pack_type (str): The type of the pack.
-        app_context (AppContext): The application context.
-
-    Returns:
-        Dict[str, str]: Status of the operation.
+    Accepts ReorderAddonsRequest and returns ReorderAddonsResponse.
+    Invalid requests fail validation before side effects; operation failures raise application exceptions.
     """
+    server_name = request.server_name
+    uuids = request.uuids
+    pack_type = request.pack_type
     server = app_context.get_server(server_name)
-
     try:
         await server.operation_lock.acquire(timeout=300)
     except asyncio.TimeoutError:
-        return {
-            "status": "skipped",
-            "message": "An addon operation is already in progress.",
-        }
-
+        return ReorderAddonsResponse.model_validate(
+            {
+                "status": "skipped",
+                "message": "An addon operation is already in progress.",
+            }
+        )
     try:
         async with server_lifecycle_manager(
             server_name,
@@ -516,20 +456,22 @@ async def reorder_addons(
             app_context=app_context,
         ):
             await server.reorder_addons(uuids=uuids, pack_type=pack_type)
-        return {
-            "status": "success",
-            "message": f"Successfully reordered {pack_type} packs.",
-        }
+        return ReorderAddonsResponse.model_validate(
+            {
+                "status": "success",
+                "message": f"Successfully reordered {pack_type} packs.",
+            }
+        )
     except BSMError as e:
         logger.error(
             f"API: Error reordering addons on '{server_name}': {e}", exc_info=True
         )
-        return {"status": "error", "message": str(e)}
+        raise
     except Exception as e:
         logger.error(
             f"API: Unexpected error reordering addons on '{server_name}': {e}",
             exc_info=True,
         )
-        return {"status": "error", "message": str(e)}
+        raise
     finally:
         server.operation_lock.release()

@@ -2,39 +2,39 @@
 Integration tests for the setup router endpoints.
 """
 
-from fastapi.testclient import TestClient
+from httpx2 import AsyncClient
 from sqlalchemy import delete
 
 from bedrock_server_manager.db.models import User
 
 
-async def test_get_setup_status_needs_setup(unauth_client: TestClient, app_context):
+async def test_get_setup_status_needs_setup(unauth_client: AsyncClient, app_context):
     """Test setup status when DB is empty."""
     # Ensure DB is empty
     async with app_context.db.session_manager() as db:
         await db.execute(delete(User))
         await db.commit()
 
-    response = unauth_client.get("/api/setup/status")
+    response = await unauth_client.get("/api/setup/status")
     assert response.status_code == 200
     assert response.json()["needs_setup"] is True
 
 
-async def test_get_setup_status_no_setup_needed(unauth_client: TestClient, test_user):
+async def test_get_setup_status_no_setup_needed(unauth_client: AsyncClient, test_user):
     """Test setup status when DB has users."""
-    response = unauth_client.get("/api/setup/status")
+    response = await unauth_client.get("/api/setup/status")
     assert response.status_code == 200
     assert response.json()["needs_setup"] is False
 
 
-async def test_create_first_user_success(unauth_client: TestClient, app_context):
+async def test_create_first_user_success(unauth_client: AsyncClient, app_context):
     """Test creating the first user successfully."""
     # Ensure DB is empty
     async with app_context.db.session_manager() as db:
         await db.execute(delete(User))
         await db.commit()
 
-    response = unauth_client.post(
+    response = await unauth_client.post(
         "/api/setup/create-first-user",
         json={"username": "admin", "password": "securepassword"},
     )
@@ -46,7 +46,7 @@ async def test_create_first_user_success(unauth_client: TestClient, app_context)
 
 
 async def test_create_first_user_already_exists(
-    unauth_client: TestClient, test_user, app_context
+    unauth_client: AsyncClient, test_user, app_context
 ):
     """Test creating a user when one already exists."""
     # Ensure needs_setup is evaluated to False
@@ -56,9 +56,9 @@ async def test_create_first_user_already_exists(
         else app_context.needs_setup
     )
 
-    response = unauth_client.post(
+    response = await unauth_client.post(
         "/api/setup/create-first-user",
         json={"username": "admin2", "password": "securepassword"},
     )
     assert response.status_code == 400
-    assert response.json()["detail"] == "Application has already been set up."
+    assert response.json()["error"]["message"] == "Application has already been set up."

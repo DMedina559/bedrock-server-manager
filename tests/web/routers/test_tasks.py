@@ -1,64 +1,75 @@
-"""
-Integration tests for the tasks router endpoints.
-"""
+import asyncio
 
-from unittest.mock import patch
+import pytest
 
-from fastapi.testclient import TestClient
-
-
-def test_get_task_status_unauthorized(unauth_client: TestClient):
-    response = unauth_client.get("/api/tasks/status/123")
-    assert response.status_code == 401
+from bedrock_server_manager.api.models import GetGlobalSettingRequest
+from bedrock_server_manager.api.settings import get_global_setting
 
 
-def test_get_task_status_success(auth_client: TestClient):
-    with patch("bedrock_server_manager.web.tasks.TaskManager.get_task") as mock_get:
-        mock_get.return_value = {"status": "running", "progress": 50}
-
-        response = auth_client.get("/api/tasks/status/123")
-        assert response.status_code == 200
-        assert response.json()["status"] == "running"
-        assert response.json()["progress"] == 50
-
-
-def test_get_task_status_not_found(auth_client: TestClient):
-    with patch("bedrock_server_manager.web.tasks.TaskManager.get_task") as mock_get:
-        mock_get.return_value = None
-
-        response = auth_client.get("/api/tasks/status/123")
-        assert response.status_code == 404
-        assert "not found" in response.json()["detail"].lower()
-
-
-def test_list_tasks_unauthorized(unauth_client: TestClient):
-    response = unauth_client.get("/api/tasks/list")
-    assert response.status_code == 401
+async def test_task_status_tracks_real_api_work(
+    auth_client, app_context, test_user, wait_for_task
+):
+    task_id = await app_context.task_manager.run_task(
+        get_global_setting,
+        test_user.username,
+        GetGlobalSettingRequest(key="web.port"),
+        app_context=app_context,
+    )
+    await wait_for_task(app_context, task_id)
+    response = await auth_client.get(f"/api/tasks/status/{task_id}")
+    assert response.status_code == 200
+    assert response.json()["status"] == "completed"
+    assert response.json()["result"]["value"] == app_context.settings.get("web.port")
+    tasks = (await auth_client.get("/api/tasks/list")).json()
+    assert [task["id"] for task in tasks] == [task_id]
 
 
-def test_list_tasks_success(auth_client: TestClient):
-    with patch(
-        "bedrock_server_manager.web.tasks.TaskManager.get_all_tasks"
-    ) as mock_get:
-        mock_get.return_value = {
-            "task-1": {"status": "completed"},
-            "task-2": {"status": "pending"},
-        }
+async def test_task_visibility_is_scoped_to_user(
+    auth_client, admin_auth_client, app_context, test_admin_user, wait_for_task
+):
+    task_id = await app_context.task_manager.run_task(
+        get_global_setting,
+        test_admin_user.username,
+        GetGlobalSettingRequest(key="web.port"),
+        app_context=app_context,
+    )
+    await wait_for_task(app_context, task_id)
+    assert (await auth_client.get(f"/api/tasks/status/{task_id}")).status_code == 404
+    assert (await auth_client.get("/api/tasks/list")).json() == []
+    assert (
+        await admin_auth_client.get(f"/api/tasks/status/{task_id}")
+    ).status_code == 200
 
-        response = auth_client.get("/api/tasks/list")
-        assert response.status_code == 200
-        data = response.json()
-        assert len(data) == 2
-        assert data[0]["id"] == "task-1"
-        assert data[1]["id"] == "task-2"
+
+async def test_task_reports_running_then_completed(
+    auth_client, app_context, test_user, wait_for_task
+):
+    entered = asyncio.Event()
+    release = asyncio.Event()
+
+    async def work():
+        entered.set()
+        await release.wait()
+        return {"finished": True}
+
+    task_id = await app_context.task_manager.run_task(work, test_user.username)
+    try:
+        await asyncio.wait_for(entered.wait(), 5)
+        assert (await auth_client.get(f"/api/tasks/status/{task_id}")).json()[
+            "status"
+        ] == "running"
+    finally:
+        release.set()
+    await wait_for_task(app_context, task_id)
+    assert (await auth_client.get(f"/api/tasks/status/{task_id}")).json()["result"] == {
+        "finished": True
+    }
 
 
-def test_list_tasks_empty(auth_client: TestClient):
-    with patch(
-        "bedrock_server_manager.web.tasks.TaskManager.get_all_tasks"
-    ) as mock_get:
-        mock_get.return_value = {}
+@pytest.mark.parametrize("path", ["/api/tasks/status/missing", "/api/tasks/list"])
+async def test_task_endpoints_require_authentication(unauth_client, path):
+    assert (await unauth_client.get(path)).status_code == 401
 
-        response = auth_client.get("/api/tasks/list")
-        assert response.status_code == 200
-        assert response.json() == []
+
+async def test_unknown_task_is_not_found(auth_client):
+    assert (await auth_client.get("/api/tasks/status/missing")).status_code == 404

@@ -20,6 +20,10 @@ class BSMError(Exception):
 # --- Primary Exception Categories ---
 
 
+class APICancelledError(BSMError):
+    """An API operation was canceled by a plugin before execution."""
+
+
 class FileError(BSMError):
     """Base for errors related to file or directory operations."""
 

@@ -19,14 +19,21 @@ from __future__ import annotations
 import json
 import logging
 import os
+import tempfile
+import threading
 from typing import Any, Dict
 
 from platformdirs import user_config_dir
+from pydantic import ValidationError
 
+from ..error import ConfigurationError
 from .const import CONFIG_FILE_NAME, env_name, package_name
+from .models import BootstrapConfig
 
 logger = logging.getLogger(__name__)
 
+
+_config_write_lock = threading.RLock()
 
 _custom_config_dir: str | None = None
 _custom_data_dir: str | None = None
@@ -82,7 +89,12 @@ def _read_raw_config() -> Dict[str, Any]:
     if os.path.exists(config_path):
         try:
             with open(config_path, "r", encoding="utf-8") as f:
-                return cast(Dict[str, Any], json.load(f))
+                data = json.load(f)
+                if not isinstance(data, dict):
+                    raise ConfigurationError(
+                        "Startup configuration must be a JSON object."
+                    )
+                return cast(Dict[str, Any], data)
         except (json.JSONDecodeError, OSError) as e:
             logger.error(f"Failed to load configuration file at {config_path}: {e}")
     return {}
@@ -167,7 +179,10 @@ def load_config() -> Dict[str, Any]:
         final_log_level = final_log_level.upper()
     final_config["logging_level"] = final_log_level
 
-    return final_config
+    try:
+        return BootstrapConfig.model_validate(final_config).model_dump(mode="json")
+    except ValidationError as error:
+        raise ConfigurationError("Invalid startup configuration.") from error
 
 
 def save_config(data: Dict[str, Any]):
@@ -180,12 +195,38 @@ def save_config(data: Dict[str, Any]):
     Args:
         data (Dict[str, Any]): The configuration data to save.
     """
+    # Validate the raw file independently of CLI/environment overrides. Keep
+    # absent fields absent so saving never freezes resolved default values.
     try:
-        os.makedirs(get_config_dir(), exist_ok=True)
-        with open(get_config_path(), "w", encoding="utf-8") as f:
-            json.dump(data, f, indent=4)
-    except OSError as e:
-        logger.error(f"Failed to save configuration file at {get_config_path()}: {e}")
+        validated = BootstrapConfig.model_validate(
+            {"data_dir": ".", "db_url": "sqlite://", **data}
+        )
+        raw = validated.model_dump(mode="json", include=set(data))
+        encoded = json.dumps(raw, indent=4, allow_nan=False)
+    except (ValidationError, ValueError, TypeError) as error:
+        raise ConfigurationError("Invalid startup configuration.") from error
+    temporary = None
+    with _config_write_lock:
+        try:
+            os.makedirs(get_config_dir(), exist_ok=True)
+            with tempfile.NamedTemporaryFile(
+                mode="w",
+                encoding="utf-8",
+                dir=get_config_dir(),
+                prefix=".bsm-config-",
+                delete=False,
+            ) as file:
+                temporary = file.name
+                file.write(encoded)
+                file.flush()
+                os.fsync(file.fileno())
+            os.replace(temporary, get_config_path())
+        except OSError as error:
+            logger.error("Failed to save configuration file at %s", get_config_path())
+            raise ConfigurationError("Could not save startup configuration.") from error
+        finally:
+            if temporary and os.path.exists(temporary):
+                os.unlink(temporary)
 
 
 def get_config_value(key: str, default: Any = None) -> Any:
@@ -223,6 +264,18 @@ def set_config_value(key: str, value: Any):
         key (str): The key of the value to set.
         value (Any): The new value.
     """
-    config = _read_raw_config()
-    config[key] = value
-    save_config(config)
+    with _config_write_lock:
+        config = _read_raw_config()
+        parts = key.split(".")
+        if not all(parts):
+            raise ConfigurationError("Configuration key cannot be empty.")
+        current = config
+        for part in parts[:-1]:
+            child = current.setdefault(part, {})
+            if not isinstance(child, dict):
+                raise ConfigurationError(
+                    "Configuration path conflicts with an existing value."
+                )
+            current = child
+        current[parts[-1]] = value
+        save_config(config)

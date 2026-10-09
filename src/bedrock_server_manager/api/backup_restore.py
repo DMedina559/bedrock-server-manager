@@ -27,7 +27,6 @@ to safely stop and restart the server. All functions are exposed to the plugin s
 import asyncio
 import logging
 import os
-from typing import Any, Dict
 
 from ..context import AppContext
 from ..error import (
@@ -38,135 +37,109 @@ from ..error import (
 )
 from ..plugins.api_bridge import api_method
 from ..plugins.event_trigger import trigger_event
-from .server import server_lifecycle_manager
+from ..plugins.runtime_capabilities import server_lifecycle_manager
+from .models.backup_restore import (
+    BackupAllRequest,
+    BackupAllResponse,
+    BackupConfigFileRequest,
+    BackupConfigFileResponse,
+    BackupWorldRequest,
+    BackupWorldResponse,
+    ListBackupFilesRequest,
+    ListBackupFilesResponse,
+    PruneOldBackupsRequest,
+    PruneOldBackupsResponse,
+    RestoreAllRequest,
+    RestoreAllResponse,
+    RestoreConfigFileRequest,
+    RestoreConfigFileResponse,
+    RestoreWorldRequest,
+    RestoreWorldResponse,
+)
 
 logger = logging.getLogger(__name__)
 
 
 @api_method("list_backup_files")
 async def list_backup_files(
-    server_name: str, backup_type: str, app_context: AppContext
-) -> Dict[str, Any]:
+    request: ListBackupFilesRequest, *, app_context: AppContext
+) -> ListBackupFilesResponse:
     """Lists available backup files for a given server and type.
 
-    This is a read-only operation and does not require a lock. It calls
-    :meth:`~.core.bedrock_server.BedrockServer.list_backups`.
-
-    Args:
-        server_name (str): The name of the server.
-        backup_type (str): The type of backups to list. Valid options are
-            "world", "properties", "allowlist", "permissions", or "all"
-            (case-insensitive).
-
-    Returns:
-        Dict[str, Any]: A dictionary with the operation result.
-        On success: ``{"status": "success", "backups": BackupData}``.
-        If `backup_type` is specific (e.g., "world"), `BackupData` is ``List[str]``
-        of backup file paths.
-        If `backup_type` is "all", `BackupData` is ``Dict[str, List[str]]``
-        categorizing backups (e.g., ``{"world_backups": [...], "properties_backups": [...]}``).
-        An empty list/dict is returned if no backups are found or backup dir is missing.
-        On error: ``{"status": "error", "message": "<error_message>"}``.
-
-    Raises:
-        InvalidServerNameError: If the server name is empty.
-        MissingArgumentError: If `backup_type` is empty.
-        UserInputError: If `backup_type` is invalid.
-        ConfigurationError: If the server's backup directory is not configured.
-        FileOperationError: For OS errors during file listing.
+    Accepts ListBackupFilesRequest and returns ListBackupFilesResponse.
+    Invalid requests fail validation before side effects; operation failures raise application exceptions.
     """
+    server_name = request.server_name
+    backup_type = request.backup_type
     if not server_name:
         raise InvalidServerNameError("Server name cannot be empty.")
     try:
         server = app_context.get_server(server_name)
         backup_data = await server.list_backups(backup_type)
-        return {"status": "success", "backups": backup_data}
+        return ListBackupFilesResponse.model_validate(
+            {"status": "success", "backups": backup_data}
+        )
     except BSMError as e:
         logger.warning(f"Client error listing backups for server '{server_name}': {e}")
-        return {"status": "error", "message": str(e)}
+        raise
     except Exception as e:
         logger.error(
             f"Unexpected error listing backups for '{server_name}': {e}", exc_info=True
         )
-        return {"status": "error", "message": "An unexpected server error occurred."}
+        raise
 
 
 @api_method("backup_world")
 @trigger_event(
     before="before_backup",
     after="after_backup",
-    identity_keys=("server_name", "backup_type"),
+    identity_keys=("server_name",),
 )
 async def backup_world(
-    server_name: str,
-    app_context: AppContext,
-) -> Dict[str, str]:
+    request: BackupWorldRequest, *, app_context: AppContext
+) -> BackupWorldResponse:
     """Creates a backup of the server's world directory.
 
-    This operation is thread-safe and guarded by a lock. It calls the internal
-    ``_backup_world_data_internal`` method of the
-    :class:`~.core.bedrock_server.BedrockServer` instance, which handles
-    determining the active world, exporting it to a ``.mcworld`` file (performing
-    a live backup using save hold if the server is running), and pruning old world backups.
-    Triggers ``before_backup`` and ``after_backup`` plugin events (with type "world").
-
-    Args:
-        server_name (str): The name of the server whose world is to be backed up.
-
-    Returns:
-        Dict[str, str]: A dictionary with the operation result.
-        Possible statuses: "success", "error", or "skipped" (if lock not acquired).
-        On success: ``{"status": "success", "message": "World backup '<filename>' created..."}``
-        On error: ``{"status": "error", "message": "<error_message>"}``.
-
-    Raises:
-        MissingArgumentError: If `server_name` is empty.
-        BSMError: Propagates errors from underlying operations, including:
-            :class:`~.error.ConfigurationError` (backup path not set),
-            :class:`~.error.AppFileNotFoundError` (world dir missing),
-            or :class:`~.error.BackupRestoreError` (export/pruning issues).
+    Accepts BackupWorldRequest and returns BackupWorldResponse.
+    Invalid requests fail validation before side effects; operation failures raise application exceptions.
     """
+    server_name = request.server_name
     if not server_name:
         raise MissingArgumentError("Server name cannot be empty.")
-
     server = app_context.get_server(server_name)
-
     try:
         await server.operation_lock.acquire(timeout=300)
     except asyncio.TimeoutError:
         logger.warning(
             f"An operation for '{server_name}' is already in progress. Skipping concurrent world backup."
         )
-        return {
-            "status": "skipped",
-            "message": "Backup/restore operation already in progress.",
-        }
-
+        return BackupWorldResponse.model_validate(
+            {
+                "status": "skipped",
+                "message": "Backup/restore operation already in progress.",
+            }
+        )
     try:
         logger.info(f"API: Initiating world backup for server '{server_name}'.")
-
         try:
             backup_file = await server._backup_world_data_internal()
-            return {
-                "status": "success",
-                "message": f"World backup '{os.path.basename(str(backup_file))}' created successfully for server '{server_name}'.",
-            }
-
+            return BackupWorldResponse.model_validate(
+                {
+                    "status": "success",
+                    "message": f"World backup '{os.path.basename(str(backup_file))}' created successfully for server '{server_name}'.",
+                }
+            )
         except BSMError as e:
             logger.error(
                 f"API: World backup failed for '{server_name}': {e}", exc_info=True
             )
-            return {"status": "error", "message": f"World backup failed: {e}"}
+            raise
         except Exception as e:
             logger.error(
                 f"API: Unexpected error during world backup for '{server_name}': {e}",
                 exc_info=True,
             )
-            return {
-                "status": "error",
-                "message": f"Unexpected error during world backup: {e}",
-            }
-
+            raise
     finally:
         server.operation_lock.release()
 
@@ -175,89 +148,60 @@ async def backup_world(
 @trigger_event(
     before="before_backup",
     after="after_backup",
-    identity_keys=("server_name", "backup_type"),
+    identity_keys=("server_name",),
 )
 async def backup_config_file(
-    server_name: str,
-    file_to_backup: str,
-    app_context: AppContext,
-) -> Dict[str, str]:
+    request: BackupConfigFileRequest, *, app_context: AppContext
+) -> BackupConfigFileResponse:
     """Creates a backup of a specific server configuration file.
 
-    This operation is thread-safe and guarded by a lock. It calls the internal
-    ``_backup_config_file_internal`` method of the
-    :class:`~.core.bedrock_server.BedrockServer` instance. This core method
-    copies the specified file (e.g., ``server.properties``) from the server's
-    installation directory to a timestamped backup in the server's backup
-    directory, then prunes older backups of that file type.
-    Triggers ``before_backup`` and ``after_backup`` plugin events (with type "config_file").
-
-    Args:
-        server_name (str): The name of the server.
-        file_to_backup (str): The name of the configuration file to back up
-            (e.g., "server.properties", "allowlist.json"). This file is expected
-            to be in the root of the server's installation directory.
-
-    Returns:
-        Dict[str, str]: A dictionary with the operation result.
-        Possible statuses: "success", "error", or "skipped" (if lock not acquired).
-        On success: ``{"status": "success", "message": "Config file '<name>' backed up as '<backup_name>'..."}``
-        If original file not found: ``{"status": "error", "message": "Config file backup failed: File ... not found."}`` (or similar from BSMError)
-        On other error: ``{"status": "error", "message": "<error_message>"}``.
-
-    Raises:
-        MissingArgumentError: If `server_name` or `file_to_backup` is empty.
-        BSMError: Propagates errors from underlying operations, including
-            :class:`~.error.ConfigurationError` (backup path not set) or
-            :class:`~.error.FileOperationError` (file copy/pruning issues).
+    Accepts BackupConfigFileRequest and returns BackupConfigFileResponse.
+    Invalid requests fail validation before side effects; operation failures raise application exceptions.
     """
+    server_name = request.server_name
+    file_to_backup = request.file_to_backup
     if not server_name:
         raise MissingArgumentError("Server name cannot be empty.")
     if not file_to_backup:
         raise MissingArgumentError("File to backup cannot be empty.")
-
     server = app_context.get_server(server_name)
-
     try:
         await server.operation_lock.acquire(timeout=300)
     except asyncio.TimeoutError:
         logger.warning(
             f"An operation for '{server_name}' is already in progress. Skipping concurrent config backup."
         )
-        return {
-            "status": "skipped",
-            "message": "Backup/restore operation already in progress.",
-        }
-
+        return BackupConfigFileResponse.model_validate(
+            {
+                "status": "skipped",
+                "message": "Backup/restore operation already in progress.",
+            }
+        )
     try:
         filename_base = os.path.basename(file_to_backup)
         logger.info(
             f"API: Initiating config file backup for '{filename_base}' on server '{server_name}'."
         )
-
         try:
             backup_file = await server._backup_config_file_internal(filename_base)
-            return {
-                "status": "success",
-                "message": f"Config file '{filename_base}' backed up as '{os.path.basename(str(backup_file))}' successfully.",
-            }
-
+            return BackupConfigFileResponse.model_validate(
+                {
+                    "status": "success",
+                    "message": f"Config file '{filename_base}' backed up as '{os.path.basename(str(backup_file))}' successfully.",
+                }
+            )
         except (BSMError, FileNotFoundError) as e:
             logger.error(
                 f"API: Config file backup failed for '{filename_base}' on '{server_name}': {e}",
                 exc_info=True,
             )
-            return {"status": "error", "message": f"Config file backup failed: {e}"}
+            raise
         except Exception as e:
             logger.error(
                 f"API: Unexpected error during config file backup for '{server_name}': {e}",
                 exc_info=True,
             )
-            return {
-                "status": "error",
-                "message": f"Unexpected error during config file backup: {e}",
-            }
-
+            raise
     finally:
         server.operation_lock.release()
 
@@ -266,77 +210,54 @@ async def backup_config_file(
 @trigger_event(
     before="before_backup",
     after="after_backup",
-    identity_keys=("server_name", "backup_type"),
+    identity_keys=("server_name",),
 )
 async def backup_all(
-    server_name: str,
-    app_context: AppContext,
-) -> Dict[str, Any]:
+    request: BackupAllRequest, *, app_context: AppContext
+) -> BackupAllResponse:
     """Performs a full backup of the server's world and configuration files.
 
-    This operation is thread-safe and guarded by a lock. It calls
-    :meth:`~.core.bedrock_server.BedrockServer.backup_all_data`.
-    Triggers ``before_backup`` and ``after_backup`` plugin events (with type "all").
-
-    Args:
-        server_name (str): The name of the server to back up.
-
-    Returns:
-        Dict[str, Any]: A dictionary with the operation result.
-        Possible statuses: "success", "error", or "skipped" (if lock not acquired).
-        On success: ``{"status": "success", "message": "Full backup completed...", "details": BackupResultsDict}``
-        where ``BackupResultsDict`` maps component names (e.g., "world", "allowlist.json")
-        to the path of their backup file, or ``None`` if a component's backup failed.
-        On error (e.g., critical world backup failure): ``{"status": "error", "message": "<error_message>"}``.
-
-    Raises:
-        MissingArgumentError: If `server_name` is empty.
-        BSMError: Propagates errors from underlying operations, including:
-            :class:`~.error.ConfigurationError` (backup path not set) or
-            :class:`~.error.BackupRestoreError` (if critical world backup fails).
+    Accepts BackupAllRequest and returns BackupAllResponse.
+    Invalid requests fail validation before side effects; operation failures raise application exceptions.
     """
+    server_name = request.server_name
     if not server_name:
         raise MissingArgumentError("Server name cannot be empty.")
-
     server = app_context.get_server(server_name)
-
     try:
         await server.operation_lock.acquire(timeout=300)
     except asyncio.TimeoutError:
         logger.warning(
             f"An operation for '{server_name}' is already in progress. Skipping concurrent full backup."
         )
-        return {
-            "status": "skipped",
-            "message": "Backup/restore operation already in progress.",
-        }
-
+        return BackupAllResponse.model_validate(
+            {
+                "status": "skipped",
+                "message": "Backup/restore operation already in progress.",
+            }
+        )
     try:
         logger.info(f"API: Initiating full backup for server '{server_name}'.")
-
         try:
             backup_results = await server.backup_all_data()
-            return {
-                "status": "success",
-                "message": f"Full backup completed successfully for server '{server_name}'.",
-                "details": backup_results,
-            }
-
+            return BackupAllResponse.model_validate(
+                {
+                    "status": "success",
+                    "message": f"Full backup completed successfully for server '{server_name}'.",
+                    "details": backup_results,
+                }
+            )
         except BSMError as e:
             logger.error(
                 f"API: Full backup failed for '{server_name}': {e}", exc_info=True
             )
-            return {"status": "error", "message": f"Full backup failed: {e}"}
+            raise
         except Exception as e:
             logger.error(
                 f"API: Unexpected error during full backup for '{server_name}': {e}",
                 exc_info=True,
             )
-            return {
-                "status": "error",
-                "message": f"Unexpected error during full backup: {e}",
-            }
-
+            raise
     finally:
         server.operation_lock.release()
 
@@ -345,70 +266,37 @@ async def backup_all(
 @trigger_event(
     before="before_restore",
     after="after_restore",
-    identity_keys=("server_name", "restore_type"),
+    identity_keys=("server_name",),
 )
 async def restore_all(
-    server_name: str,
-    app_context: AppContext,
-    stop_start_server: bool = True,
-) -> Dict[str, Any]:
+    request: RestoreAllRequest, *, app_context: AppContext
+) -> RestoreAllResponse:
     """Restores the server from the latest available backups.
 
-    This operation is thread-safe and guarded by a lock. It calls
-    :meth:`~.core.bedrock_server.BedrockServer.restore_all_data_from_latest`.
-    If `stop_start_server` is ``True``, the
-    :func:`~bedrock_server_manager.api.server.server_lifecycle_manager`
-    is used to manage the server's state, restarting it only if the restore
-    operation (all components) is successful.
-
-    .. warning::
-        This operation **OVERWRITES** current world data and configuration files
-        in the server's installation directory with content from the latest backups.
-
-    Triggers ``before_restore`` and ``after_restore`` plugin events (with type "all").
-
-    Args:
-        server_name (str): The name of the server to restore.
-        stop_start_server (bool, optional): If ``True``, the server will be
-            stopped before restoring and restarted afterwards only if the entire
-            restore operation succeeds. Defaults to ``True``.
-
-    Returns:
-        Dict[str, Any]: A dictionary with the operation result.
-        Possible statuses: "success", "error", or "skipped" (if lock not acquired).
-        On success: ``{"status": "success", "message": "Restore_all completed...", "details": RestoreResultsDict}``
-        where ``RestoreResultsDict`` maps component names to their restored paths or ``None`` on failure/skip.
-        If no backups found: ``{"status": "success", "message": "No backups found..."}``
-        On error: ``{"status": "error", "message": "<error_message>"}`` (e.g., if a component failed to restore).
-
-    Raises:
-        MissingArgumentError: If `server_name` is empty.
-        BSMError: Propagates errors from underlying operations, including:
-            :class:`~.error.ConfigurationError` (backup path not set),
-            :class:`~.error.BackupRestoreError` (if any component fails to restore),
-            or errors from server stop/start.
+    Accepts RestoreAllRequest and returns RestoreAllResponse.
+    Invalid requests fail validation before side effects; operation failures raise application exceptions.
     """
+    server_name = request.server_name
+    stop_start_server = request.stop_start_server
     if not server_name:
         raise MissingArgumentError("Server name cannot be empty.")
-
     server = app_context.get_server(server_name)
-
     try:
         await server.operation_lock.acquire(timeout=300)
     except asyncio.TimeoutError:
         logger.warning(
             f"An operation for '{server_name}' is already in progress. Skipping concurrent restore."
         )
-        return {
-            "status": "skipped",
-            "message": "Backup/restore operation already in progress.",
-        }
-
+        return RestoreAllResponse.model_validate(
+            {
+                "status": "skipped",
+                "message": "Backup/restore operation already in progress.",
+            }
+        )
     try:
         logger.info(
             f"API: Initiating restore_all for server '{server_name}'. Stop/Start: {stop_start_server}"
         )
-
         try:
             async with server_lifecycle_manager(
                 server_name,
@@ -417,34 +305,32 @@ async def restore_all(
                 app_context=app_context,
             ):
                 restore_results = await server.restore_all_data_from_latest()
-
             if not restore_results:
-                return {
-                    "status": "success",
-                    "message": f"No backups found for server '{server_name}'. Nothing restored.",
-                }
+                return RestoreAllResponse.model_validate(
+                    {
+                        "status": "success",
+                        "message": f"No backups found for server '{server_name}'. Nothing restored.",
+                    }
+                )
             else:
-                return {
-                    "status": "success",
-                    "message": f"Restore_all completed successfully for server '{server_name}'.",
-                    "details": restore_results,
-                }
-
+                return RestoreAllResponse.model_validate(
+                    {
+                        "status": "success",
+                        "message": f"Restore_all completed successfully for server '{server_name}'.",
+                        "details": restore_results,
+                    }
+                )
         except BSMError as e:
             logger.error(
                 f"API: Restore_all failed for '{server_name}': {e}", exc_info=True
             )
-            return {"status": "error", "message": f"Restore_all failed: {e}"}
+            raise
         except Exception as e:
             logger.error(
                 f"API: Unexpected error during restore_all for '{server_name}': {e}",
                 exc_info=True,
             )
-            return {
-                "status": "error",
-                "message": f"Unexpected error during restore_all: {e}",
-            }
-
+            raise
     finally:
         server.operation_lock.release()
 
@@ -453,78 +339,44 @@ async def restore_all(
 @trigger_event(
     before="before_restore",
     after="after_restore",
-    identity_keys=("server_name", "restore_type"),
+    identity_keys=("server_name",),
 )
 async def restore_world(
-    server_name: str,
-    backup_file_path: str,
-    app_context: AppContext,
-    stop_start_server: bool = True,
-) -> Dict[str, str]:
+    request: RestoreWorldRequest, *, app_context: AppContext
+) -> RestoreWorldResponse:
     """Restores a server's world from a specific backup file.
 
-    This operation is thread-safe and guarded by a lock. If `stop_start_server`
-    is ``True``, it uses the
-    :func:`~bedrock_server_manager.api.server.server_lifecycle_manager`
-    to manage the server's state, restarting it only if the restore is successful.
-    The core world import is performed by
-    :meth:`~.core.bedrock_server.BedrockServer.import_world`.
-
-    .. warning::
-        This is a **DESTRUCTIVE** operation. The existing active world directory
-        will be deleted before the new world is imported from the backup.
-
-    Triggers ``before_restore`` and ``after_restore`` plugin events (with type "world").
-
-    Args:
-        server_name (str): The name of the server.
-        backup_file_path (str): The absolute path to the ``.mcworld`` backup file
-            to be restored.
-        stop_start_server (bool, optional): If ``True``, the server will be
-            stopped before restoring and restarted afterwards only if the restore
-            is successful. Defaults to ``True``.
-
-    Returns:
-        Dict[str, str]: A dictionary with the operation result.
-        Possible statuses: "success", "error", or "skipped" (if lock not acquired).
-        On success: ``{"status": "success", "message": "World restore from '<filename>' completed..."}``
-        On error: ``{"status": "error", "message": "<error_message>"}``.
-
-    Raises:
-        MissingArgumentError: If `server_name` or `backup_file_path` is empty.
-        AppFileNotFoundError: If `backup_file_path` does not exist.
-        BSMError: Propagates errors from underlying operations like
-            :class:`~.error.BackupRestoreError`, :class:`~.error.ExtractError`,
-            or errors from server stop/start.
+    Accepts RestoreWorldRequest and returns RestoreWorldResponse.
+    Invalid requests fail validation before side effects; operation failures raise application exceptions.
     """
+    server_name = request.server_name
+    backup_file_path = request.backup_file_path
+    stop_start_server = request.stop_start_server
     if not server_name:
         raise MissingArgumentError("Server name cannot be empty.")
     if not backup_file_path:
         raise MissingArgumentError("Backup file path cannot be empty.")
-
     server = app_context.get_server(server_name)
-
     try:
         await server.operation_lock.acquire(timeout=300)
     except asyncio.TimeoutError:
         logger.warning(
             f"An operation for '{server_name}' is already in progress. Skipping concurrent world restore."
         )
-        return {
-            "status": "skipped",
-            "message": "Backup/restore operation already in progress.",
-        }
-
+        return RestoreWorldResponse.model_validate(
+            {
+                "status": "skipped",
+                "message": "Backup/restore operation already in progress.",
+            }
+        )
     try:
         backup_filename = os.path.basename(backup_file_path)
         logger.info(
             f"API: Initiating world restore for '{server_name}' from '{backup_filename}'. Stop/Start: {stop_start_server}"
         )
-
         try:
             if not os.path.isfile(backup_file_path):
                 raise AppFileNotFoundError(backup_file_path, "Backup file")
-
             async with server_lifecycle_manager(
                 server_name,
                 stop_before=stop_start_server,
@@ -532,27 +384,23 @@ async def restore_world(
                 app_context=app_context,
             ):
                 await server.import_world(backup_file_path)
-
-            return {
-                "status": "success",
-                "message": f"World restore from '{backup_filename}' completed successfully for server '{server_name}'.",
-            }
-
+            return RestoreWorldResponse.model_validate(
+                {
+                    "status": "success",
+                    "message": f"World restore from '{backup_filename}' completed successfully for server '{server_name}'.",
+                }
+            )
         except (BSMError, FileNotFoundError) as e:
             logger.error(
                 f"API: World restore failed for '{server_name}': {e}", exc_info=True
             )
-            return {"status": "error", "message": f"World restore failed: {e}"}
+            raise
         except Exception as e:
             logger.error(
                 f"API: Unexpected error during world restore for '{server_name}': {e}",
                 exc_info=True,
             )
-            return {
-                "status": "error",
-                "message": f"Unexpected error during world restore: {e}",
-            }
-
+            raise
     finally:
         server.operation_lock.release()
 
@@ -561,79 +409,44 @@ async def restore_world(
 @trigger_event(
     before="before_restore",
     after="after_restore",
-    identity_keys=("server_name", "restore_type"),
+    identity_keys=("server_name",),
 )
 async def restore_config_file(
-    server_name: str,
-    backup_file_path: str,
-    app_context: AppContext,
-    stop_start_server: bool = True,
-) -> Dict[str, str]:
+    request: RestoreConfigFileRequest, *, app_context: AppContext
+) -> RestoreConfigFileResponse:
     """Restores a specific config file from a backup.
 
-    This operation is thread-safe and guarded by a lock. If `stop_start_server`
-    is ``True``, it uses the
-    :func:`~bedrock_server_manager.api.server.server_lifecycle_manager`
-    to manage the server's state, restarting it only if the restore is successful.
-    The core config file restoration is performed by the internal
-    ``_restore_config_file_internal`` method of the
-    :class:`~.core.bedrock_server.BedrockServer` instance.
-
-    .. warning::
-        This operation **OVERWRITES** the current version of the configuration
-        file in the server's installation directory with the content from the backup.
-
-    Triggers ``before_restore`` and ``after_restore`` plugin events (with type "config_file").
-
-    Args:
-        server_name (str): The name of the server.
-        backup_file_path (str): The absolute path to the configuration backup file
-            (e.g., ``.../server_backup_YYYYMMDD_HHMMSS.properties``).
-        stop_start_server (bool, optional): If ``True``, the server will be
-            stopped before restoring and restarted afterwards only if the restore
-            is successful. Defaults to ``True``.
-
-    Returns:
-        Dict[str, str]: A dictionary with the operation result.
-        Possible statuses: "success", "error", or "skipped" (if lock not acquired).
-        On success: ``{"status": "success", "message": "Config file '<original_name>' restored from '<backup_name>'..."}``
-        On error: ``{"status": "error", "message": "<error_message>"}``.
-
-    Raises:
-        MissingArgumentError: If `server_name` or `backup_file_path` is empty.
-        AppFileNotFoundError: If `backup_file_path` does not exist.
-        UserInputError: If the backup filename format is unrecognized.
-        BSMError: Propagates errors from underlying operations like
-            :class:`~.error.FileOperationError` or errors from server stop/start.
+    Accepts RestoreConfigFileRequest and returns RestoreConfigFileResponse.
+    Invalid requests fail validation before side effects; operation failures raise application exceptions.
     """
+    server_name = request.server_name
+    backup_file_path = request.backup_file_path
+    stop_start_server = request.stop_start_server
     if not server_name:
         raise MissingArgumentError("Server name cannot be empty.")
     if not backup_file_path:
         raise MissingArgumentError("Backup file path cannot be empty.")
-
     server = app_context.get_server(server_name)
-
     try:
         await server.operation_lock.acquire(timeout=300)
     except asyncio.TimeoutError:
         logger.warning(
             f"An operation for '{server_name}' is already in progress. Skipping concurrent config restore."
         )
-        return {
-            "status": "skipped",
-            "message": "Backup/restore operation already in progress.",
-        }
-
+        return RestoreConfigFileResponse.model_validate(
+            {
+                "status": "skipped",
+                "message": "Backup/restore operation already in progress.",
+            }
+        )
     try:
         backup_filename = os.path.basename(backup_file_path)
         logger.info(
             f"API: Initiating config restore for '{server_name}' from '{backup_filename}'. Stop/Start: {stop_start_server}"
         )
-
         try:
             if not os.path.isfile(backup_file_path):
                 raise AppFileNotFoundError(backup_file_path, "Backup file")
-
             async with server_lifecycle_manager(
                 server_name,
                 stop_before=stop_start_server,
@@ -643,28 +456,24 @@ async def restore_config_file(
                 restored_file = await server._restore_config_file_internal(
                     backup_file_path
                 )
-
-            return {
-                "status": "success",
-                "message": f"Config file '{os.path.basename(str(restored_file))}' restored successfully from '{backup_filename}'.",
-            }
-
+            return RestoreConfigFileResponse.model_validate(
+                {
+                    "status": "success",
+                    "message": f"Config file '{os.path.basename(str(restored_file))}' restored successfully from '{backup_filename}'.",
+                }
+            )
         except (BSMError, FileNotFoundError) as e:
             logger.error(
                 f"API: Config file restore failed for '{server_name}': {e}",
                 exc_info=True,
             )
-            return {"status": "error", "message": f"Config file restore failed: {e}"}
+            raise
         except Exception as e:
             logger.error(
                 f"API: Unexpected error during config file restore for '{server_name}': {e}",
                 exc_info=True,
             )
-            return {
-                "status": "error",
-                "message": f"Unexpected error during config file restore: {e}",
-            }
-
+            raise
     finally:
         server.operation_lock.release()
 
@@ -675,71 +484,45 @@ async def restore_config_file(
     after="after_prune_backups",
     identity_keys=("server_name",),
 )
-async def prune_old_backups(  # noqa: C901
-    server_name: str, app_context: AppContext
-) -> Dict[str, str]:
+async def prune_old_backups(
+    request: PruneOldBackupsRequest, *, app_context: AppContext
+) -> PruneOldBackupsResponse:
     """Prunes old backups for a server based on retention settings.
 
-    This operation is thread-safe and guarded by a lock. It iteratively calls
-    :meth:`~.core.bedrock_server.BedrockServer.prune_server_backups`
-    for the server's world (``.mcworld`` files) and standard configuration
-    files (``server.properties``, ``allowlist.json``, ``permissions.json``).
-    The number of backups to keep is determined by the ``retention.backups``
-    application setting.
-    Triggers ``before_prune_backups`` and ``after_prune_backups`` plugin events.
-
-    Args:
-        server_name (str): The name of the server whose backups are to be pruned.
-
-    Returns:
-        Dict[str, str]: A dictionary with the operation result.
-        Possible statuses: "success", "error", or "skipped" (if lock not acquired).
-        On full success: ``{"status": "success", "message": "Backup pruning completed..."}``
-        If some components fail pruning: ``{"status": "error", "message": "Pruning completed with errors: <details>"}``
-        If backup directory not found: ``{"status": "success", "message": "No backup directory found..."}``
-        On other setup error: ``{"status": "error", "message": "<error_message>"}``.
-
-    Raises:
-        MissingArgumentError: If `server_name` is empty.
-        BSMError: Propagates errors from underlying operations, particularly
-            :class:`~.error.ConfigurationError` if backup path is not set,
-            or :class:`~.error.UserInputError` if retention settings are invalid.
-            Individual :class:`~.error.FileOperationError` for components are
-            typically aggregated into the error message.
+    Accepts PruneOldBackupsRequest and returns PruneOldBackupsResponse.
+    Invalid requests fail validation before side effects; operation failures raise application exceptions.
     """
+    server_name = request.server_name
     if not server_name:
         raise MissingArgumentError("Server name cannot be empty.")
-
     server = app_context.get_server(server_name)
-
     try:
         await server.operation_lock.acquire(timeout=300)
     except asyncio.TimeoutError:
         logger.warning(
             f"An operation for '{server_name}' is already in progress. Skipping concurrent prune."
         )
-        return {
-            "status": "skipped",
-            "message": "Backup/restore operation already in progress.",
-        }
-
+        return PruneOldBackupsResponse.model_validate(
+            {
+                "status": "skipped",
+                "message": "Backup/restore operation already in progress.",
+            }
+        )
     try:
         logger.info(
             f"API: Initiating pruning of old backups for server '{server_name}'."
         )
-
         try:
-            # If the backup directory doesn't exist, there's nothing to do.
             if not server.server_backup_directory or not os.path.isdir(
                 server.server_backup_directory
             ):
-                return {
-                    "status": "success",
-                    "message": "No backup directory found, nothing to prune.",
-                }
-
+                return PruneOldBackupsResponse.model_validate(
+                    {
+                        "status": "success",
+                        "message": "No backup directory found, nothing to prune.",
+                    }
+                )
             pruning_errors = []
-            # Prune world backups.
             try:
                 world_name = await server.get_world_name()
                 world_name_prefix = f"{world_name}_backup_"
@@ -751,14 +534,11 @@ async def prune_old_backups(  # noqa: C901
                     f"Error pruning world backups for '{server_name}': {e}",
                     exc_info=True,
                 )
-
-            # Define config files and their corresponding prefixes/extensions to prune.
             config_file_types = {
                 "server.properties_backup_": "properties",
                 "allowlist_backup_": "json",
                 "permissions_backup_": "json",
             }
-            # Prune each type of config file backup.
             for prefix, ext in config_file_types.items():
                 try:
                     await server.prune_server_backups(prefix, ext)
@@ -769,33 +549,27 @@ async def prune_old_backups(  # noqa: C901
                         f"Error pruning {prefix}*.{ext} for '{server_name}': {e}",
                         exc_info=True,
                     )
-
-            # Report final status based on whether any errors occurred.
             if pruning_errors:
-                return {
-                    "status": "error",
-                    "message": f"Pruning completed with errors: {'; '.join(pruning_errors)}",
-                }
+                raise BSMError(
+                    f"Pruning completed with errors: {'; '.join(pruning_errors)}"
+                )
             else:
-                return {
-                    "status": "success",
-                    "message": f"Backup pruning completed for server '{server_name}'.",
-                }
-
+                return PruneOldBackupsResponse.model_validate(
+                    {
+                        "status": "success",
+                        "message": f"Backup pruning completed for server '{server_name}'.",
+                    }
+                )
         except (BSMError, ValueError) as e:
             logger.error(
                 f"API: Cannot prune backups for '{server_name}': {e}", exc_info=True
             )
-            return {"status": "error", "message": f"Pruning setup error: {e}"}
+            raise
         except Exception as e:
             logger.error(
                 f"API: Unexpected error during backup pruning for '{server_name}': {e}",
                 exc_info=True,
             )
-            return {
-                "status": "error",
-                "message": f"Unexpected error during pruning: {e}",
-            }
-
+            raise
     finally:
         server.operation_lock.release()
