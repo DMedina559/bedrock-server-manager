@@ -35,6 +35,7 @@ from ..error import (
     InvalidServerNameError,
     MissingArgumentError,
 )
+from ..logging import log_operation_error
 from ..plugins.api_bridge import api_method
 from ..plugins.event_trigger import trigger_event
 from ..plugins.runtime_capabilities import server_lifecycle_manager
@@ -80,11 +81,17 @@ async def list_backup_files(
             {"status": "success", "backups": backup_data}
         )
     except BSMError as e:
-        logger.warning(f"Client error listing backups for server '{server_name}': {e}")
+        logger.warning(
+            "Client error listing backups for server '%s': %s", server_name, e
+        )
         raise
     except Exception as e:
-        logger.error(
-            f"Unexpected error listing backups for '{server_name}': {e}", exc_info=True
+        log_operation_error(
+            logger,
+            "Unexpected error listing backups for '%s': %s",
+            server_name,
+            e,
+            error=e,
         )
         raise
 
@@ -111,7 +118,8 @@ async def backup_world(
         await server.operation_lock.acquire(timeout=300)
     except asyncio.TimeoutError:
         logger.warning(
-            f"An operation for '{server_name}' is already in progress. Skipping concurrent world backup."
+            "An operation for '%s' is already in progress. Skipping concurrent world backup.",
+            server_name,
         )
         return BackupWorldResponse.model_validate(
             {
@@ -120,7 +128,7 @@ async def backup_world(
             }
         )
     try:
-        logger.info(f"API: Initiating world backup for server '{server_name}'.")
+        logger.debug("Initiating world backup for server '%s'.", server_name)
         try:
             backup_file = await server.backups.backup_world()
             return BackupWorldResponse.model_validate(
@@ -130,14 +138,17 @@ async def backup_world(
                 }
             )
         except BSMError as e:
-            logger.error(
-                f"API: World backup failed for '{server_name}': {e}", exc_info=True
+            log_operation_error(
+                logger, "World backup failed for '%s': %s", server_name, e, error=e
             )
             raise
         except Exception as e:
-            logger.error(
-                f"API: Unexpected error during world backup for '{server_name}': {e}",
-                exc_info=True,
+            log_operation_error(
+                logger,
+                "Unexpected error during world backup for '%s': %s",
+                server_name,
+                e,
+                error=e,
             )
             raise
     finally:
@@ -169,7 +180,8 @@ async def backup_config_file(
         await server.operation_lock.acquire(timeout=300)
     except asyncio.TimeoutError:
         logger.warning(
-            f"An operation for '{server_name}' is already in progress. Skipping concurrent config backup."
+            "An operation for '%s' is already in progress. Skipping concurrent config backup.",
+            server_name,
         )
         return BackupConfigFileResponse.model_validate(
             {
@@ -179,8 +191,10 @@ async def backup_config_file(
         )
     try:
         filename_base = os.path.basename(file_to_backup)
-        logger.info(
-            f"API: Initiating config file backup for '{filename_base}' on server '{server_name}'."
+        logger.debug(
+            "Initiating config file backup for '%s' on server '%s'.",
+            filename_base,
+            server_name,
         )
         try:
             backup_file = await server.backups.backup_config(filename_base)
@@ -193,15 +207,22 @@ async def backup_config_file(
                 }
             )
         except (BSMError, FileNotFoundError) as e:
-            logger.error(
-                f"API: Config file backup failed for '{filename_base}' on '{server_name}': {e}",
-                exc_info=True,
+            log_operation_error(
+                logger,
+                "Config file backup failed for '%s' on '%s': %s",
+                filename_base,
+                server_name,
+                e,
+                error=e,
             )
             raise
         except Exception as e:
-            logger.error(
-                f"API: Unexpected error during config file backup for '{server_name}': {e}",
-                exc_info=True,
+            log_operation_error(
+                logger,
+                "Unexpected error during config file backup for '%s': %s",
+                server_name,
+                e,
+                error=e,
             )
             raise
     finally:
@@ -230,7 +251,8 @@ async def backup_all(
         await server.operation_lock.acquire(timeout=300)
     except asyncio.TimeoutError:
         logger.warning(
-            f"An operation for '{server_name}' is already in progress. Skipping concurrent full backup."
+            "An operation for '%s' is already in progress. Skipping concurrent full backup.",
+            server_name,
         )
         return BackupAllResponse.model_validate(
             {
@@ -239,7 +261,7 @@ async def backup_all(
             }
         )
     try:
-        logger.info(f"API: Initiating full backup for server '{server_name}'.")
+        logger.debug("Initiating full backup for server '%s'.", server_name)
         try:
             backup_results = await server.backups.backup_all_data()
             return BackupAllResponse.model_validate(
@@ -250,14 +272,17 @@ async def backup_all(
                 }
             )
         except BSMError as e:
-            logger.error(
-                f"API: Full backup failed for '{server_name}': {e}", exc_info=True
+            log_operation_error(
+                logger, "Full backup failed for '%s': %s", server_name, e, error=e
             )
             raise
         except Exception as e:
-            logger.error(
-                f"API: Unexpected error during full backup for '{server_name}': {e}",
-                exc_info=True,
+            log_operation_error(
+                logger,
+                "Unexpected error during full backup for '%s': %s",
+                server_name,
+                e,
+                error=e,
             )
             raise
     finally:
@@ -287,7 +312,8 @@ async def restore_all(
         await server.operation_lock.acquire(timeout=300)
     except asyncio.TimeoutError:
         logger.warning(
-            f"An operation for '{server_name}' is already in progress. Skipping concurrent restore."
+            "An operation for '%s' is already in progress. Skipping concurrent restore.",
+            server_name,
         )
         return RestoreAllResponse.model_validate(
             {
@@ -296,8 +322,10 @@ async def restore_all(
             }
         )
     try:
-        logger.info(
-            f"API: Initiating restore_all for server '{server_name}'. Stop/Start: {stop_start_server}"
+        logger.debug(
+            "Initiating restore_all for server '%s'. Stop/Start: %s",
+            server_name,
+            stop_start_server,
         )
         try:
             async with server_lifecycle_manager(
@@ -323,14 +351,17 @@ async def restore_all(
                     }
                 )
         except BSMError as e:
-            logger.error(
-                f"API: Restore_all failed for '{server_name}': {e}", exc_info=True
+            log_operation_error(
+                logger, "Restore_all failed for '%s': %s", server_name, e, error=e
             )
             raise
         except Exception as e:
-            logger.error(
-                f"API: Unexpected error during restore_all for '{server_name}': {e}",
-                exc_info=True,
+            log_operation_error(
+                logger,
+                "Unexpected error during restore_all for '%s': %s",
+                server_name,
+                e,
+                error=e,
             )
             raise
     finally:
@@ -363,7 +394,8 @@ async def restore_world(
         await server.operation_lock.acquire(timeout=300)
     except asyncio.TimeoutError:
         logger.warning(
-            f"An operation for '{server_name}' is already in progress. Skipping concurrent world restore."
+            "An operation for '%s' is already in progress. Skipping concurrent world restore.",
+            server_name,
         )
         return RestoreWorldResponse.model_validate(
             {
@@ -373,8 +405,11 @@ async def restore_world(
         )
     try:
         backup_filename = os.path.basename(backup_file_path)
-        logger.info(
-            f"API: Initiating world restore for '{server_name}' from '{backup_filename}'. Stop/Start: {stop_start_server}"
+        logger.debug(
+            "Initiating world restore for '%s' from '%s'. Stop/Start: %s",
+            server_name,
+            backup_filename,
+            stop_start_server,
         )
         try:
             if not os.path.isfile(backup_file_path):
@@ -393,14 +428,17 @@ async def restore_world(
                 }
             )
         except (BSMError, FileNotFoundError) as e:
-            logger.error(
-                f"API: World restore failed for '{server_name}': {e}", exc_info=True
+            log_operation_error(
+                logger, "World restore failed for '%s': %s", server_name, e, error=e
             )
             raise
         except Exception as e:
-            logger.error(
-                f"API: Unexpected error during world restore for '{server_name}': {e}",
-                exc_info=True,
+            log_operation_error(
+                logger,
+                "Unexpected error during world restore for '%s': %s",
+                server_name,
+                e,
+                error=e,
             )
             raise
     finally:
@@ -433,7 +471,8 @@ async def restore_config_file(
         await server.operation_lock.acquire(timeout=300)
     except asyncio.TimeoutError:
         logger.warning(
-            f"An operation for '{server_name}' is already in progress. Skipping concurrent config restore."
+            "An operation for '%s' is already in progress. Skipping concurrent config restore.",
+            server_name,
         )
         return RestoreConfigFileResponse.model_validate(
             {
@@ -443,8 +482,11 @@ async def restore_config_file(
         )
     try:
         backup_filename = os.path.basename(backup_file_path)
-        logger.info(
-            f"API: Initiating config restore for '{server_name}' from '{backup_filename}'. Stop/Start: {stop_start_server}"
+        logger.debug(
+            "Initiating config restore for '%s' from '%s'. Stop/Start: %s",
+            server_name,
+            backup_filename,
+            stop_start_server,
         )
         try:
             if not os.path.isfile(backup_file_path):
@@ -463,15 +505,21 @@ async def restore_config_file(
                 }
             )
         except (BSMError, FileNotFoundError) as e:
-            logger.error(
-                f"API: Config file restore failed for '{server_name}': {e}",
-                exc_info=True,
+            log_operation_error(
+                logger,
+                "Config file restore failed for '%s': %s",
+                server_name,
+                e,
+                error=e,
             )
             raise
         except Exception as e:
-            logger.error(
-                f"API: Unexpected error during config file restore for '{server_name}': {e}",
-                exc_info=True,
+            log_operation_error(
+                logger,
+                "Unexpected error during config file restore for '%s': %s",
+                server_name,
+                e,
+                error=e,
             )
             raise
     finally:
@@ -500,7 +548,8 @@ async def prune_old_backups(
         await server.operation_lock.acquire(timeout=300)
     except asyncio.TimeoutError:
         logger.warning(
-            f"An operation for '{server_name}' is already in progress. Skipping concurrent prune."
+            "An operation for '%s' is already in progress. Skipping concurrent prune.",
+            server_name,
         )
         return PruneOldBackupsResponse.model_validate(
             {
@@ -509,9 +558,7 @@ async def prune_old_backups(
             }
         )
     try:
-        logger.info(
-            f"API: Initiating pruning of old backups for server '{server_name}'."
-        )
+        logger.debug("Initiating pruning of old backups for server '%s'.", server_name)
         try:
             if not server.backups.server_backup_directory or not os.path.isdir(
                 server.backups.server_backup_directory
@@ -530,9 +577,12 @@ async def prune_old_backups(
             except Exception as e:
                 err_msg = f"world backups ({type(e).__name__})"
                 pruning_errors.append(err_msg)
-                logger.error(
-                    f"Error pruning world backups for '{server_name}': {e}",
-                    exc_info=True,
+                log_operation_error(
+                    logger,
+                    "Error pruning world backups for '%s': %s",
+                    server_name,
+                    e,
+                    error=e,
                 )
             config_file_types = {
                 "server_backup_": "properties",
@@ -545,9 +595,14 @@ async def prune_old_backups(
                 except Exception as e:
                     err_msg = f"config backups ({prefix}*.{ext}) ({type(e).__name__})"
                     pruning_errors.append(err_msg)
-                    logger.error(
-                        f"Error pruning {prefix}*.{ext} for '{server_name}': {e}",
-                        exc_info=True,
+                    log_operation_error(
+                        logger,
+                        "Error pruning %s*.%s for '%s': %s",
+                        prefix,
+                        ext,
+                        server_name,
+                        e,
+                        error=e,
                     )
             if pruning_errors:
                 raise BSMError(
@@ -561,14 +616,17 @@ async def prune_old_backups(
                     }
                 )
         except (BSMError, ValueError) as e:
-            logger.error(
-                f"API: Cannot prune backups for '{server_name}': {e}", exc_info=True
+            log_operation_error(
+                logger, "Cannot prune backups for '%s': %s", server_name, e, error=e
             )
             raise
         except Exception as e:
-            logger.error(
-                f"API: Unexpected error during backup pruning for '{server_name}': {e}",
-                exc_info=True,
+            log_operation_error(
+                logger,
+                "Unexpected error during backup pruning for '%s': %s",
+                server_name,
+                e,
+                error=e,
             )
             raise
     finally:

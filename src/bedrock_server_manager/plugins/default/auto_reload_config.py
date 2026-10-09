@@ -11,6 +11,8 @@ from bedrock_server_manager.api.models.allowlist import (
     RemoveFromAllowlistResponse,
 )
 
+from ...logging import log_operation_error
+
 
 class AutoReloadPlugin(PluginBase):
     """
@@ -27,7 +29,7 @@ class AutoReloadPlugin(PluginBase):
     @app_event("on_load")
     async def plugin_loaded(self):
         """Logs a message when the plugin is loaded."""
-        self.logger.info(
+        self.logger.debug(
             "Plugin loaded. Will send reload commands after config changes if server is running."
         )
 
@@ -41,39 +43,53 @@ class AutoReloadPlugin(PluginBase):
                 return bool(response.is_running)
 
             self.logger.warning(
-                f"Could not determine running status for '{server_name}'. API response: {response}"
+                "Could not determine running status for '%s'.",
+                server_name,
             )
         except AttributeError:
             self.logger.error(
                 "API is missing 'get_server_running_status'. Cannot check server status."
             )
         except Exception as e:
-            self.logger.error(
-                f"Error checking server status for '{server_name}': {e}", exc_info=True
+            log_operation_error(
+                self.logger,
+                "Error checking server status for '%s': %s",
+                server_name,
+                e,
+                error=e,
             )
         return False
 
     async def _send_reload_command(self, server_name: str, command: str, context: str):
         """Sends a given command to a server if it's running."""
         if not await self.get_plugin_setting("enable_auto_reload", default=True):
-            self.logger.info("Auto reload is disabled in plugin settings.")
+            self.logger.debug("Auto reload is disabled in plugin settings.")
             return
         if await self._is_server_running(server_name):
             try:
                 self.logger.info(
-                    f"{context.capitalize()} changed for '{server_name}', triggering reload."
+                    "%s changed for '%s', triggering reload.",
+                    context.capitalize(),
+                    server_name,
                 )
                 await self.api.server.send_command(
                     request={"server_name": server_name, "command": command}
                 )
-                self.logger.info(f"Successfully sent '{command}' to '{server_name}'.")
+                self.logger.debug(
+                    "Reload command delivered to server '%s'.", server_name
+                )
             except Exception as e:
                 self.logger.warning(
-                    f"Failed to send '{command}' to '{server_name}': {e}", exc_info=True
+                    "Could not reload configuration for server '%s': %s",
+                    server_name,
+                    e,
+                    exc_info=True,
                 )
         else:
-            self.logger.info(
-                f"Server '{server_name}' is not running, skipping reload after {context} change."
+            self.logger.debug(
+                "Server '%s' is not running, skipping reload after %s change.",
+                server_name,
+                context,
             )
 
     @app_event("after_allowlist_change")
@@ -82,7 +98,7 @@ class AutoReloadPlugin(PluginBase):
 
         server_name = str(kwargs.get("server_name"))
         result = kwargs.get("result")
-        self.logger.debug(f"Handling after_allowlist_change for '{server_name}'.")
+        self.logger.debug("Handling after_allowlist_change for '%s'.", server_name)
 
         if getattr(result, "status", None) == "success":
             # Check if any players were actually added or removed to avoid unnecessary reloads.
@@ -102,12 +118,14 @@ class AutoReloadPlugin(PluginBase):
                     "allowlist",
                 )
             else:
-                self.logger.info(
-                    f"Allowlist operation for '{server_name}' reported no changes, skipping reload."
+                self.logger.debug(
+                    "Allowlist operation for '%s' reported no changes, skipping reload.",
+                    server_name,
                 )
         else:
             self.logger.debug(
-                f"Allowlist change for '{server_name}' was not successful, skipping reload."
+                "Allowlist change for '%s' was not successful, skipping reload.",
+                server_name,
             )
 
     @app_event("after_permission_change")
@@ -116,7 +134,7 @@ class AutoReloadPlugin(PluginBase):
 
         server_name = str(kwargs.get("server_name"))
         result = kwargs.get("result")
-        self.logger.debug(f"Handling after_permission_change for '{server_name}'.")
+        self.logger.debug("Handling after_permission_change for '%s'.", server_name)
 
         if getattr(result, "status", None) == "success":
             await self._send_reload_command(
@@ -126,5 +144,6 @@ class AutoReloadPlugin(PluginBase):
             )
         else:
             self.logger.debug(
-                f"Permission change for '{server_name}' was not successful, skipping reload."
+                "Permission change for '%s' was not successful, skipping reload.",
+                server_name,
             )

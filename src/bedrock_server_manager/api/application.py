@@ -24,6 +24,7 @@ import logging
 from ..config import const as config_const
 from ..context import AppContext
 from ..error import BSMError, FileError
+from ..logging import log_operation_error
 from ..plugins.api_bridge import api_method
 from ..utils import list_content_files
 from .models.application import (
@@ -49,7 +50,7 @@ async def list_available_worlds(
     Accepts ListAvailableWorldsRequest and returns ListAvailableWorldsResponse.
     Invalid requests fail validation before side effects; operation failures raise application exceptions.
     """
-    logger.debug("API: Requesting list of available worlds.")
+    logger.debug("Requesting list of available worlds.")
     try:
         content_dir = app_context.settings.get("paths.content")
         worlds = await list_content_files(content_dir, "worlds", [".mcworld"])
@@ -59,7 +60,7 @@ async def list_available_worlds(
     except FileError:
         raise
     except Exception as e:
-        logger.error(f"API: Unexpected error listing worlds: {e}", exc_info=True)
+        log_operation_error(logger, "Unexpected error listing worlds: %s", e, error=e)
         raise
 
 
@@ -72,7 +73,7 @@ async def get_all_servers_data(
     Accepts GetAllServersDataRequest and returns GetAllServersDataResponse.
     Invalid requests fail validation before side effects; operation failures raise application exceptions.
     """
-    logger.debug("API: Getting status for all servers...")
+    logger.debug("Getting status for all servers...")
     from ..utils import server as server_utils
 
     try:
@@ -82,7 +83,7 @@ async def get_all_servers_data(
         if bsm_error_messages:
             for err_msg in bsm_error_messages:
                 logger.error(
-                    f"API: Individual server error during get_all_servers_data: {err_msg}"
+                    "Individual server error during get_all_servers_data: %s", err_msg
                 )
             return GetAllServersDataResponse.model_validate(
                 {
@@ -95,13 +96,13 @@ async def get_all_servers_data(
             {"status": "success", "servers": servers_data}
         )
     except BSMError as e:
-        logger.error(
-            f"API: Setup or I/O error in get_all_servers_data: {e}", exc_info=True
+        log_operation_error(
+            logger, "Setup or I/O error in get_all_servers_data: %s", e, error=e
         )
         raise
     except Exception as e:
-        logger.error(
-            f"API: Unexpected error in get_all_servers_data: {e}", exc_info=True
+        log_operation_error(
+            logger, "Unexpected error in get_all_servers_data: %s", e, error=e
         )
         raise
 
@@ -117,7 +118,7 @@ def get_system_and_app_info(
     """
     import platform
 
-    logger.debug("API: Requesting system and app info.")
+    logger.debug("Requesting system and app info.")
     try:
         splash_txt = app_context.splash_txt
         data = {
@@ -125,10 +126,12 @@ def get_system_and_app_info(
             "app_version": config_const.get_installed_version(),
             "splash_text": splash_txt,
         }
-        logger.info(f"API: Successfully retrieved system info: {data}")
+        logger.debug("System information retrieved.")
         return GetSystemAndAppInfoResponse.model_validate({"status": "success", **data})
     except Exception as e:
-        logger.error(f"API: Unexpected error getting system info: {e}", exc_info=True)
+        log_operation_error(
+            logger, "Unexpected error getting system info: %s", e, error=e
+        )
         raise
 
 
@@ -145,7 +148,7 @@ async def update_server_statuses(
 
     updated_servers_count = 0
     error_messages = []
-    logger.debug("API: Updating all server statuses...")
+    logger.debug("Updating all server statuses...")
     try:
         all_servers_data, discovery_errors = await server_utils.get_servers_data(
             app_context=app_context
@@ -157,13 +160,15 @@ async def update_server_statuses(
             if not server_name:
                 continue
             try:
-                logger.info(
-                    f"API: Status for '{server_name}' was reconciled by get_servers_data."
+                logger.debug(
+                    "Status for '%s' was reconciled by get_servers_data.", server_name
                 )
                 updated_servers_count += 1
             except Exception as e:
                 msg = f"Could not update status for server '{server_name}': {e}"
-                logger.error(f"API.update_server_statuses: {msg}", exc_info=True)
+                log_operation_error(
+                    logger, "API.update_server_statuses: %s", msg, error=e
+                )
                 error_messages.append(msg)
         if error_messages:
             return UpdateServerStatusesResponse.model_validate(
@@ -182,8 +187,10 @@ async def update_server_statuses(
             }
         )
     except BSMError as e:
-        logger.error(f"API: Setup error during status update: {e}", exc_info=True)
+        log_operation_error(logger, "Setup error during status update: %s", e, error=e)
         raise
     except Exception as e:
-        logger.error(f"API: Unexpected error during status update: {e}", exc_info=True)
+        log_operation_error(
+            logger, "Unexpected error during status update: %s", e, error=e
+        )
         raise

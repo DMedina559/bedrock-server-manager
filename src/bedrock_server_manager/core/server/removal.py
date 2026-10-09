@@ -1,5 +1,6 @@
 """Filesystem permission and removal operations for Bedrock servers."""
 
+import logging
 import os
 from typing import TYPE_CHECKING
 
@@ -12,7 +13,10 @@ from ...error import (
     MissingArgumentError,
     PermissionsError,
 )
+from ...logging import log_operation_error
 from ..system import base as system_base
+
+logger = logging.getLogger(__name__)
 
 if TYPE_CHECKING:
     from ..bedrock_server import BedrockServer
@@ -25,23 +29,33 @@ async def set_filesystem_permissions(server: "BedrockServer") -> None:
             server.paths.server_dir,
             "Cannot set permissions: Server installation directory or executable not found",
         )
-    server.logger.info(
-        f"Setting filesystem permissions for server directory: {server.paths.server_dir} asynchronously"
+    logger.debug(
+        "Setting filesystem permissions for server directory: %s",
+        server.paths.server_dir,
     )
     try:
         await system_base.set_server_folder_permissions(server.paths.server_dir)
-        server.logger.info(
-            f"Successfully set permissions for server '{server.server_name}' at '{server.paths.server_dir}'."
+        logger.debug(
+            "Successfully set permissions for server '%s' at '%s'.",
+            server.server_name,
+            server.paths.server_dir,
         )
     except (MissingArgumentError, AppFileNotFoundError, PermissionsError) as e_perm:
-        server.logger.error(
-            f"Failed to set permissions for '{server.paths.server_dir}': {e_perm}"
+        log_operation_error(
+            logger,
+            "Failed to set permissions for '%s': %s",
+            server.paths.server_dir,
+            e_perm,
+            error=e_perm,
         )
         raise
     except Exception as e_unexp:
-        server.logger.error(
-            f"Unexpected error setting permissions for '{server.server_name}': {e_unexp}",
-            exc_info=True,
+        log_operation_error(
+            logger,
+            "Unexpected error setting permissions for '%s': %s",
+            server.server_name,
+            e_unexp,
+            error=e_unexp,
         )
         raise PermissionsError(
             f"Unexpected error setting permissions for server '{server.server_name}': {e_unexp}"
@@ -54,12 +68,14 @@ async def delete_server_files(
 ) -> bool:
     """Deletes the server's entire installation directory asynchronously."""
     if not await aiofiles.ospath.exists(server.paths.server_dir):
-        server.logger.info(
-            f"Server directory '{server.paths.server_dir}' for '{server.server_name}' does not exist. Nothing to delete."
+        logger.debug(
+            "Server directory '%s' for '%s' does not exist. Nothing to delete.",
+            server.paths.server_dir,
+            server.server_name,
         )
         return True
-    server.logger.warning(
-        f"Attempting to delete {item_description_prefix} server '{server.server_name}' at '{server.paths.server_dir}' asynchronously. THIS IS DESTRUCTIVE."
+    logger.debug(
+        "Deleting server '%s' at '%s'.", server.server_name, server.paths.server_dir
     )
     return await system_base.delete_path_robustly(
         server.paths.server_dir, f"{item_description_prefix} '{server.server_name}'"
@@ -106,7 +122,7 @@ async def _delete_all_data(server: "BedrockServer") -> None:
         raise FileOperationError(
             f"Failed to delete database entries for '{server.server_name}': {error}"
         ) from error
-    server.logger.info("Deleted all data for server '%s'.", server.server_name)
+    logger.info("Deleted all data for server '%s'.", server.server_name)
 
 
 async def delete_all_data(server: "BedrockServer") -> None:

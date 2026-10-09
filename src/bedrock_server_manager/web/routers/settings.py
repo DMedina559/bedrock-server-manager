@@ -35,6 +35,7 @@ from ...error import (
     MissingArgumentError,
     UserInputError,
 )
+from ...logging import log_operation_error
 from ..deps import get_admin_user, get_app_context
 from ..schemas import SettingItemResponse, SettingsResponse, UserResponse
 
@@ -57,7 +58,7 @@ async def get_all_settings(
     Retrieves all global application settings.
     """
     identity = current_user.username
-    logger.info(f"API: Get global settings request by '{identity}'.")
+    logger.debug("Get global settings request by '%s'.", identity)
     try:
         result = await settings_api.get_all_global_settings(
             request=GetAllGlobalSettingsRequest(), app_context=app_context
@@ -72,7 +73,9 @@ async def get_all_settings(
     except ValidationError:
         raise
     except Exception as e:
-        logger.error(f"API Get Settings: Unexpected error. {e}", exc_info=True)
+        log_operation_error(
+            logger, "API Get Settings: Unexpected error. %s", e, error=e
+        )
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail="An unexpected error occurred while retrieving settings.",
@@ -95,7 +98,7 @@ async def post_set_setting(
     """
     identity = current_user.username
     logger.info(
-        f"API: Set global setting request for key '{payload.key}' by '{identity}'."
+        "Set global setting request for key '%s' by '%s'.", payload.key, identity
     )
     if not payload.key:  # Redundant due to Pydantic Field(...) validation
         raise HTTPException(
@@ -120,22 +123,28 @@ async def post_set_setting(
         UserInputError,
         MissingArgumentError,
     ) as e:  # These might be raised by settings_api or earlier checks
-        logger.warning(f"API Set Setting '{payload.key}': Input error. {e}")
+        logger.debug("API Set Setting '%s': Input error. %s", payload.key, e)
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(e))
     except HTTPException:
         raise
     except AppFileNotFoundError:
         raise
     except BSMError as e:  # Catch other BSM specific errors (e.g., ConfigWriteError)
-        logger.error(f"API Set Setting '{payload.key}': BSMError. {e}", exc_info=True)
+        logger.debug(
+            "API Set Setting '%s': BSMError. %s", payload.key, e, exc_info=True
+        )
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail=str(e)
         )
     except ValidationError:
         raise
     except Exception as e:
-        logger.error(
-            f"API Set Setting '{payload.key}': Unexpected error. {e}", exc_info=True
+        log_operation_error(
+            logger,
+            "API Set Setting '%s': Unexpected error. %s",
+            payload.key,
+            e,
+            error=e,
         )
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
@@ -157,7 +166,7 @@ async def put_reload_settings(
     Forces a reload of global application settings and logging configuration.
     """
     identity = current_user.username
-    logger.info(f"API: Reload global settings request by '{identity}'.")
+    logger.info("Reload global settings request by '%s'.", identity)
     try:
         result = await settings_api.reload_global_settings(
             request=ReloadGlobalSettingsRequest(), app_context=app_context
@@ -172,14 +181,16 @@ async def put_reload_settings(
     except AppFileNotFoundError:
         raise
     except BSMError as e:  # E.g. ConfigLoadError
-        logger.error(f"API Reload Settings: BSMError. {e}", exc_info=True)
+        logger.debug("API Reload Settings: BSMError. %s", e, exc_info=True)
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail=str(e)
         )
     except ValidationError:
         raise
     except Exception as e:
-        logger.error(f"API Reload Settings: Unexpected error. {e}", exc_info=True)
+        log_operation_error(
+            logger, "API Reload Settings: Unexpected error. %s", e, error=e
+        )
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail="An unexpected error occurred while reloading settings.",

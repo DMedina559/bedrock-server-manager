@@ -44,7 +44,7 @@ class ServerResources:
         self._runtime_state = state.runtime if state is not None else RuntimeState()
         self.storage = storage
         self.app_context = app_context
-        self.logger.debug(f"Server resources for '{server_name}' initialized")
+        self.logger.debug("Server resources for '%s' initialized", server_name)
         _base_dir_val = self.settings.get("paths.servers")
         if not _base_dir_val:
             raise ConfigurationError(
@@ -61,7 +61,10 @@ class ServerResources:
         self._file_locks: Dict[str, ReentrantAsyncLock] = {}
         self.operation_lock: ReentrantAsyncLock = ReentrantAsyncLock()
         self.logger.debug(
-            f"Server resources initialized for '{self.server_name}' at '{self.paths.server_dir}'. App Config Dir: '{self.paths.app_config_dir}'"
+            "Server resources initialized for '%s' at '%s'. App Config Dir: '%s'",
+            self.server_name,
+            self.paths.server_dir,
+            self.paths.app_config_dir,
         )
 
     @property

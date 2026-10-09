@@ -11,6 +11,8 @@ from bedrock_server_manager.error import InvalidServerNameError
 from bedrock_server_manager.utils.server import core_validate_server_name_format
 from bedrock_server_manager.web import get_admin_user
 
+from ...logging import log_operation_error
+
 
 class DownloadPagePlugin(PluginBase):
     """Adds a download page to the web interface for server backups and content."""
@@ -26,7 +28,7 @@ class DownloadPagePlugin(PluginBase):
     async def plugin_loaded(self, **kwargs):
         self.router = APIRouter(tags=["Download Page Plugin"])
         self._define_routes()
-        self.logger.info(f"Plugin '{self.name}' v{self.version} initialized.")
+        self.logger.debug("Plugin '%s' v%s initialized.", self.name, self.version)
 
     def _define_routes(self):  # noqa: C901
         @self.router.get(
@@ -107,7 +109,9 @@ class DownloadPagePlugin(PluginBase):
                         permissions_backups = [os.path.basename(p) for p in prm_res]
 
                 except Exception as e:
-                    self.logger.error(f"Error listing backups: {e}")
+                    log_operation_error(
+                        self.logger, "Error listing backups: %s", e, error=e
+                    )
 
                 tabs_children = [
                     {
@@ -166,7 +170,9 @@ class DownloadPagePlugin(PluginBase):
                         addons = [os.path.basename(p) for p in addons_list.files]
 
                 except Exception as e:
-                    self.logger.error(f"Error listing content: {e}")
+                    log_operation_error(
+                        self.logger, "Error listing content: %s", e, error=e
+                    )
 
                 tabs_children = [
                     {
@@ -328,7 +334,7 @@ class DownloadPagePlugin(PluginBase):
                 # Re-raise HTTPExceptions as-is
                 raise
             except Exception as e:
-                self.logger.error(f"Download error: {e}")
+                log_operation_error(self.logger, "Download error: %s", e, error=e)
                 raise HTTPException(500, "Internal server error during download")
 
     def _create_file_list_table(
@@ -376,7 +382,7 @@ class DownloadPagePlugin(PluginBase):
 
     @app_event("on_unload")
     async def plugin_unloaded(self, **kwargs):
-        self.logger.info(f"Plugin '{self.name}' v{self.version} unloaded.")
+        self.logger.debug("Plugin '%s' v%s unloaded.", self.name, self.version)
 
     def get_fastapi_routers(self, **kwargs):
         return [self.router]

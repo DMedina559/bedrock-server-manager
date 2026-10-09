@@ -2,6 +2,7 @@
 
 import asyncio
 import inspect
+import logging
 import platform
 import subprocess
 from io import BufferedWriter
@@ -18,6 +19,7 @@ from ...error import (
     ServerStartError,
     ServerStopError,
 )
+from ...logging import log_operation_error
 from ...utils.threads import run_in_thread
 from ..data import ProcessRecord
 from ..system import base as system_base
@@ -34,6 +36,9 @@ class ServerProcess:
 
     def __init__(self, server: "BedrockServer") -> None:
         self.server = server
+        self.logger = logging.LoggerAdapter(
+            logging.getLogger(__name__), {"server_name": server.server_name}
+        )
         self._process: Optional[
             Union[subprocess.Popen[Any], asyncio.subprocess.Process, "psutil.Process"]
         ] = None
@@ -50,8 +55,8 @@ class ServerProcess:
 
     async def is_running(self) -> bool:
         """Checks if the Bedrock server process is currently running and verified asynchronously."""
-        self.server.logger.debug(
-            f"Checking if server '{self.server.server_name}' is running asynchronously."
+        self.logger.debug(
+            "Checking if server '%s' is running.", self.server.server_name
         )
         if (
             self._process is not None
@@ -97,9 +102,7 @@ class ServerProcess:
             raise SendCommandError(
                 f"Cannot send command to '{self.server.server_name}': no process handle or stdin."
             )
-        self.server.logger.info(
-            f"Sending command '{command}' to server '{self.server.server_name}' asynchronously..."
-        )
+        self.logger.debug("Sending command to server '%s'.", self.server.server_name)
         try:
             if hasattr(self._process.stdin, "drain"):
                 self._process.stdin.write(f"{command}\n".encode())
@@ -111,8 +114,8 @@ class ServerProcess:
                     self._process.stdin.flush()
 
                 await run_in_thread(_write_stdin)
-            self.server.logger.info(
-                f"Command '{command}' sent successfully to server '{self.server.server_name}'."
+            self.logger.debug(
+                "Command delivered to server '%s'.", self.server.server_name
             )
         except Exception as e_unexp:
             raise SendCommandError(
@@ -128,8 +131,9 @@ class ServerProcess:
                     f"Cannot start server '{self.server.server_name}': Not installed or invalid installation at {self.server.paths.server_dir} (is_installed check failed or method missing)."
                 )
             if await self.is_running():
-                self.server.logger.warning(
-                    f"Attempted to start server '{self.server.server_name}' but it is already running."
+                self.logger.debug(
+                    "Attempted to start server '%s' but it is already running.",
+                    self.server.server_name,
                 )
                 raise ServerStartError(
                     f"Server '{self.server.server_name}' is already running."
@@ -137,17 +141,21 @@ class ServerProcess:
             try:
                 await self.server.set_status_in_config("STARTING")
             except Exception as e_status:
-                self.server.logger.warning(
-                    f"Failed to set status to STARTING for '{self.server.server_name}': {e_status}"
+                self.logger.warning(
+                    "Failed to set status to STARTING for '%s': %s",
+                    self.server.server_name,
+                    e_status,
                 )
-            self.server.logger.info(
-                f"Attempting to start server '{self.server.server_name}' asynchronously..."
+            self.logger.debug(
+                "Attempting to start server '%s'...", self.server.server_name
             )
             output_file = self.server.paths.server_log_path
             pid_file_path = self.server.get_pid_file_path()
             if await aiofiles.ospath.exists(pid_file_path):
-                self.server.logger.error(
-                    f"Attempted to start server '{self.server.server_name}', but a PID file already exists at '{pid_file_path}'."
+                self.logger.error(
+                    "Attempted to start server '%s', but a PID file already exists at '%s'.",
+                    self.server.server_name,
+                    pid_file_path,
                 )
                 raise ServerStartError(
                     f"Server '{self.server.server_name}' has a stale PID file."
@@ -186,8 +194,10 @@ class ServerProcess:
                 setattr(self.server, "players", [])
                 self.server.player_tracker.reset()
                 await self.server.set_status_in_config("RUNNING")
-                self.server.logger.info(
-                    f"Server '{self.server.server_name}' has been started with PID {self._process.pid}."
+                self.logger.info(
+                    "Server '%s' started (PID %s).",
+                    self.server.server_name,
+                    self._process.pid,
                 )
             except asyncio.CancelledError:
                 await self._rollback_start()
@@ -195,8 +205,10 @@ class ServerProcess:
             except FileNotFoundError:
                 await self._rollback_start()
                 await self.server.set_status_in_config("ERROR")
-                self.server.logger.error(
-                    f"Executable not found for server '{self.server.server_name}' at path '{self.server.paths.bedrock_executable_path}'."
+                self.logger.error(
+                    "Executable not found for server '%s' at path '%s'.",
+                    self.server.server_name,
+                    self.server.paths.bedrock_executable_path,
                 )
                 raise ServerStartError(
                     f"Executable not found for server '{self.server.server_name}'."
@@ -204,9 +216,12 @@ class ServerProcess:
             except Exception as e:
                 await self._rollback_start()
                 await self.server.set_status_in_config("ERROR")
-                self.server.logger.error(
-                    f"Failed to start server '{self.server.server_name}': {e}",
-                    exc_info=True,
+                log_operation_error(
+                    self.logger,
+                    "Failed to start server '%s': %s",
+                    self.server.server_name,
+                    e,
+                    error=e,
                 )
                 raise ServerStartError(
                     f"Failed to start server '{self.server.server_name}': {e}"
@@ -253,16 +268,19 @@ class ServerProcess:
         async with self.server.operation_lock:
             self.intentionally_stopped = True
             if not await self.is_running():
-                self.server.logger.info(
-                    f"Attempted to stop server '{self.server.server_name}', but it is not currently running."
+                self.logger.debug(
+                    "Attempted to stop server '%s', but it is not currently running.",
+                    self.server.server_name,
                 )
                 status = await self.server.get_status_from_config()
                 if status != "STOPPED":
                     try:
                         await self.server.set_status_in_config("STOPPED")
                     except Exception as e_stat:
-                        self.server.logger.warning(
-                            f"Failed to reset status to STOPPED for '{self.server.server_name}': {e_stat}"
+                        self.logger.warning(
+                            "Failed to reset status to STOPPED for '%s': %s",
+                            self.server.server_name,
+                            e_stat,
                         )
                 return
             if self._process is None:
@@ -280,15 +298,17 @@ class ServerProcess:
             try:
                 await self.server.set_status_in_config("STOPPING")
             except Exception as e_stat:
-                self.server.logger.warning(
-                    f"Failed to set status to STOPPING for '{self.server.server_name}': {e_stat}"
+                self.logger.warning(
+                    "Failed to set status to STOPPING for '%s': %s",
+                    self.server.server_name,
+                    e_stat,
                 )
-            self.server.logger.info(
-                f"Attempting to stop server '{self.server.server_name}' asynchronously..."
+            self.logger.debug(
+                "Attempting to stop server '%s'...", self.server.server_name
             )
             try:
-                self.server.logger.info(
-                    f"Sending 'stop' command to server '{self.server.server_name}'."
+                self.logger.debug(
+                    "Sending 'stop' command to server '%s'.", self.server.server_name
                 )
                 if hasattr(self._process, "stdin") and self._process.stdin:
                     if hasattr(self._process.stdin, "drain"):
@@ -302,8 +322,9 @@ class ServerProcess:
 
                         await run_in_thread(_write_stop)
                 elif isinstance(self._process, system_process.psutil.Process):
-                    self.server.logger.info(
-                        f"Cannot write to stdin of recovered psutil process '{self.server.server_name}'. Sending terminate signal."
+                    self.logger.debug(
+                        "Cannot write to stdin of recovered psutil process '%s'. Sending terminate signal.",
+                        self.server.server_name,
                     )
                     self._process.terminate()
                 timeout = int(
@@ -332,32 +353,42 @@ class ServerProcess:
                             )
 
                     await run_in_thread(_wait)
-                self.server.logger.info(
-                    f"Server '{self.server.server_name}' stopped gracefully."
+                self.logger.debug(
+                    "Server '%s' stopped gracefully.", self.server.server_name
                 )
             except (subprocess.TimeoutExpired, OSError, BrokenPipeError) as e:
-                self.server.logger.warning(
-                    f"Server '{self.server.server_name}' did not stop gracefully or pipe was already closed. Killing process. Error: {e}"
+                self.logger.warning(
+                    "Server '%s' did not stop gracefully or pipe was already closed. Killing process. Error: %s",
+                    self.server.server_name,
+                    e,
                 )
                 if self._process is not None:
                     self._process.kill()
             except system_process.psutil.TimeoutExpired as e:
-                self.server.logger.warning(
-                    f"Server '{self.server.server_name}' psutil process did not stop gracefully. Killing process. Error: {e}"
+                self.logger.warning(
+                    "Server '%s' psutil process did not stop gracefully. Killing process. Error: %s",
+                    self.server.server_name,
+                    e,
                 )
                 if self._process is not None:
                     self._process.kill()
             except Exception as e:
-                self.server.logger.error(
-                    f"An error occurred while stopping server '{self.server.server_name}': {e}",
-                    exc_info=True,
+                log_operation_error(
+                    self.logger,
+                    "An error occurred while stopping server '%s': %s",
+                    self.server.server_name,
+                    e,
+                    error=e,
                 )
                 try:
                     if self._process is not None:
                         self._process.kill()
                 except Exception as kill_e:
-                    self.server.logger.error(
-                        f"Failed to kill process after error: {kill_e}"
+                    log_operation_error(
+                        self.logger,
+                        "Failed to kill process after error: %s",
+                        kill_e,
+                        error=kill_e,
                     )
             finally:
                 if (
@@ -367,8 +398,8 @@ class ServerProcess:
                     try:
                         self._log_file_handle.close()
                     except Exception as close_e:
-                        self.server.logger.warning(
-                            f"Failed to close log file handle: {close_e}"
+                        self.logger.warning(
+                            "Failed to close log file handle: %s", close_e
                         )
                     self._log_file_handle = None
             self._process = None
@@ -378,9 +409,7 @@ class ServerProcess:
             await self.server.set_status_in_config("STOPPED")
             setattr(self.server, "players", [])
             self.server.player_tracker.reset()
-            self.server.logger.info(
-                f"Server '{self.server.server_name}' stopped successfully."
-            )
+            self.logger.info("Server '%s' stopped.", self.server.server_name)
 
     async def get_process_info(self) -> Optional[Dict[str, Any]]:
         """Gets resource usage information (PID, CPU, Memory, Uptime) for the running server process asynchronously.
@@ -407,8 +436,9 @@ class ServerProcess:
                 self.server.paths.app_config_dir,
             )
             if process_obj is None:
-                self.server.logger.debug(
-                    f"No verified process found for server '{self.server.server_name}' to get info."
+                self.logger.debug(
+                    "No verified process found for server '%s' to get info.",
+                    self.server.server_name,
                 )
                 await self.is_running()
                 return None
@@ -425,14 +455,19 @@ class ServerProcess:
             )
             return record.model_dump(mode="json")
         except BSMError as e_bsm:
-            self.server.logger.warning(
-                f"Known error while trying to get process info for '{self.server.server_name}': {e_bsm}"
+            self.logger.warning(
+                "Known error while trying to get process info for '%s': %s",
+                self.server.server_name,
+                e_bsm,
             )
             return None
         except Exception as e_unexp:
-            self.server.logger.error(
-                f"Unexpected error getting process info for '{self.server.server_name}': {e_unexp}",
-                exc_info=True,
+            log_operation_error(
+                self.logger,
+                "Unexpected error getting process info for '%s': %s",
+                self.server.server_name,
+                e_unexp,
+                error=e_unexp,
             )
             return None
 

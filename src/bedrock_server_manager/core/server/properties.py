@@ -1,5 +1,6 @@
 """Bedrock properties component."""
 
+import logging
 from typing import TYPE_CHECKING, Any, Dict, Optional
 
 import aiofiles.ospath
@@ -22,14 +23,17 @@ class ServerProperties:
 
     def __init__(self, server: "BedrockServer") -> None:
         self.server = server
+        self.logger = logging.LoggerAdapter(
+            logging.getLogger(__name__), {"server_name": server.server_name}
+        )
 
     async def get_server_properties(self) -> Dict[str, str]:
         """Reads the `server.properties` file asynchronously and returns its contents."""
         server_properties_path = self.server.paths.server_properties_path
         if not await aiofiles.ospath.isfile(server_properties_path):
             raise AppFileNotFoundError(server_properties_path, "Server properties file")
-        self.server.logger.debug(
-            f"Server '{self.server.server_name}': Parsing {server_properties_path} asynchronously"
+        self.logger.debug(
+            "Server '%s': Parsing %s", self.server.server_name, server_properties_path
         )
         properties: Dict[str, str] = {}
         try:
@@ -42,8 +46,10 @@ class ServerProperties:
                 if len(parts) == 2 and parts[0].strip():
                     properties[parts[0].strip()] = parts[1].strip()
                 else:
-                    self.server.logger.warning(
-                        f'''Skipping malformed line {line_num} in '{server_properties_path}': "{line}"'''
+                    self.logger.warning(
+                        "Skipping malformed property at line %s in '%s'.",
+                        line_num,
+                        server_properties_path,
                     )
         except OSError as e:
             raise ConfigParseError(
@@ -68,8 +74,10 @@ class ServerProperties:
                 raise AppFileNotFoundError(
                     server_properties_path, "Server properties file"
                 )
-            self.server.logger.debug(
-                f"Server '{self.server.server_name}': Setting property '{property_key}' to '{str_value}' in {server_properties_path} asynchronously"
+            self.logger.debug(
+                "Updating property '%s' for server '%s'.",
+                property_key,
+                self.server.server_name,
             )
             try:
                 lines = await load_lines(server_properties_path)
@@ -101,8 +109,10 @@ class ServerProperties:
                 lock = self.server.get_file_lock(server_properties_path)
                 async with lock:
                     await save_lines(output_lines, server_properties_path)
-                self.server.logger.info(
-                    f"Successfully set property '{property_key}' for '{self.server.server_name}'."
+                self.logger.info(
+                    "Successfully set property '%s' for '%s'.",
+                    property_key,
+                    self.server.server_name,
                 )
             except OSError as e:
                 raise FileOperationError(
@@ -114,8 +124,9 @@ class ServerProperties:
     ) -> Optional[Any]:
         """Reads a specific property asynchronously."""
         if not isinstance(property_key, str) or not property_key:
-            self.server.logger.warning(
-                f"get_server_property called with invalid key: {property_key}. Returning default."
+            self.logger.warning(
+                "get_server_property called with invalid key: %s. Returning default.",
+                property_key,
             )
             return default
         try:

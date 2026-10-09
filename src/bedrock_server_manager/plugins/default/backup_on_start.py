@@ -7,6 +7,8 @@ from typing import Any
 
 from bedrock_server_manager import PluginBase, app_event
 
+from ...logging import log_operation_error
+
 
 class AutoBackupOnStart(PluginBase):
     """
@@ -23,7 +25,7 @@ class AutoBackupOnStart(PluginBase):
     @app_event("on_load")
     async def plugin_loaded(self):
         """Logs a message when the plugin is loaded."""
-        self.logger.info(
+        self.logger.debug(
             "Plugin loaded. Will perform a full backup before any server starts."
         )
 
@@ -33,14 +35,14 @@ class AutoBackupOnStart(PluginBase):
         Triggers a full backup of the server before it starts.
         """
         if not await self.get_plugin_setting("enable_backup_on_start", default=True):
-            self.logger.info("Backup on start is disabled in plugin settings.")
+            self.logger.debug("Backup on start is disabled in plugin settings.")
             return
 
         server_name = kwargs.get("server_name")
         if not server_name:
             return
 
-        self.logger.info(f"Performing pre-start backup for server '{server_name}'...")
+        self.logger.info("Performing pre-start backup for server '%s'...", server_name)
 
         try:
             # The server is guaranteed to be offline at this point, so it is safe
@@ -52,19 +54,22 @@ class AutoBackupOnStart(PluginBase):
 
             if result.status == "success":
                 self.logger.info(
-                    f"Pre-start backup for '{server_name}' completed successfully."
+                    "Pre-start backup for '%s' completed successfully.", server_name
                 )
             else:
                 # The backup operation itself reported an error (e.g., file permissions).
                 error_message = result.message
                 self.logger.warning(
-                    f"Pre-start backup for '{server_name}' failed: {error_message}"
+                    "Pre-start backup for '%s' failed: %s", server_name, error_message
                 )
 
         except Exception as e:
             # A more serious error where the API call itself failed.
             # This ensures the plugin does not crash the main application.
-            self.logger.error(
-                f"An unexpected error occurred during pre-start backup for '{server_name}': {e}",
-                exc_info=True,
+            log_operation_error(
+                self.logger,
+                "An unexpected error occurred during pre-start backup for '%s': %s",
+                server_name,
+                e,
+                error=e,
             )

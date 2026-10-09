@@ -32,6 +32,7 @@ from ..error import (
     MissingArgumentError,
     ServerError,
 )
+from ..logging import log_operation_error
 from ..plugins.api_bridge import api_method
 from ..plugins.api_contract import validate_contract
 from ..plugins.event_trigger import trigger_event
@@ -82,21 +83,29 @@ async def get_server_setting(
         raise InvalidServerNameError("Server name cannot be empty.")
     if not key:
         raise MissingArgumentError("A 'key' must be provided.")
-    logger.debug(f"API: Reading server setting for '{server_name}': Key='{key}'")
+    logger.debug("Reading server setting for '%s': Key='%s'", server_name, key)
     try:
         server = app_context.get_server(server_name)
         value = server.configuration.read(key)
         success_response: Dict[str, Any] = {"status": "success", "value": value}
         return GetServerSettingResponse.model_validate(success_response)
     except BSMError as e:
-        logger.error(
-            f"API: Error reading setting '{key}' for server '{server_name}': {e}"
+        log_operation_error(
+            logger,
+            "Error reading setting '%s' for server '%s': %s",
+            key,
+            server_name,
+            e,
+            error=e,
         )
         raise
     except Exception as e:
-        logger.error(
-            f"API: Unexpected error reading setting for '{server_name}': {e}",
-            exc_info=True,
+        log_operation_error(
+            logger,
+            "Unexpected error reading setting for '%s': %s",
+            server_name,
+            e,
+            error=e,
         )
         raise
 
@@ -122,9 +131,7 @@ async def set_server_setting(
         raise InvalidServerNameError("Server name cannot be empty.")
     if not key:
         raise MissingArgumentError("A 'key' must be provided.")
-    logger.info(
-        f"API: Writing server setting for '{server_name}': Key='{key}', Value='{value}'"
-    )
+    logger.debug("Updating setting '%s' for server '%s'.", key, server_name)
     try:
         server = app_context.get_server(server_name)
         await server.configuration.update(key, value)
@@ -132,12 +139,22 @@ async def set_server_setting(
             message=f"Setting '{key}' updated for server '{server_name}'."
         )
     except BSMError as e:
-        logger.error(f"API: Error setting '{key}' for server '{server_name}': {e}")
+        log_operation_error(
+            logger,
+            "Error setting '%s' for server '%s': %s",
+            key,
+            server_name,
+            e,
+            error=e,
+        )
         raise
     except Exception as e:
-        logger.error(
-            f"API: Unexpected error setting value for '{server_name}': {e}",
-            exc_info=True,
+        log_operation_error(
+            logger,
+            "Unexpected error setting value for '%s': %s",
+            server_name,
+            e,
+            error=e,
         )
         raise
 
@@ -158,7 +175,7 @@ async def set_server_custom_value(
         raise InvalidServerNameError("Server name cannot be empty.")
     if not key:
         raise MissingArgumentError("A 'key' must be provided.")
-    logger.info(f"API (Plugin): Writing custom value for '{server_name}': Key='{key}'")
+    logger.debug("Writing custom value for '%s': Key='%s'", server_name, key)
     try:
         server = app_context.get_server(server_name)
         await server.set_custom_config_value(key, value)
@@ -166,14 +183,17 @@ async def set_server_custom_value(
             message=f"Custom value '{key}' updated for server '{server_name}'."
         )
     except BSMError as e:
-        logger.error(
-            f"API (Plugin): Error setting custom value for '{server_name}': {e}"
+        log_operation_error(
+            logger, "Error setting custom value for '%s': %s", server_name, e, error=e
         )
         raise
     except Exception as e:
-        logger.error(
-            f"API (Plugin): Unexpected error setting custom value for '{server_name}': {e}",
-            exc_info=True,
+        log_operation_error(
+            logger,
+            "Unexpected error setting custom value for '%s': %s",
+            server_name,
+            e,
+            error=e,
         )
         raise
 
@@ -190,7 +210,7 @@ async def get_all_server_settings(
     server_name = request.server_name
     if not server_name:
         raise InvalidServerNameError("Server name cannot be empty.")
-    logger.debug(f"API: Reading all settings for server '{server_name}'.")
+    logger.debug("Reading all settings for server '%s'.", server_name)
     try:
         server = app_context.get_server(server_name)
         all_settings = server.configuration.as_settings()
@@ -200,12 +220,21 @@ async def get_all_server_settings(
         }
         return GetAllServerSettingsResponse.model_validate(success_response)
     except BSMError as e:
-        logger.error(f"API: Error reading all settings for server '{server_name}': {e}")
+        log_operation_error(
+            logger,
+            "Error reading all settings for server '%s': %s",
+            server_name,
+            e,
+            error=e,
+        )
         raise
     except Exception as e:
-        logger.error(
-            f"API: Unexpected error reading all settings for '{server_name}': {e}",
-            exc_info=True,
+        log_operation_error(
+            logger,
+            "Unexpected error reading all settings for '%s': %s",
+            server_name,
+            e,
+            error=e,
         )
         raise
 
@@ -220,7 +249,7 @@ async def get_server_summary(
     Invalid requests fail validation before side effects; operation failures raise application exceptions.
     """
     server_name = request.server_name
-    logger.debug(f"API: Requesting summary info for server '{server_name}'.")
+    logger.debug("Requesting summary info for server '%s'.", server_name)
     if not server_name:
         raise InvalidServerNameError("Server name cannot be empty.")
     try:
@@ -232,9 +261,12 @@ async def get_server_summary(
             {"status": "success", "summary": summary.model_dump(mode="json")}
         )
     except Exception as e:
-        logger.error(
-            f"API: Unexpected error getting summary for server '{server_name}': {e}",
-            exc_info=True,
+        log_operation_error(
+            logger,
+            "Unexpected error getting summary for server '%s': %s",
+            server_name,
+            e,
+            error=e,
         )
         raise
 
@@ -261,7 +293,7 @@ async def start_server(
 
         await server.start()
         await app_context.bedrock_process_manager.add_server(server)
-        logger.info("API: Start for server '%s' completed.", server_name)
+        logger.debug("Start for server '%s' completed.", server_name)
         return StartServerResponse(
             server_name=server_name,
             outcome="started",
@@ -299,7 +331,7 @@ async def stop_server(
             await server.stop()
             stopped = True
             await app_context.bedrock_process_manager.remove_server(server.server_name)
-            logger.info("API: Server '%s' stopped successfully.", server_name)
+            logger.debug("Server '%s' stopped successfully.", server_name)
             return StopServerResponse(
                 server_name=server_name,
                 outcome="stopped",
@@ -335,9 +367,7 @@ async def restart_server(
                     await server.send_command("say Restarting server...")
                 except BSMError as error:
                     logger.warning(
-                        "API: Failed to send restart warning to '%s': %s",
-                        server_name,
-                        error,
+                        "Failed to send restart warning to '%s': %s", server_name, error
                     )
             await stop_server(
                 StopServerRequest(server_name=server_name), app_context=app_context
@@ -378,9 +408,7 @@ async def send_command(
     if not command or not command.strip():
         raise MissingArgumentError("Command cannot be empty.")
     command_clean = command.strip()
-    logger.info(
-        f"API: Attempting to send command to server '{server_name}': '{command_clean}'"
-    )
+    logger.debug("Sending command to server '%s'.", server_name)
     try:
         blacklist = API_COMMAND_BLACKLIST or []
         command_check = command_clean.lower().lstrip("/")
@@ -388,31 +416,32 @@ async def send_command(
             if isinstance(blocked_cmd_prefix, str) and command_check.startswith(
                 blocked_cmd_prefix.lower()
             ):
-                error_msg = f"Command '{command_clean}' is blocked by configuration."
-                logger.warning(
-                    f"API: Blocked command attempt for '{server_name}': {error_msg}"
-                )
+                error_msg = "Command is blocked by configuration."
                 raise BlockedCommandError(error_msg)
         server = app_context.get_server(server_name)
         await server.send_command(command_clean)
-        logger.info(
-            f"API: Command '{command_clean}' sent successfully to server '{server_name}'."
-        )
+        logger.debug("Command delivered to server '%s'.", server_name)
         return SendCommandResponse.model_validate(
             {
                 "status": "success",
                 "message": f"Command '{command_clean}' sent successfully.",
             }
         )
+    except BlockedCommandError:
+        logger.warning("Blocked command attempt for server '%s'.", server_name)
+        raise
     except BSMError as e:
-        logger.error(
-            f"API: Failed to send command to server '{server_name}': {e}", exc_info=True
+        log_operation_error(
+            logger, "Failed to send command to server '%s': %s", server_name, e, error=e
         )
         raise
     except Exception as e:
-        logger.error(
-            f"API: Unexpected error sending command to '{server_name}': {e}",
-            exc_info=True,
+        log_operation_error(
+            logger,
+            "Unexpected error sending command to '%s': %s",
+            server_name,
+            e,
+            error=e,
         )
         raise ServerError(f"Unexpected error sending command: {e}") from e
 
@@ -440,7 +469,8 @@ async def delete_server_data(
         await server.operation_lock.acquire(timeout=300)
     except TimeoutError:
         logger.warning(
-            f"An operation for '{server_name}' is already in progress. Skipping server deletion."
+            "An operation for '%s' is already in progress. Skipping server deletion.",
+            server_name,
         )
         return DeleteServerDataResponse.model_validate(
             {
@@ -449,23 +479,23 @@ async def delete_server_data(
             }
         )
     try:
-        logger.warning(
-            f"API: !!! Initiating deletion of ALL data for server '{server_name}'. Stop if running: {stop_if_running} !!!"
+        logger.debug(
+            "Deleting all data for server '%s' (stop_if_running=%s).",
+            server_name,
+            stop_if_running,
         )
         if stop_if_running and await server.is_running():
-            logger.info(
-                f"API: Server '{server_name}' is running. Stopping before deletion..."
+            logger.debug(
+                "Server '%s' is running. Stopping before deletion...", server_name
             )
             await stop_server(
                 StopServerRequest(server_name=server_name), app_context=app_context
             )
-            logger.info(f"API: Server '{server_name}' stopped.")
-        logger.debug(
-            f"API: Proceeding with deletion of data for server '{server_name}'..."
-        )
+            logger.debug("Server '%s' stopped.", server_name)
+        logger.debug("Proceeding with deletion of data for server '%s'...", server_name)
         await delete_all_data(server)
         await app_context.remove_server(server_name)
-        logger.info(f"API: Successfully deleted all data for server '{server_name}'.")
+        logger.debug("Successfully deleted all data for server '%s'.", server_name)
         return DeleteServerDataResponse.model_validate(
             {
                 "status": "success",
@@ -473,14 +503,17 @@ async def delete_server_data(
             }
         )
     except BSMError as e:
-        logger.error(
-            f"API: Failed to delete server data for '{server_name}': {e}", exc_info=True
+        log_operation_error(
+            logger, "Failed to delete server data for '%s': %s", server_name, e, error=e
         )
         raise
     except Exception as e:
-        logger.error(
-            f"API: Unexpected error deleting server data for '{server_name}': {e}",
-            exc_info=True,
+        log_operation_error(
+            logger,
+            "Unexpected error deleting server data for '%s': %s",
+            server_name,
+            e,
+            error=e,
         )
         raise
     finally:
@@ -506,8 +539,10 @@ async def set_server_status(
     server = app_context.get_server(server_name)
     previous_status = await server.get_status_from_config()
     await server.configuration.update("server_info.status", status)
-    server.logger.info(
-        f"Status in persisted configuration for '{server.server_name}' set to '{status}'."
+    server.logger.debug(
+        "Status in persisted configuration for '%s' set to '%s'.",
+        server.server_name,
+        status,
     )
     return SetServerStatusResponse.model_validate(
         {

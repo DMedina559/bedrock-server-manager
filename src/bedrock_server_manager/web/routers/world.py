@@ -23,6 +23,7 @@ from ...error import (
     InvalidServerNameError,
     UserInputError,
 )
+from ...logging import log_operation_error
 from ..deps import (
     get_admin_user,
     get_app_context,
@@ -55,7 +56,7 @@ async def get_worlds_list(
     Retrieves a list of available .mcworld template files.
     """
     identity = current_user.username
-    logger.info(f"API: List available worlds request by user '{identity}'.")
+    logger.debug("List available worlds request by user '%s'.", identity)
     try:
         api_result = await app_api.list_available_worlds(
             request=ListAvailableWorldsRequest(), app_context=app_context
@@ -70,8 +71,8 @@ async def get_worlds_list(
     except ValidationError:
         raise
     except Exception as e:
-        logger.error(
-            f"API: Unexpected critical error listing worlds: {e}", exc_info=True
+        log_operation_error(
+            logger, "Unexpected critical error listing worlds: %s", e, error=e
         )
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
@@ -98,7 +99,10 @@ async def post_world_install(
     identity = current_user.username
     selected_filename = payload.filename
     logger.info(
-        f"API: World install of '{selected_filename}' for '{server_name}' by user '{identity}'."
+        "World install of '%s' for '%s' by user '%s'.",
+        selected_filename,
+        server_name,
+        identity,
     )
     from ...utils.server import validate_server
 
@@ -120,7 +124,9 @@ async def post_world_install(
             os.path.abspath(content_base_dir) + os.sep
         ):
             logger.error(
-                f"API Install World '{server_name}': Security violation - Invalid path '{selected_filename}'."
+                "API Install World '%s': Security violation - Invalid path '%s'.",
+                server_name,
+                selected_filename,
             )
             raise HTTPException(
                 status_code=status.HTTP_400_BAD_REQUEST,
@@ -129,7 +135,10 @@ async def post_world_install(
 
         if not await aiofiles.ospath.isfile(full_world_file_path):
             logger.warning(
-                f"API Install World '{server_name}': World file '{selected_filename}' not found at '{full_world_file_path}'."
+                "API Install World '%s': World file '%s' not found at '%s'.",
+                server_name,
+                selected_filename,
+                full_world_file_path,
             )
             raise HTTPException(
                 status_code=status.HTTP_404_NOT_FOUND,
@@ -157,8 +166,11 @@ async def post_world_install(
     except AppFileNotFoundError:
         raise
     except BSMError as e:
-        logger.error(
-            f"API Install World '{server_name}': Pre-check BSMError: {e}", exc_info=True
+        logger.debug(
+            "API Install World '%s': Pre-check BSMError: %s",
+            server_name,
+            e,
+            exc_info=True,
         )
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail=str(e)
@@ -168,8 +180,12 @@ async def post_world_install(
     except ValidationError:
         raise
     except Exception as e:
-        logger.error(
-            f"API Install World '{server_name}': Pre-check error: {e}", exc_info=True
+        log_operation_error(
+            logger,
+            "API Install World '%s': Pre-check error: %s",
+            server_name,
+            e,
+            error=e,
         )
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
@@ -193,9 +209,7 @@ async def post_world_export(
     Initiates a background task to export the active world of a server to a .mcworld file.
     """
     identity = current_user.username
-    logger.info(
-        f"API: World export requested for '{server_name}' by user '{identity}'."
-    )
+    logger.info("World export requested for '%s' by user '%s'.", server_name, identity)
     from ...utils.server import validate_server
 
     try:
@@ -226,8 +240,12 @@ async def post_world_export(
     except ValidationError:
         raise
     except Exception as e:
-        logger.error(
-            f"API Export World '{server_name}': Pre-check error: {e}", exc_info=True
+        log_operation_error(
+            logger,
+            "API Export World '%s': Pre-check error: %s",
+            server_name,
+            e,
+            error=e,
         )
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
@@ -251,7 +269,7 @@ async def delete_world_reset(
     Initiates a background task to reset a server's world.
     """
     identity = current_user.username
-    logger.info(f"API: World reset requested for '{server_name}' by user '{identity}'.")
+    logger.info("World reset requested for '%s' by user '%s'.", server_name, identity)
     from ...utils.server import validate_server
 
     try:
@@ -282,8 +300,8 @@ async def delete_world_reset(
     except ValidationError:
         raise
     except Exception as e:
-        logger.error(
-            f"API Reset World '{server_name}': Pre-check error: {e}", exc_info=True
+        log_operation_error(
+            logger, "API Reset World '%s': Pre-check error: %s", server_name, e, error=e
         )
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
@@ -301,7 +319,7 @@ async def get_world_icon(
     app_context: AppContext = Depends(get_app_context),
 ):
     """Serves the `world_icon.jpeg` for a server, or a default icon if not found."""
-    logger.debug(f"Request to serve world icon for server '{server_name}'.")
+    logger.debug("Request to serve world icon for server '%s'.", server_name)
     try:
         server = app_context.get_server(server_name)
         icon_path = await server.worlds.get_world_icon_filesystem_path()
@@ -313,12 +331,14 @@ async def get_world_icon(
             and icon_path
             and await aiofiles.ospath.isfile(icon_path)
         ):
-            logger.debug(f"Serving world icon from path: {icon_path}")
+            logger.debug("Serving world icon from path: %s", icon_path)
             return FileResponse(icon_path, media_type="image/jpeg")
         else:
 
-            logger.info(
-                f"World icon for '{server_name}' not found at '{icon_path}'. Serving default."
+            logger.debug(
+                "World icon for '%s' not found at '%s'. Serving default.",
+                server_name,
+                icon_path,
             )
             raise AppFileNotFoundError(str(icon_path), "World icon")
 
@@ -328,22 +348,28 @@ async def get_world_icon(
         BSMError,
     ) as e:
         if not isinstance(e, AppFileNotFoundError):
-            logger.error(
-                f"Error preparing to serve world icon for '{server_name}': {e}",
-                exc_info=True,
+            log_operation_error(
+                logger,
+                "Error preparing to serve world icon for '%s': %s",
+                server_name,
+                e,
+                error=e,
             )
 
         default_icon_path = os.path.join(STATIC_DIR, "image", "icon", "favicon.ico")
         if os.path.isfile(default_icon_path):
             logger.debug(
-                f"Serving default world icon (favicon.ico) from: {default_icon_path}"
+                "Serving default world icon (favicon.ico) from: %s", default_icon_path
             )
             return FileResponse(
                 default_icon_path, media_type="image/vnd.microsoft.icon"
             )
         else:
-            logger.error(
-                f"Default world icon (favicon.ico) not found at {default_icon_path}"
+            log_operation_error(
+                logger,
+                "Default world icon (favicon.ico) not found at %s",
+                default_icon_path,
+                error=e,
             )
             raise HTTPException(
                 status_code=status.HTTP_404_NOT_FOUND,
@@ -355,9 +381,12 @@ async def get_world_icon(
     except ValidationError:
         raise
     except Exception as e:
-        logger.error(
-            f"Unexpected error serving world icon for '{server_name}': {e}",
-            exc_info=True,
+        log_operation_error(
+            logger,
+            "Unexpected error serving world icon for '%s': %s",
+            server_name,
+            e,
+            error=e,
         )
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,

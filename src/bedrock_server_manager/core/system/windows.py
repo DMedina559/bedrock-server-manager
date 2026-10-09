@@ -176,7 +176,7 @@ def create_windows_service(
             "service_name, display_name, description, and command are required."
         )
 
-    logger.info(f"Attempting to create/update Windows service '{service_name}'...")
+    logger.debug("Attempting to create/update Windows service '%s'...", service_name)
 
     scm_handle = None
     service_handle = None
@@ -188,7 +188,7 @@ def create_windows_service(
         service_exists = check_service_exists(service_name)
 
         if not service_exists:
-            logger.info(f"Service '{service_name}' does not exist. Creating...")
+            logger.debug("Service '%s' does not exist. Creating...", service_name)
             # When creating, we can rely on defaults for the service account (LocalSystem)
             service_handle = win32service.CreateService(
                 scm_handle,
@@ -205,9 +205,9 @@ def create_windows_service(
                 f".\\{username}" if username else None,
                 password,
             )
-            logger.info(f"Service '{service_name}' created successfully.")
+            logger.info("Service '%s' created successfully.", service_name)
         else:
-            logger.info(f"Service '{service_name}' already exists. Updating...")
+            logger.debug("Service '%s' already exists. Updating...", service_name)
             service_handle = win32service.OpenService(
                 scm_handle, service_name, win32service.SERVICE_ALL_ACCESS
             )
@@ -225,13 +225,13 @@ def create_windows_service(
                 password,  # Password
                 display_name,  # DisplayName
             )
-            logger.info(f"Service '{service_name}' command and display name updated.")
+            logger.debug("Service '%s' command and display name updated.", service_name)
 
         # Set or update the service description (this part was already correct)
         win32service.ChangeServiceConfig2(
             service_handle, win32service.SERVICE_CONFIG_DESCRIPTION, description
         )
-        logger.info(f"Service '{service_name}' description updated.")
+        logger.debug("Service '%s' description updated.", service_name)
 
     except pywintypes.error as e:
         if e.winerror == 5:
@@ -276,7 +276,7 @@ def enable_windows_service(service_name: str) -> None:
     if not service_name:
         raise MissingArgumentError("Service name cannot be empty.")
 
-    logger.info(f"Enabling service '{service_name}' (setting to Automatic start)...")
+    logger.debug("Enabling service '%s' (setting to Automatic start)...", service_name)
     scm_handle = None
     service_handle = None
     try:
@@ -300,7 +300,7 @@ def enable_windows_service(service_name: str) -> None:
             None,
             None,
         )
-        logger.info(f"Service '{service_name}' enabled successfully.")
+        logger.info("Service '%s' enabled successfully.", service_name)
     except pywintypes.error as e:
         if e.winerror == 5:
             raise PermissionsError(
@@ -345,7 +345,7 @@ def disable_windows_service(service_name: str) -> None:
     if not service_name:
         raise MissingArgumentError("Service name cannot be empty.")
 
-    logger.info(f"Disabling service '{service_name}'...")
+    logger.debug("Disabling service '%s'...", service_name)
     scm_handle = None
     service_handle = None
     try:
@@ -368,7 +368,7 @@ def disable_windows_service(service_name: str) -> None:
             None,
             None,
         )
-        logger.info(f"Service '{service_name}' disabled successfully.")
+        logger.info("Service '%s' disabled successfully.", service_name)
     except pywintypes.error as e:
         if e.winerror == 5:
             raise PermissionsError(
@@ -423,7 +423,9 @@ def delete_windows_service(service_name: str) -> None:  # noqa: C901
     if not service_name:
         raise MissingArgumentError("Service name cannot be empty.")
 
-    logger.info(f"Attempting to delete service '{service_name}' and perform cleanup...")
+    logger.debug(
+        "Attempting to delete service '%s' and perform cleanup...", service_name
+    )
 
     # --- Step 1: Unload Performance Counters (Optional Cleanup) ---
     if PYWIN32_HAS_OPTIONAL_MODULES:
@@ -432,16 +434,18 @@ def delete_windows_service(service_name: str) -> None:  # noqa: C901
             # which might be 'python.exe <service_name>' as shown in the reference.
             # Adjust if your service uses a different registration name.
             perfmon.UnloadPerfCounterTextStrings("python.exe " + service_name)
-            logger.info(f"Unloaded performance counter strings for '{service_name}'.")
+            logger.debug("Unloaded performance counter strings for '%s'.", service_name)
         except (AttributeError, pywintypes.error, Exception) as e:
             # AttributeError if perfmon is missing expected function, pywintypes.error for Win32 errors
-            logger.warning(f"Failed to unload perf counters for '{service_name}': {e}")
+            logger.warning(
+                "Failed to unload perf counters for '%s': %s", service_name, e
+            )
         except ImportError:
             # This block might be redundant if PYWIN32_HAS_OPTIONAL_MODULES handles it,
             # but good for safety if perfmon itself is missing specific components.
             logger.warning("perfmon module not fully available for counter cleanup.")
     else:
-        logger.info(
+        logger.debug(
             "Skipping performance counter cleanup (optional pywin32 modules not found)."
         )
 
@@ -459,7 +463,7 @@ def delete_windows_service(service_name: str) -> None:  # noqa: C901
             scm_handle, service_name, win32service.SERVICE_ALL_ACCESS
         )
         win32service.DeleteService(service_handle)
-        logger.info(f"Service '{service_name}' deleted successfully.")
+        logger.info("Service '%s' deleted successfully.", service_name)
     except pywintypes.error as e:
         if e.winerror == 5:  # Access is denied
             raise PermissionsError(
@@ -472,7 +476,8 @@ def delete_windows_service(service_name: str) -> None:  # noqa: C901
             return  # Exit early if service doesn't exist, no more cleanup needed for it
         elif e.winerror == 1072:  # The specified service has been marked for deletion.
             logger.info(
-                f"Service '{service_name}' was already marked for deletion. Continuing with cleanup."
+                "Service '%s' was already marked for deletion. Continuing with cleanup.",
+                service_name,
             )
             # Do not return here, continue to cleanup other aspects
         else:
@@ -491,11 +496,13 @@ def delete_windows_service(service_name: str) -> None:  # noqa: C901
     if PYWIN32_HAS_OPTIONAL_MODULES:
         try:
             win32evtlogutil.RemoveSourceFromRegistry(service_name)
-            logger.info(f"Removed event log source for '{service_name}' from registry.")
+            logger.debug(
+                "Removed event log source for '%s' from registry.", service_name
+            )
         except (AttributeError, pywintypes.error, Exception) as e:
             # AttributeError if win32evtlogutil is missing expected function, pywintypes.error for Win32 errors
             logger.warning(
-                f"Failed to remove event log source for '{service_name}': {e}"
+                "Failed to remove event log source for '%s': %s", service_name, e
             )
         except ImportError:
             # Safety check if win32evtlogutil itself is missing specific components
@@ -503,6 +510,6 @@ def delete_windows_service(service_name: str) -> None:  # noqa: C901
                 "win32evtlogutil module not fully available for event log cleanup."
             )
     else:
-        logger.info(
+        logger.debug(
             "Skipping event log source cleanup (optional pywin32 modules not found)."
         )

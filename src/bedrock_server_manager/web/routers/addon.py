@@ -26,6 +26,7 @@ from bedrock_server_manager.api.models import (
 from ...api import addon as addon_api
 from ...context import AppContext
 from ...error import AppFileNotFoundError, BSMError, UserInputError
+from ...logging import log_operation_error
 from ..deps import (
     get_admin_user,
     get_app_context,
@@ -62,7 +63,7 @@ async def get_addons(
     Retrieves a list of available .mcaddon or .mcpack template files.
     """
     identity = current_user.username
-    logger.info(f"API: List available addons request by user '{identity}'.")
+    logger.debug("List available addons request by user '%s'.", identity)
     try:
         api_result = await addon_api.list_available_addons(
             request=ListAvailableAddonsRequest(), app_context=app_context
@@ -75,8 +76,8 @@ async def get_addons(
     except ValidationError:
         raise
     except Exception as e:
-        logger.error(
-            f"API: Unexpected critical error listing addons: {e}", exc_info=True
+        log_operation_error(
+            logger, "Unexpected critical error listing addons: %s", e, error=e
         )
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
@@ -98,8 +99,8 @@ async def get_server_addons(
     Retrieves a list of addons installed on a server's active world.
     """
     identity = current_user.username
-    logger.info(
-        f"API: List world addons for '{server_name}' requested by user '{identity}'."
+    logger.debug(
+        "List world addons for '%s' requested by user '%s'.", server_name, identity
     )
     try:
         result = await addon_api.list_installed_addons(
@@ -112,8 +113,8 @@ async def get_server_addons(
     except ValidationError:
         raise
     except Exception as e:
-        logger.error(
-            f"API List Server Addons '{server_name}': Error: {e}", exc_info=True
+        log_operation_error(
+            logger, "API List Server Addons '%s': Error: %s", server_name, e, error=e
         )
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
@@ -137,9 +138,7 @@ async def post_enable_addon(
     Initiates a background task to enable an addon on a server.
     """
     identity = current_user.username
-    logger.info(
-        f"API: Enable addon for '{server_name}' requested by user '{identity}'."
-    )
+    logger.info("Enable addon for '%s' requested by user '%s'.", server_name, identity)
     try:
         task_id = await app_context.task_manager.run_task(
             addon_api.enable_addon,
@@ -161,8 +160,8 @@ async def post_enable_addon(
     except ValidationError:
         raise
     except Exception as e:
-        logger.error(
-            f"API Enable Server Addon '{server_name}': Error: {e}", exc_info=True
+        log_operation_error(
+            logger, "API Enable Server Addon '%s': Error: %s", server_name, e, error=e
         )
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
@@ -186,9 +185,7 @@ async def post_disable_addon(
     Initiates a background task to disable an addon on a server.
     """
     identity = current_user.username
-    logger.info(
-        f"API: Disable addon for '{server_name}' requested by user '{identity}'."
-    )
+    logger.info("Disable addon for '%s' requested by user '%s'.", server_name, identity)
     try:
         task_id = await app_context.task_manager.run_task(
             addon_api.disable_addon,
@@ -210,8 +207,8 @@ async def post_disable_addon(
     except ValidationError:
         raise
     except Exception as e:
-        logger.error(
-            f"API Disable Server Addon '{server_name}': Error: {e}", exc_info=True
+        log_operation_error(
+            logger, "API Disable Server Addon '%s': Error: %s", server_name, e, error=e
         )
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
@@ -236,7 +233,7 @@ async def post_update_subpack(
     """
     identity = current_user.username
     logger.info(
-        f"API: Update addon subpack for '{server_name}' requested by user '{identity}'."
+        "Update addon subpack for '%s' requested by user '%s'.", server_name, identity
     )
     try:
         subpack_name = payload.subpack_name
@@ -261,9 +258,12 @@ async def post_update_subpack(
     except ValidationError:
         raise
     except Exception as e:
-        logger.error(
-            f"API Update Server Addon Subpack '{server_name}': Error: {e}",
-            exc_info=True,
+        log_operation_error(
+            logger,
+            "API Update Server Addon Subpack '%s': Error: %s",
+            server_name,
+            e,
+            error=e,
         )
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
@@ -288,7 +288,7 @@ async def delete_uninstall_addon(
     """
     identity = current_user.username
     logger.info(
-        f"API: Uninstall addon for '{server_name}' requested by user '{identity}'."
+        "Uninstall addon for '%s' requested by user '%s'.", server_name, identity
     )
     try:
         task_id = await app_context.task_manager.run_task(
@@ -311,8 +311,12 @@ async def delete_uninstall_addon(
     except ValidationError:
         raise
     except Exception as e:
-        logger.error(
-            f"API Uninstall Server Addon '{server_name}': Error: {e}", exc_info=True
+        log_operation_error(
+            logger,
+            "API Uninstall Server Addon '%s': Error: %s",
+            server_name,
+            e,
+            error=e,
         )
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
@@ -337,7 +341,7 @@ async def post_reorder_addons(
     """
     identity = current_user.username
     logger.info(
-        f"API: Reorder addons for '{server_name}' requested by user '{identity}'."
+        "Reorder addons for '%s' requested by user '%s'.", server_name, identity
     )
     try:
         task_id = await app_context.task_manager.run_task(
@@ -360,8 +364,8 @@ async def post_reorder_addons(
     except ValidationError:
         raise
     except Exception as e:
-        logger.error(
-            f"API Reorder Server Addons '{server_name}': Error: {e}", exc_info=True
+        log_operation_error(
+            logger, "API Reorder Server Addons '%s': Error: %s", server_name, e, error=e
         )
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
@@ -387,7 +391,10 @@ async def post_install_addon(
     identity = current_user.username
     selected_filename = payload.filename
     logger.info(
-        f"API: Addon install of '{selected_filename}' for '{server_name}' by user '{identity}'."
+        "Addon install of '%s' for '%s' by user '%s'.",
+        selected_filename,
+        server_name,
+        identity,
     )
     from ...utils.server import validate_server
 
@@ -409,7 +416,9 @@ async def post_install_addon(
             os.path.abspath(content_base_dir) + os.sep
         ):
             logger.error(
-                f"API Install Addon '{server_name}': Security violation - Invalid path '{selected_filename}'."
+                "API Install Addon '%s': Security violation - Invalid path '%s'.",
+                server_name,
+                selected_filename,
             )
             raise HTTPException(
                 status_code=status.HTTP_400_BAD_REQUEST,
@@ -418,7 +427,10 @@ async def post_install_addon(
 
         if not await aiofiles.ospath.isfile(full_addon_file_path):
             logger.warning(
-                f"API Install Addon '{server_name}': Addon file '{selected_filename}' not found at '{full_addon_file_path}'."
+                "API Install Addon '%s': Addon file '%s' not found at '%s'.",
+                server_name,
+                selected_filename,
+                full_addon_file_path,
             )
             raise HTTPException(
                 status_code=status.HTTP_404_NOT_FOUND,
@@ -446,8 +458,11 @@ async def post_install_addon(
     except AppFileNotFoundError:
         raise
     except BSMError as e:
-        logger.error(
-            f"API Install Addon '{server_name}': Pre-check BSMError: {e}", exc_info=True
+        logger.debug(
+            "API Install Addon '%s': Pre-check BSMError: %s",
+            server_name,
+            e,
+            exc_info=True,
         )
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail=str(e)
@@ -455,8 +470,12 @@ async def post_install_addon(
     except ValidationError:
         raise
     except Exception as e:
-        logger.error(
-            f"API Install Addon '{server_name}': Pre-check error: {e}", exc_info=True
+        log_operation_error(
+            logger,
+            "API Install Addon '%s': Pre-check error: %s",
+            server_name,
+            e,
+            error=e,
         )
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
@@ -477,7 +496,7 @@ async def get_server_addon_icon(
     """
     Serves the pack_icon.png image file for a specified addon, or a default icon if not found.
     """
-    logger.debug(f"API: Get addon icon for '{server_name}' requested.")
+    logger.debug("Get addon icon for '%s' requested.", server_name)
 
     try:
         result = await addon_api.list_installed_addons(
@@ -504,8 +523,8 @@ async def get_server_addon_icon(
         if icon_path and await aiofiles.ospath.exists(icon_path):
             return FileResponse(icon_path, media_type="image/png")
 
-        logger.info(
-            f"Addon icon not found for uuid '{uuid}'. Serving default world icon."
+        logger.debug(
+            "Addon icon not found for uuid '%s'. Serving default world icon.", uuid
         )
         raise AppFileNotFoundError("Addon Icon not found", "Addon Icon")
 
@@ -524,8 +543,8 @@ async def get_server_addon_icon(
     except ValidationError:
         raise
     except Exception as e:
-        logger.error(
-            f"API Get Server Addon Icon '{server_name}': Error: {e}", exc_info=True
+        log_operation_error(
+            logger, "API Get Server Addon Icon '%s': Error: %s", server_name, e, error=e
         )
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,

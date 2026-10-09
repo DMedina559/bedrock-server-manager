@@ -21,7 +21,7 @@ class AutostartServers(PluginBase):
         """
         This event is called when the plugin is loaded by the manager.
         """
-        self.logger.info(
+        self.logger.debug(
             "Autostart Servers plugin loaded, checking for servers to start."
         )
 
@@ -44,7 +44,8 @@ class AutostartServers(PluginBase):
 
             if server_settings:
                 self.logger.info(
-                    f"Server '{server_name}' has autostart enabled, starting it now (background task)."
+                    "Server '%s' has autostart enabled, starting it now (background task).",
+                    server_name,
                 )
                 # Use the task manager to start the server in the background so app startup isn't blocked
                 # especially if an update is required.

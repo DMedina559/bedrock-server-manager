@@ -77,7 +77,7 @@ def create_cli_app():
         try:
             logger = setup_logging(force_reconfigure=True)
             log_separator(logger, app_name=app_name_title, app_version=__version__)
-            logger.info(f"Starting {app_name_title} v{__version__} (CLI context)...")
+            logger.info("Starting %s v%s (CLI context)...", app_name_title, __version__)
         except Exception as log_setup_e:
             # If logging setup fails, we still want to inform the user.
             print(
@@ -100,9 +100,9 @@ def create_cli_app():
             def shutdown_cli_app(app_context: AppContext):
                 """A cleanup function to be run on exit."""
 
-                logger.info("Running CLI app shutdown hooks...")
+                logger.debug("Running CLI app shutdown hooks...")
                 app_context.db.close()
-                logger.info("CLI app shutdown hooks complete.")
+                logger.debug("CLI app shutdown hooks complete.")
 
             atexit.register(shutdown_cli_app, app_context)
 
@@ -112,7 +112,8 @@ def create_cli_app():
 
         except Exception as setup_e:
             logger.critical(
-                f"An unrecoverable error occurred during CLI application startup: {setup_e}",
+                "An unrecoverable error occurred during CLI application startup: %s",
+                setup_e,
                 exc_info=True,
             )
             click.secho(f"CRITICAL STARTUP ERROR: {setup_e}", fg="red", bold=True)

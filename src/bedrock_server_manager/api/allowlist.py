@@ -2,6 +2,7 @@ import logging
 
 from ..context import AppContext
 from ..error import BSMError, FileOperationError, MissingArgumentError
+from ..logging import log_operation_error
 from ..plugins.api_bridge import api_method
 from ..plugins.event_trigger import trigger_event
 from .models.allowlist import (
@@ -37,7 +38,7 @@ async def add_to_allowlist(
     if not isinstance(new_players_data, list):
         raise BSMError("Invalid input: new_players_data must be a list.")
     logger.info(
-        f"API: Adding {len(new_players_data)} player(s) to allowlist for '{server_name}'."
+        "Adding %s player(s) to allowlist for '%s'.", len(new_players_data), server_name
     )
     try:
         server = app_context.get_server(server_name)
@@ -50,14 +51,17 @@ async def add_to_allowlist(
             }
         )
     except (FileOperationError, TypeError) as e:
-        logger.error(
-            f"API: Failed to update allowlist for '{server_name}': {e}", exc_info=True
+        log_operation_error(
+            logger, "Failed to update allowlist for '%s': %s", server_name, e, error=e
         )
         raise
     except Exception as e:
-        logger.error(
-            f"API: Unexpected error updating allowlist for '{server_name}': {e}",
-            exc_info=True,
+        log_operation_error(
+            logger,
+            "Unexpected error updating allowlist for '%s': %s",
+            server_name,
+            e,
+            error=e,
         )
         raise
 
@@ -81,14 +85,17 @@ async def get_allowlist(
             {"status": "success", "players": players}
         )
     except BSMError as e:
-        logger.error(
-            f"API: Failed to access allowlist for '{server_name}': {e}", exc_info=True
+        log_operation_error(
+            logger, "Failed to access allowlist for '%s': %s", server_name, e, error=e
         )
         raise
     except Exception as e:
-        logger.error(
-            f"API: Unexpected error reading allowlist for '{server_name}': {e}",
-            exc_info=True,
+        log_operation_error(
+            logger,
+            "Unexpected error reading allowlist for '%s': %s",
+            server_name,
+            e,
+            error=e,
         )
         raise
 
@@ -135,14 +142,20 @@ async def remove_from_allowlist(
             }
         )
     except BSMError as e:
-        logger.error(
-            f"API: Failed to remove players from allowlist for '{server_name}': {e}",
-            exc_info=True,
+        log_operation_error(
+            logger,
+            "Failed to remove players from allowlist for '%s': %s",
+            server_name,
+            e,
+            error=e,
         )
         raise
     except Exception as e:
-        logger.error(
-            f"API: Unexpected error removing players for '{server_name}': {e}",
-            exc_info=True,
+        log_operation_error(
+            logger,
+            "Unexpected error removing players for '%s': %s",
+            server_name,
+            e,
+            error=e,
         )
         raise

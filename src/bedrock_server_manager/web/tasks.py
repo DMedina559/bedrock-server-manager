@@ -9,6 +9,7 @@ from pydantic import BaseModel, ValidationError
 
 from ..api.models.tasks import TaskSnapshot
 from ..error import APICancelledError
+from ..logging import log_operation_error
 from ..plugins.api_contract import APIResponseValidationError
 from ..utils.threads import run_in_thread
 from .task_record import TaskRecord
@@ -61,7 +62,8 @@ class TaskManager:
                 loop = asyncio.get_running_loop()
             except RuntimeError:
                 logger.debug(
-                    f"Skipping task update notification for task {task_id}: No running event loop available."
+                    "Skipping task update notification for task %s: No running event loop available.",
+                    task_id,
                 )
                 return
 
@@ -117,7 +119,7 @@ class TaskManager:
                 result = future.result()
                 await self._update_task(task_id, "completed", "Task completed.", result)
             except Exception as e:
-                logger.error(f"Task {task_id} failed: {e}", exc_info=True)
+                log_operation_error(logger, "Task %s failed: %s", task_id, e, error=e)
                 from ..api.errors import error_response
 
                 error = error_response(e)
@@ -315,7 +317,7 @@ class TaskManager:
     async def shutdown(self):
         """Waits for all background tasks to complete asynchronously."""
         self.begin_shutdown()
-        logger.info(
+        logger.debug(
             "Task manager shutting down. Waiting for running tasks to complete."
         )
 
@@ -329,4 +331,4 @@ class TaskManager:
             await asyncio.gather(*updates, return_exceptions=True)
             self._background_tasks.difference_update(updates)
 
-        logger.info("All tasks have completed. Task manager shutdown finished.")
+        logger.debug("All tasks have completed. Task manager shutdown finished.")

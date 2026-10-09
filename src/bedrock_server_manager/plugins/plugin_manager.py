@@ -40,6 +40,7 @@ if TYPE_CHECKING:
 
 from ..config import GUARD_VARIABLE
 from ..config.const import _MISSING_PARAM_PLACEHOLDER, DEFAULT_ENABLED_PLUGINS
+from ..logging import log_operation_error
 from ..utils.general import ReentrantAsyncLock
 from ..utils.threads import run_in_thread
 from .api_bridge import create_app_api
@@ -75,7 +76,7 @@ class PluginManager:
         default_plugin_dir = Path(__file__).parent / "default"
 
         self.plugin_dirs: List[Path] = [user_plugin_dir, default_plugin_dir]
-        logger.debug(f"Plugin directories configured: {self.plugin_dirs}")
+        logger.debug("Plugin directories configured: %s", self.plugin_dirs)
 
         self._lifecycle_lock = ReentrantAsyncLock()
         self._shutdown_started = False
@@ -113,9 +114,15 @@ class PluginManager:
             try:
                 directory.mkdir(parents=True, exist_ok=True)
             except OSError as e:
-                logger.error(f"Failed to create plugin directory {directory}: {e}")
+                log_operation_error(
+                    logger,
+                    "Failed to create plugin directory %s: %s",
+                    directory,
+                    e,
+                    error=e,
+                )
 
-        logger.info("PluginManager initialized.")
+        logger.debug("PluginManager initialized.")
 
     async def _load_config(self) -> Dict[str, Dict[str, Any]]:
         """Loads plugin configurations asynchronously via AppState."""
@@ -153,7 +160,7 @@ class PluginManager:
             or "/" in plugin_name
             or "\\" in plugin_name
         ):
-            logger.warning(f"Invalid or unsafe plugin name requested: '{plugin_name}'")
+            logger.warning("Invalid or unsafe plugin name requested: '%s'", plugin_name)
             return None
 
         for p_dir in self.plugin_dirs:
@@ -227,9 +234,11 @@ class PluginManager:
                 ):
                     return obj
 
-            logger.warning(f"No PluginBase subclass found in '{path}'.")
+            logger.warning("No PluginBase subclass found in '%s'.", path)
         except Exception as e:
-            logger.error(f"Failed to load plugin file at '{path}': {e}", exc_info=True)
+            log_operation_error(
+                logger, "Failed to load plugin file at '%s': %s", path, e, error=e
+            )
             sys.modules.pop(full_module_name, None)
         return None
 
@@ -283,7 +292,8 @@ class PluginManager:
         """Registers a callback function to listen for a specific application event."""
         if not callable(callback):
             logger.error(
-                f"Plugin '{listening_plugin_name}' attempted to register a non-callable listener."
+                "Plugin '%s' attempted to register a non-callable listener.",
+                listening_plugin_name,
             )
             return
 
@@ -331,9 +341,13 @@ class PluginManager:
                     except Exception as e:
                         if event_name == "on_load":
                             raise
-                        logger.error(
-                            f"Error in plugin '{ident}' handling event '{event_name}': {e}",
-                            exc_info=True,
+                        log_operation_error(
+                            logger,
+                            "Error in plugin '%s' handling event '%s': %s",
+                            ident,
+                            event_name,
+                            e,
+                            error=e,
                         )
 
         # 2. Lifecycle fallback (supports on_load and on_unload without requiring explicit @app_event)
@@ -353,9 +367,13 @@ class PluginManager:
                 except Exception as e:
                     if event_name == "on_load":
                         raise
-                    logger.error(
-                        f"Error in plugin '{target_plugin}' during lifecycle method '{event_name}': {e}",
-                        exc_info=True,
+                    log_operation_error(
+                        logger,
+                        "Error in plugin '%s' during lifecycle method '%s': %s",
+                        target_plugin,
+                        event_name,
+                        e,
+                        error=e,
                     )
 
     def _generate_event_key(self, event_name: str, **kwargs: Any) -> str:
@@ -405,7 +423,7 @@ class PluginManager:
         async with self._lifecycle_lock:
             if self._shutdown_started:
                 raise RuntimeError("Cannot start plugins during shutdown.")
-            logger.info("Starting background tasks for plugins.")
+            logger.debug("Starting background tasks for plugins.")
             try:
                 current_loop = asyncio.get_running_loop()
             except RuntimeError:
@@ -467,13 +485,21 @@ class PluginManager:
                                         consecutive_failures = 0
                                     except asyncio.CancelledError:
                                         logger.debug(
-                                            f"Task loop {p_name}.{m_name} cancelled cleanly."
+                                            "Task loop %s.%s cancelled cleanly.",
+                                            p_name,
+                                            m_name,
                                         )
                                         break
                                     except Exception as e:
                                         consecutive_failures += 1
-                                        logger.error(
-                                            f"Error in task loop {p_name}.{m_name} (failure #{consecutive_failures}): {e}"
+                                        log_operation_error(
+                                            logger,
+                                            "Error in task loop %s.%s (failure #%s): %s",
+                                            p_name,
+                                            m_name,
+                                            consecutive_failures,
+                                            e,
+                                            error=e,
                                         )
 
                             task = asyncio.create_task(
@@ -482,8 +508,12 @@ class PluginManager:
                             )
                             self.plugin_tasks.setdefault(plugin_key, []).append(task)
                 except Exception as e:
-                    logger.error(
-                        f"Error auto-registering tasks for plugin '{plugin_key}': {e}"
+                    log_operation_error(
+                        logger,
+                        "Error auto-registering tasks for plugin '%s': %s",
+                        plugin_key,
+                        e,
+                        error=e,
                     )
 
     async def _synchronize_config_with_disk(self) -> None:
@@ -577,7 +607,9 @@ class PluginManager:
 
         def visit(node: str) -> bool:
             if node in temp_mark:
-                logger.error(f"Circular dependency detected involving plugin '{node}'.")
+                logger.error(
+                    "Circular dependency detected involving plugin '%s'.", node
+                )
                 return False
             if node not in visited:
                 temp_mark.add(node)
@@ -586,7 +618,9 @@ class PluginManager:
                     for dep in getattr(p_class, "dependencies", []):
                         if dep not in plugin_classes:
                             logger.error(
-                                f"Plugin '{node}' requires missing dependency '{dep}'."
+                                "Plugin '%s' requires missing dependency '%s'.",
+                                node,
+                                dep,
                             )
                             temp_mark.remove(node)
                             return False
@@ -617,7 +651,7 @@ class PluginManager:
         async with self._lifecycle_lock:
             if self._shutdown_started:
                 raise RuntimeError("Cannot start plugins during shutdown.")
-            logger.info("Starting plugin loading process...")
+            logger.debug("Starting plugin loading process...")
             if self.plugins:
                 await self.unload_plugins()
             await self._synchronize_config_with_disk()
@@ -698,7 +732,9 @@ class PluginManager:
                                         )
                                     else:
                                         logger.warning(
-                                            f"Plugin '{plugin_name}' provided invalid or out-of-bounds static mount path: '{static_dir}'"
+                                            "Plugin '%s' provided invalid or out-of-bounds static mount path: '%s'",
+                                            plugin_name,
+                                            static_dir,
                                         )
                             self._register_mounts(plugin_name, valid_mounts)
 
@@ -714,12 +750,15 @@ class PluginManager:
                         self._set_runtime_status(plugin_name, "ERROR")
                     if not isinstance(e, Exception):
                         raise
-                    logger.error(
-                        f"Failed to instantiate plugin '{plugin_name}': {e}",
-                        exc_info=True,
+                    log_operation_error(
+                        logger,
+                        "Failed to instantiate plugin '%s': %s",
+                        plugin_name,
+                        e,
+                        error=e,
                     )
 
-            logger.info(f"Loaded {len(self.plugins)} plugins.")
+            logger.info("Loaded %s plugins.", len(self.plugins))
 
             # Auto-start background tasks
             await self.start_plugin_tasks()
@@ -728,7 +767,7 @@ class PluginManager:
         """Unloads all currently loaded plugins, cleans up background tasks, and purges imported modules."""
         self._check_lifecycle_task()
         async with self._lifecycle_lock:
-            logger.info("--- Unloading all plugins ---")
+            logger.debug("--- Unloading all plugins ---")
             tasks_to_await: List[asyncio.Task[Any]] = []
             for plugin_instance in reversed(list(self.plugins)):
                 plugin_key = (
@@ -958,7 +997,7 @@ class PluginManager:
                     break
 
             if not target_instance:
-                logger.warning(f"Plugin '{plugin_name}' is not currently loaded.")
+                logger.warning("Plugin '%s' is not currently loaded.", plugin_name)
                 if plugin_name in self.plugin_config:
                     self._set_runtime_status(plugin_name, "UNLOADED")
                 return False
@@ -998,8 +1037,12 @@ class PluginManager:
             try:
                 await self.dispatch_event(target_instance, "on_unload")
             except Exception as e:
-                logger.error(
-                    f"Error during on_unload for '{plugin_key}': {e}", exc_info=True
+                log_operation_error(
+                    logger,
+                    "Error during on_unload for '%s': %s",
+                    plugin_key,
+                    e,
+                    error=e,
                 )
 
             self._pending_plugins.pop(plugin_key, None)
@@ -1035,7 +1078,7 @@ class PluginManager:
             if plugin_name in self.plugin_config:
                 self._set_runtime_status(plugin_name, "UNLOADED")
 
-            logger.info(f"Plugin '{plugin_name}' unloaded successfully.")
+            logger.info("Plugin '%s' unloaded successfully.", plugin_name)
             return True
 
     async def load_plugin_by_name(self, plugin_name: str) -> bool:
@@ -1048,13 +1091,13 @@ class PluginManager:
                 api = getattr(p, "api", None)
                 ident = getattr(api, "_plugin_name", None) or getattr(p, "name", None)
                 if p.name == plugin_name or ident == plugin_name:
-                    logger.info(f"Plugin '{plugin_name}' is already loaded.")
+                    logger.debug("Plugin '%s' is already loaded.", plugin_name)
                     return True
 
             path = self._find_plugin_path(plugin_name)
             if not path:
                 logger.error(
-                    f"Cannot load plugin '{plugin_name}': File or directory not found."
+                    "Cannot load plugin '%s': File or directory not found.", plugin_name
                 )
                 if plugin_name in self.plugin_config:
                     self._set_runtime_status(plugin_name, "ERROR")
@@ -1063,7 +1106,8 @@ class PluginManager:
             p_class = self._get_plugin_class_from_path(path, plugin_name)
             if not p_class:
                 logger.error(
-                    f"Cannot load plugin '{plugin_name}': No PluginBase subclass found."
+                    "Cannot load plugin '%s': No PluginBase subclass found.",
+                    plugin_name,
                 )
                 if plugin_name in self.plugin_config:
                     self._set_runtime_status(plugin_name, "ERROR")
@@ -1155,13 +1199,21 @@ class PluginManager:
                                     consecutive_failures = 0
                                 except asyncio.CancelledError:
                                     logger.debug(
-                                        f"Task loop {p_name}.{m_name} cancelled cleanly."
+                                        "Task loop %s.%s cancelled cleanly.",
+                                        p_name,
+                                        m_name,
                                     )
                                     break
                                 except Exception as e:
                                     consecutive_failures += 1
-                                    logger.error(
-                                        f"Error in task loop {p_name}.{m_name} (failure #{consecutive_failures}): {e}"
+                                    log_operation_error(
+                                        logger,
+                                        "Error in task loop %s.%s (failure #%s): %s",
+                                        p_name,
+                                        m_name,
+                                        consecutive_failures,
+                                        e,
+                                        error=e,
                                     )
 
                         task = asyncio.create_task(
@@ -1174,15 +1226,15 @@ class PluginManager:
                 self._pending_plugins.pop(plugin_name, None)
                 if plugin_name in self.plugin_config:
                     self._set_runtime_status(plugin_name, "LOADED")
-                logger.info(f"Plugin '{plugin_name}' loaded successfully.")
+                logger.debug("Plugin '%s' loaded successfully.", plugin_name)
                 return True
             except BaseException as e:
                 if instance is not None:
                     await self.unload_plugin_by_name(plugin_name)
                 if not isinstance(e, Exception):
                     raise
-                logger.error(
-                    f"Failed to load plugin '{plugin_name}': {e}", exc_info=True
+                log_operation_error(
+                    logger, "Failed to load plugin '%s': %s", plugin_name, e, error=e
                 )
                 if plugin_name in self.plugin_config:
                     self._set_runtime_status(plugin_name, "ERROR")
@@ -1194,7 +1246,7 @@ class PluginManager:
         async with self._lifecycle_lock:
             if self._shutdown_started:
                 raise RuntimeError("Cannot start plugins during shutdown.")
-            logger.info(f"Reloading plugin '{plugin_name}'...")
+            logger.info("Reloading plugin '%s'...", plugin_name)
             await self.unload_plugin_by_name(plugin_name)
             return await self.load_plugin_by_name(plugin_name)
 
@@ -1208,7 +1260,7 @@ class PluginManager:
                 raise RuntimeError("Cannot start plugins during shutdown.")
             await self._synchronize_config_with_disk()
             if plugin_name not in self.plugin_config:
-                logger.error(f"Cannot enable unknown plugin '{plugin_name}'.")
+                logger.error("Cannot enable unknown plugin '%s'.", plugin_name)
                 return False
 
             self.plugin_config[plugin_name]["enabled"] = True
@@ -1227,7 +1279,7 @@ class PluginManager:
         async with self._lifecycle_lock:
             await self._synchronize_config_with_disk()
             if plugin_name not in self.plugin_config:
-                logger.error(f"Cannot disable unknown plugin '{plugin_name}'.")
+                logger.error("Cannot disable unknown plugin '%s'.", plugin_name)
                 return False
 
             self.plugin_config[plugin_name]["enabled"] = False

@@ -7,6 +7,7 @@ import aiofiles
 import aiofiles.ospath
 
 from ..core.system import find_files
+from ..logging import RepeatedFailureReporter, get_application_log_path
 from .websocket_manager import ConnectionManager
 
 if TYPE_CHECKING:
@@ -36,6 +37,7 @@ class LogStreamer:
         self._task = None
         # Maps file path to current file pointer position
         self.file_positions: Dict[str, int] = {}
+        self._failures = RepeatedFailureReporter(logger)
 
     def start(self):
         """Starts the log streaming background task."""
@@ -43,7 +45,7 @@ class LogStreamer:
             return
         self.running = True
         self._task = asyncio.create_task(self._stream_logs())
-        logger.info("LogStreamer started.")
+        logger.debug("LogStreamer started.")
 
     def stop(self):
         """Stops the log streaming background task."""
@@ -51,7 +53,7 @@ class LogStreamer:
         if self._task:
             self._task.cancel()
             self._task = None
-        logger.info("LogStreamer stopped.")
+        logger.debug("LogStreamer stopped.")
 
     async def _stream_logs(self) -> None:  # noqa: C901
         """Main loop that checks subscriptions and streams log updates."""
@@ -95,11 +97,15 @@ class LogStreamer:
                 for path in tracked_paths:
                     if path not in watched_paths:
                         del self.file_positions[path]
+                        self._failures.failures.pop(path, None)
+                self._failures.recover("log streaming")
 
             except asyncio.CancelledError:
                 break
             except Exception as e:
-                logger.error(f"Error in LogStreamer loop: {e}")
+                self._failures.report(
+                    "log streaming", "Log streaming unavailable (%s): %s; retrying.", e
+                )
 
             await asyncio.sleep(1.0)  # Check every second
 
@@ -107,6 +113,10 @@ class LogStreamer:
         log_dir = self.log_dir
         if not log_dir or not await aiofiles.ospath.isdir(log_dir):
             return None
+
+        active_path = get_application_log_path(log_dir)
+        if active_path and await aiofiles.ospath.exists(active_path):
+            return active_path
 
         # Check for fixed filename first
         fixed_path = os.path.abspath(
@@ -124,9 +134,13 @@ class LogStreamer:
                 p = log_files[0]
                 file_path = p if isinstance(p, str) else str(p.get("path", ""))
                 if file_path and await aiofiles.ospath.exists(file_path):
+                    self._failures.recover("application log discovery")
                     return os.path.abspath(file_path)
+            self._failures.recover("application log discovery")
         except Exception as e:
-            logger.warning(f"Error finding app log file in '{log_dir}': {e}")
+            self._failures.report(
+                "application log discovery", "Could not locate %s: %s; retrying.", e
+            )
 
         return None
 
@@ -162,9 +176,12 @@ class LogStreamer:
                             topic,
                             {"type": "log_update", "topic": topic, "data": new_content},
                         )
+            self._failures.recover(file_path)
 
         except Exception as e:
-            logger.warning(f"Failed to read log file {file_path}: {e}")
+            self._failures.report(
+                file_path, "Could not stream log '%s': %s; retrying.", e
+            )
 
     async def shutdown(self) -> None:
         """Cancel and await the monitor before releasing its dependencies."""

@@ -69,6 +69,7 @@ from ...error import (
     PermissionsError,
     SystemError,
 )
+from ...logging import log_operation_error
 from . import process as core_process
 
 logger = logging.getLogger(__name__)
@@ -159,9 +160,7 @@ async def check_internet_connectivity(
         InternetConnectivityError: If the HTTP connection fails due to a
             timeout, network error, or any other unexpected exception during the check.
     """
-    logger.debug(
-        f"Checking internet connectivity asynchronously by attempting HTTP GET to {url}..."
-    )
+    logger.debug("Checking internet connectivity by attempting HTTP GET to %s...", url)
     try:
         timeout_client = aiohttp.ClientTimeout(total=timeout)
         async with aiohttp.ClientSession(timeout=timeout_client) as session:
@@ -178,7 +177,7 @@ async def check_internet_connectivity(
         raise InternetConnectivityError(error_msg) from None
     except aiohttp.ClientError as ex:
         error_msg = f"Connectivity check failed: Cannot connect to {url}. Error: {ex}"
-        logger.error(error_msg)
+        log_operation_error(logger, error_msg, error=ex)
         raise InternetConnectivityError(error_msg) from ex
 
 
@@ -226,7 +225,7 @@ async def set_server_folder_permissions(server_dir: str) -> None:  # noqa: C901
 
     os_name = platform.system()
     logger.debug(
-        f"Setting permissions for server directory: {server_dir} (OS: {os_name})"
+        "Setting permissions for server directory: %s (OS: %s)", server_dir, os_name
     )
 
     def _set_perms() -> None:
@@ -235,7 +234,7 @@ async def set_server_folder_permissions(server_dir: str) -> None:  # noqa: C901
                 current_uid = os.geteuid()  # type: ignore[attr-defined]
                 current_gid = os.getegid()  # type: ignore[attr-defined]
                 logger.debug(
-                    f"Setting ownership to UID={current_uid}, GID={current_gid}"
+                    "Setting ownership to UID=%s, GID=%s", current_uid, current_gid
                 )
 
                 for root, dirs, files in os.walk(server_dir, topdown=True):
@@ -254,7 +253,7 @@ async def set_server_folder_permissions(server_dir: str) -> None:  # noqa: C901
                 # Set top-level permissions last.
                 os.chown(server_dir, current_uid, current_gid)  # type: ignore[attr-defined]
                 os.chmod(server_dir, 0o775)
-                logger.info(f"Successfully set Linux permissions for: {server_dir}")
+                logger.debug("Successfully set Linux permissions for: %s", server_dir)
 
             elif os_name == "Windows":
                 logger.debug("Ensuring write permissions (S_IWRITE) on Windows...")
@@ -266,13 +265,16 @@ async def set_server_folder_permissions(server_dir: str) -> None:  # noqa: C901
                             os.chmod(path, current_mode | stat.S_IWRITE | stat.S_IWUSR)
                         except OSError as e_chmod:
                             logger.warning(
-                                f"Could not set write permission on '{path}': {e_chmod}"
+                                "Could not set write permission on '%s': %s",
+                                path,
+                                e_chmod,
                             )
-                logger.info(
-                    f"Successfully ensured write permissions for: {server_dir} on Windows"
+                logger.debug(
+                    "Successfully ensured write permissions for: %s on Windows",
+                    server_dir,
                 )
             else:
-                logger.warning(f"Permission setting not implemented for OS: {os_name}")
+                logger.warning("Permission setting not implemented for OS: %s", os_name)
 
         except OSError as e:
             raise PermissionsError(
@@ -305,9 +307,12 @@ async def is_server_running(server_name: str, server_dir: str, config_dir: str) 
         )
         return process is not None
     except Exception as e:
-        logger.error(
-            f"Error asynchronously checking if server '{server_name}' is running: {e}",
-            exc_info=True,
+        log_operation_error(
+            logger,
+            "Error checking if server '%s' is running: %s",
+            server_name,
+            e,
+            error=e,
         )
         return False
 
@@ -339,14 +344,19 @@ def _handle_remove_readonly_onerror(func, path, exc_info):
     # We primarily check if we can make it writable.
     if isinstance(exc_info[1], OSError) and not os.access(path, os.W_OK):
         logger.debug(
-            f"Read-only error on path '{path}'. Attempting to make it writable and retry."
+            "Read-only error on path '%s'. Attempting to make it writable and retry.",
+            path,
         )
         try:
             os.chmod(path, stat.S_IWUSR | stat.S_IWRITE)
             func(path)  # Retry the original function (e.g., os.remove or os.rmdir)
         except Exception as e_retry:
             logger.warning(
-                f"Failed to make '{path}' writable and retry operation '{func.__name__}': {e_retry}. Original error: {exc_info[1]}"
+                "Failed to make '%s' writable and retry operation '%s': %s. Original error: %s",
+                path,
+                func.__name__,
+                e_retry,
+                exc_info[1],
             )
             # Re-raise the original exception if retry fails
             raise exc_info[1] from e_retry
@@ -354,7 +364,9 @@ def _handle_remove_readonly_onerror(func, path, exc_info):
         # If it's not an OSError we can handle or not a writable issue, re-raise the original exception.
         # For example, if the path is a directory that's not empty and func is os.rmdir.
         logger.debug(
-            f"Unhandled error during rmtree: {exc_info[1]} on path {path}. Re-raising."
+            "Unhandled error during rmtree: %s on path %s. Re-raising.",
+            exc_info[1],
+            path,
         )
         raise exc_info[1]
 
@@ -396,30 +408,38 @@ async def delete_path_robustly(path_to_delete: str, item_description: str) -> bo
 
     if not await aiofiles.ospath.exists(path_to_delete):
         logger.debug(
-            f"{item_description.capitalize()} at '{path_to_delete}' not found, skipping."
+            "%s at '%s' not found, skipping.",
+            item_description.capitalize(),
+            path_to_delete,
         )
         return True
 
     if await aiofiles.ospath.isfile(path_to_delete):
-        logger.info(f"Preparing to delete {item_description} file: {path_to_delete}")
+        logger.debug(
+            "Preparing to delete %s file: %s", item_description, path_to_delete
+        )
         try:
             if not os.access(path_to_delete, os.W_OK):
                 os.chmod(path_to_delete, stat.S_IWRITE | stat.S_IWUSR)
             await run_in_thread(os.remove, path_to_delete)
-            logger.info(
-                f"Successfully deleted {item_description} file: {path_to_delete}"
+            logger.debug(
+                "Successfully deleted %s file: %s", item_description, path_to_delete
             )
             return True
         except Exception as e:
-            logger.error(
-                f"Failed to delete {item_description} file at '{path_to_delete}': {e}",
-                exc_info=True,
+            log_operation_error(
+                logger,
+                "Failed to delete %s file at '%s': %s",
+                item_description,
+                path_to_delete,
+                e,
+                error=e,
             )
             return False
 
     if await aiofiles.ospath.isdir(path_to_delete):
-        logger.info(
-            f"Preparing to delete {item_description} directory: {path_to_delete}"
+        logger.debug(
+            "Preparing to delete %s directory: %s", item_description, path_to_delete
         )
 
         def _rmtree():
@@ -427,19 +447,26 @@ async def delete_path_robustly(path_to_delete: str, item_description: str) -> bo
 
         try:
             await run_in_thread(_rmtree)
-            logger.info(
-                f"Successfully deleted {item_description} directory: {path_to_delete}"
+            logger.debug(
+                "Successfully deleted %s directory: %s",
+                item_description,
+                path_to_delete,
             )
             return True
         except Exception as e:
-            logger.error(
-                f"Failed to delete {item_description} directory at '{path_to_delete}': {e}",
-                exc_info=True,
+            log_operation_error(
+                logger,
+                "Failed to delete %s directory at '%s': %s",
+                item_description,
+                path_to_delete,
+                e,
+                error=e,
             )
             return False
 
     logger.warning(
-        f"Path '{path_to_delete}' is neither a regular file nor a directory. Deletion skipped."
+        "Path '%s' is neither a regular file nor a directory. Deletion skipped.",
+        path_to_delete,
     )
     return False
 
@@ -588,7 +615,7 @@ class ResourceMonitor:
             if pid in self._processes:
                 del self._processes[pid]
             logger.debug(
-                f"Could not get stats for PID {pid}: Process gone or access denied."
+                "Could not get stats for PID %s: Process gone or access denied.", pid
             )
             return None
         except Exception as e:

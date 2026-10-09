@@ -22,6 +22,8 @@ import sys
 import threading
 from pathlib import Path
 
+from ...logging import log_operation_error
+
 try:
     import pywintypes
     import servicemanager
@@ -70,16 +72,16 @@ class WebServerWindowsService(win32serviceutil.ServiceFramework):
 
     def SvcStop(self):
         """Called by the SCM when the service is stopping."""
-        self.logger.info(f"Web Service '{self._svc_name_}': Stop request received.")
+        self.logger.info("Web Service '%s': Stop request received.", self._svc_name_)
         self.ReportServiceStatus(win32service.SERVICE_STOP_PENDING)
         try:
             if getattr(self.app_context, "_web_server", None) is not None:
-                self.logger.info("Instructing Uvicorn to exit gracefully...")
+                self.logger.debug("Instructing Uvicorn to exit gracefully...")
                 self.app_context._web_server.should_exit = True
             else:
                 self.logger.warning("Web server instance not found on app_context.")
         except Exception as e:
-            self.logger.error(f"Error sending stop: {e}", exc_info=True)
+            log_operation_error(self.logger, "Error sending stop: %s", e, error=e)
         self.shutdown_event.set()  # Signal the main loop to exit
 
     def SvcDoRun(self):
@@ -102,7 +104,7 @@ class WebServerWindowsService(win32serviceutil.ServiceFramework):
 
             os.chdir(script_dir)
             # --- The service runs the web app DIRECTLY in a thread ---
-            self.logger.info("Starting web server logic in a background thread.")
+            self.logger.debug("Starting web server logic in a background thread.")
 
             web_thread = threading.Thread(
                 target=run_web_server,
@@ -114,8 +116,8 @@ class WebServerWindowsService(win32serviceutil.ServiceFramework):
             web_thread.start()
 
             self.ReportServiceStatus(win32service.SERVICE_RUNNING)
-            self.logger.info(
-                f"Web Service '{self._svc_name_}': Status reported as RUNNING."
+            self.logger.debug(
+                "Web Service '%s': Status reported as RUNNING.", self._svc_name_
             )
 
             # Wait loop that also checks if the web thread crashes.
@@ -125,8 +127,9 @@ class WebServerWindowsService(win32serviceutil.ServiceFramework):
                 if not web_thread.is_alive() and not self.shutdown_event.is_set():
                     raise RuntimeError("Web server thread unexpectedly terminated.")
 
-            self.logger.info(
-                f"Web Service '{self._svc_name_}': Shutdown event processed. Waiting for web thread to close..."
+            self.logger.debug(
+                "Web Service '%s': Shutdown event processed. Waiting for web thread to close...",
+                self._svc_name_,
             )
             # Give Uvicorn up to 45 seconds to finish open requests and shutdown hooks gracefully
             wait_time = 0
@@ -137,9 +140,12 @@ class WebServerWindowsService(win32serviceutil.ServiceFramework):
                 wait_time += 1
 
         except Exception as e:
-            self.logger.error(
-                f"Web Service '{self._svc_name_}': FATAL ERROR in SvcDoRun: {e}",
-                exc_info=True,
+            log_operation_error(
+                self.logger,
+                "Web Service '%s': FATAL ERROR in SvcDoRun: %s",
+                self._svc_name_,
+                e,
+                error=e,
             )
             if PYWIN32_AVAILABLE and servicemanager:
                 try:
@@ -150,6 +156,6 @@ class WebServerWindowsService(win32serviceutil.ServiceFramework):
                     pass
         finally:
             self.ReportServiceStatus(win32service.SERVICE_STOPPED)
-            self.logger.info(
-                f"Web Service '{self._svc_name_}': Status reported as STOPPED."
+            self.logger.debug(
+                "Web Service '%s': Status reported as STOPPED.", self._svc_name_
             )

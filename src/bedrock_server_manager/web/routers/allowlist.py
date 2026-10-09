@@ -40,7 +40,10 @@ async def post_allowlist(
 ) -> BaseApiResponse:
     identity = current_user.username
     logger.info(
-        f"API: Add to allowlist request for '{server_name}' by user '{identity}'. Players: {payload.players}"
+        "Allowlist update requested for server '%s' by user '%s' (%s entries).",
+        server_name,
+        identity,
+        len(payload.players),
     )
     new_players_data = [
         {"name": p, "ignoresPlayerLimit": payload.ignoresPlayerLimit}

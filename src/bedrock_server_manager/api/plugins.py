@@ -23,6 +23,7 @@ import logging
 
 from ..context import AppContext
 from ..error import BSMError, UserInputError
+from ..logging import log_operation_error
 from ..plugins.api_bridge import api_method
 from ..plugins.api_contract import validate_contract
 from ..plugins.event_trigger import trigger_event
@@ -55,7 +56,7 @@ async def get_plugin_statuses(
     Accepts GetPluginStatusesRequest and returns GetPluginStatusesResponse.
     Invalid requests fail validation before side effects; operation failures raise application exceptions.
     """
-    logger.debug("API: Attempting to get plugin statuses.")
+    logger.debug("Attempting to get plugin statuses.")
     try:
         pm = app_context.plugin_manager
         await pm._synchronize_config_with_disk()
@@ -63,12 +64,12 @@ async def get_plugin_statuses(
             name: {**config, "status": pm.get_plugin_status(name)}
             for name, config in pm.plugin_config.items()
         }
-        logger.info(f"API: Retrieved data for {len(statuses)} plugins.")
+        logger.debug("Retrieved data for %s plugins.", len(statuses))
         return GetPluginStatusesResponse.model_validate(
             {"status": "success", "plugins": statuses.copy()}
         )
     except Exception as e:
-        logger.error(f"API: Failed to get plugin statuses: {e}", exc_info=True)
+        log_operation_error(logger, "Failed to get plugin statuses: %s", e, error=e)
         raise
 
 
@@ -90,7 +91,7 @@ async def set_plugin_status(
     enabled = request.enabled
     if not plugin_name:
         raise UserInputError("Plugin name cannot be empty.")
-    logger.info(f"API: Setting status for plugin '{plugin_name}' to {enabled}.")
+    logger.debug("Setting status for plugin '%s' to %s.", plugin_name, enabled)
     try:
         pm = app_context.plugin_manager
         await pm._synchronize_config_with_disk()
@@ -111,7 +112,7 @@ async def set_plugin_status(
                 f"Could not change runtime status for plugin '{plugin_name}'."
             )
         action = "enabled" if enabled else "disabled"
-        logger.info(f"API: Plugin '{plugin_name}' successfully {action}.")
+        logger.info("Plugin '%s' successfully %s.", plugin_name, action)
         return SetPluginStatusResponse.model_validate(
             {
                 "status": "success",
@@ -121,8 +122,8 @@ async def set_plugin_status(
     except UserInputError:
         raise
     except Exception as e:
-        logger.error(
-            f"API: Failed to set status for plugin '{plugin_name}': {e}", exc_info=True
+        log_operation_error(
+            logger, "Failed to set status for plugin '%s': %s", plugin_name, e, error=e
         )
         raise
 
@@ -139,12 +140,12 @@ async def reload_single_plugin(
     plugin_name = request.target_plugin_name
     if not plugin_name:
         raise UserInputError("Plugin name cannot be empty.")
-    logger.info(f"API: Attempting to reload plugin '{plugin_name}'.")
+    logger.debug("Attempting to reload plugin '%s'.", plugin_name)
     try:
         pm = app_context.plugin_manager
         success = await pm.reload_plugin(plugin_name)
         if success:
-            logger.info(f"API: Plugin '{plugin_name}' reloaded successfully.")
+            logger.info("Plugin '%s' reloaded successfully.", plugin_name)
             return ReloadSinglePluginResponse.model_validate(
                 {
                     "status": "success",
@@ -154,8 +155,8 @@ async def reload_single_plugin(
         else:
             raise BSMError(f"Failed to reload plugin '{plugin_name}'.")
     except Exception as e:
-        logger.error(
-            f"API: Failed to reload plugin '{plugin_name}': {e}", exc_info=True
+        log_operation_error(
+            logger, "Failed to reload plugin '%s': %s", plugin_name, e, error=e
         )
         raise
 
@@ -169,16 +170,16 @@ async def reload_plugins(
     Accepts ReloadPluginsRequest and returns ReloadPluginsResponse.
     Invalid requests fail validation before side effects; operation failures raise application exceptions.
     """
-    logger.info("API: Attempting to reload all plugins.")
+    logger.debug("Attempting to reload all plugins.")
     try:
         pm = app_context.plugin_manager
         await pm.reload()
-        logger.info("API: Plugins reloaded successfully.")
+        logger.info("Plugins reloaded successfully.")
         return ReloadPluginsResponse.model_validate(
             {"status": "success", "message": "Plugins have been reloaded successfully."}
         )
     except Exception as e:
-        logger.error(f"API: Failed to reload plugins: {e}", exc_info=True)
+        log_operation_error(logger, "Failed to reload plugins: %s", e, error=e)
         raise
 
 
@@ -195,8 +196,8 @@ async def trigger_external_app_event(
     payload = request.payload
     if not event_name:
         raise UserInputError("Event name is required to trigger a custom plugin event.")
-    logger.info(
-        f"API: Attempting to trigger custom plugin event '{event_name}' externally."
+    logger.debug(
+        "Attempting to trigger custom plugin event '%s' externally.", event_name
     )
     try:
         pm = app_context.plugin_manager
@@ -204,16 +205,20 @@ async def trigger_external_app_event(
         await pm.trigger_event(
             event_name, **actual_payload, _triggering_plugin="external_api_trigger"
         )
-        logger.info(
-            f"API: Custom plugin event '{event_name}' triggered successfully via external API."
+        logger.debug(
+            "Custom plugin event '%s' triggered successfully via external API.",
+            event_name,
         )
         return TriggerExternalAppEventResponse.model_validate(
             {"status": "success", "message": f"Event '{event_name}' triggered."}
         )
     except Exception as e:
-        logger.error(
-            f"API: Unexpected error triggering custom event '{event_name}': {e}",
-            exc_info=True,
+        log_operation_error(
+            logger,
+            "Unexpected error triggering custom event '%s': %s",
+            event_name,
+            e,
+            error=e,
         )
         raise
 

@@ -40,7 +40,10 @@ async def add_server_ban(
     if not getattr(app_context, "_storage", None):
         raise BSMError("Database is not initialized.")
     logger.info(
-        f"API: Adding ban for player '{player_name}' ({xuid}) on server '{server_name}'."
+        "Adding ban for player '%s' (%s) on server '%s'.",
+        player_name,
+        xuid,
+        server_name,
     )
     ban_res = await app_context.server_service.add_server_ban(
         server_name=server_name, player_name=player_name, xuid=xuid, reason=reason
@@ -72,7 +75,7 @@ async def remove_server_ban(
         raise UserInputError("server_name and xuid are required.")
     if not getattr(app_context, "_storage", None):
         raise BSMError("Database is not initialized.")
-    logger.info(f"API: Removing ban for XUID '{xuid}' on server '{server_name}'.")
+    logger.info("Removing ban for XUID '%s' on server '%s'.", xuid, server_name)
     ban_res = await app_context.server_service.remove_server_ban(
         server_name=server_name, xuid=xuid
     )

@@ -53,7 +53,7 @@ async def test_shutdown_notification_consumes_real_summary(
         logging.getLogger("test.plugin"),
     )
     plugin.stop_warning_delay = 0
-    with caplog.at_level(logging.INFO):
+    with caplog.at_level(logging.DEBUG):
         await plugin.send_shutdown_warning(server_name=server.server_name)
     assert "Sent shutdown warning" in caplog.text
     async with asyncio.timeout(5):

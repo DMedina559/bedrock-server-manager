@@ -3,6 +3,7 @@ from typing import Any, Dict, List
 
 from ..context import AppContext
 from ..error import AppFileNotFoundError, BSMError, InvalidServerNameError
+from ..logging import log_operation_error
 from ..plugins.api_bridge import api_method
 from ..plugins.event_trigger import trigger_event
 from . import player as player_api
@@ -47,15 +48,21 @@ async def set_permissions(
             }
         )
     except BSMError as e:
-        logger.error(
-            f"API: Failed to configure permission for '{server_name}': {e}",
-            exc_info=True,
+        log_operation_error(
+            logger,
+            "Failed to configure permission for '%s': %s",
+            server_name,
+            e,
+            error=e,
         )
         raise
     except Exception as e:
-        logger.error(
-            f"API: Unexpected error configuring permission for '{server_name}': {e}",
-            exc_info=True,
+        log_operation_error(
+            logger,
+            "Unexpected error configuring permission for '%s': %s",
+            server_name,
+            e,
+            error=e,
         )
         raise
 
@@ -101,13 +108,16 @@ async def get_permissions(
             {"status": "success", "permissions": permissions}
         )
     except BSMError as e:
-        logger.error(
-            f"API: Failed to get permissions for '{server_name}': {e}", exc_info=True
+        log_operation_error(
+            logger, "Failed to get permissions for '%s': %s", server_name, e, error=e
         )
         raise
     except Exception as e:
-        logger.error(
-            f"API: Unexpected error getting permissions for '{server_name}': {e}",
-            exc_info=True,
+        log_operation_error(
+            logger,
+            "Unexpected error getting permissions for '%s': %s",
+            server_name,
+            e,
+            error=e,
         )
         raise

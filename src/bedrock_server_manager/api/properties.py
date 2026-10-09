@@ -9,6 +9,7 @@ from ..error import (
     InvalidServerNameError,
     UserInputError,
 )
+from ..logging import log_operation_error
 from ..plugins.api_bridge import api_method
 from ..plugins.event_trigger import trigger_event
 from ..plugins.runtime_capabilities import server_lifecycle_manager
@@ -52,14 +53,17 @@ async def get_properties(
     except AppFileNotFoundError:
         raise
     except BSMError as e:
-        logger.error(
-            f"API: Failed to get properties for '{server_name}': {e}", exc_info=True
+        log_operation_error(
+            logger, "Failed to get properties for '%s': %s", server_name, e, error=e
         )
         raise
     except Exception as e:
-        logger.error(
-            f"API: Unexpected error getting properties for '{server_name}': {e}",
-            exc_info=True,
+        log_operation_error(
+            logger,
+            "Unexpected error getting properties for '%s': %s",
+            server_name,
+            e,
+            error=e,
         )
         raise
 
@@ -75,9 +79,7 @@ def validate_property_value(
     """
     property_name = request.property_name
     value = request.value
-    logger.debug(
-        f"API: Validating server property: '{property_name}', Value: '{value}'"
-    )
+    logger.debug("Validating server property '%s'.", property_name)
     if value is None:
         value = ""
     if property_name in ("server-name", "level-name", "level-seed"):
@@ -380,13 +382,16 @@ async def set_properties(
             {"status": "success", "message": "Server properties updated successfully."}
         )
     except (BSMError, FileNotFoundError, UserInputError) as e:
-        logger.error(
-            f"API: Failed to modify properties for '{server_name}': {e}", exc_info=True
+        log_operation_error(
+            logger, "Failed to modify properties for '%s': %s", server_name, e, error=e
         )
         raise
     except Exception as e:
-        logger.error(
-            f"API: Unexpected error modifying properties for '{server_name}': {e}",
-            exc_info=True,
+        log_operation_error(
+            logger,
+            "Unexpected error modifying properties for '%s': %s",
+            server_name,
+            e,
+            error=e,
         )
         raise

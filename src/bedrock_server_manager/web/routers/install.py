@@ -15,6 +15,7 @@ from ...api import server as server_api
 from ...context import AppContext
 from ...core.system import find_files
 from ...error import AppFileNotFoundError, BSMError, UserInputError
+from ...logging import log_operation_error
 from ..deps import get_admin_user, get_app_context, get_moderator_user
 from ..schemas import (
     CustomZipsResponse,
@@ -52,7 +53,7 @@ async def get_custom_zips(
     except ValidationError:
         raise
     except Exception as e:
-        logger.error(f"Failed to get custom zips: {e}", exc_info=True)
+        log_operation_error(logger, "Failed to get custom zips: %s", e, error=e)
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail="Failed to retrieve custom zips.",
@@ -72,7 +73,9 @@ async def post_install_server(  # noqa: C901
 ) -> InstallServerResponse:
     identity = current_user.username
     logger.info(
-        f"API: New server install request from user '{identity}' for server '{payload.server_name}'."
+        "New server install request from user '%s' for server '%s'.",
+        identity,
+        payload.server_name,
     )
     from ...utils.server import core_validate_server_name_format, validate_server
 
@@ -121,8 +124,8 @@ async def post_install_server(  # noqa: C901
         )
 
         if not payload.overwrite and server_exists:
-            logger.info(
-                f"Server '{payload.server_name}' already exists. Confirmation needed."
+            logger.debug(
+                "Server '%s' already exists. Confirmation needed.", payload.server_name
             )
 
             return InstallConfirmationResponse(
@@ -133,14 +136,16 @@ async def post_install_server(  # noqa: C901
 
         if payload.overwrite and server_exists:
             logger.info(
-                f"Overwrite flag set for existing server '{payload.server_name}'. Deleting first."
+                "Overwrite flag set for existing server '%s'. Deleting first.",
+                payload.server_name,
             )
             await server_api.delete_server_data(
                 request=DeleteServerDataRequest(server_name=payload.server_name),
                 app_context=app_context,
             )
-            logger.info(
-                f"Successfully deleted existing server '{payload.server_name}' for overwrite."
+            logger.debug(
+                "Successfully deleted existing server '%s' for overwrite.",
+                payload.server_name,
             )
 
         task_id = await app_context.task_manager.run_task(
@@ -162,8 +167,8 @@ async def post_install_server(  # noqa: C901
         )
 
     except UserInputError as e:
-        logger.warning(
-            f"API Install Server '{payload.server_name}': UserInputError. {e}"
+        logger.debug(
+            "API Install Server '%s': UserInputError. %s", payload.server_name, e
         )
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(e))
     except HTTPException:
@@ -171,8 +176,11 @@ async def post_install_server(  # noqa: C901
     except AppFileNotFoundError:
         raise
     except BSMError as e:
-        logger.error(
-            f"API Install Server '{payload.server_name}': BSMError. {e}", exc_info=True
+        logger.debug(
+            "API Install Server '%s': BSMError. %s",
+            payload.server_name,
+            e,
+            exc_info=True,
         )
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail=str(e)
@@ -180,9 +188,12 @@ async def post_install_server(  # noqa: C901
     except ValidationError:
         raise
     except Exception as e:
-        logger.error(
-            f"API Install Server '{payload.server_name}': Unexpected error. {e}",
-            exc_info=True,
+        log_operation_error(
+            logger,
+            "API Install Server '%s': Unexpected error. %s",
+            payload.server_name,
+            e,
+            error=e,
         )
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,

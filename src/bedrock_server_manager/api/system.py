@@ -27,6 +27,7 @@ from ..error import (
     BSMError,
     InvalidServerNameError,
 )
+from ..logging import log_operation_error
 from ..plugins.api_bridge import api_method
 from .models.system import (
     GetBedrockProcessInfoRequest,
@@ -50,26 +51,32 @@ async def get_server_running_status(
     server_name = request.server_name
     if not server_name:
         raise InvalidServerNameError("Server name cannot be empty.")
-    logger.info(f"API: Checking running status for server '{server_name}'...")
+    logger.debug("Checking running status for server '%s'...", server_name)
     try:
         server = app_context.get_server(server_name)
         is_running = await server.is_running()
         logger.debug(
-            f"API: is_running() check for '{server_name}' returned: {is_running}"
+            "is_running() check for '%s' returned: %s", server_name, is_running
         )
         return GetServerRunningStatusResponse.model_validate(
             {"status": "success", "is_running": is_running}
         )
     except BSMError as e:
-        logger.error(
-            f"API: Error checking running status for '{server_name}': {e}",
-            exc_info=True,
+        log_operation_error(
+            logger,
+            "Error checking running status for '%s': %s",
+            server_name,
+            e,
+            error=e,
         )
         raise
     except Exception as e:
-        logger.error(
-            f"API: Unexpected error checking running status for '{server_name}': {e}",
-            exc_info=True,
+        log_operation_error(
+            logger,
+            "Unexpected error checking running status for '%s': %s",
+            server_name,
+            e,
+            error=e,
         )
         raise
 
@@ -86,7 +93,7 @@ async def get_bedrock_process_info(
     server_name = request.server_name
     if not server_name:
         raise InvalidServerNameError("Server name cannot be empty.")
-    logger.debug(f"API: Getting process info for server '{server_name}'...")
+    logger.debug("Getting process info for server '%s'...", server_name)
     try:
         server = app_context.get_server(server_name)
         process_info = await server.get_process_info()
@@ -103,13 +110,16 @@ async def get_bedrock_process_info(
                 {"status": "success", "process_info": process_info}
             )
     except BSMError as e:
-        logger.error(
-            f"API: Failed to get process info for '{server_name}': {e}", exc_info=True
+        log_operation_error(
+            logger, "Failed to get process info for '%s': %s", server_name, e, error=e
         )
         raise
     except Exception as e:
-        logger.error(
-            f"API: Unexpected error getting process info for '{server_name}': {e}",
-            exc_info=True,
+        log_operation_error(
+            logger,
+            "Unexpected error getting process info for '%s': %s",
+            server_name,
+            e,
+            error=e,
         )
         raise

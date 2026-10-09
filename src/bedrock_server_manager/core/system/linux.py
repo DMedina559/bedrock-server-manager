@@ -118,9 +118,9 @@ def check_service_exists(service_name_full: str, system: bool = False) -> bool:
         )
 
     service_file_path = get_systemd_service_file_path(service_name_full, system=system)
-    logger.debug(f"Checking for systemd service file existence: '{service_file_path}'")
+    logger.debug("Checking for systemd service file existence: '%s'", service_file_path)
     exists = os.path.isfile(service_file_path)
-    logger.debug(f"Service file '{service_file_path}' exists: {exists}")
+    logger.debug("Service file '%s' exists: %s", service_file_path, exists)
     return exists
 
 
@@ -185,7 +185,8 @@ def create_systemd_service_file(  # noqa: C901
     """
     if platform.system() != "Linux":
         logger.warning(
-            f"Generic systemd service creation skipped: Not Linux. Service: '{service_name_full}'"
+            "Generic systemd service creation skipped: Not Linux. Service: '%s'",
+            service_name_full,
         )
         return
 
@@ -199,8 +200,8 @@ def create_systemd_service_file(  # noqa: C901
     service_file_path = get_systemd_service_file_path(service_name_full, system=system)
     service_dir = os.path.dirname(service_file_path)
 
-    logger.info(
-        f"Creating/Updating generic systemd service file: '{service_file_path}'"
+    logger.debug(
+        "Creating/Updating generic systemd service file: '%s'", service_file_path
     )
 
     try:
@@ -242,8 +243,8 @@ WantedBy=default.target
     try:
         with open(service_file_path, "w", encoding="utf-8") as f:
             f.write(service_content)
-        logger.info(
-            f"Successfully wrote generic systemd service file: {service_file_path}"
+        logger.debug(
+            "Successfully wrote generic systemd service file: %s", service_file_path
         )
     except OSError as e:
         raise FileOperationError(
@@ -267,8 +268,8 @@ WantedBy=default.target
             capture_output=True,
             text=True,
         )
-        logger.info(
-            f"Systemd daemon reloaded successfully for service '{service_name_full}'."
+        logger.debug(
+            "Systemd daemon reloaded successfully for service '%s'.", service_name_full
         )
     except subprocess.CalledProcessError as e:
         raise SystemError(f"Failed to reload systemd daemon. Error: {e.stderr}") from e
@@ -312,7 +313,7 @@ def enable_systemd_service(  # noqa: C901
         if service_name_full.endswith(".service")
         else f"{service_name_full}.service"
     )
-    logger.info(f"Attempting to enable systemd service '{name_to_use}'...")
+    logger.debug("Attempting to enable systemd service '%s'...", name_to_use)
 
     systemctl_cmd = shutil.which("systemctl")
     if not systemctl_cmd:
@@ -338,17 +339,21 @@ def enable_systemd_service(  # noqa: C901
         )
         status_output = process.stdout.strip().lower()
         logger.debug(
-            f"'systemctl is-enabled {name_to_use}' output: '{status_output}', return code: {process.returncode}"
+            "'systemctl is-enabled %s' output: '%s', return code: %s",
+            name_to_use,
+            status_output,
+            process.returncode,
         )
         # "enabled" means it's enabled. Other statuses like "disabled", "static", "masked"
         # or an empty output with non-zero exit code mean it's not actively enabled.
         if status_output == "enabled":
-            logger.info(f"Service '{name_to_use}' is already enabled.")
+            logger.debug("Service '%s' is already enabled.", name_to_use)
             return
     except Exception as e:
         logger.warning(
-            f"Could not reliably determine if service '{name_to_use}' is enabled: {e}. "
-            "Attempting to enable it anyway.",
+            "Could not reliably determine if service '%s' is enabled: %s. Attempting to enable it anyway.",
+            name_to_use,
+            e,
             exc_info=True,
         )
 
@@ -363,7 +368,7 @@ def enable_systemd_service(  # noqa: C901
             capture_output=True,
             text=True,
         )
-        logger.info(f"Systemd service '{name_to_use}' enabled successfully.")
+        logger.info("Systemd service '%s' enabled successfully.", name_to_use)
     except subprocess.CalledProcessError as e:
         raise SystemError(
             f"Failed to enable systemd service '{name_to_use}'. Error: {e.stderr.strip()}"
@@ -410,15 +415,16 @@ def disable_systemd_service(  # noqa: C901
         if service_name_full.endswith(".service")
         else f"{service_name_full}.service"
     )
-    logger.info(f"Attempting to disable systemd service '{name_to_use}'...")
+    logger.debug("Attempting to disable systemd service '%s'...", name_to_use)
 
     systemctl_cmd = shutil.which("systemctl")
     if not systemctl_cmd:
         raise CommandNotFoundError("systemctl")
 
     if not check_service_exists(name_to_use, system=system):
-        logger.info(  # Changed from debug to info for more visibility on this common case
-            f"Service file for '{name_to_use}' does not exist. Assuming already disabled or removed."
+        logger.debug(
+            "Service file for '%s' does not exist. Assuming already disabled or removed.",
+            name_to_use,
         )
         return
 
@@ -436,19 +442,25 @@ def disable_systemd_service(  # noqa: C901
         )
         status_output = process.stdout.strip().lower()
         logger.debug(
-            f"'systemctl is-enabled {name_to_use}' output: '{status_output}', return code: {process.returncode}"
+            "'systemctl is-enabled %s' output: '%s', return code: %s",
+            name_to_use,
+            status_output,
+            process.returncode,
         )
         # If not "enabled", it's effectively disabled for auto-start or in a state
         # where 'disable' might not apply or is redundant.
         if status_output != "enabled":
-            logger.info(
-                f"Service '{name_to_use}' is already in a non-enabled state ('{status_output}'). No action needed for disable."
+            logger.debug(
+                "Service '%s' is already in a non-enabled state ('%s'). No action needed for disable.",
+                name_to_use,
+                status_output,
             )
             return
     except Exception as e:
         logger.warning(
-            f"Could not reliably determine if service '{name_to_use}' is enabled: {e}. "
-            "Attempting to disable it anyway.",
+            "Could not reliably determine if service '%s' is enabled: %s. Attempting to disable it anyway.",
+            name_to_use,
+            e,
             exc_info=True,
         )
 
@@ -463,14 +475,15 @@ def disable_systemd_service(  # noqa: C901
             capture_output=True,
             text=True,
         )
-        logger.info(f"Systemd service '{name_to_use}' disabled successfully.")
+        logger.info("Systemd service '%s' disabled successfully.", name_to_use)
     except subprocess.CalledProcessError as e:
         stderr_lower = (e.stderr or "").strip().lower()
         # It's not an error if the service is static or masked, as 'disable' doesn't apply.
         if "static" in stderr_lower or "masked" in stderr_lower:
             logger.info(
-                f"Service '{name_to_use}' is {stderr_lower.split()[-1]}. "  # Extracts 'static' or 'masked'
-                "It cannot be disabled via 'systemctl disable' command."
+                "Service '%s' is %s. It cannot be disabled via 'systemctl disable' command.",
+                name_to_use,
+                stderr_lower.split()[-1],
             )
             return
         raise SystemError(

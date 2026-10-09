@@ -38,6 +38,7 @@ from ...api import player as player_api
 from ...api import system as system_api
 from ...context import AppContext
 from ...error import AppFileNotFoundError, BSMError, UserInputError
+from ...logging import log_operation_error
 from ..deps import (
     get_admin_user,
     get_app_context,
@@ -81,8 +82,10 @@ async def get_server_running_status(
     Checks if a specific server's process is currently running.
     """
     identity = current_user.username
-    logger.info(
-        f"API: Request for running status for server '{server_name}' by user '{identity}'."
+    logger.debug(
+        "Request for running status for server '%s' by user '%s'.",
+        server_name,
+        identity,
     )
     try:
         result = await system_api.get_server_running_status(
@@ -99,8 +102,8 @@ async def get_server_running_status(
     except AppFileNotFoundError:
         raise
     except BSMError as e:
-        logger.error(
-            f"API Running Status '{server_name}': BSMError: {e}", exc_info=True
+        logger.debug(
+            "API Running Status '%s': BSMError: %s", server_name, e, exc_info=True
         )
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail=str(e)
@@ -108,8 +111,12 @@ async def get_server_running_status(
     except ValidationError:
         raise
     except Exception as e:
-        logger.error(
-            f"API Running Status '{server_name}': Unexpected error: {e}", exc_info=True
+        log_operation_error(
+            logger,
+            "API Running Status '%s': Unexpected error: %s",
+            server_name,
+            e,
+            error=e,
         )
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
@@ -132,9 +139,7 @@ async def get_validate_server(
     Validates if a server installation exists and is minimally correct.
     """
     identity = current_user.username
-    logger.info(
-        f"API: Request to validate server '{server_name}' by user '{identity}'."
-    )
+    logger.debug("Request to validate server '%s' by user '%s'.", server_name, identity)
     from ...utils.server import validate_server
 
     try:
@@ -156,9 +161,12 @@ async def get_validate_server(
     except ValidationError:
         raise
     except Exception as e:
-        logger.error(
-            f"API Validate Server '{server_name}': Unexpected error in route: {e}",
-            exc_info=True,
+        log_operation_error(
+            logger,
+            "API Validate Server '%s': Unexpected error in route: %s",
+            server_name,
+            e,
+            error=e,
         )
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
@@ -181,7 +189,7 @@ async def get_server_process_info(
     Retrieves resource usage information for a running server process.
     """
     identity = current_user.username
-    logger.debug(f"API: Process info request for '{server_name}' by user '{identity}'.")
+    logger.debug("Process info request for '%s' by user '%s'.", server_name, identity)
     try:
         result = await system_api.get_bedrock_process_info(
             request=GetBedrockProcessInfoRequest(server_name=server_name),
@@ -195,20 +203,26 @@ async def get_server_process_info(
         )
 
     except UserInputError as e:
-        logger.warning(f"API Process Info '{server_name}': Input error. {e}")
+        logger.debug("API Process Info '%s': Input error. %s", server_name, e)
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(e))
     except AppFileNotFoundError:
         raise
     except BSMError as e:
-        logger.error(f"API Process Info '{server_name}': BSMError: {e}", exc_info=True)
+        logger.debug(
+            "API Process Info '%s': BSMError: %s", server_name, e, exc_info=True
+        )
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail=str(e)
         )
     except ValidationError:
         raise
     except Exception as e:
-        logger.error(
-            f"API Process Info '{server_name}': Unexpected error: {e}", exc_info=True
+        log_operation_error(
+            logger,
+            "API Process Info '%s': Unexpected error: %s",
+            server_name,
+            e,
+            error=e,
         )
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
@@ -230,7 +244,7 @@ async def put_scan_players(
     Scans all server logs to discover and update the central player database.
     """
     identity = current_user.username
-    logger.info(f"API: Request to scan logs for players by user '{identity}'.")
+    logger.info("Request to scan logs for players by user '%s'.", identity)
     try:
         result = await player_api.scan_and_update_player_db(
             request=ScanAndUpdatePlayerDbRequest(), app_context=app_context
@@ -243,14 +257,16 @@ async def put_scan_players(
     except AppFileNotFoundError:
         raise
     except BSMError as e:
-        logger.error(f"API Scan Players: BSMError: {e}", exc_info=True)
+        logger.debug("API Scan Players: BSMError: %s", e, exc_info=True)
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail=str(e)
         )
     except ValidationError:
         raise
     except Exception as e:
-        logger.error(f"API Scan Players: Unexpected error: {e}", exc_info=True)
+        log_operation_error(
+            logger, "API Scan Players: Unexpected error: %s", e, error=e
+        )
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail="Unexpected error scanning player logs.",
@@ -271,15 +287,16 @@ async def get_all_players(
     Retrieves the list of all known players from the central player database.
     """
     identity = current_user.username
-    logger.info(f"API: Request to retrieve all players by user '{identity}'.")
+    logger.debug("Request to retrieve all players by user '%s'.", identity)
     try:
         result_dict = await player_api.get_all_known_players(
             request=GetAllKnownPlayersRequest(), app_context=app_context
         )
 
         logger.debug(
-            f"API Get All Players: Successfully retrieved {len(result_dict.players)} players. "
-            f"Message: {result_dict.message}"
+            "API Get All Players: Successfully retrieved %s players. Message: %s",
+            len(result_dict.players),
+            result_dict.message,
         )
         return PlayerListResponse(
             status="success",
@@ -290,10 +307,7 @@ async def get_all_players(
     except AppFileNotFoundError:
         raise
     except BSMError as e:  # Catch specific application errors if needed
-        logger.error(
-            f"API Get All Players: BSMError occurred: {e}",
-            exc_info=True,
-        )
+        logger.debug("API Get All Players: BSMError occurred: %s", e, exc_info=True)
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail=f"A server error occurred while fetching players: {str(e)}",
@@ -301,9 +315,11 @@ async def get_all_players(
     except ValidationError:
         raise
     except Exception as e:
-        logger.error(
-            f"API Get All Players: Unexpected critical error in route: {e}",
-            exc_info=True,
+        log_operation_error(
+            logger,
+            "API Get All Players: Unexpected critical error in route: %s",
+            e,
+            error=e,
         )
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
@@ -326,9 +342,7 @@ async def put_prune_downloads(
     Prunes old downloaded server archives from a specified cache subdirectory.
     """
     identity = current_user.username
-    logger.info(
-        f"API: Request to prune downloads by user '{identity}'. Payload: {payload.model_dump_json(exclude_none=True)}"
-    )
+    logger.info("Download cache cleanup requested by user '%s'.", identity)
     try:
         download_cache_base_dir = app_context.settings.get("paths.downloads")
         if not download_cache_base_dir:
@@ -342,7 +356,8 @@ async def put_prune_downloads(
             os.path.abspath(download_cache_base_dir) + os.sep
         ):
             logger.error(
-                f"API Prune Downloads: Security violation - Invalid directory path '{payload.directory}'."
+                "API Prune Downloads: Security violation - Invalid directory path '%s'.",
+                payload.directory,
             )
             raise HTTPException(
                 status_code=status.HTTP_400_BAD_REQUEST,
@@ -351,7 +366,9 @@ async def put_prune_downloads(
 
         if not await aiofiles.ospath.isdir(full_download_dir_path):
             logger.warning(
-                f"API Prune Downloads: Target cache directory not found: {full_download_dir_path} (from relative: '{payload.directory}')"
+                "API Prune Downloads: Target cache directory not found: %s (from relative: '%s')",
+                full_download_dir_path,
+                payload.directory,
             )
             raise HTTPException(
                 status_code=status.HTTP_404_NOT_FOUND,
@@ -371,12 +388,12 @@ async def put_prune_downloads(
         )
 
     except UserInputError as e:
-        logger.warning(f"API Prune Downloads: UserInputError: {e}")
+        logger.debug("API Prune Downloads: UserInputError: %s", e)
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(e))
     except AppFileNotFoundError:
         raise
     except BSMError as e:
-        logger.warning(f"API Prune Downloads: Application error: {e}", exc_info=True)
+        logger.warning("API Prune Downloads: Application error: %s", e, exc_info=True)
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail=str(e)
         )
@@ -385,9 +402,12 @@ async def put_prune_downloads(
     except ValidationError:
         raise
     except Exception as e:
-        logger.error(
-            f"API Prune Downloads: Unexpected error for relative_dir '{payload.directory}': {e}",
-            exc_info=True,
+        log_operation_error(
+            logger,
+            "API Prune Downloads: Unexpected error for relative_dir '%s': %s",
+            payload.directory,
+            e,
+            error=e,
         )
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
@@ -409,7 +429,7 @@ async def get_servers_list(
     Retrieves a list of all detected server instances with their status and version.
     """
     identity = current_user.username
-    logger.debug(f"API: Request for all servers list by user '{identity}'.")
+    logger.debug("Request for all servers list by user '%s'.", identity)
     try:
         result = await app_api.get_all_servers_data(
             request=GetAllServersDataRequest(), app_context=app_context
@@ -418,7 +438,9 @@ async def get_servers_list(
     except ValidationError:
         raise
     except Exception as e:
-        logger.error(f"API Get Servers List: Unexpected error: {e}", exc_info=True)
+        log_operation_error(
+            logger, "API Get Servers List: Unexpected error: %s", e, error=e
+        )
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail="An unexpected error occurred retrieving the server list.",
@@ -437,7 +459,7 @@ async def get_system_info(
     """
     Retrieves general system and application information.
     """
-    logger.debug("API: Request for system and app info.")
+    logger.debug("Request for system and app info.")
     from ...api.application import get_system_and_app_info
 
     try:
@@ -459,7 +481,9 @@ async def get_system_info(
     except ValidationError:
         raise
     except Exception as e:
-        logger.error(f"API Get System Info: Unexpected error: {e}", exc_info=True)
+        log_operation_error(
+            logger, "API Get System Info: Unexpected error: %s", e, error=e
+        )
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail="An unexpected error occurred retrieving system info.",
@@ -478,7 +502,7 @@ async def get_themes(
     """
     Retrieves a list of available themes (standard and custom).
     """
-    logger.debug("API: Request for available themes.")
+    logger.debug("Request for available themes.")
     STANDARD_THEMES = [
         "default",
         "light",
@@ -515,7 +539,7 @@ async def get_themes(
     except ValidationError:
         raise
     except Exception as e:
-        logger.error(f"API Get Themes: Unexpected error: {e}", exc_info=True)
+        log_operation_error(logger, "API Get Themes: Unexpected error: %s", e, error=e)
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail="An unexpected error occurred retrieving themes.",
@@ -538,7 +562,9 @@ async def post_add_players(
     """
     identity = current_user.username
     logger.info(
-        f"API: Request to add players by user '{identity}'. Payload: {payload.players}"
+        "Player registration requested by user '%s' (%s entries).",
+        identity,
+        len(payload.players),
     )
     try:
 
@@ -558,7 +584,7 @@ async def post_add_players(
         UserInputError,
         BSMError,
     ) as e:
-        logger.warning(f"API Add Players: Client or application error: {e}")
+        logger.debug("API Add Players: Client or application error: %s", e)
         status_code = (
             status.HTTP_400_BAD_REQUEST
             if isinstance(e, (TypeError, UserInputError))
@@ -568,8 +594,11 @@ async def post_add_players(
     except ValidationError:
         raise
     except Exception as e:
-        logger.error(
-            f"API Add Players: Unexpected critical error in route: {e}", exc_info=True
+        log_operation_error(
+            logger,
+            "API Add Players: Unexpected critical error in route: %s",
+            e,
+            error=e,
         )
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,

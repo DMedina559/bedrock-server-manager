@@ -7,6 +7,7 @@ import logging
 
 from ..context import AppContext
 from ..error import UserInputError
+from ..logging import log_operation_error
 from ..plugins.api_bridge import api_method
 from .models.websocket import (
     BroadcastRequest,
@@ -51,7 +52,9 @@ async def broadcast(
             {"status": "success", "message": f"Broadcasted to topic '{topic}'"}
         )
     except Exception as e:
-        logger.error(f"Failed to broadcast to topic '{topic}': {e}", exc_info=True)
+        log_operation_error(
+            logger, "Failed to broadcast to topic '%s': %s", topic, e, error=e
+        )
         raise
 
 
@@ -74,7 +77,9 @@ async def send_to_user(
             {"status": "success", "message": f"Sent message to user '{username}'"}
         )
     except Exception as e:
-        logger.error(f"Failed to send to user '{username}': {e}", exc_info=True)
+        log_operation_error(
+            logger, "Failed to send to user '%s': %s", username, e, error=e
+        )
         raise
 
 
@@ -97,7 +102,9 @@ async def send_to_client(
             {"status": "success", "message": f"Sent message to client '{client_id}'"}
         )
     except Exception as e:
-        logger.error(f"Failed to send to client '{client_id}': {e}", exc_info=True)
+        log_operation_error(
+            logger, "Failed to send to client '%s': %s", client_id, e, error=e
+        )
         raise
 
 
@@ -122,9 +129,12 @@ async def unregister_data_provider(
             }
         )
     except Exception as e:
-        logger.error(
-            f"Failed to unregister data provider for topic '{topic}': {e}",
-            exc_info=True,
+        log_operation_error(
+            logger,
+            "Failed to unregister data provider for topic '%s': %s",
+            topic,
+            e,
+            error=e,
         )
         raise
 
@@ -151,7 +161,7 @@ async def publish_ws_event(
             }
         )
     except Exception as e:
-        logger.error(
-            f"Failed to publish WebSocket event '{event_name}': {e}", exc_info=True
+        log_operation_error(
+            logger, "Failed to publish WebSocket event '%s': %s", event_name, e, error=e
         )
         raise

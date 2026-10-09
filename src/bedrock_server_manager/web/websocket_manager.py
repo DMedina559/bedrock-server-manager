@@ -8,6 +8,7 @@ from typing import Any, Callable, Dict, List, Optional
 
 from fastapi import WebSocket, WebSocketDisconnect
 
+from ..logging import log_operation_error
 from ..state.models import UserInfoState
 from .schemas import UserResponse
 from .schemas.websocket import json_payload
@@ -53,7 +54,7 @@ class ConnectionManager:
         client_id = f"{user.username}:{uuid.uuid4()}"
         client = Client(id=client_id, user=user, websocket=websocket)
         self.active_connections[client_id] = client
-        logger.info(f"New client connected: {client_id} for user '{user.username}'")
+        logger.debug("New client connected: %s for user '%s'", client_id, user.username)
         return client_id
 
     async def disconnect(self, client_id: str):
@@ -72,7 +73,7 @@ class ConnectionManager:
             for topic in empty_topics:
                 del self.subscriptions[topic]
 
-            logger.info(f"Client disconnected: {client_id}")
+            logger.debug("Client disconnected: %s", client_id)
 
     async def revoke_user(self, username: str) -> None:
         for client in list(self.active_connections.values()):
@@ -113,7 +114,7 @@ class ConnectionManager:
             self.subscriptions[topic] = []
         if client_id not in self.subscriptions[topic]:
             self.subscriptions[topic].append(client_id)
-        logger.info(f"Client {client_id} subscribed to topic '{topic}'")
+        logger.debug("Client %s subscribed to topic '%s'", client_id, topic)
 
     async def unsubscribe(self, client_id: str, topic: str):
         """Unsubscribes a client from a given topic."""
@@ -121,12 +122,13 @@ class ConnectionManager:
             self.subscriptions[topic].remove(client_id)
             if not self.subscriptions[topic]:
                 del self.subscriptions[topic]
-            logger.info(f"Client {client_id} unsubscribed from topic '{topic}'")
+            logger.debug("Client %s unsubscribed from topic '%s'", client_id, topic)
 
     async def shutdown(self):
         """Gracefully disconnects all active WebSocket connections."""
-        logger.info(
-            f"Shutting down {len(self.active_connections)} active WebSocket connections."
+        logger.debug(
+            "Shutting down %s active WebSocket connections.",
+            len(self.active_connections),
         )
 
         async def close(client: Client) -> None:
@@ -136,7 +138,13 @@ class ConnectionManager:
                     timeout=self.io_timeout,
                 )
             except Exception as error:
-                logger.error(f"Error closing websocket for client {client.id}: {error}")
+                log_operation_error(
+                    logger,
+                    "Error closing websocket for client %s: %s",
+                    client.id,
+                    error,
+                    error=error,
+                )
 
         await asyncio.gather(
             *(close(client) for client in list(self.active_connections.values()))
@@ -152,15 +160,17 @@ class ConnectionManager:
         self.data_providers[topic] = DataProvider(
             handler=handler, plugin_name=plugin_name
         )
-        logger.info(
-            f"Registered data provider for topic '{topic}' (plugin: {plugin_name or 'core'})"
+        logger.debug(
+            "Registered data provider for topic '%s' (plugin: %s)",
+            topic,
+            plugin_name or "core",
         )
 
     def unregister_data_provider(self, topic: str):
         """Unregisters a data provider for a given topic."""
         if topic in self.data_providers:
             del self.data_providers[topic]
-            logger.info(f"Unregistered data provider for topic '{topic}'")
+            logger.debug("Unregistered data provider for topic '%s'", topic)
 
     def unregister_plugin_providers(self, plugin_name: str):
         """Unregisters all data providers associated with a specific plugin."""
@@ -172,8 +182,10 @@ class ConnectionManager:
         for topic in topics_to_remove:
             del self.data_providers[topic]
         if topics_to_remove:
-            logger.info(
-                f"Unregistered {len(topics_to_remove)} data providers for plugin '{plugin_name}'"
+            logger.debug(
+                "Unregistered %s data providers for plugin '%s'",
+                len(topics_to_remove),
+                plugin_name,
             )
 
     def get_data_provider(self, topic: str) -> Optional[Callable[..., Any]]:
@@ -205,12 +217,20 @@ class ConnectionManager:
                 )
             except (WebSocketDisconnect, RuntimeError) as e:
                 # Catch both normal disconnection and the "WebSocket is not connected" RuntimeError
-                logger.info(
-                    f"Failed to send message to client {client_id} (disconnected): {e}"
+                logger.debug(
+                    "Failed to send message to client %s (disconnected): %s",
+                    client_id,
+                    e,
                 )
                 await self.disconnect(client_id)
             except Exception as e:
-                logger.error(f"Failed to send message to client {client_id}: {e}")
+                log_operation_error(
+                    logger,
+                    "Failed to send message to client %s: %s",
+                    client_id,
+                    e,
+                    error=e,
+                )
                 # Consider the connection lost and disconnect the client
                 await self.disconnect(client_id)
 

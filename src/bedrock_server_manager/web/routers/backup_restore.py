@@ -39,6 +39,7 @@ from bedrock_server_manager.api.models import (
 from ...api import backup_restore as backup_restore_api
 from ...context import AppContext
 from ...error import AppFileNotFoundError, BSMError, UserInputError
+from ...logging import log_operation_error
 from ..deps import get_app_context, get_moderator_user, validate_server_exists
 from ..schemas import (
     BackupActionPayload,
@@ -74,7 +75,7 @@ async def put_prune_backups(
     """
     identity = current_user.username
     logger.info(
-        f"API: Request to prune backups for server '{server_name}' by user '{identity}'."
+        "Request to prune backups for server '%s' by user '%s'.", server_name, identity
     )
     task_id = await app_context.task_manager.run_task(
         backup_restore_api.prune_old_backups,
@@ -106,8 +107,11 @@ async def get_list_server_backups(
     Lists available backup files for a specific server and backup type.
     """
     identity = current_user.username
-    logger.info(
-        f"API: Request to list '{backup_type}' backups for server '{server_name}' by user '{identity}'."
+    logger.debug(
+        "Request to list '%s' backups for server '%s' by user '%s'.",
+        backup_type,
+        server_name,
+        identity,
     )
     try:
         api_result = await backup_restore_api.list_backup_files(
@@ -139,7 +143,8 @@ async def get_list_server_backups(
             )
         else:
             logger.error(
-                f"API List Backups: Unexpected backup data format for type '{backup_type}': {backup_data}"
+                "Invalid backup listing format for type '%s'.",
+                backup_type,
             )
             raise HTTPException(
                 status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
@@ -150,8 +155,11 @@ async def get_list_server_backups(
     except AppFileNotFoundError:
         raise
     except BSMError as e:
-        logger.error(
-            f"API List Backups '{server_name}/{backup_type}': BSMError. {e}",
+        logger.debug(
+            "API List Backups '%s/%s': BSMError. %s",
+            server_name,
+            backup_type,
+            e,
             exc_info=True,
         )
         raise HTTPException(
@@ -162,9 +170,13 @@ async def get_list_server_backups(
     except ValidationError:
         raise
     except Exception as e:
-        logger.error(
-            f"API List Backups '{server_name}/{backup_type}': Unexpected error. {e}",
-            exc_info=True,
+        log_operation_error(
+            logger,
+            "API List Backups '%s/%s': Unexpected error. %s",
+            server_name,
+            backup_type,
+            e,
+            error=e,
         )
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
@@ -193,7 +205,10 @@ async def post_backup_action(
     """
     identity = current_user.username
     logger.info(
-        f"API: Backup action '{payload.backup_type}' requested for server '{server_name}' by user '{identity}'."
+        "Backup action '%s' requested for server '%s' by user '%s'.",
+        payload.backup_type,
+        server_name,
+        identity,
     )
     valid_types = ["world", "config", "all"]
     if payload.backup_type.lower() not in valid_types:
@@ -261,7 +276,10 @@ async def post_restore_action(  # noqa: C901
     """
     identity = current_user.username
     logger.info(
-        f"API: Restore action '{payload.restore_type}' requested for server '{server_name}' by user '{identity}'."
+        "Restore action '%s' requested for server '%s' by user '%s'.",
+        payload.restore_type,
+        server_name,
+        identity,
     )
     valid_types = ["world", "properties", "allowlist", "permissions", "all"]
     restore_type_lower = payload.restore_type.lower()

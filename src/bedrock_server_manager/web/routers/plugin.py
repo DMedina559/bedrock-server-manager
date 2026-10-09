@@ -31,6 +31,7 @@ from bedrock_server_manager.api.models import (
 from ...api import plugins as plugins_api
 from ...context import AppContext
 from ...error import AppFileNotFoundError, BSMError, UserInputError
+from ...logging import log_operation_error
 from ..deps import get_admin_user, get_app_context, get_current_user
 from ..schemas import (
     ActionResponse,
@@ -66,7 +67,9 @@ async def get_plugin_pages(
     except ValidationError:
         raise
     except Exception as e:
-        logger.error(f"API Get Plugin Pages: Unexpected error: {e}", exc_info=True)
+        log_operation_error(
+            logger, "API Get Plugin Pages: Unexpected error: %s", e, error=e
+        )
         raise HTTPException(
             status_code=500, detail="Failed to retrieve plugin pages."
         ) from e
@@ -85,7 +88,7 @@ async def get_plugins_status(
     Retrieves the statuses and metadata of all discovered plugins.
     """
     identity = current_user.username
-    logger.info(f"API: Get plugin statuses request by '{identity}'.")
+    logger.debug("Get plugin statuses request by '%s'.", identity)
     try:
         result = await plugins_api.get_plugin_statuses(
             request=GetPluginStatusesRequest(), app_context=app_context
@@ -96,7 +99,9 @@ async def get_plugins_status(
     except ValidationError:
         raise
     except Exception as e:
-        logger.error(f"API Get Plugin Statuses: Unexpected error: {e}", exc_info=True)
+        log_operation_error(
+            logger, "API Get Plugin Statuses: Unexpected error: %s", e, error=e
+        )
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail="An unexpected error occurred while getting plugin statuses.",
@@ -117,8 +122,10 @@ async def post_trigger_event(
     Allows an external source to trigger a custom plugin event within the system.
     """
     identity = current_user.username
-    logger.info(
-        f"API: Custom plugin event '{payload.event_name}' trigger request by '{identity}'."
+    logger.debug(
+        "Custom plugin event '%s' trigger request by '%s'.",
+        payload.event_name,
+        identity,
     )
 
     try:
@@ -139,8 +146,8 @@ async def post_trigger_event(
     except AppFileNotFoundError:
         raise
     except BSMError as e:
-        logger.error(
-            f"API Trigger Event '{payload.event_name}': BSMError: {e}", exc_info=True
+        logger.debug(
+            "API Trigger Event '%s': BSMError: %s", payload.event_name, e, exc_info=True
         )
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail=str(e)
@@ -148,9 +155,12 @@ async def post_trigger_event(
     except ValidationError:
         raise
     except Exception as e:
-        logger.error(
-            f"API Trigger Event '{payload.event_name}': Unexpected error: {e}",
-            exc_info=True,
+        log_operation_error(
+            logger,
+            "API Trigger Event '%s': Unexpected error: %s",
+            payload.event_name,
+            e,
+            error=e,
         )
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
@@ -175,7 +185,7 @@ async def post_set_plugin_status(
     identity = current_user.username
     action = "enable" if payload.enabled else "disable"
     logger.info(
-        f"API: Request to {action} plugin '{plugin_name}' by user '{identity}'."
+        "Request to %s plugin '%s' by user '%s'.", action, plugin_name, identity
     )
 
     try:
@@ -194,15 +204,15 @@ async def post_set_plugin_status(
     except AppFileNotFoundError:
         raise
     except BSMError as e:
-        logger.error(f"API Set Plugin '{plugin_name}': BSMError: {e}", exc_info=True)
+        logger.debug("API Set Plugin '%s': BSMError: %s", plugin_name, e, exc_info=True)
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail=str(e)
         )
     except ValidationError:
         raise
     except Exception as e:
-        logger.error(
-            f"API Set Plugin '{plugin_name}': Unexpected error: {e}", exc_info=True
+        log_operation_error(
+            logger, "API Set Plugin '%s': Unexpected error: %s", plugin_name, e, error=e
         )
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
@@ -224,7 +234,7 @@ async def post_reload_single_plugin(
     Reloads a single plugin by name.
     """
     identity = current_user.username
-    logger.info(f"API: Request to reload plugin '{plugin_name}' by user '{identity}'.")
+    logger.info("Request to reload plugin '%s' by user '%s'.", plugin_name, identity)
 
     try:
         result = await plugins_api.reload_single_plugin(
@@ -240,15 +250,21 @@ async def post_reload_single_plugin(
     except AppFileNotFoundError:
         raise
     except BSMError as e:
-        logger.error(f"API Reload Plugin '{plugin_name}': BSMError: {e}", exc_info=True)
+        logger.debug(
+            "API Reload Plugin '%s': BSMError: %s", plugin_name, e, exc_info=True
+        )
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail=str(e)
         )
     except ValidationError:
         raise
     except Exception as e:
-        logger.error(
-            f"API Reload Plugin '{plugin_name}': Unexpected error: {e}", exc_info=True
+        log_operation_error(
+            logger,
+            "API Reload Plugin '%s': Unexpected error: %s",
+            plugin_name,
+            e,
+            error=e,
         )
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
@@ -267,7 +283,7 @@ async def put_reload_plugins(
     Triggers a full reload of the plugin system.
     """
     identity = current_user.username
-    logger.info(f"API: Reload plugins request by '{identity}'.")
+    logger.info("Reload plugins request by '%s'.", identity)
 
     try:
         result = await plugins_api.reload_plugins(
@@ -279,14 +295,16 @@ async def put_reload_plugins(
     except AppFileNotFoundError:
         raise
     except BSMError as e:
-        logger.error(f"API Reload Plugins: BSMError: {e}", exc_info=True)
+        logger.debug("API Reload Plugins: BSMError: %s", e, exc_info=True)
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail=str(e)
         )
     except ValidationError:
         raise
     except Exception as e:
-        logger.error(f"API Reload Plugins: Unexpected error: {e}", exc_info=True)
+        log_operation_error(
+            logger, "API Reload Plugins: Unexpected error: %s", e, error=e
+        )
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail="An unexpected error occurred while reloading plugins.",

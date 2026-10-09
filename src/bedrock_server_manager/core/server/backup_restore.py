@@ -1,5 +1,6 @@
 """Backup and restore operations with explicit world and filesystem dependencies."""
 
+import logging
 import os
 import re
 from datetime import datetime, timezone
@@ -17,6 +18,7 @@ from ...error import (
     MissingArgumentError,
     UserInputError,
 )
+from ...logging import log_operation_error
 from ...utils.threads import run_in_thread
 from ..files import atomic_copy_file
 from ..system import find_files
@@ -41,6 +43,9 @@ class ServerBackups:
 
     def __init__(self, server: "BedrockServer") -> None:
         self.server = server
+        self.logger = logging.LoggerAdapter(
+            logging.getLogger(__name__), {"server_name": server.server_name}
+        )
 
     @property
     def server_backup_directory(self) -> str | None:
@@ -180,6 +185,7 @@ class ServerBackups:
                         f"Cannot back up '{filename}': {error}"
                     ) from error
             await self.prune_server_backups(stem + "_backup_", extension)
+            self.logger.debug("Configuration backup created: '%s'.", destination)
             return destination
 
     async def backup_all_data(self) -> dict[str, str | None]:
@@ -191,14 +197,17 @@ class ServerBackups:
             except Exception as error:
                 world_error = error
                 results["world"] = None
-                self.server.logger.exception(
-                    "World backup failed for '%s'.", self.server.server_name
+                log_operation_error(
+                    self.logger,
+                    "World backup failed for '%s'.",
+                    self.server.server_name,
+                    error=error,
                 )
             for filename in CONFIG_FILES:
                 try:
                     results[filename] = await self.backup_config(filename)
                 except Exception:
-                    self.server.logger.exception(
+                    self.logger.exception(
                         "Configuration backup failed for '%s'.", filename
                     )
                     results[filename] = None
@@ -206,6 +215,16 @@ class ServerBackups:
                 raise BackupRestoreError(
                     f"World backup failed for '{self.server.server_name}'. Configuration backups were attempted."
                 ) from world_error
+            missing = [name for name, path in results.items() if path is None]
+            if missing:
+                self.logger.warning(
+                    "Backup incomplete; configuration files missing or failed: %s.",
+                    ", ".join(missing),
+                )
+            else:
+                self.logger.info(
+                    "Full backup completed for server '%s'.", self.server.server_name
+                )
             return results
 
     @staticmethod
@@ -250,6 +269,7 @@ class ServerBackups:
                     raise FileOperationError(
                         f"Cannot restore '{filename}': {error}"
                     ) from error
+            self.logger.debug("Configuration restored from '%s'.", path)
             return destination
 
     async def restore_all_data_from_latest(self) -> dict[str, str | None]:
@@ -276,7 +296,7 @@ class ServerBackups:
                         await self.restore_config(files[0]) if files else None
                     )
                 except Exception:
-                    self.server.logger.exception("Restore failed for '%s'.", filename)
+                    self.logger.exception("Restore failed for '%s'.", filename)
                     results[filename] = None
                     failures.append(filename)
             try:
@@ -299,11 +319,16 @@ class ServerBackups:
                     else None
                 )
             except Exception:
-                self.server.logger.exception(
+                self.logger.exception(
                     "World restore failed for '%s'.", self.server.server_name
                 )
                 results["world"] = None
                 failures.append("world")
             if failures:
                 raise BackupRestoreError(f"Restore failed for: {', '.join(failures)}")
+            self.logger.info(
+                "Latest-backup restore completed for server '%s' (%s components restored).",
+                self.server.server_name,
+                sum(path is not None for path in results.values()),
+            )
             return results

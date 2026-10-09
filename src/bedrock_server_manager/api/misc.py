@@ -13,6 +13,7 @@ from typing import Optional
 from ..context import AppContext
 from ..core import prune_old_downloads
 from ..error import BSMError, MissingArgumentError, UserInputError
+from ..logging import log_operation_error
 from ..plugins.api_bridge import api_method
 from ..plugins.event_trigger import trigger_event
 from ..utils.general import ReentrantAsyncLock
@@ -72,14 +73,16 @@ async def prune_download_cache(
             raise UserInputError(
                 f"Invalid keep_count or DOWNLOAD_KEEP setting: {e}"
             ) from e
-        logger.info(
-            f"API: Pruning download cache directory '{download_dir}'. Keep: {effective_keep}"
+        logger.debug(
+            "Pruning download cache directory '%s'. Keep: %s",
+            download_dir,
+            effective_keep,
         )
         try:
             await prune_old_downloads(
                 download_dir=download_dir, download_keep=effective_keep
             )
-            logger.info(f"API: Pruning successful for directory '{download_dir}'.")
+            logger.info("Pruning successful for directory '%s'.", download_dir)
             return PruneDownloadCacheResponse.model_validate(
                 {
                     "status": "success",
@@ -87,22 +90,28 @@ async def prune_download_cache(
                 }
             )
         except BSMError as e:
-            logger.error(
-                f"API: Failed to prune download cache '{download_dir}': {e}",
-                exc_info=True,
+            log_operation_error(
+                logger,
+                "Failed to prune download cache '%s': %s",
+                download_dir,
+                e,
+                error=e,
             )
             raise
         except Exception as e:
-            logger.error(
-                f"API: Unexpected error pruning download cache '{download_dir}': {e}",
-                exc_info=True,
+            log_operation_error(
+                logger,
+                "Unexpected error pruning download cache '%s': %s",
+                download_dir,
+                e,
+                error=e,
             )
             raise
     except UserInputError:
         raise
     except Exception as e:
-        logger.error(
-            f"API: Unexpected error in prune_download_cache: {e}", exc_info=True
+        log_operation_error(
+            logger, "Unexpected error in prune_download_cache: %s", e, error=e
         )
         raise
     finally:

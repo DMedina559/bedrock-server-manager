@@ -100,15 +100,15 @@ class PluginBase(ABC):
             # This situation should ideally be caught by PluginManager's validation,
             # but log a warning if a concrete plugin instance somehow ends up with N/A.
             self.logger.warning(
-                f"Plugin '{self.name}' class is missing a 'version' attribute or it's 'N/A'. "
-                "This should be defined in the plugin class."
+                "Plugin '%s' class is missing a 'version' attribute or it's 'N/A'. This should be defined in the plugin class.",
+                self.name,
             )
         self.version: str = class_version
 
         # Log the successful initialization of the plugin instance.
         # This is an INFO level log as it's a significant lifecycle event for the plugin.
         self.logger.info(
-            f"Plugin '{self.name}' v{self.version} initialized and active."
+            "Plugin '%s' v%s initialized and active.", self.name, self.version
         )
 
     async def get_plugin_setting(self, key: str, default: Any = None) -> Any:

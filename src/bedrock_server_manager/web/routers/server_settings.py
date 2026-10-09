@@ -15,6 +15,7 @@ from ...error import (
     MissingArgumentError,
     UserInputError,
 )
+from ...logging import log_operation_error
 from ..deps import (
     get_admin_user,
     get_app_context,
@@ -45,9 +46,7 @@ async def get_server_settings(
     Retrieves all settings for a specific server.
     """
     identity = current_user.username
-    logger.info(
-        f"API: Get settings for server '{server_name}' request by '{identity}'."
-    )
+    logger.debug("Get settings for server '%s' request by '%s'.", server_name, identity)
     try:
         server = app_context.get_server(server_name)
         config = server.configuration.as_settings()
@@ -64,7 +63,9 @@ async def get_server_settings(
             detail=f"Server '{server_name}' not found.",
         )
     except Exception as e:
-        logger.error(f"API Get Server Settings: Unexpected error. {e}", exc_info=True)
+        log_operation_error(
+            logger, "API Get Server Settings: Unexpected error. %s", e, error=e
+        )
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail="An unexpected error occurred while retrieving server settings.",
@@ -88,7 +89,10 @@ async def post_set_server_setting(
     """
     identity = current_user.username
     logger.info(
-        f"API: Set setting for server '{server_name}' request for key '{payload.key}' by '{identity}'."
+        "Set setting for server '%s' request for key '%s' by '%s'.",
+        server_name,
+        payload.key,
+        identity,
     )
     try:
         server = app_context.get_server(server_name)
@@ -116,7 +120,9 @@ async def post_set_server_setting(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail=str(e)
         )
     except Exception as e:
-        logger.error(f"API Set Server Setting: Unexpected error. {e}", exc_info=True)
+        log_operation_error(
+            logger, "API Set Server Setting: Unexpected error. %s", e, error=e
+        )
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail="An unexpected error occurred while setting the server value.",

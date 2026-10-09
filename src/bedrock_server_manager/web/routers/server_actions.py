@@ -43,6 +43,7 @@ from ...error import (
     ServerNotRunningError,
     UserInputError,
 )
+from ...logging import log_operation_error
 from ..deps import (
     get_admin_user,
     get_app_context,
@@ -74,8 +75,8 @@ async def get_server_summary(
     Retrieves the basic summary information for a specific server instance.
     """
     identity = current_user.username
-    logger.info(
-        f"API: Get server summary request for '{server_name}' by user '{identity}'."
+    logger.debug(
+        "Get server summary request for '%s' by user '%s'.", server_name, identity
     )
 
     result = await server_api.get_server_summary(
@@ -101,7 +102,7 @@ async def post_start_server(
 ) -> StartServerResponse:
     """Await server start and return its completed operation result."""
     logger.info(
-        "API: Start server request for '%s' by user '%s'.",
+        "Start server request for '%s' by user '%s'.",
         server_name,
         current_user.username,
     )
@@ -125,9 +126,7 @@ async def post_stop_server(
 ) -> StopServerResponse:
     """Await server stop and return its completed operation result."""
     logger.info(
-        "API: Stop server request for '%s' by user '%s'.",
-        server_name,
-        current_user.username,
+        "Stop server request for '%s' by user '%s'.", server_name, current_user.username
     )
     return await server_api.stop_server(
         request=StopServerRequest(server_name=server_name),
@@ -149,7 +148,7 @@ async def post_restart_server(
 ) -> RestartServerResponse:
     """Await server restart and return its completed operation result."""
     logger.info(
-        "API: Restart server request for '%s' by user '%s'.",
+        "Restart server request for '%s' by user '%s'.",
         server_name,
         current_user.username,
     )
@@ -176,7 +175,7 @@ async def post_send_command(
     """
     identity = current_user.username
     logger.info(
-        f"API: Send command request for '{server_name}' by user '{identity}'. Command: {payload.command}"
+        "Command requested for server '%s' by user '%s'.", server_name, identity
     )
 
     if not payload.command or not payload.command.strip():
@@ -193,24 +192,21 @@ async def post_send_command(
             app_context=app_context,
         )
 
-        logger.info(f"API Send Command '{server_name}': Succeeded.")
+        logger.debug("API Send Command '%s': Succeeded.", server_name)
         return ActionResponse(
             status=command_result.status,
             message=command_result.message,
         )
 
     except BlockedCommandError as e:
-        logger.warning(
-            f"API Send Command '{server_name}': Blocked command attempt. {e}"
-        )
         raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail=str(e))
     except ServerNotRunningError as e:
-        logger.warning(f"API Send Command '{server_name}': Server not running. {e}")
+        logger.debug("API Send Command '%s': Server not running. %s", server_name, e)
         raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail=str(e))
     except (
         UserInputError
     ) as e:  # Covers InvalidServerNameError, AppFileNotFoundError from original
-        logger.warning(f"API Send Command '{server_name}': Input error. {e}")
+        logger.debug("API Send Command '%s': Input error. %s", server_name, e)
         # Determine if it's a 404 or 400 based on error type if possible
         if "not found" in str(e).lower():
             raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=str(e))
@@ -220,8 +216,12 @@ async def post_send_command(
     except AppFileNotFoundError:
         raise
     except BSMError as e:  # Catch other BSM specific errors
-        logger.error(
-            f"API Send Command '{server_name}': Application error. {e}", exc_info=True
+        log_operation_error(
+            logger,
+            "API Send Command '%s': Application error. %s",
+            server_name,
+            e,
+            error=e,
         )
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail=str(e)
@@ -229,8 +229,12 @@ async def post_send_command(
     except ValidationError:
         raise
     except Exception as e:
-        logger.error(
-            f"API Send Command '{server_name}': Unexpected error. {e}", exc_info=True
+        log_operation_error(
+            logger,
+            "API Send Command '%s': Unexpected error. %s",
+            server_name,
+            e,
+            error=e,
         )
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
@@ -257,7 +261,7 @@ async def post_update_server(
     This endpoint immediately returns a 202 Accepted response.
     """
     identity = current_user.username
-    logger.info(f"API: Update server request for '{server_name}' by user '{identity}'.")
+    logger.info("Update server request for '%s' by user '%s'.", server_name, identity)
     task_id = await app_context.task_manager.run_task(
         install.update_server,
         username=current_user.username,
@@ -291,8 +295,8 @@ async def delete_server(
     This endpoint immediately returns a 202 Accepted response.
     """
     identity = current_user.username
-    logger.warning(
-        f"API: DELETE server data request for '{server_name}' by user '{identity}'. This is a destructive operation."
+    logger.info(
+        "Server deletion requested for '%s' by user '%s'.", server_name, identity
     )
     task_id = await app_context.task_manager.run_task(
         server_api.delete_server_data,

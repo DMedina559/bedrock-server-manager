@@ -9,6 +9,7 @@ from pydantic import ValidationError
 
 from ...api.errors import error_response
 from ...context import AppContext
+from ...logging import log_operation_error
 from ...utils import authenticate_websocket_token
 from ...utils.threads import run_in_thread
 from ..schemas.websocket import (
@@ -106,21 +107,21 @@ async def websocket_endpoint(  # noqa: C901
         user = await authenticate_websocket_token(app_context, token)
 
     except WebSocketDisconnect:
-        logger.info("WebSocket auth failed: Client disconnected during authentication")
+        logger.debug("WebSocket auth failed: Client disconnected during authentication")
         return
     except asyncio.TimeoutError:
         logger.warning("WebSocket auth failed: Authentication timeout")
         await websocket.close(code=1008, reason="Authentication timeout")
         return
     except WebSocketException as e:
-        logger.warning(f"WebSocket auth failed: {e.reason}")
+        logger.warning("WebSocket auth failed: %s", e.reason)
         await websocket.close(code=e.code, reason=e.reason)
         return
     except ValidationError:
         await websocket.close(code=1008, reason="Invalid authentication message")
         return
     except Exception as e:
-        logger.error(f"WebSocket unexpected auth error: {e}", exc_info=True)
+        log_operation_error(logger, "WebSocket unexpected auth error: %s", e, error=e)
         await websocket.close(code=1008, reason="Internal Authentication Error")
         return
 
@@ -186,10 +187,11 @@ async def websocket_endpoint(  # noqa: C901
                             data=result,
                         )
                     except Exception as error:
-                        logger.error(
+                        log_operation_error(
+                            logger,
                             "Error executing WebSocket data provider for topic %s",
                             topic,
-                            exc_info=True,
+                            error=error,
                         )
                         safe = error_response(error)
                         reply = SocketReply(
@@ -220,19 +222,21 @@ async def websocket_endpoint(  # noqa: C901
                     )
 
     except WebSocketDisconnect:
-        logger.info(f"WebSocket client disconnected: {client_id}")
+        logger.debug("WebSocket client disconnected: %s", client_id)
     except ConnectionResetError:
-        logger.info(f"WebSocket client connection reset: {client_id}")
+        logger.debug("WebSocket client connection reset: %s", client_id)
     except RuntimeError as e:
         if "WebSocket is not connected" in str(e):
-            logger.info(f"WebSocket client disconnected (RuntimeError): {client_id}")
+            logger.debug("WebSocket client disconnected (RuntimeError): %s", client_id)
         else:
-            logger.error(
-                f"Error in WebSocket for client {client_id}: {e}", exc_info=True
+            log_operation_error(
+                logger, "Error in WebSocket for client %s: %s", client_id, e, error=e
             )
     except ValidationError:
         raise
     except Exception as e:
-        logger.error(f"Error in WebSocket for client {client_id}: {e}", exc_info=True)
+        log_operation_error(
+            logger, "Error in WebSocket for client %s: %s", client_id, e, error=e
+        )
     finally:
         await connection_manager.disconnect(client_id)
