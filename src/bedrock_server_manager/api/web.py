@@ -333,7 +333,7 @@ def create_web_ui_service(
             service.enable_web_service(system=system)
             action_done = "created and enabled"
         else:
-            service.disable_web_service()
+            service.disable_web_service(system=system)
             action_done = "created and disabled"
         return CreateWebUiServiceResponse.model_validate(
             {

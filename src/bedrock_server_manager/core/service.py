@@ -254,8 +254,12 @@ def remove_web_service_file(system: bool = False) -> bool:
                 os.remove(service_file_path)
                 systemctl_cmd = shutil.which("systemctl")
                 if systemctl_cmd:
+                    command = [systemctl_cmd]
+                    if not system:
+                        command.append("--user")
+                    command.append("daemon-reload")
                     subprocess.run(
-                        [systemctl_cmd, "--user", "daemon-reload"],
+                        command,
                         check=False,
                         capture_output=True,
                     )
@@ -298,13 +302,12 @@ def is_web_service_active(system: bool = False) -> bool:  # noqa: C901
             )
             return False
         try:
+            command = [systemctl_cmd]
+            if not system:
+                command.append("--user")
+            command.extend(["is-active", WEB_SERVICE_SYSTEMD_NAME])
             process = subprocess.run(
-                [
-                    systemctl_cmd,
-                    "--user" if not system else "",
-                    "is-active",
-                    WEB_SERVICE_SYSTEMD_NAME,
-                ],
+                command,
                 capture_output=True,
                 text=True,
                 check=False,
@@ -370,13 +373,12 @@ def is_web_service_enabled(system: bool = False) -> bool:  # noqa: C901
             )
             return False
         try:
+            command = [systemctl_cmd]
+            if not system:
+                command.append("--user")
+            command.extend(["is-enabled", WEB_SERVICE_SYSTEMD_NAME])
             process = subprocess.run(
-                [
-                    systemctl_cmd,
-                    "--user" if not system else "",
-                    "is-enabled",
-                    WEB_SERVICE_SYSTEMD_NAME,
-                ],
+                command,
                 capture_output=True,
                 text=True,
                 check=False,

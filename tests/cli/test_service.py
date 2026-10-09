@@ -1,158 +1,174 @@
+import subprocess
+from types import SimpleNamespace
 from unittest.mock import MagicMock
 
 import pytest
 from click.testing import CliRunner
 
-from bedrock_server_manager.api.models import (
-    DisableWebUiServiceResponse,
-    EnableWebUiServiceResponse,
-    GetWebUiServiceStatusResponse,
-    RemoveWebUiServiceResponse,
-)
-from bedrock_server_manager.cli.service import (
-    configure_web_service,
-    disable_web_service_cli,
-    enable_web_service_cli,
-    remove_web_service_cli,
-    status_web_service_cli,
-)
+from bedrock_server_manager.cli.service import service
+from bedrock_server_manager.config.const import WEB_SERVICE_SYSTEMD_NAME
+from bedrock_server_manager.core import service as service_core
+from bedrock_server_manager.core.system import linux
 
 
 @pytest.fixture
-def runner():
-    return CliRunner()
+def systemd(app_context, tmp_path, monkeypatch):
+    state = SimpleNamespace(enabled=False, active=False, commands=[], failure=None)
+    which = service_core.shutil.which
 
+    def service_path(name, system=False):
+        return str(tmp_path / ("system" if system else "user") / name)
 
-@pytest.fixture(autouse=True)
-def mock_service_manager_check(monkeypatch):
-    """Bypasses @requires_web_service_manager decorator check for testing"""
+    def run(command, **kwargs):
+        assert command[0] == "/test/bin/systemctl"
+        assert all(command)
+        state.commands.append(command)
+        action = command[2] if command[1] == "--user" else command[1]
+        if state.failure == action:
+            raise subprocess.CalledProcessError(
+                1, command, stderr="Injected systemctl failure"
+            )
+        stdout, code = "", 0
+        if action == "enable":
+            state.enabled = True
+        elif action == "disable":
+            state.enabled = False
+        elif action == "is-enabled":
+            stdout, code = ("enabled", 0) if state.enabled else ("disabled", 1)
+        elif action == "is-active":
+            stdout, code = ("active", 0) if state.active else ("inactive", 3)
+        else:
+            assert action == "daemon-reload"
+        return subprocess.CompletedProcess(command, code, stdout=stdout, stderr="")
+
+    monkeypatch.setattr("platform.system", lambda: "Linux")
+    monkeypatch.setattr(service_core, "system_linux_utils", linux, raising=False)
     monkeypatch.setattr(
-        "bedrock_server_manager.cli.service.can_manage_services", lambda: True
+        service_core.shutil,
+        "which",
+        lambda cmd: "/test/bin/systemctl" if cmd == "systemctl" else which(cmd),
     )
-
-
-def test_configure_web_service_interactive(runner, app_context, monkeypatch):
-    """Test configure service command launches interactive workflow when no flags passed."""
-    mock_workflow = MagicMock()
-    monkeypatch.setattr(
-        "bedrock_server_manager.cli.service.interactive_web_service_workflow",
-        mock_workflow,
+    monkeypatch.setattr(linux, "get_systemd_service_file_path", service_path)
+    monkeypatch.setattr(linux.os, "getlogin", lambda: "testuser")
+    monkeypatch.setattr(service_core.subprocess, "run", run)
+    state.path = (
+        lambda system=False: tmp_path
+        / ("system" if system else "user")
+        / WEB_SERVICE_SYSTEMD_NAME
     )
-
-    result = runner.invoke(configure_web_service, obj={"app_context": app_context})
-    assert result.exit_code == 0
-    assert "starting interactive Web UI service setup" in result.output
-    mock_workflow.assert_called_once()
+    return state
 
 
-def test_configure_web_service_flags(runner, app_context, monkeypatch):
-    """Test configure service command skips interactive prompts if config flags are given."""
-    mock_perform = MagicMock()
-    monkeypatch.setattr(
-        "bedrock_server_manager.cli.service._perform_web_service_configuration",
-        mock_perform,
+def invoke(app_context, *args):
+    return CliRunner().invoke(service, args, obj={"app_context": app_context})
+
+
+@pytest.mark.parametrize("system", [False, True])
+@pytest.mark.parametrize("autostart", [False, True])
+def test_configure_service_flags_write_real_unit(
+    app_context, systemd, system, autostart
+):
+    systemd.enabled = True
+    flags = [
+        "--setup-service",
+        "--enable-autostart" if autostart else "--no-enable-autostart",
+    ]
+    if system:
+        flags.append("--system")
+    result = invoke(app_context, "configure", *flags)
+    assert result.exit_code == 0, result.output
+    assert "configuration applied successfully" in result.output
+    unit = systemd.path(system).read_text()
+    assert f"WorkingDirectory={app_context.data_dir}" in unit
+    assert "-m bedrock_server_manager web start --mode direct" in unit
+    assert "-m bedrock_server_manager web stop" in unit
+    assert "Type=simple" in unit
+    assert systemd.enabled is autostart
+    assert all(("--user" not in command) == system for command in systemd.commands)
+
+
+def test_interactive_service_setup_executes_real_workflow(
+    app_context, systemd, monkeypatch
+):
+    questions = MagicMock()
+    questions.confirm().ask.side_effect = [True, False, True]
+    monkeypatch.setattr("bedrock_server_manager.cli.service.questionary", questions)
+    result = invoke(app_context, "configure")
+    assert result.exit_code == 0, result.output
+    assert "service configuration complete" in result.output
+    assert systemd.path().is_file()
+    assert systemd.enabled
+    assert any("enable" in command for command in systemd.commands)
+
+
+@pytest.mark.parametrize("system", [False, True])
+def test_service_cli_lifecycle_uses_real_api_and_service_manager(
+    app_context, systemd, monkeypatch, system
+):
+    flags = ["--system"] if system else []
+    result = invoke(
+        app_context, "configure", "--setup-service", "--enable-autostart", *flags
     )
-
-    result = runner.invoke(
-        configure_web_service, ["--setup-service"], obj={"app_context": app_context}
-    )
-    assert result.exit_code == 0
-    assert "Web UI configuration applied successfully." in result.output
-    mock_perform.assert_called_once()
-
-
-def test_enable_web_service_cli(runner, app_context, monkeypatch):
-    """Test enable service command successfully queries the web api."""
-    mock_api = MagicMock(
-        return_value=EnableWebUiServiceResponse.model_validate(
-            {"status": "success", "message": "Web UI service enabled successfully"}
-        )
-    )
-    monkeypatch.setattr(
-        "bedrock_server_manager.api.web.enable_web_ui_service", mock_api
-    )
-
-    result = runner.invoke(enable_web_service_cli, obj={"app_context": app_context})
-    assert result.exit_code == 0
-    assert "Web UI service enabled successfully" in result.output
-
-
-def test_disable_web_service_cli(runner, app_context, monkeypatch):
-    """Test disable service command successfully queries the web api."""
-    mock_api = MagicMock(
-        return_value=DisableWebUiServiceResponse.model_validate(
-            {"status": "success", "message": "Web UI service enabled successfully"}
-        )
-    )
-    monkeypatch.setattr(
-        "bedrock_server_manager.api.web.disable_web_ui_service", mock_api
-    )
-
-    result = runner.invoke(disable_web_service_cli, obj={"app_context": app_context})
-    assert result.exit_code == 0
+    assert result.exit_code == 0, result.output
+    assert systemd.enabled
+    result = invoke(app_context, "disable", *flags)
+    assert result.exit_code == 0, result.output
+    assert "disabled successfully" in result.output
+    assert not systemd.enabled
+    result = invoke(app_context, "enable", *flags)
+    assert result.exit_code == 0, result.output
+    assert "enabled successfully" in result.output
+    assert systemd.enabled
+    systemd.active = True
+    result = invoke(app_context, "status", *flags)
+    assert result.exit_code == 0, result.output
+    assert "Service Defined: True" in result.output
+    assert "Currently Active (Running): True" in result.output
+    assert "Enabled for Autostart: True" in result.output
+    questions = MagicMock()
+    questions.confirm().ask.return_value = True
+    monkeypatch.setattr("bedrock_server_manager.cli.service.questionary", questions)
+    result = invoke(app_context, "remove", *flags)
+    assert result.exit_code == 0, result.output
+    assert "removed successfully" in result.output
+    assert not systemd.path(system).exists()
+    result = invoke(app_context, "status", *flags)
+    assert result.exit_code == 0, result.output
+    assert "Service Defined: False" in result.output
+    assert all(("--user" not in command) == system for command in systemd.commands)
 
 
-def test_remove_web_service_cli_confirm_yes(runner, app_context, monkeypatch):
-    """Test remove service command drops the service after confirming yes."""
-    mock_questionary = MagicMock()
-    mock_questionary.confirm().ask.return_value = True
-    monkeypatch.setattr(
-        "bedrock_server_manager.cli.service.questionary", mock_questionary
-    )
-
-    mock_api = MagicMock(
-        return_value=RemoveWebUiServiceResponse.model_validate(
-            {"status": "success", "message": "Web UI service enabled successfully"}
-        )
-    )
-    monkeypatch.setattr(
-        "bedrock_server_manager.api.web.remove_web_ui_service", mock_api
-    )
-
-    result = runner.invoke(remove_web_service_cli, obj={"app_context": app_context})
-    assert result.exit_code == 0
-    mock_api.assert_called_once()
-
-
-def test_remove_web_service_cli_confirm_no(runner, app_context, monkeypatch):
-    """Test remove service command skips drop when declining the confirmation prompt."""
-    mock_questionary = MagicMock()
-    mock_questionary.confirm().ask.return_value = False
-    monkeypatch.setattr(
-        "bedrock_server_manager.cli.service.questionary", mock_questionary
-    )
-
-    mock_api = MagicMock()
-    monkeypatch.setattr(
-        "bedrock_server_manager.api.web.remove_web_ui_service", mock_api
-    )
-
-    result = runner.invoke(remove_web_service_cli, obj={"app_context": app_context})
+def test_remove_service_declined_keeps_unit_and_makes_no_os_calls(
+    app_context, systemd, monkeypatch
+):
+    invoke(app_context, "configure", "--setup-service", "--enable-autostart")
+    original = systemd.path().read_bytes()
+    systemd.commands.clear()
+    questions = MagicMock()
+    questions.confirm().ask.return_value = False
+    monkeypatch.setattr("bedrock_server_manager.cli.service.questionary", questions)
+    result = invoke(app_context, "remove")
     assert result.exit_code == 0
     assert "Removal cancelled" in result.output
-    mock_api.assert_not_called()
+    assert systemd.path().read_bytes() == original
+    assert not systemd.commands
 
 
-def test_status_web_service_cli(runner, app_context, monkeypatch):
-    """Test status service command prints out correctly formatted info."""
-    mock_api = MagicMock(
-        return_value=GetWebUiServiceStatusResponse.model_validate(
-            {
-                "status": "success",
-                "service_exists": True,
-                "is_active": True,
-                "is_enabled": False,
-                "message": "All good",
-            }
-        )
-    )
-    monkeypatch.setattr(
-        "bedrock_server_manager.api.web.get_web_ui_service_status", mock_api
-    )
+def test_service_command_reports_real_os_failure(app_context, systemd):
+    invoke(app_context, "configure", "--setup-service", "--no-enable-autostart")
+    systemd.failure = "enable"
+    result = invoke(app_context, "enable")
+    assert result.exit_code == 1
+    assert "Failed to enable Web UI service" in result.output
+    assert not systemd.enabled
+    assert systemd.path().is_file()
 
-    result = runner.invoke(status_web_service_cli, obj={"app_context": app_context})
-    assert result.exit_code == 0
-    assert "Web UI Service Status:" in result.output
-    assert "Currently Active (Running): True" in result.output
-    assert "Enabled for Autostart: False" in result.output
-    assert "All good" in result.output
+
+def test_service_command_rejects_missing_service_manager(
+    app_context, systemd, monkeypatch
+):
+    monkeypatch.setattr(service_core.shutil, "which", lambda cmd: None)
+    result = invoke(app_context, "enable")
+    assert result.exit_code == 1
+    assert "service manager" in result.output
+    assert not systemd.commands
