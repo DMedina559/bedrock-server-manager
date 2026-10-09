@@ -459,8 +459,12 @@ async def launch_detached_process(
     if not isinstance(launcher_pid_file_path, str) or not launcher_pid_file_path:
         raise MissingArgumentError("Launcher PID file path cannot be empty.")
 
+    logged_command = list(command)
+    for index, argument in enumerate(logged_command[:-1]):
+        if argument == "--db-url":
+            logged_command[index + 1] = "<redacted>"
     logger.info(
-        f"Executing guarded detached command asynchronously: {' '.join(command)}"
+        f"Executing guarded detached command asynchronously: {' '.join(logged_command)}"
     )
 
     guarded_proc = GuardedProcess(command)

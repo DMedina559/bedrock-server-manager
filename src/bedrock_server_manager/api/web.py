@@ -140,14 +140,21 @@ def start_web_server(
                 sys.executable,
                 "-m",
                 "bedrock_server_manager",
+                "--config-dir",
+                app_context.config_dir,
+                "--data-dir",
+                app_context.data_dir,
+                "--db-url",
+                app_context.db_url,
                 "web",
                 "start",
                 "--mode",
                 "direct",
             ]
-            hosts_to_add = []
             if host:
-                hosts_to_add.append(host)
+                command.extend(["--host", host])
+            if port is not None:
+                command.extend(["--port", str(port)])
             if debug:
                 command.append("--debug")
             new_pid = asyncio.run(
