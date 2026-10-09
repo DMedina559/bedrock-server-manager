@@ -256,28 +256,29 @@ async def test_verify_process_identity_success(real_bedrock_server):
     )
 
 
-@patch("bedrock_server_manager.core.system.process.PSUTIL_AVAILABLE", True)
-@patch("psutil.Process")
-async def test_verify_process_identity_mismatch(mock_process_class):
-    """Test verify_process_identity when criteria do not match."""
-    mock_proc = MagicMock()
-    mock_proc.name.return_value = "my_app"
-    mock_proc.exe.return_value = "/wrong/path/my_app"
-    mock_proc.cwd.return_value = "/wrong/cwd"
-    mock_proc.cmdline.return_value = ["/wrong/path/my_app"]
-    mock_process_class.return_value = mock_proc
-
-    with pytest.raises(ServerProcessError) as exc_info:
-        await verify_process_identity(
-            1234,
-            expected_executable_path="/path/to/my_app",
-            expected_cwd="/path/to",
-            expected_command_args="--arg1",
-        )
-
-    assert "Executable path mismatch" in str(exc_info.value)
-    assert "CWD mismatch" in str(exc_info.value)
-    assert "Argument mismatch" in str(exc_info.value)
+@pytest.mark.parametrize("criterion", ["executable", "cwd", "arguments"])
+async def test_verify_process_identity_mismatch(
+    real_bedrock_server, tmp_path, criterion
+):
+    server = real_bedrock_server
+    await server.start()
+    criteria = {
+        "executable": (
+            "expected_executable_path",
+            str(tmp_path / "other"),
+            "Executable path mismatch",
+        ),
+        "cwd": ("expected_cwd", str(tmp_path), "CWD mismatch"),
+        "arguments": (
+            "expected_command_args",
+            ["--not-a-server-argument"],
+            "Argument mismatch",
+        ),
+    }
+    key, value, message = criteria[criterion]
+    with pytest.raises(ServerProcessError, match=message):
+        await verify_process_identity(server._process.pid, **{key: value})
+    assert await server.is_running()
 
 
 @patch("bedrock_server_manager.core.system.process.PSUTIL_AVAILABLE", True)
