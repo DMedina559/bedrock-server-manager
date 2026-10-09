@@ -470,3 +470,41 @@ async def test_dummy_launch_and_verify(tmp_path: Path, real_bedrock_server):
 
     await asyncio.sleep(0.5)
     assert await is_process_running(pid) is False
+
+
+async def test_detached_child_survives_launcher_event_loop(tmp_path):
+    import asyncio
+    import sys
+
+    from bedrock_server_manager.utils.threads import run_in_thread
+
+    request = tmp_path / "request"
+    acknowledgement = tmp_path / "acknowledgement"
+    child_script = tmp_path / "child.py"
+    child_script.write_text(
+        "import sys, time\n"
+        "from pathlib import Path\n"
+        "request, acknowledgement = map(Path, sys.argv[1:])\n"
+        "deadline = time.monotonic() + 10\n"
+        "while not request.exists() and time.monotonic() < deadline:\n"
+        "    time.sleep(0.01)\n"
+        "if request.exists():\n"
+        "    acknowledgement.write_text('child survived')\n"
+    )
+    command = [sys.executable, str(child_script), str(request), str(acknowledgement)]
+    pid_file = tmp_path / "launcher.pid"
+
+    def launch_on_temporary_loop():
+        return asyncio.run(launch_detached_process(command, str(pid_file)))
+
+    try:
+        pid = await run_in_thread(launch_on_temporary_loop)
+        assert int(pid_file.read_text()) == pid
+        # The launching loop has closed before the child receives this request.
+        request.touch()
+        async with asyncio.timeout(5):
+            while not acknowledgement.exists():
+                await asyncio.sleep(0.01)
+        assert acknowledgement.read_text() == "child survived"
+    finally:
+        request.touch()

@@ -441,7 +441,7 @@ async def launch_detached_process(
     """Asynchronously launches a command as a detached background process and records its PID.
 
     This function uses the :class:`GuardedProcess` wrapper to execute the given
-    `command` via ``asyncio.create_subprocess_exec``. Standard input, output,
+    `command` via ``subprocess.Popen`` in a worker thread. Standard input, output,
     and error streams of the new process are redirected to ``subprocess.DEVNULL``.
 
     The PID of the newly launched detached process is written to the file specified
@@ -477,7 +477,10 @@ async def launch_detached_process(
         start_new_session = True
 
     try:
-        process = await guarded_proc.create_subprocess_exec(
+        # A detached child must outlive the event loop used to launch it.
+        # asyncio subprocess transports may kill their child when closed.
+        process = await run_in_thread(
+            guarded_proc.popen,
             stdin=subprocess.DEVNULL,
             stdout=subprocess.DEVNULL,
             stderr=subprocess.DEVNULL,

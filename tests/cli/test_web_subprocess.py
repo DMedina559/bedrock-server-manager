@@ -83,6 +83,7 @@ async def run_cli(command, environment, *arguments):
             await process.wait()
 
 
+@pytest.mark.skipif(os.name == "nt", reason="Foreground interruption uses POSIX SIGINT")
 async def test_direct_web_cli_serves_http_and_shuts_down(web_process_config, tmp_path):
     config, command, environment, port = web_process_config
     log = tmp_path / "web-process.log"
