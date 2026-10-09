@@ -180,7 +180,7 @@ async def post_install_server(  # noqa: C901
             "API Install Server '%s': BSMError. %s",
             payload.server_name,
             e,
-            exc_info=True,
+            exc_info=False,
         )
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail=str(e)

@@ -9,23 +9,25 @@ import re
 import sys
 import time
 from datetime import datetime
+from logging.handlers import RotatingFileHandler
 from typing import Optional
 
 from .error import (
     APICancelledError,
-    AppFileNotFoundError,
     ServerNotRunningError,
     UserInputError,
 )
 
 DEFAULT_LOG_KEEP = 5
+MAX_LOG_BYTES = 10 * 1024 * 1024
+LOG_BACKUP_COUNT = 4
 _logging_configured = False
 _HANDLER_MARKER = "_bsm_handler"
 
 # Protect common credential representations in URLs, messages, and tracebacks.
 _CREDENTIAL = re.compile(
-    r"(?i)(\b(?:access_token|refresh_token|token|password|secret|authorization|api_key)"
-    r"['\"]?\s*[:=]\s*)(?:\"[^\"]*\"|'[^']*'|[^\s&,'\"}]+)"
+    r"(?i)(\b(?:access_token|refresh_token|token|password|secret|jwt_secret_key|authorization|api_key)"
+    r"['\"]?\s*[:=]\s*)(?:\"(?:\\.|[^\"\\])*\"|'(?:\\.|[^'\\])*'|[^\s&,'\"}]+)"
 )
 _BEARER = re.compile(r"(?i)\bBearer\s+[^\s,;\'\"]+")
 _URL_CREDENTIAL = re.compile(r"(https?://)[^/\s:@]+:[^/\s@]+@", re.IGNORECASE)
@@ -42,33 +44,30 @@ def log_operation_error(
 ) -> None:
     """Report a failure once as it propagates through application layers.
 
-    Expected input, missing-resource, and state conflicts are DEBUG diagnostics.
+    Expected input and state conflicts are DEBUG diagnostics.
     Operational failures retain their traceback. Wrapping a reported exception
     preserves its reporting ownership through the exception cause chain.
     """
+    expected = isinstance(
+        error, (UserInputError, ServerNotRunningError, APICancelledError)
+    )
+    level = logging.DEBUG if expected else logging.ERROR
+    if not logger.isEnabledFor(level):
+        return
     current: BaseException | None = error
     seen: set[int] = set()
     while current is not None and id(current) not in seen:
         seen.add(id(current))
-        if getattr(current, "_bsm_failure_logged", False):
+        if getattr(current, "_bsm_failure_log_level", 0) >= level:
             return
         current = current.__cause__
-    expected = isinstance(
-        error,
-        (
-            UserInputError,
-            AppFileNotFoundError,
-            ServerNotRunningError,
-            APICancelledError,
-        ),
-    )
     logger.log(
-        logging.DEBUG if expected else logging.ERROR,
+        level,
         message,
         *args,
         exc_info=(type(error), error, error.__traceback__) if not expected else None,
     )
-    setattr(error, "_bsm_failure_logged", True)
+    setattr(error, "_bsm_failure_log_level", level)
 
 
 class RepeatedFailureReporter:
@@ -91,6 +90,30 @@ class RepeatedFailureReporter:
             self.logger.info("Background service recovered: %s.", key)
 
 
+class _TransportFilter(logging.Filter):
+    """Keep HTTP access and routine WebSocket lifecycle records at DEBUG."""
+
+    def filter(self, record: logging.LogRecord) -> bool:
+        routine = record.name == "uvicorn.access" or (
+            record.msg in ("connection open", "connection closed")
+            or ('"WebSocket %s" [accepted]' in str(record.msg))
+        )
+        if routine and record.levelno == logging.INFO:
+            record.levelno = logging.DEBUG
+            record.levelname = "DEBUG"
+        return True
+
+
+def configure_web_logging() -> None:
+    """Inherit application verbosity without replacing host handlers."""
+    for name in ("uvicorn.error", "uvicorn.access", "uvicorn.asgi"):
+        logger = logging.getLogger(name)
+        logger.setLevel(logging.NOTSET)
+        logger.propagate = True
+        if not any(isinstance(f, _TransportFilter) for f in logger.filters):
+            logger.addFilter(_TransportFilter())
+
+
 def _safe_text(value: str) -> str:
     value = _URL_CREDENTIAL.sub(r"\1[redacted]@", value)
     value = _REGISTRATION_LINK.sub(r"\1[redacted]", value)
@@ -110,6 +133,23 @@ class ApplicationFormatter(logging.Formatter):
         super().__init__(fmt)
         self.console = console
 
+    @staticmethod
+    def _escape_controls(value: str) -> str:
+        return "".join(
+            (
+                f"\\x{ord(char):02x}"
+                if ord(char) < 32 or 127 <= ord(char) <= 159 or char in "\u2028\u2029"
+                else char
+            )
+            for char in value
+        )
+
+    def formatException(self, ei) -> str:
+        text = super().formatException(ei)
+        return "".join(
+            "\n" if char == "\n" else self._escape_controls(char) for char in text
+        )
+
     def format(self, record: logging.LogRecord) -> str:
         local = copy.copy(record)
         message = _safe_text(record.getMessage())
@@ -118,10 +158,8 @@ class ApplicationFormatter(logging.Formatter):
             local.name = "%s [server=%s]" % (record.name, _safe_text(str(server_name)))
             if self.console and str(server_name) not in message:
                 message = "Server '%s': %s" % (server_name, message)
-        local.msg = "".join(
-            f"\\x{ord(char):02x}" if ord(char) < 32 or ord(char) == 127 else char
-            for char in message
-        )
+        local.name = self._escape_controls(_safe_text(local.name))
+        local.msg = self._escape_controls(message)
         local.args = ()
         # Another handler's formatter may have populated this cache already.
         local.exc_text = None
@@ -143,6 +181,9 @@ def _prune_old_logs(
         for path in files[: max(0, len(files) - keep + 1)]:
             try:
                 os.remove(path)
+                for rotated in glob.glob(f"{glob.escape(path)}.*"):
+                    if rotated.rsplit(".", 1)[-1].isdigit():
+                        os.remove(rotated)
             except OSError as error:
                 logging.getLogger(__name__).warning(
                     "Could not remove old log '%s': %s", path, error
@@ -244,7 +285,9 @@ def setup_logging(
         path = os.path.join(
             log_dir, f"bedrock_server_manager_{timestamp}_{os.getpid()}.log"
         )
-        file_handler = logging.FileHandler(path, encoding="utf-8")
+        file_handler = RotatingFileHandler(
+            path, maxBytes=MAX_LOG_BYTES, backupCount=LOG_BACKUP_COUNT, encoding="utf-8"
+        )
         _configure_handler(file_handler, level, console=False)
         root.addHandler(file_handler)
         _logging_configured = True

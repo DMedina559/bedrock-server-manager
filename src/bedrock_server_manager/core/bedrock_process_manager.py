@@ -13,7 +13,7 @@ import logging
 from typing import TYPE_CHECKING, Any, Callable, Dict, Optional
 
 from ..error import BSMError, FileOperationError
-from ..logging import log_operation_error
+from ..logging import RepeatedFailureReporter, log_operation_error
 from .player import save_player_data
 
 if TYPE_CHECKING:
@@ -56,6 +56,7 @@ class BedrockProcessManager:
         self.servers: Dict[str, "BedrockServer"] = {}
         self.restart_attempts: dict[str, int] = {}
         self.logger = logging.getLogger(__name__)
+        self._failures = RepeatedFailureReporter(self.logger)
         self._shutdown_event = asyncio.Event()
         self.player_scan_counter = 0
         self.monitoring_task: Optional[asyncio.Task[Any]] = None
@@ -90,6 +91,8 @@ class BedrockProcessManager:
             self.logger.debug("Removing server '%s' from process manager.", server_name)
             del self.servers[server_name]
             self.restart_attempts.pop(server_name, None)
+            for phase in ("probe", "recovery", "players"):
+                self._failures.failures.pop(f"{phase}:{server_name}", None)
 
     async def quiesce(self) -> None:
         """Stop monitoring and automatic restarts before draining operations."""
@@ -268,8 +271,13 @@ class BedrockProcessManager:
                 try:
                     is_running = await server.is_running()
                     await server.reconcile_status(is_running)
-                except Exception:
-                    self.logger.exception("Could not probe server '%s'", server_name)
+                    self._failures.recover(f"probe:{server_name}")
+                except Exception as error:
+                    self._failures.report(
+                        f"probe:{server_name}",
+                        "Server monitoring unavailable (%s): %s; retrying.",
+                        error,
+                    )
                     continue
 
                 if not is_running:
@@ -282,9 +290,12 @@ class BedrockProcessManager:
                         )
                         try:
                             await self._try_restart_server(server)
-                        except Exception:
-                            self.logger.exception(
-                                "Could not recover server '%s'", server_name
+                            self._failures.recover(f"recovery:{server_name}")
+                        except Exception as error:
+                            self._failures.report(
+                                f"recovery:{server_name}",
+                                "Server recovery unavailable (%s): %s; retrying.",
+                                error,
                             )
                     else:
                         self.logger.debug(
@@ -388,14 +399,13 @@ class BedrockProcessManager:
                                     self.storage,
                                     players,
                                 )
+                        self._failures.recover(f"players:{server_name}")
                     except Exception as e:
                         server.players = []
-                        log_operation_error(
-                            self.logger,
-                            "Error processing players for server '%s': %s",
-                            server.server_name,
+                        self._failures.report(
+                            f"players:{server_name}",
+                            "Player monitoring unavailable (%s): %s; retrying.",
                             e,
-                            error=e,
                         )
             if self.player_scan_counter >= player_log_monitoring_interval_sec:
                 self.player_scan_counter = 0

@@ -17,7 +17,7 @@ def test_run_web_server_default_config(app_context, monkeypatch):
     server_instance = app_context._web_server
     assert server_instance.config.host == "127.0.0.1"
     assert server_instance.config.port == 11325
-    assert server_instance.config.log_level == "info"
+    assert server_instance.config.log_level is None
     assert server_instance.config.reload is False
 
 
@@ -34,7 +34,7 @@ async def test_run_web_server_cli_args(app_context, monkeypatch):
     server_instance = app_context._web_server
     assert server_instance.config.host == "192.168.1.1"
     assert server_instance.config.port == 9000
-    assert server_instance.config.log_level == "debug"
+    assert server_instance.config.log_level is None
     assert server_instance.config.reload is True
 
 
@@ -67,3 +67,36 @@ def test_run_web_server_exception_propagation(app_context, monkeypatch):
 
     with pytest.raises(RuntimeError, match="Server crashed"):
         run_web_server(app_context)
+
+
+def test_web_logging_respects_verbosity_and_preserves_host_handlers(
+    app_context, monkeypatch, caplog
+):
+    import logging
+
+    logger = logging.getLogger("uvicorn.access")
+    handler = logging.NullHandler()
+    logger.addHandler(handler)
+    monkeypatch.setattr("uvicorn.Server.run", MagicMock())
+    try:
+        with caplog.at_level(logging.INFO):
+            run_web_server(app_context)
+            logger.info("GET /health 200")
+            logging.getLogger("uvicorn.error").info("connection open")
+            logging.getLogger("uvicorn.error").warning("WebSocket rejected")
+        assert not any(
+            "GET /health" in record.message or record.message == "connection open"
+            for record in caplog.records
+        )
+        assert any(record.message == "WebSocket rejected" for record in caplog.records)
+        with caplog.at_level(logging.DEBUG):
+            run_web_server(app_context)
+            logger.info("GET /health 200")
+        assert handler in logger.handlers
+        assert logger.propagate
+        assert any(
+            record.message == "GET /health 200" and record.levelno == logging.DEBUG
+            for record in caplog.records
+        )
+    finally:
+        logger.removeHandler(handler)

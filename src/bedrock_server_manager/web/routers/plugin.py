@@ -147,7 +147,10 @@ async def post_trigger_event(
         raise
     except BSMError as e:
         logger.debug(
-            "API Trigger Event '%s': BSMError: %s", payload.event_name, e, exc_info=True
+            "API Trigger Event '%s': BSMError: %s",
+            payload.event_name,
+            e,
+            exc_info=False,
         )
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail=str(e)
@@ -204,7 +207,9 @@ async def post_set_plugin_status(
     except AppFileNotFoundError:
         raise
     except BSMError as e:
-        logger.debug("API Set Plugin '%s': BSMError: %s", plugin_name, e, exc_info=True)
+        logger.debug(
+            "API Set Plugin '%s': BSMError: %s", plugin_name, e, exc_info=False
+        )
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail=str(e)
         )
@@ -251,7 +256,7 @@ async def post_reload_single_plugin(
         raise
     except BSMError as e:
         logger.debug(
-            "API Reload Plugin '%s': BSMError: %s", plugin_name, e, exc_info=True
+            "API Reload Plugin '%s': BSMError: %s", plugin_name, e, exc_info=False
         )
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail=str(e)
@@ -295,7 +300,7 @@ async def put_reload_plugins(
     except AppFileNotFoundError:
         raise
     except BSMError as e:
-        logger.debug("API Reload Plugins: BSMError: %s", e, exc_info=True)
+        logger.debug("API Reload Plugins: BSMError: %s", e, exc_info=False)
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail=str(e)
         )

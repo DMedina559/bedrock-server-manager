@@ -3,7 +3,7 @@
 Example plugin: PongPlugin - Demonstrates listening for custom plugin events.
 
 This plugin listens for a specific custom event, 'pingplugin:ping', and logs
-the data it receives. It's designed to work in conjunction with PingPlugin,
+receipt without logging the event payload. It's designed to work in conjunction with PingPlugin,
 which sends this event.
 """
 
@@ -30,8 +30,10 @@ class PongPlugin(PluginBase):
         This method is the ideal place to register listeners for any custom events
         this plugin is interested in.
         """
-        self.logger.info(
-            f"'{self.name}' v{self.version} loaded. Registering listener for 'pingplugin:ping' event."
+        self.logger.debug(
+            "'%s' v%s loaded. Registering listener for 'pingplugin:ping' event.",
+            self.name,
+            self.version,
         )
 
     @app_event("pingplugin:ping")
@@ -53,30 +55,12 @@ class PongPlugin(PluginBase):
         # so it doesn't interfere with your expected payload.
         triggering_plugin_name = kwargs.pop("_triggering_plugin", "UnknownPlugin")
 
-        self.logger.info(
-            f"'{self.name}' received 'pingplugin:ping' event from plugin: '{triggering_plugin_name}'."
-        )
-
-        # Log all received arguments for demonstration purposes.
-        if args:
-            self.logger.info(f"  Received positional arguments: {args}")
-        if kwargs:  # kwargs will now not include _triggering_plugin
-            self.logger.info(f"  Received keyword arguments (payload): {kwargs}")
-        else:
-            self.logger.info("  No additional keyword arguments (payload) received.")
-
-        # Example of how to safely access specific data from the event payload (kwargs).
-        # This assumes PingPlugin sends 'server_name' and a 'data' dictionary.
-        server_name = kwargs.get("server_name", "N/A")  # Use .get() for safe access
-        ping_data_payload = kwargs.get(
-            "data", {}
-        )  # Default to empty dict if 'data' is missing
-
-        message = ping_data_payload.get("message", "No message content")
-        timestamp = ping_data_payload.get("timestamp", 0)
-
-        self.logger.info(
-            f"  Parsed data from event: Server='{server_name}', Message='{message}', Timestamp='{timestamp}'"
+        self.logger.debug(
+            "Received 'pingplugin:ping' from '%s' for server '%s' (%s positional arguments, %s keyword arguments).",
+            triggering_plugin_name,
+            kwargs.get("server_name", "N/A"),
+            len(args),
+            len(kwargs),
         )
 
     @app_event("on_unload")
@@ -91,4 +75,4 @@ class PongPlugin(PluginBase):
         However, if a plugin manages resources that need specific cleanup related to
         its event handling, this would be the place to do it.
         """
-        self.logger.info(f"'{self.name}' v{self.version} is unloading.")
+        self.logger.debug("'%s' v%s is unloading.", self.name, self.version)

@@ -338,3 +338,69 @@ def test_fallback_failure_is_reported_separately(caplog):
                     logger, "Fallback failed", error=fallback
                 )
     assert len(caplog.records) == 2
+
+
+@pytest.mark.parametrize("verbosity", [logging.INFO, logging.DEBUG])
+def test_expected_failure_does_not_hide_operational_failure(caplog, verbosity):
+    from bedrock_server_manager.error import UserInputError
+
+    logger = logging.getLogger("operation-escalation")
+    expected = UserInputError("selection invalid")
+    failure = RuntimeError("automatic backup failed")
+    failure.__cause__ = expected
+    with caplog.at_level(verbosity):
+        bsm_logging.log_operation_error(logger, "Selection rejected", error=expected)
+        bsm_logging.log_operation_error(
+            logger, "Automatic backup failed", error=failure
+        )
+    errors = [record for record in caplog.records if record.levelno == logging.ERROR]
+    assert len(errors) == 1
+    assert errors[0].exc_info[1] is failure
+
+
+def test_missing_essential_file_is_an_operational_error(caplog):
+    from bedrock_server_manager.error import AppFileNotFoundError
+
+    with caplog.at_level(logging.INFO):
+        bsm_logging.log_operation_error(
+            logging.getLogger("operation-test"),
+            "Backup file unavailable",
+            error=AppFileNotFoundError("world missing"),
+        )
+    assert caplog.records[-1].levelno == logging.ERROR
+
+
+def test_escaped_quoted_credentials_and_logger_controls_are_safe():
+    record = logging.LogRecord(
+        "plugin\nINFO: forged\u2028",
+        logging.INFO,
+        __file__,
+        1,
+        '{"password":"first\\"second secret", "jwt_secret_key":"jwt-secret"}',
+        (),
+        None,
+    )
+    output = bsm_logging.ApplicationFormatter("%(name)s: %(message)s").format(record)
+    assert "second secret" not in output
+    assert "jwt-secret" not in output
+    assert "\n" not in output
+    assert "\u2028" not in output
+    assert "\\x0a" in output
+
+
+def test_rotating_session_logs_and_retention(isolated_bcm_config, monkeypatch):
+    monkeypatch.setattr(bsm_logging, "MAX_LOG_BYTES", 256)
+    logger = setup_logging(log_level="INFO")
+    for i in range(20):
+        logger.info("Operation %s completed with diagnostic context %s", i, "x" * 50)
+    log_dir = isolated_bcm_config / "logs"
+    active = bsm_logging.get_application_log_path(str(log_dir))
+    assert active is not None
+    assert len(list(log_dir.glob("*.log.*"))) == 4
+    from pathlib import Path
+
+    assert "Operation 19 completed" in Path(active).read_text(encoding="utf-8")
+    for handler in logger.handlers:
+        handler.close()
+    _prune_old_logs(str(log_dir), keep=1)
+    assert not list(log_dir.glob("*.log*"))

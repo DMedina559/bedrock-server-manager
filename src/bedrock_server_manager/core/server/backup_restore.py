@@ -206,9 +206,12 @@ class ServerBackups:
             for filename in CONFIG_FILES:
                 try:
                     results[filename] = await self.backup_config(filename)
-                except Exception:
-                    self.logger.exception(
-                        "Configuration backup failed for '%s'.", filename
+                except Exception as error:
+                    log_operation_error(
+                        self.logger,
+                        "Configuration backup failed for '%s'.",
+                        filename,
+                        error=error,
                     )
                     results[filename] = None
             if world_error:
@@ -295,8 +298,10 @@ class ServerBackups:
                     results[filename] = (
                         await self.restore_config(files[0]) if files else None
                     )
-                except Exception:
-                    self.logger.exception("Restore failed for '%s'.", filename)
+                except Exception as error:
+                    log_operation_error(
+                        self.logger, "Restore failed for '%s'.", filename, error=error
+                    )
                     results[filename] = None
                     failures.append(filename)
             try:

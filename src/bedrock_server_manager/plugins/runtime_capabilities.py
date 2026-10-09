@@ -12,6 +12,7 @@ from ..logging import log_operation_error
 
 if TYPE_CHECKING:
     from ..context import AppContext
+
 logger = logging.getLogger(__name__)
 
 
@@ -92,13 +93,14 @@ async def server_lifecycle_manager(
         operation_cancelled = True
         operation_succeeded = False
         raise
-    except Exception:
-        # If an error occurs in the `with` block, record it and re-raise.
+    except Exception as error:
+        # Retain the original failure's reporting ownership when re-raising.
         operation_succeeded = False
-        logger.error(
+        log_operation_error(
+            logger,
             "Exception occurred during managed operation for '%s'.",
             server_name,
-            exc_info=True,
+            error=error,
         )
         raise
     finally:

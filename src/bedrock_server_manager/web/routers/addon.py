@@ -462,7 +462,7 @@ async def post_install_addon(
             "API Install Addon '%s': Pre-check BSMError: %s",
             server_name,
             e,
-            exc_info=True,
+            exc_info=False,
         )
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail=str(e)

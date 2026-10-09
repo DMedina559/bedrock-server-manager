@@ -17,6 +17,7 @@ from typing import Optional
 import uvicorn
 
 from ..context import AppContext
+from ..logging import configure_web_logging
 from .app import create_web_app
 
 logger = logging.getLogger(__name__)
@@ -85,12 +86,10 @@ def run_web_server(  # noqa: C901
     except ValueError:
         logger.debug("Uvicorn will bind to hostname: %s", final_host_to_bind)
 
-    uvicorn_log_level = "info"
     reload_enabled = False
 
     if debug:
         logger.warning("Running FastAPI in DEBUG mode (Uvicorn reload enabled).")
-        uvicorn_log_level = "debug"
         reload_enabled = True
     else:
         logger.debug("Uvicorn production mode with 1 worker.")
@@ -115,14 +114,15 @@ def run_web_server(  # noqa: C901
             host=final_host_to_bind,
             port=final_port,
             log_config=None,
-            log_level=uvicorn_log_level.lower(),  # Ensure log level is lowercase
-            access_log=logging.getLogger().isEnabledFor(logging.DEBUG),
+            log_level=None,  # Inherit the configured application logging level.
+            access_log=True,  # Classify access records at DEBUG without clearing handlers.
             reload=reload_enabled,
             workers=1,  # workers if not reload_enabled and workers > 1 else None,
             forwarded_allow_ips="*",
             proxy_headers=True,
             timeout_graceful_shutdown=10,
         )
+        configure_web_logging()
         server = uvicorn.Server(config)
         app_context._web_server = server
         server.run()

@@ -160,7 +160,7 @@ async def get_list_server_backups(
             server_name,
             backup_type,
             e,
-            exc_info=True,
+            exc_info=False,
         )
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail=str(e)

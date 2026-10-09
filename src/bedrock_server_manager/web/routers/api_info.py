@@ -103,7 +103,7 @@ async def get_server_running_status(
         raise
     except BSMError as e:
         logger.debug(
-            "API Running Status '%s': BSMError: %s", server_name, e, exc_info=True
+            "API Running Status '%s': BSMError: %s", server_name, e, exc_info=False
         )
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail=str(e)
@@ -209,7 +209,7 @@ async def get_server_process_info(
         raise
     except BSMError as e:
         logger.debug(
-            "API Process Info '%s': BSMError: %s", server_name, e, exc_info=True
+            "API Process Info '%s': BSMError: %s", server_name, e, exc_info=False
         )
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail=str(e)
@@ -257,7 +257,7 @@ async def put_scan_players(
     except AppFileNotFoundError:
         raise
     except BSMError as e:
-        logger.debug("API Scan Players: BSMError: %s", e, exc_info=True)
+        logger.debug("API Scan Players: BSMError: %s", e, exc_info=False)
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail=str(e)
         )
@@ -307,7 +307,7 @@ async def get_all_players(
     except AppFileNotFoundError:
         raise
     except BSMError as e:  # Catch specific application errors if needed
-        logger.debug("API Get All Players: BSMError occurred: %s", e, exc_info=True)
+        logger.debug("API Get All Players: BSMError occurred: %s", e, exc_info=False)
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail=f"A server error occurred while fetching players: {str(e)}",

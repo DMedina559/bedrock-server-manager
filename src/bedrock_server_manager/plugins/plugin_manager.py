@@ -818,7 +818,7 @@ class PluginManager:
         async with self._lifecycle_lock:
             if self._shutdown_started:
                 raise RuntimeError("Cannot start plugins during shutdown.")
-            logger.info("--- Starting Full Plugin Reload Process ---")
+            logger.info("Reloading plugins.")
             await self.unload_plugins()
             self.plugin_fastapi_routers.clear()
             self.plugin_static_mounts.clear()

@@ -29,8 +29,10 @@ class PingPlugin(PluginBase):
         """
         Called by the PluginManager when this plugin is loaded.
         """
-        self.logger.info(
-            f"'{self.name}' v{self.version} loaded. Will send 'pingplugin:ping' events after successful server starts."
+        self.logger.debug(
+            "'%s' v%s loaded. Will send 'pingplugin:ping' events after successful server starts.",
+            self.name,
+            self.version,
         )
 
     @app_event("after_server_start")
@@ -51,12 +53,17 @@ class PingPlugin(PluginBase):
         result: Dict[str, Any] = kwargs.get("result", {})
 
         self.logger.debug(
-            f"'{self.name}' received 'after_server_start' event for server '{server_name}'. Result: {result.get('status')}"
+            "'%s' received 'after_server_start' event for server '%s'. Result: %s",
+            self.name,
+            server_name,
+            result.get("status"),
         )
 
         if result.get("status") == "success":
-            self.logger.info(
-                f"Server '{server_name}' started successfully. '{self.name}' is preparing to send a 'pingplugin:ping' event."
+            self.logger.debug(
+                "Server '%s' started successfully. '%s' is preparing to send a 'pingplugin:ping' event.",
+                server_name,
+                self.name,
             )
 
             # Prepare the payload for the custom event.
@@ -79,13 +86,17 @@ class PingPlugin(PluginBase):
                 data=ping_payload_data,  # Example of a nested dictionary as a kwarg
             )
 
-            self.logger.info(
-                f"'{self.name}' successfully sent 'pingplugin:ping' event for server '{server_name}' with payload: {ping_payload_data}"
+            self.logger.debug(
+                "'%s' successfully sent 'pingplugin:ping' event for server '%s'",
+                self.name,
+                server_name,
             )
         else:
-            self.logger.info(
-                f"Server '{server_name}' did not start successfully (status: {result.get('status')}). "
-                f"'{self.name}' will not send a ping event."
+            self.logger.debug(
+                "Server '%s' did not start successfully (status: %s). '%s' will not send a ping event.",
+                server_name,
+                result.get("status"),
+                self.name,
             )
 
     @app_event("on_unload")
@@ -93,4 +104,4 @@ class PingPlugin(PluginBase):
         """
         Called by the PluginManager when this plugin is being unloaded.
         """
-        self.logger.info(f"'{self.name}' v{self.version} is unloading.")
+        self.logger.debug("'%s' v%s is unloading.", self.name, self.version)

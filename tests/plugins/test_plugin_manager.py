@@ -351,3 +351,25 @@ async def test_bundled_plugins_load_through_dynamic_manager(
         f"bsm_plugins.{name}" for name in names
     }
     assert not [record for record in caplog.records if record.levelno >= logging.ERROR]
+
+
+async def test_example_listener_logs_metadata_without_payload(
+    plugin_factory, app_context, caplog
+):
+    import logging
+    from pathlib import Path
+
+    source = Path(__file__).resolve().parents[2] / "plugins" / "pong_plugin.py"
+    await plugin_factory("pong_example", source.read_text())
+    caplog.clear()
+    with caplog.at_level(logging.DEBUG):
+        await app_context.plugin_manager.trigger_event(
+            "pingplugin:ping",
+            "private positional data",
+            server_name="example",
+            data={"message": "private payload data"},
+            _triggering_plugin="example_sender",
+        )
+    assert "private positional data" not in caplog.text
+    assert "private payload data" not in caplog.text
+    assert "example_sender" in caplog.text

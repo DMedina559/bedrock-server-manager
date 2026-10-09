@@ -11,6 +11,7 @@ from .auth import router as auth_router
 from .backup_restore import router as backup_restore_router
 from .bans import router as bans_router
 from .install import router as install_router
+from .logs import router as logs_router
 from .main import router as main_router
 from .permissions import router as permissions_router
 from .plugin import router as plugin_router
@@ -27,6 +28,7 @@ from .websocket import router as websocket_router
 from .world import router as world_router
 
 all_routers = [
+    logs_router,
     setup_router,
     auth_router,
     users_router,

@@ -105,11 +105,8 @@ class PluginBase(ABC):
             )
         self.version: str = class_version
 
-        # Log the successful initialization of the plugin instance.
-        # This is an INFO level log as it's a significant lifecycle event for the plugin.
-        self.logger.info(
-            "Plugin '%s' v%s initialized and active.", self.name, self.version
-        )
+        # Construction precedes on_load; activation is reported by the manager.
+        self.logger.debug("Plugin '%s' v%s initialized.", self.name, self.version)
 
     async def get_plugin_setting(self, key: str, default: Any = None) -> Any:
         """Retrieves a setting specific to this plugin.

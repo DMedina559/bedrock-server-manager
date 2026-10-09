@@ -22,7 +22,7 @@ class DynamicPageTestPlugin(PluginBase):
     async def plugin_loaded(self, **kwargs):
         self.router = APIRouter(tags=["Dynamic Page Test Plugin"])
         self._define_routes()
-        self.logger.info(f"Plugin '{self.name}' v{self.version} loaded.")
+        self.logger.debug("Plugin '%s' v%s loaded.", self.name, self.version)
 
     def _define_routes(self):
         @self.router.get(

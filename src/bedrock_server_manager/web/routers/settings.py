@@ -131,7 +131,7 @@ async def post_set_setting(
         raise
     except BSMError as e:  # Catch other BSM specific errors (e.g., ConfigWriteError)
         logger.debug(
-            "API Set Setting '%s': BSMError. %s", payload.key, e, exc_info=True
+            "API Set Setting '%s': BSMError. %s", payload.key, e, exc_info=False
         )
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail=str(e)
@@ -181,7 +181,7 @@ async def put_reload_settings(
     except AppFileNotFoundError:
         raise
     except BSMError as e:  # E.g. ConfigLoadError
-        logger.debug("API Reload Settings: BSMError. %s", e, exc_info=True)
+        logger.debug("API Reload Settings: BSMError. %s", e, exc_info=False)
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail=str(e)
         )
