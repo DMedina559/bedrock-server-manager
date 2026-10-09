@@ -49,3 +49,29 @@ async def test_resource_monitor_recovers_after_provider_failure(
             message = json.loads(await socket.recv())
         assert message["topic"] == topic
         assert message["data"] == {"status": "success", "process_info": None}
+
+
+async def test_resource_monitor_broadcasts_live_process_then_stopped_state(
+    app_context, real_bedrock_server, subscribed_socket
+):
+    server = real_bedrock_server
+    await server.start()
+    child = server._process
+    topic = f"resource-monitor:{server.server_name}"
+    async with subscribed_socket(topic) as socket:
+        async with asyncio.timeout(10):
+            message = json.loads(await socket.recv())
+        info = message["data"]["process_info"]
+        assert message["topic"] == topic
+        assert info["pid"] == child.pid
+        assert info["memory_mb"] > 0
+        assert info["cpu_percent"] >= 0
+        assert info["uptime"]
+        await server.stop()
+        async with asyncio.timeout(10):
+            while True:
+                message = json.loads(await socket.recv())
+                if message["data"]["process_info"] is None:
+                    break
+        assert child.returncode is not None
+        assert not await server.is_running()

@@ -1,3 +1,6 @@
+import asyncio
+import json
+
 import pytest
 
 
@@ -63,3 +66,42 @@ async def test_missing_server_is_not_found(admin_auth_client):
     assert (
         await admin_auth_client.post("/api/server/missing/start")
     ).status_code == 404
+
+
+async def test_dummy_player_events_reach_runtime_and_websocket(
+    admin_auth_client, app_context, real_bedrock_server, subscribed_socket
+):
+    server = real_bedrock_server
+    await app_context.settings.set("monitoring.process_interval_sec", 1)
+    await app_context.settings.set("monitoring.player_interval_sec", 1)
+    base = f"/api/server/{server.server_name}"
+    assert (await admin_auth_client.post(base + "/start")).status_code == 200
+    manager = app_context.bedrock_process_manager
+    # Restart monitoring so its intervals come from this test's configuration.
+    manager.monitoring_task.cancel()
+    await asyncio.gather(manager.monitoring_task, return_exceptions=True)
+    await manager.start()
+    try:
+        async with subscribed_socket("event:after_server_players_change") as socket:
+            for command, expected_count in [("PLAYER_JOIN", 1), ("PLAYER_LEAVE", 0)]:
+                response = await admin_auth_client.post(
+                    base + "/send_command",
+                    json={"command": f"__DUMMY__ {command} IntegrationPlayer"},
+                )
+                assert response.status_code == 200
+                async with asyncio.timeout(10):
+                    message = json.loads(await socket.recv())
+                assert message["topic"] == "event:after_server_players_change"
+                result = message["data"]["result"]
+                assert result["server_name"] == server.server_name
+                assert result["player_count"] == expected_count
+                expected_players = (
+                    [{"name": "IntegrationPlayer", "xuid": "2535413537906883"}]
+                    if expected_count
+                    else []
+                )
+                assert result["players"] == expected_players
+                assert server.players == expected_players
+                assert server.player_count == expected_count
+    finally:
+        await manager.quiesce()
