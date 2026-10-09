@@ -92,3 +92,29 @@ async def test_missing_custom_archive_preserves_existing_server(
     )
     assert response.status_code == 404
     assert executable.read_bytes() == original
+
+
+@pytest.mark.parametrize(
+    "version,expected", [("LATEST", "1.26.45.1"), ("PREVIEW", "1.26.60.23")]
+)
+async def test_http_download_install_creates_runnable_persisted_server(
+    admin_auth_client, app_context, download_api, wait_for_task, version, expected
+):
+    name = "downloaded_" + version.lower()
+    response = await admin_auth_client.post(
+        "/api/server/install", json={"server_name": name, "server_version": version}
+    )
+    assert response.status_code == 200
+    await wait_for_task(app_context, response.json()["task_id"])
+    await app_context.reload()
+    server = app_context.get_server(name)
+    assert await server.is_installed()
+    assert await server.get_version() == expected
+    response = await admin_auth_client.post(f"/api/server/{name}/start")
+    try:
+        assert response.status_code == 200
+        assert response.json()["outcome"] == "started"
+        assert await server.is_running()
+        assert server._process.returncode is None
+    finally:
+        await server.stop()
