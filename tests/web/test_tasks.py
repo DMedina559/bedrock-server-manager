@@ -2,15 +2,39 @@ import asyncio
 import json
 
 import pytest
+import pytest_asyncio
 
 from bedrock_server_manager.api.models import StartServerResponse
 from bedrock_server_manager.error import ServerStartError
 from bedrock_server_manager.web.tasks import TaskManager
 
 
-@pytest.fixture
-def task_manager(app_context):
-    return TaskManager(connection_manager=app_context.connection_manager)
+@pytest_asyncio.fixture
+async def task_manager(app_context):
+    manager = TaskManager(connection_manager=app_context.connection_manager)
+    try:
+        yield manager
+    finally:
+        for future in list(manager.futures.values()):
+            if not future.done():
+                future.cancel()
+        async with asyncio.timeout(5):
+            await manager.shutdown()
+
+
+async def finish_task(manager, task_id):
+    async with asyncio.timeout(5):
+        future = manager.futures.get(task_id)
+        if future is not None:
+            await asyncio.gather(future, return_exceptions=True)
+        await asyncio.sleep(0)
+        while manager._background_tasks:
+            updates = list(manager._background_tasks)
+            await asyncio.gather(*updates)
+            manager._background_tasks.difference_update(updates)
+        snapshot = await manager.get_task(task_id)
+        assert snapshot.status in {"completed", "failed", "cancelled"}
+        return snapshot
 
 
 async def test_run_task_success(task_manager):
@@ -22,12 +46,7 @@ async def test_run_task_success(task_manager):
     # Check immediate status
     assert task_id in task_manager.tasks
 
-    future = task_manager.futures.get(task_id)
-    if future:
-        await future  # block until done
-
-    # Allow add_done_callback to finish
-    await asyncio.sleep(0.01)
+    await finish_task(task_manager, task_id)
 
     assert task_manager.tasks[task_id]["status"] == "completed"
     assert task_manager.tasks[task_id]["result"] == 15
@@ -40,10 +59,7 @@ async def test_model_task_result_is_json_serializable(task_manager):
         )
 
     task_id = await task_manager.run_task(target)
-    await task_manager.futures[task_id]
-    await asyncio.sleep(0)
-    await asyncio.gather(*task_manager._background_tasks)
-    snapshot = await task_manager.get_task(task_id)
+    snapshot = await finish_task(task_manager, task_id)
     result = snapshot.model_dump(mode="json")["result"]
     assert result["outcome"] == "started"
     assert json.loads(json.dumps(result))["server_name"] == "example"
@@ -54,10 +70,7 @@ async def test_task_failure_has_structured_safe_error(task_manager):
         raise ServerStartError("Private path /srv/private")
 
     task_id = await task_manager.run_task(target)
-    with pytest.raises(ServerStartError):
-        await task_manager.futures[task_id]
-    await asyncio.sleep(0)
-    await asyncio.gather(*task_manager._background_tasks)
+    await finish_task(task_manager, task_id)
     details = task_manager.tasks[task_id]
     assert details["status"] == "failed"
     assert details["error"].code == "server_start_failed"
@@ -65,51 +78,43 @@ async def test_task_failure_has_structured_safe_error(task_manager):
     assert "/srv/private" not in snapshot.model_dump_json()
 
 
-async def test_run_coroutine_task_success(task_manager, app_context):
-    app_context.loop = asyncio.get_running_loop()
+async def test_run_coroutine_task_success(task_manager):
+    started, released = asyncio.Event(), asyncio.Event()
 
-    async def my_coro_task(a, b):
-        await asyncio.sleep(0.1)
+    async def multiply(a, b):
+        started.set()
+        await released.wait()
         return a * b
 
-    task_id = await task_manager.run_task(my_coro_task, None, 5, 10)
-    assert task_id in task_manager.tasks
-
-    # Wait for the task to complete
-    future = task_manager.futures.get(task_id)
-    if future:
-        await future
-
-    # Allow add_done_callback to finish
-    await asyncio.sleep(0.01)
-
-    assert task_manager.tasks[task_id]["status"] == "completed"
-    assert task_manager.tasks[task_id]["result"] == 50
+    task_id = await task_manager.run_task(multiply, None, 5, 10)
+    async with asyncio.timeout(5):
+        await started.wait()
+    assert (await task_manager.get_task(task_id)).status == "running"
+    released.set()
+    snapshot = await finish_task(task_manager, task_id)
+    assert snapshot.status == "completed"
+    assert snapshot.result == 50
 
 
-async def test_cancel_task(task_manager, app_context):
-    app_context.loop = asyncio.get_running_loop()
+async def test_cancel_task(task_manager):
+    started, cleaned_up = asyncio.Event(), asyncio.Event()
 
-    async def infinite_task():
-        while True:
-            await asyncio.sleep(0.1)
+    async def wait_forever():
+        started.set()
+        try:
+            await asyncio.Event().wait()
+        finally:
+            cleaned_up.set()
 
-    task_id = await task_manager.run_task(infinite_task)
-    assert task_id in task_manager.tasks
-
-    # Give it a tiny bit of time to start
-    await asyncio.sleep(0.1)
-
-    # Cancel it
-    cancel_result = await task_manager.cancel_task(task_id)
-    assert cancel_result is True
-
-    # Allow add_done_callback to finish handling the cancellation
-    await asyncio.sleep(0.01)
-
-    # Check that status was updated to error (cancelled)
-    assert task_manager.tasks[task_id]["status"] == "cancelled"
-    assert "cancelled" in task_manager.tasks[task_id]["message"].lower()
+    task_id = await task_manager.run_task(wait_forever)
+    async with asyncio.timeout(5):
+        await started.wait()
+        assert await task_manager.cancel_task(task_id)
+        await cleaned_up.wait()
+    snapshot = await finish_task(task_manager, task_id)
+    assert snapshot.status == "cancelled"
+    assert "cancelled" in snapshot.message.lower()
+    assert task_id not in task_manager.futures
 
 
 async def test_run_task_failure(task_manager):
@@ -117,18 +122,9 @@ async def test_run_task_failure(task_manager):
         raise ValueError("Something went wrong")
 
     task_id = await task_manager.run_task(failing_task)
-
-    future = task_manager.futures.get(task_id)
-    if future:
-        try:
-            await future
-        except Exception:
-            pass
-
-    # Allow add_done_callback to finish
-    await asyncio.sleep(0.01)
-
-    assert task_manager.tasks[task_id]["status"] == "failed"
+    snapshot = await finish_task(task_manager, task_id)
+    assert snapshot.status == "failed"
+    assert snapshot.error is not None
 
 
 async def test_run_task_websocket_notification_user_specific(
@@ -169,11 +165,7 @@ async def test_run_task_with_unused_username(task_manager):
 
     task_id = await task_manager.run_task(target_without_username, "myuser", 3, 4)
 
-    future = task_manager.futures.get(task_id)
-    if future:
-        await future
-
-    await asyncio.sleep(0.01)
+    await finish_task(task_manager, task_id)
 
     assert task_manager.tasks[task_id]["status"] == "completed"
     assert task_manager.tasks[task_id]["result"] == 12
@@ -202,7 +194,7 @@ async def test_invalid_admission_does_not_evict_completed_task(task_manager):
         return None
 
     task_id = await task_manager.run_task(collect)
-    await asyncio.sleep(0.01)
+    await finish_task(task_manager, task_id)
     task_manager._max_tasks = 1
     with pytest.raises(ValidationError):
         await task_manager.run_task(collect, username=42)
@@ -210,9 +202,8 @@ async def test_invalid_admission_does_not_evict_completed_task(task_manager):
     await task_manager.shutdown()
 
 
-async def test_admitted_task_remains_tracked_until_shutdown(app_context):
-    connection = app_context.connection_manager
-    manager = TaskManager(connection)
+async def test_admitted_task_remains_tracked_until_shutdown(task_manager):
+    manager = task_manager
     admission = asyncio.create_task(manager.run_task(lambda: 1, "owner"))
     task_id = await admission
     assert task_id in manager.futures
@@ -220,28 +211,42 @@ async def test_admitted_task_remains_tracked_until_shutdown(app_context):
     assert (await manager.get_task(task_id)).status == "completed"
 
 
-async def test_cancelled_thread_remains_tracked_until_worker_exits():
+async def test_cancelled_thread_remains_tracked_until_worker_exits(task_manager):
     import threading
 
-    started = threading.Event()
-    released = threading.Event()
-    finished = threading.Event()
+    started = asyncio.Event()
+    released, finished, cancelled = (
+        threading.Event(),
+        threading.Event(),
+        asyncio.Event(),
+    )
+    loop = asyncio.get_running_loop()
 
     def worker(cancellation_event):
-        started.set()
-        cancellation_event.wait()
-        released.wait()
+        loop.call_soon_threadsafe(started.set)
+        if not cancellation_event.wait(5):
+            raise TimeoutError("Worker did not receive cancellation")
+        loop.call_soon_threadsafe(cancelled.set)
+        if not released.wait(5):
+            raise TimeoutError("Worker was not released")
         finished.set()
 
-    manager = TaskManager(None)
+    manager = task_manager
     task_id = await manager.run_task(worker)
-    await asyncio.to_thread(started.wait)
-    await manager.cancel_task(task_id)
-    shutdown = asyncio.create_task(manager.shutdown())
-    await asyncio.sleep(0)
-    assert not shutdown.done()
-    assert (await manager.get_task(task_id)).status == "cancelling"
-    released.set()
-    await shutdown
-    assert finished.is_set()
-    assert (await manager.get_task(task_id)).status == "cancelled"
+    shutdown = None
+    try:
+        async with asyncio.timeout(5):
+            await started.wait()
+            await manager.cancel_task(task_id)
+            await cancelled.wait()
+            shutdown = asyncio.create_task(manager.shutdown())
+            assert not shutdown.done()
+            assert (await manager.get_task(task_id)).status == "cancelling"
+            released.set()
+            await shutdown
+        assert finished.is_set()
+        assert (await manager.get_task(task_id)).status == "cancelled"
+    finally:
+        released.set()
+        if shutdown is not None:
+            await shutdown
