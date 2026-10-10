@@ -29,7 +29,9 @@ async def get_log_history(
         try:
             core_validate_server_name_format(server_name)
         except InvalidServerNameError:
-            raise HTTPException(status_code=400, detail="Invalid server name.") from None
+            raise HTTPException(
+                status_code=400, detail="Invalid server name."
+            ) from None
         if app_context.state.servers.get(server_name) is None:
             raise HTTPException(status_code=404, detail="Server is unavailable.")
     try:
@@ -37,4 +39,6 @@ async def get_log_history(
     except FileNotFoundError:
         raise HTTPException(status_code=404, detail="Log is unavailable.") from None
     except ValueError:
-        raise HTTPException(status_code=409, detail="Log file changed; reload the viewer.") from None
+        raise HTTPException(
+            status_code=409, detail="Log file changed; reload the viewer."
+        ) from None
