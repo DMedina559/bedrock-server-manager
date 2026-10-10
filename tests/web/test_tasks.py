@@ -250,3 +250,55 @@ async def test_cancelled_thread_remains_tracked_until_worker_exits(task_manager)
         released.set()
         if shutdown is not None:
             await shutdown
+
+
+async def test_task_http_and_socket_snapshots_share_transition_versions(task_manager):
+    started = asyncio.Event()
+    finish = asyncio.Event()
+
+    async def target():
+        started.set()
+        await finish.wait()
+        return "done"
+
+    task_id = await task_manager.run_task(target, "admin")
+    queued = await task_manager.get_task(task_id)
+    await started.wait()
+    running = await task_manager.get_task(task_id)
+    assert running.epoch == queued.epoch
+    assert running.revision > queued.revision
+    assert (await task_manager.get_all_tasks())[task_id] == running
+    # Reading or sending again must not invent a newer task revision.
+    assert task_manager._snapshot(task_id) == running
+    finish.set()
+    completed = await finish_task(task_manager, task_id)
+    assert completed.epoch == running.epoch
+    assert completed.revision > running.revision
+
+
+async def test_task_socket_and_http_use_identical_versions(
+    task_manager, subscribed_socket, test_admin_user
+):
+    finish = asyncio.Event()
+
+    async def target():
+        await finish.wait()
+        return "done"
+
+    async with subscribed_socket() as socket:
+        task_id = await task_manager.run_task(target, test_admin_user.username)
+        try:
+            async with asyncio.timeout(5):
+                message = json.loads(await socket.recv())
+            snapshot = await task_manager.get_task(task_id)
+            assert message["data"] == snapshot.model_dump(mode="json")
+            assert snapshot.revision > 0
+            assert snapshot.epoch
+            finish.set()
+            completed = await finish_task(task_manager, task_id)
+            async with asyncio.timeout(5):
+                message = json.loads(await socket.recv())
+            assert message["data"] == completed.model_dump(mode="json")
+            assert completed.revision > snapshot.revision
+        finally:
+            finish.set()

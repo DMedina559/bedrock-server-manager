@@ -43,3 +43,40 @@ async def test_stopped_server_has_no_process_info(app_context, real_bedrock_serv
 def test_system_requests_require_server_identity(model):
     with pytest.raises(ValidationError):
         model(server_name="")
+
+
+async def test_process_observation_version_precedes_delayed_read(
+    app_context, real_bedrock_server, monkeypatch
+):
+    import asyncio
+
+    from bedrock_server_manager.api.models.system import GetBedrockProcessInfoRequest
+    from bedrock_server_manager.api.system import get_bedrock_process_info
+    from bedrock_server_manager.state_version import state_clock
+
+    entered = asyncio.Event()
+    release = asyncio.Event()
+
+    async def delayed_read():
+        entered.set()
+        await release.wait()
+        return None
+
+    monkeypatch.setattr(real_bedrock_server, "get_process_info", delayed_read)
+    pending = asyncio.create_task(
+        get_bedrock_process_info(
+            GetBedrockProcessInfoRequest(server_name=real_bedrock_server.server_name),
+            app_context=app_context,
+        )
+    )
+    try:
+        async with asyncio.timeout(5):
+            await entered.wait()
+        newer = state_clock.capture()
+        release.set()
+        result = await pending
+        assert result.epoch == newer["epoch"]
+        assert result.revision < newer["revision"]
+    finally:
+        release.set()
+        await asyncio.gather(pending, return_exceptions=True)

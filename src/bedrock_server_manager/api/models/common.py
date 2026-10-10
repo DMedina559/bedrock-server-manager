@@ -123,7 +123,14 @@ class PlayerInfo(APIResponse):
     xuid: str
 
 
-class ServerSummary(APIResponse):
+class StateVersion(APIResponse):
+    """Optional for legacy producers; compare revisions only within an epoch."""
+
+    epoch: str | None = None
+    revision: int | None = Field(default=None, ge=1, le=2**53 - 1)
+
+
+class ServerSummary(StateVersion):
     name: str
     status: str
     version: str

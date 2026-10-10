@@ -4,10 +4,10 @@ from typing import Any, Literal
 
 from pydantic import JsonValue
 
-from ..api.models.common import APIErrorResponse, APIResponse
+from ..api.models.common import APIErrorResponse, StateVersion
 
 
-class TaskRecord(APIResponse):
+class TaskRecord(StateVersion):
     status: Literal[
         "queued", "running", "completed", "failed", "cancelling", "cancelled"
     ]

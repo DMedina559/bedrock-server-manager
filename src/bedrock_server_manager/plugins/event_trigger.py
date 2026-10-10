@@ -22,6 +22,7 @@ from typing import (
 from pydantic import BaseModel, ValidationError
 
 from ..error import APICancelledError
+from ..state_version import state_clock
 from .api_contract import APIResponseValidationError, get_contract
 from .cancellable_event import CancellableEvent
 from .util import broadcast_event
@@ -107,8 +108,11 @@ def trigger_event(
             if before and app_context:
                 plugin_kwargs = dict(event_kwargs)
                 plugin_kwargs.pop("app_context", None)
+                version = state_clock.capture()
                 await app_context.plugin_manager.trigger_event(before, **plugin_kwargs)
-                await broadcast_event(app_context, before, event_kwargs)
+                await broadcast_event(
+                    app_context, before, event_kwargs, version=version
+                )
                 if cancellable_event.is_cancelled:
                     if "request" in sig.parameters:
                         raise APICancelledError(
@@ -136,8 +140,9 @@ def trigger_event(
                 event_kwargs["result"] = deepcopy(result)
                 plugin_kwargs = dict(event_kwargs)
                 plugin_kwargs.pop("app_context", None)
+                version = state_clock.capture()
                 await app_context.plugin_manager.trigger_event(after, **plugin_kwargs)
-                await broadcast_event(app_context, after, event_kwargs)
+                await broadcast_event(app_context, after, event_kwargs, version=version)
 
             return result
 

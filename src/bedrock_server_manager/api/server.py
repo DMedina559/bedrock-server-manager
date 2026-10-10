@@ -36,6 +36,7 @@ from ..logging import log_operation_error
 from ..plugins.api_bridge import api_method
 from ..plugins.api_contract import validate_contract
 from ..plugins.event_trigger import trigger_event
+from ..state_version import state_clock
 from .models import (
     RestartServerRequest,
     RestartServerResponse,
@@ -256,9 +257,13 @@ async def get_server_summary(
         server = app_context.get_server(server_name)
         if not await server.is_installed():
             raise BSMError(f"Server '{server_name}' is not installed.")
+        version = state_clock.capture()
         summary = await server.get_summary_info()
         return GetServerSummaryResponse.model_validate(
-            {"status": "success", "summary": summary.model_dump(mode="json")}
+            {
+                "status": "success",
+                "summary": {**summary.model_dump(mode="json"), **version},
+            }
         )
     except Exception as e:
         log_operation_error(

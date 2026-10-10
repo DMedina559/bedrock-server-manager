@@ -2,7 +2,7 @@
 
 from pydantic import Field
 
-from .common import APIRequest, ServerSummary, SuccessResponse
+from .common import APIRequest, ServerSummary, StateVersion, SuccessResponse
 
 
 class ListAvailableWorldsRequest(APIRequest):
@@ -17,7 +17,7 @@ class GetAllServersDataRequest(APIRequest):
     pass
 
 
-class GetAllServersDataResponse(SuccessResponse):
+class GetAllServersDataResponse(SuccessResponse, StateVersion):
     servers: list[ServerSummary]
 
 

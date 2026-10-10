@@ -2,6 +2,8 @@ from typing import Any
 
 from pydantic import BaseModel, JsonValue, TypeAdapter
 
+from ..state_version import StateStamp, state_clock
+
 _json_payload: TypeAdapter[JsonValue] = TypeAdapter(JsonValue)
 
 
@@ -20,11 +22,18 @@ def _sanitize_for_json(data: Any) -> JsonValue:
     return _json_payload.validate_python(convert(data), strict=True)
 
 
-async def broadcast_event(app_context: Any, event_name: str, event_data: dict):
+async def broadcast_event(
+    app_context: Any,
+    event_name: str,
+    event_data: dict,
+    *,
+    version: StateStamp | None = None,
+):
     """Helper to broadcast event to websockets asynchronously."""
     if not app_context or not hasattr(app_context, "connection_manager"):
         return
 
+    version = version if version is not None else state_clock.capture()
     connection_manager = app_context.connection_manager
     public_data = {
         key: value
@@ -41,6 +50,7 @@ async def broadcast_event(app_context: Any, event_name: str, event_data: dict):
 
     message = {
         "type": "event",
+        **version,
         "topic": f"event:{event_name}",
         "data": sanitized_data,
     }

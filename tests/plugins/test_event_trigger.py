@@ -68,10 +68,58 @@ async def test_event_hooks_publish_safe_payloads_to_real_socket(
         assert before == {
             "type": "event",
             "topic": "event:socket_before",
+            "epoch": before["epoch"],
+            "revision": before["revision"],
             "data": {"value": 4},
         }
         assert after == {
             "type": "event",
             "topic": "event:socket_after",
+            "epoch": after["epoch"],
+            "revision": after["revision"],
             "data": {"value": 4, "result": 8},
         }
+
+        assert before["epoch"] == after["epoch"]
+        assert after["revision"] > before["revision"]
+
+
+async def test_delayed_plugin_callback_preserves_original_event_version(
+    app_context, subscribed_socket, monkeypatch
+):
+    import asyncio
+    import json
+
+    from bedrock_server_manager.state_version import state_clock
+
+    entered = asyncio.Event()
+    release = asyncio.Event()
+    original = app_context.plugin_manager.trigger_event
+
+    async def delayed(event_name, **kwargs):
+        if event_name == "delayed_after":
+            entered.set()
+            await release.wait()
+        await original(event_name, **kwargs)
+
+    monkeypatch.setattr(app_context.plugin_manager, "trigger_event", delayed)
+
+    @trigger_event(after="delayed_after")
+    async def target(app_context):
+        return "captured"
+
+    async with subscribed_socket("event:delayed_after") as socket:
+        pending = asyncio.create_task(target(app_context))
+        try:
+            async with asyncio.timeout(5):
+                await entered.wait()
+            newer = state_clock.capture()
+            release.set()
+            await pending
+            async with asyncio.timeout(5):
+                message = json.loads(await socket.recv())
+            assert message["epoch"] == newer["epoch"]
+            assert message["revision"] < newer["revision"]
+        finally:
+            release.set()
+            await asyncio.gather(pending, return_exceptions=True)

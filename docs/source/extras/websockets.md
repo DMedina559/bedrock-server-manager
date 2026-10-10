@@ -166,3 +166,30 @@ The message structure for task updates is as follows:
     -   `result`: The result of the task, if any.
     -   `id`: The task ID used to poll its status.
     -   `error`: A safe structured error when the task fails, otherwise `null`.
+
+## State ordering across HTTP and WebSockets
+
+Core state messages include `epoch` (a backend-process UUID) and `revision`
+(a positive, monotonically increasing, JavaScript-safe integer). Compare revisions
+only for the same resource and epoch. Equal revisions describe the same captured
+state and may be ignored as duplicates. An epoch change requires clearing ordering
+watermarks and fetching fresh snapshots; UUID epochs are not sortable. A delayed
+message from a retired connection must not switch the client back to its old epoch.
+
+Task HTTP snapshots and `task_update.data` contain the same stored version for
+that task transition. Repeated polling does not advance it. Fleet HTTP responses
+and each server entry, individual server summaries and running-status responses,
+process-info HTTP responses, and `resource_update.data`
+also carry versions. Plugin event envelopes carry them at the top level, covering
+server lifecycle and player changes without altering plugin callback arguments.
+
+Observation versions are reserved before asynchronous reads; event versions are
+reserved before plugin callbacks and socket delivery. A slow earlier read or
+callback therefore cannot become newer merely because its response arrives later.
+These are ordering tokens, not database transaction revisions: fleet reads are
+not atomic snapshots of every server. Fields are optional in model constructors
+for compatibility with existing producers, but the core paths above supply them.
+
+The sequence is process-local and does not synchronize independent web workers.
+A shared persistent revision authority would be required for a multi-process
+state service. Arbitrary plugin WebSocket payloads and log streams are unchanged.
