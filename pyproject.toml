@@ -95,7 +95,7 @@ mariadb = [
 
 postgresql = [
     "psycopg>=3.2.9,<3.4",
-    "asyncpg>=0.31.0,<0.32",
+    "asyncpg>=0.31.0,<0.33",
 ]
 
 [tool.setuptools.packages.find]
