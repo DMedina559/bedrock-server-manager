@@ -18,6 +18,7 @@ from pydantic import ValidationError
 
 from ..context import AppContext
 from ..error import BSMError, MissingArgumentError, UserInputError
+from ..logging import log_operation_error
 from ..plugins.api_bridge import api_method
 from ..plugins.api_contract import validate_contract
 from ..plugins.event_trigger import trigger_event
@@ -49,17 +50,17 @@ async def get_global_setting(
     key = request.key
     if not key:
         raise MissingArgumentError("A 'key' must be provided to get a setting.")
-    logger.debug(f"API: Reading global setting '{key}'.")
+    logger.debug("Reading global setting '%s'.", key)
     try:
         settings = app_context.settings
         retrieved_value = settings.get(key)
-        logger.debug(f"API: Successfully read global setting '{key}'.")
+        logger.debug("Successfully read global setting '%s'.", key)
         return GetGlobalSettingResponse.model_validate(
             {"status": "success", "value": retrieved_value}
         )
     except Exception as e:
-        logger.error(
-            f"API: Unexpected error reading global setting '{key}': {e}", exc_info=True
+        log_operation_error(
+            logger, "Unexpected error reading global setting '%s': %s", key, e, error=e
         )
         raise
 
@@ -73,17 +74,17 @@ async def get_all_global_settings(
     Accepts GetAllGlobalSettingsRequest and returns GetAllGlobalSettingsResponse.
     Invalid requests fail validation before side effects; operation failures raise application exceptions.
     """
-    logger.debug("API: Reading all global settings.")
+    logger.debug("Reading all global settings.")
     try:
         settings = app_context.settings
         all_settings = settings.state.settings.to_dict()
-        logger.debug("API: Successfully retrieved all global settings.")
+        logger.debug("Successfully retrieved all global settings.")
         return GetAllGlobalSettingsResponse.model_validate(
             {"status": "success", "settings": all_settings}
         )
     except Exception as e:
-        logger.error(
-            f"API: Unexpected error reading all global settings: {e}", exc_info=True
+        log_operation_error(
+            logger, "Unexpected error reading all global settings: %s", e, error=e
         )
         raise
 
@@ -104,24 +105,24 @@ async def set_global_setting(
     value = request.value
     if not key:
         raise MissingArgumentError("A 'key' must be provided to set a setting.")
-    logger.debug(f"API: Writing to global setting. Key='{key}', Value='{value}'")
+    logger.debug("Updating global setting '%s'.", key)
     try:
         settings = app_context.settings
         await settings.set(key, value)
-        logger.info(f"API: Successfully wrote to global setting '{key}'.")
+        logger.info("Successfully wrote to global setting '%s'.", key)
         return SetGlobalSettingResponse(
             message=f"Global setting '{key}' updated successfully."
         )
     except ValidationError as error:
         raise UserInputError("Invalid setting value.") from error
     except BSMError as e:
-        logger.error(
-            f"API: Configuration error setting global key '{key}': {e}", exc_info=True
+        log_operation_error(
+            logger, "Configuration error setting global key '%s': %s", key, e, error=e
         )
         raise
     except Exception as e:
-        logger.error(
-            f"API: Unexpected error setting global key '{key}': {e}", exc_info=True
+        log_operation_error(
+            logger, "Unexpected error setting global key '%s': %s", key, e, error=e
         )
         raise
 
@@ -140,24 +141,24 @@ async def set_custom_global_setting(
     if not key:
         raise MissingArgumentError("A 'key' must be provided to set a setting.")
     key = "custom." + key.strip()
-    logger.debug(f"API: Writing to global setting. Key='{key}', Value='{value}'")
+    logger.debug("Updating global setting '%s'.", key)
     try:
         settings = app_context.settings
         await settings.set(key, value)
-        logger.info(f"API: Successfully wrote to global setting '{key}'.")
+        logger.info("Successfully wrote to global setting '%s'.", key)
         return SetCustomGlobalSettingResponse(
             message=f"Global setting '{key}' updated successfully."
         )
     except ValidationError as error:
         raise UserInputError("Invalid setting value.") from error
     except BSMError as e:
-        logger.error(
-            f"API: Configuration error setting global key '{key}': {e}", exc_info=True
+        log_operation_error(
+            logger, "Configuration error setting global key '%s': %s", key, e, error=e
         )
         raise
     except Exception as e:
-        logger.error(
-            f"API: Unexpected error setting global key '{key}': {e}", exc_info=True
+        log_operation_error(
+            logger, "Unexpected error setting global key '%s': %s", key, e, error=e
         )
         raise
 
@@ -171,18 +172,20 @@ async def reload_global_settings(
     Accepts ReloadGlobalSettingsRequest and returns ReloadGlobalSettingsResponse.
     Invalid requests fail validation before side effects; operation failures raise application exceptions.
     """
-    logger.info("API: Received request to reload global settings and logging.")
+    logger.debug("Received request to reload global settings and logging.")
     try:
         await app_context.reload()
         settings = app_context.settings
         await settings.reload()
-        logger.info("API: Global settings successfully reloaded.")
+        logger.info("Global settings successfully reloaded.")
         return ReloadGlobalSettingsResponse(
             message="Global settings have been reloaded."
         )
     except BSMError as e:
-        logger.error(f"API: Error reloading settings: {e}", exc_info=True)
+        log_operation_error(logger, "Error reloading settings: %s", e, error=e)
         raise
     except Exception as e:
-        logger.error(f"API: Unexpected error reloading settings: {e}", exc_info=True)
+        log_operation_error(
+            logger, "Unexpected error reloading settings: %s", e, error=e
+        )
         raise

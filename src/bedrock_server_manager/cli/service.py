@@ -563,7 +563,7 @@ if platform.system() == "Windows":
 
         if "debug" in ctx.args:
             logger.info(
-                f"Starting Web UI service '{actual_svc_name_arg}' in DEBUG mode."
+                "Starting Web UI service '%s' in DEBUG mode.", actual_svc_name_arg
             )
 
             win32serviceutil.DebugService(WebServiceHandler, argv=[actual_svc_name_arg])

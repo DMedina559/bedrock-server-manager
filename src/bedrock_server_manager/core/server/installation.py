@@ -1,5 +1,6 @@
 """Bedrock installation component."""
 
+import logging
 from typing import TYPE_CHECKING
 
 import aiofiles
@@ -17,11 +18,16 @@ class ServerInstallation:
 
     def __init__(self, server: "BedrockServer") -> None:
         self.server = server
+        self.logger = logging.LoggerAdapter(
+            logging.getLogger(__name__), {"server_name": server.server_name}
+        )
 
     async def validate_installation(self) -> bool:
         """Validates that the server installation directory and executable exist asynchronously."""
-        self.server.logger.debug(
-            f"Validating installation for server '{self.server.server_name}' in directory: {self.server.paths.server_dir} asynchronously"
+        self.logger.debug(
+            "Validating installation for server '%s' in directory: %s",
+            self.server.server_name,
+            self.server.paths.server_dir,
         )
         if not await aiofiles.ospath.isdir(self.server.paths.server_dir):
             raise AppFileNotFoundError(self.server.paths.server_dir, "Server directory")
@@ -29,8 +35,8 @@ class ServerInstallation:
             raise AppFileNotFoundError(
                 self.server.paths.bedrock_executable_path, "Server executable"
             )
-        self.server.logger.debug(
-            f"Server '{self.server.server_name}' installation validation successful."
+        self.logger.debug(
+            "Server '%s' installation validation successful.", self.server.server_name
         )
         return True
 
@@ -39,7 +45,8 @@ class ServerInstallation:
         try:
             return await self.validate_installation()
         except AppFileNotFoundError:
-            self.server.logger.debug(
-                f"is_installed check: Server '{self.server.server_name}' not found or installation invalid (directory or executable missing)."
+            self.logger.debug(
+                "is_installed check: Server '%s' not found or installation invalid (directory or executable missing).",
+                self.server.server_name,
             )
             return False

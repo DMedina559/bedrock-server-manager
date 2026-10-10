@@ -322,3 +322,54 @@ async def test_sync_plugin_loop_unload_waits_for_worker(app_context):
     await unload
     assert task.cancelled()
     assert not manager.plugin_tasks
+
+
+async def test_bundled_plugins_load_through_dynamic_manager(
+    app_context, monkeypatch, caplog
+):
+    """Bundled files must also work under the runtime bsm_plugins namespace."""
+    import logging
+    import sys
+    from pathlib import Path
+
+    from bedrock_server_manager.plugins import default as bundled_plugins
+
+    directory = Path(bundled_plugins.__file__).parent
+    names = {path.stem for path in directory.glob("*.py") if path.stem != "__init__"}
+    for name in names:
+        monkeypatch.delitem(sys.modules, f"bsm_plugins.{name}", raising=False)
+    manager = app_context.plugin_manager
+    manager.plugin_dirs = [directory]
+    caplog.clear()
+    await manager._synchronize_config_with_disk()
+    assert set(manager._discovered_classes) == names
+    for name in names:
+        manager.plugin_config[name]["enabled"] = True
+    await manager._save_config()
+    await manager.load_plugins()
+    assert {type(plugin).__module__ for plugin in manager.plugins} == {
+        f"bsm_plugins.{name}" for name in names
+    }
+    assert not [record for record in caplog.records if record.levelno >= logging.ERROR]
+
+
+async def test_example_listener_logs_metadata_without_payload(
+    plugin_factory, app_context, caplog
+):
+    import logging
+    from pathlib import Path
+
+    source = Path(__file__).resolve().parents[2] / "plugins" / "pong_plugin.py"
+    await plugin_factory("pong_example", source.read_text())
+    caplog.clear()
+    with caplog.at_level(logging.DEBUG):
+        await app_context.plugin_manager.trigger_event(
+            "pingplugin:ping",
+            "private positional data",
+            server_name="example",
+            data={"message": "private payload data"},
+            _triggering_plugin="example_sender",
+        )
+    assert "private positional data" not in caplog.text
+    assert "private payload data" not in caplog.text
+    assert "example_sender" in caplog.text

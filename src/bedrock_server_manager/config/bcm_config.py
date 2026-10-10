@@ -27,6 +27,7 @@ from platformdirs import user_config_dir
 from pydantic import ValidationError
 
 from ..error import ConfigurationError
+from ..logging import log_operation_error
 from .const import CONFIG_FILE_NAME, env_name, package_name
 from .models import BootstrapConfig
 
@@ -96,7 +97,13 @@ def _read_raw_config() -> Dict[str, Any]:
                     )
                 return cast(Dict[str, Any], data)
         except (json.JSONDecodeError, OSError) as e:
-            logger.error(f"Failed to load configuration file at {config_path}: {e}")
+            log_operation_error(
+                logger,
+                "Failed to load configuration file at %s: %s",
+                config_path,
+                e,
+                error=e,
+            )
     return {}
 
 
@@ -116,18 +123,22 @@ def _resolve_setting(
     4. Default Value
     """
     if cli_val:
-        logger.info(f"Using CLI argument for {name}: {cli_val}")
+        logger.debug("Configuration '%s' supplied by command line.", name)
         return cli_val
 
     env_val = os.getenv(env_var_name)
     if env_val:
-        logger.info(f"Using {env_var_name} environment variable for {name}: {env_val}")
+        logger.debug(
+            "Configuration '%s' supplied by environment variable '%s'.",
+            name,
+            env_var_name,
+        )
         return env_val
 
     if config_key in config and config[config_key]:
         return config[config_key]
 
-    logger.info(f"Configuration '{name}' not set. Defaulting to {default_val}.")
+    logger.debug("Configuration '%s' using its default.", name)
     return default_val
 
 
@@ -222,7 +233,12 @@ def save_config(data: Dict[str, Any]):
                 os.fsync(file.fileno())
             os.replace(temporary, get_config_path())
         except OSError as error:
-            logger.error("Failed to save configuration file at %s", get_config_path())
+            log_operation_error(
+                logger,
+                "Failed to save configuration file at %s",
+                get_config_path(),
+                error=error,
+            )
             raise ConfigurationError("Could not save startup configuration.") from error
         finally:
             if temporary and os.path.exists(temporary):

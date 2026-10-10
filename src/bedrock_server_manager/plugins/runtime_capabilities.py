@@ -8,9 +8,11 @@ from contextlib import asynccontextmanager
 from typing import TYPE_CHECKING, Any, Callable, Optional
 
 from ..error import BSMError, UserInputError
+from ..logging import log_operation_error
 
 if TYPE_CHECKING:
     from ..context import AppContext
+
 logger = logging.getLogger(__name__)
 
 
@@ -40,7 +42,7 @@ async def run_task(
     actual_func = getattr(target_function, "func", target_function)
     task_name = getattr(actual_func, "__name__", str(target_function))
 
-    logger.debug(f"API: Running task in background: {task_name}")
+    logger.debug("Running task in background: %s", task_name)
 
     return await app_context.task_manager.run_task(
         target_function, username, *args, _plugin_owner=plugin_name, **kwargs
@@ -67,9 +69,7 @@ async def server_lifecycle_manager(
 
     # If the operation doesn't require a server stop, just yield and exit.
     if not stop_before:
-        logger.debug(
-            f"Context Mgr: Stop/Start not flagged for '{server_name}'. Skipping."
-        )
+        logger.debug("Stop/Start not flagged for '%s'. Skipping.", server_name)
         yield
         return
 
@@ -77,16 +77,14 @@ async def server_lifecycle_manager(
         # --- PRE-OPERATION: STOP SERVER ---
 
         if await server.is_running():
-            logger.info(f"Context Mgr: Server '{server_name}' is running. Stopping...")
+            logger.debug("Server '%s' is running. Stopping...", server_name)
             await stop_server(
                 StopServerRequest(server_name=server_name), app_context=app_context
             )
             was_running = True
-            logger.info(f"Context Mgr: Server '{server_name}' stopped.")
+            logger.debug("Server '%s' stopped.", server_name)
         else:
-            logger.debug(
-                f"Context Mgr: Server '{server_name}' is not running. No stop needed."
-            )
+            logger.debug("Server '%s' is not running. No stop needed.", server_name)
 
         # Yield control to the wrapped code block.
         yield
@@ -95,12 +93,14 @@ async def server_lifecycle_manager(
         operation_cancelled = True
         operation_succeeded = False
         raise
-    except Exception:
-        # If an error occurs in the `with` block, record it and re-raise.
+    except Exception as error:
+        # Retain the original failure's reporting ownership when re-raising.
         operation_succeeded = False
-        logger.error(
-            f"Context Mgr: Exception occurred during managed operation for '{server_name}'.",
-            exc_info=True,
+        log_operation_error(
+            logger,
+            "Exception occurred during managed operation for '%s'.",
+            server_name,
+            error=error,
         )
         raise
     finally:
@@ -112,24 +112,22 @@ async def server_lifecycle_manager(
             if restart_on_success_only and not operation_succeeded:
                 should_restart = False
                 logger.warning(
-                    f"Context Mgr: Operation for '{server_name}' failed. Skipping restart as requested."
+                    "Operation for '%s' failed. Skipping restart as requested.",
+                    server_name,
                 )
 
             if should_restart:
-                logger.info(f"Context Mgr: Restarting server '{server_name}'...")
+                logger.debug("Restarting server '%s'...", server_name)
                 try:
                     # Use the API function to ensure detached mode and proper handling.
                     await start_server(
                         StartServerRequest(server_name=str(server_name)),
                         app_context=app_context,
                     )
-                    logger.info(
-                        f"Context Mgr: Server '{server_name}' restart initiated."
-                    )
+                    logger.debug("Server '%s' restart initiated.", server_name)
                 except BSMError as e:
-                    logger.error(
-                        f"Context Mgr: FAILED to restart '{server_name}': {e}",
-                        exc_info=True,
+                    log_operation_error(
+                        logger, "FAILED to restart '%s': %s", server_name, e, error=e
                     )
                     # If the original operation succeeded, the failure to restart
                     # becomes the primary error to report.
@@ -173,7 +171,11 @@ async def register_data_provider(
             topic=topic, handler=handler, plugin_name=plugin_name
         )
     except Exception as e:
-        logger.error(
-            f"Failed to register data provider for topic '{topic}': {e}", exc_info=True
+        log_operation_error(
+            logger,
+            "Failed to register data provider for topic '%s': %s",
+            topic,
+            e,
+            error=e,
         )
         raise

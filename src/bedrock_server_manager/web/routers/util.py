@@ -19,6 +19,7 @@ from fastapi.responses import FileResponse
 
 from ...context import AppContext
 from ...error import AppFileNotFoundError
+from ...logging import log_operation_error
 from ..deps import get_app_context
 
 STATIC_DIR = bsm_frontend.get_static_dir()
@@ -56,19 +57,19 @@ async def serve_custom_panorama_api(
 
         custom_panorama_path = os.path.join(config_dir, "panorama.jpeg")
         if await aiofiles.ospath.isfile(custom_panorama_path):
-            logger.debug(f"Serving custom panorama from: {custom_panorama_path}")
+            logger.debug("Serving custom panorama from: %s", custom_panorama_path)
             return FileResponse(custom_panorama_path, media_type="image/jpeg")
         else:
-            logger.info("Custom panorama not found. Serving default.")
+            logger.debug("Custom panorama not found. Serving default.")
             raise AppFileNotFoundError(custom_panorama_path, "Custom Panorama")
 
     except AppFileNotFoundError:
         default_panorama_path = os.path.join(STATIC_DIR, "image", "panorama.jpeg")
         if await aiofiles.ospath.isfile(default_panorama_path):
-            logger.debug(f"Serving default panorama from: {default_panorama_path}")
+            logger.debug("Serving default panorama from: %s", default_panorama_path)
             return FileResponse(default_panorama_path, media_type="image/jpeg")
         else:
-            logger.error(f"Default panorama not found at {default_panorama_path}")
+            logger.error("Default panorama not found at %s", default_panorama_path)
             raise HTTPException(
                 status_code=status.HTTP_404_NOT_FOUND,
                 detail="Default panorama image not found.",
@@ -76,7 +77,7 @@ async def serve_custom_panorama_api(
     except HTTPException:
         raise
     except Exception as e:
-        logger.error(f"Unexpected error serving panorama: {e}", exc_info=True)
+        log_operation_error(logger, "Unexpected error serving panorama: %s", e, error=e)
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail="Error serving panorama image.",

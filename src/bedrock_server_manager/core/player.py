@@ -8,6 +8,7 @@ from ..error import (
     FileOperationError,
     UserInputError,
 )
+from ..logging import log_operation_error
 
 logger = logging.getLogger(__name__)
 
@@ -16,7 +17,7 @@ def parse_player_string(player_string: str) -> List[Dict[str, str]]:
     """Parses a comma-separated string of 'player_name:xuid' pairs."""
     if not player_string or not isinstance(player_string, str):
         return []
-    logger.debug(f"Parsing player argument string: '{player_string}'")
+    logger.debug("Parsing player argument string: '%s'", player_string)
     player_list: List[Dict[str, str]] = []
     player_pairs = [pair.strip() for pair in player_string.split(",") if pair.strip()]
     for pair in player_pairs:
@@ -57,21 +58,24 @@ async def discover_and_store_players(  # noqa: C901
     all_discovered_from_logs: List[Dict[str, str]] = []
     scan_errors_details: List[Dict[str, str]] = []
 
-    logger.info(f"Starting discovery of players from all server logs in '{base_dir}'.")
+    logger.debug(
+        "Starting discovery of players from all server logs in '%s'.", base_dir
+    )
 
     for server_name_candidate in os.listdir(base_dir):
         potential_server_path = os.path.join(base_dir, server_name_candidate)
         if not await aiofiles.ospath.isdir(potential_server_path):
             continue
 
-        logger.debug(f"Processing potential server '{server_name_candidate}'.")
+        logger.debug("Processing potential server '%s'.", server_name_candidate)
         try:
             server_instance = app_context.get_server(server_name_candidate)
             is_installed = await server_instance.is_installed()
 
             if not is_installed:
                 logger.debug(
-                    f"'{server_name_candidate}' is not a valid Bedrock server installation. Skipping log scan."
+                    "'%s' is not a valid Bedrock server installation. Skipping log scan.",
+                    server_name_candidate,
                 )
                 continue
 
@@ -80,20 +84,25 @@ async def discover_and_store_players(  # noqa: C901
             if players_in_log:
                 all_discovered_from_logs.extend(players_in_log)
                 logger.debug(
-                    f"Found {len(players_in_log)} players in log for server '{server_name_candidate}'."
+                    "Found %s players in log for server '%s'.",
+                    len(players_in_log),
+                    server_name_candidate,
                 )
 
         except FileOperationError as e:
             logger.warning(
-                f"Error scanning log for server '{server_name_candidate}': {e}"
+                "Error scanning log for server '%s': %s", server_name_candidate, e
             )
             scan_errors_details.append(
                 {"server": server_name_candidate, "error": str(e)}
             )
         except Exception as e_instantiate:
-            logger.error(
-                f"Error processing server '{server_name_candidate}' for player discovery: {e_instantiate}",
-                exc_info=True,
+            log_operation_error(
+                logger,
+                "Error processing server '%s' for player discovery: %s",
+                server_name_candidate,
+                e_instantiate,
+                error=e_instantiate,
             )
             scan_errors_details.append(
                 {
@@ -112,9 +121,11 @@ async def discover_and_store_players(  # noqa: C901
                 app_context.storage, unique_players_to_save_list
             )
         except (FileOperationError, Exception) as e_save:
-            logger.error(
-                f"Critical error saving player data to global DB: {e_save}",
-                exc_info=True,
+            log_operation_error(
+                logger,
+                "Critical error saving player data to global DB: %s",
+                e_save,
+                error=e_save,
             )
             scan_errors_details.append(
                 {

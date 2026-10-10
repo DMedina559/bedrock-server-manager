@@ -1,6 +1,7 @@
 """Bedrock world component."""
 
 import asyncio
+import logging
 import os
 import re
 import shutil
@@ -22,6 +23,7 @@ from ...error import (
     FileOperationError,
     MissingArgumentError,
 )
+from ...logging import log_operation_error
 from ...utils.threads import run_in_thread
 from ..files import (
     atomic_world_archive,
@@ -40,6 +42,9 @@ class ServerWorlds:
 
     def __init__(self, server: "BedrockServer") -> None:
         self.server = server
+        self.logger = logging.LoggerAdapter(
+            logging.getLogger(__name__), {"server_name": server.server_name}
+        )
 
     @property
     def _worlds_base_dir_in_server(self) -> str:
@@ -120,8 +125,11 @@ class ServerWorlds:
                 self._worlds_base_dir_in_server, target_world_dir_name
             )
             mcworld_filename = os.path.basename(mcworld_file_path)
-            self.server.logger.info(
-                f"Server '{self.server.server_name}': Preparing to extract '{mcworld_filename}' into world directory '{target_world_dir_name}' asynchronously."
+            self.logger.debug(
+                "Server '%s': Preparing to extract '%s' into world directory '%s'.",
+                self.server.server_name,
+                mcworld_filename,
+                target_world_dir_name,
             )
             if not await aiofiles.ospath.isfile(mcworld_file_path):
                 raise AppFileNotFoundError(mcworld_file_path, ".mcworld file")
@@ -181,8 +189,9 @@ class ServerWorlds:
         start_cursor = 0
         if log_path and os.path.isfile(log_path):
             start_cursor = os.path.getsize(log_path)
-        self.server.logger.info(
-            f"Server '{self.server.server_name}': Initiating live backup using 'save hold'..."
+        self.logger.debug(
+            "Server '%s': Initiating live backup using 'save hold'...",
+            self.server.server_name,
         )
         try:
             await self.server.send_command("save hold")
@@ -226,8 +235,10 @@ class ServerWorlds:
                         if parsed_files:
                             file_list_with_sizes = parsed_files
                             query_success = True
-                            self.server.logger.info(
-                                f"Server '{self.server.server_name}': Received file list ({len(file_list_with_sizes)} files) from 'save query'."
+                            self.logger.debug(
+                                "Server '%s': Received file list (%s files) from 'save query'.",
+                                self.server.server_name,
+                                len(file_list_with_sizes),
                             )
                             break
             if not query_success:
@@ -271,18 +282,22 @@ class ServerWorlds:
                     atomic_world_archive(temp_dir, target_mcworld_file_path)
 
             await run_in_thread(_copy_and_truncate_world)
-            self.server.logger.info(
-                f"Server '{self.server.server_name}': Live world export successful. Created: {target_mcworld_file_path}"
+            self.logger.info(
+                "Server '%s': Live world export successful. Created: %s",
+                self.server.server_name,
+                target_mcworld_file_path,
             )
         finally:
-            self.server.logger.info(
-                f"Server '{self.server.server_name}': Sending 'save resume'..."
+            self.logger.debug(
+                "Server '%s': Sending 'save resume'...", self.server.server_name
             )
             try:
                 await self.server.send_command("save resume")
             except Exception as e_res:
-                self.server.logger.warning(
-                    f"Server '{self.server.server_name}': Failed to send 'save resume': {e_res}"
+                self.logger.warning(
+                    "Server '%s': Failed to send 'save resume': %s",
+                    self.server.server_name,
+                    e_res,
                 )
 
     async def export_world(
@@ -332,8 +347,11 @@ class ServerWorlds:
                 self._worlds_base_dir_in_server, world_dir_name
             )
             mcworld_filename = os.path.basename(target_mcworld_file_path)
-            self.server.logger.info(
-                f"Server '{self.server.server_name}': Exporting world '{world_dir_name}' to .mcworld file '{mcworld_filename}' asynchronously."
+            self.logger.debug(
+                "Server '%s': Exporting world '%s' to .mcworld file '%s'.",
+                self.server.server_name,
+                world_dir_name,
+                mcworld_filename,
             )
             if not await aiofiles.ospath.isdir(full_source_world_dir):
                 raise AppFileNotFoundError(
@@ -416,8 +434,10 @@ class ServerWorlds:
                     ".mcworld backup file path cannot be empty and must be a string."
                 )
             mcworld_filename = os.path.basename(mcworld_backup_file_path)
-            self.server.logger.info(
-                f"Server '{self.server.server_name}': Importing active world from backup '{mcworld_filename}' asynchronously."
+            self.logger.debug(
+                "Server '%s': Importing active world from backup '%s'.",
+                self.server.server_name,
+                mcworld_filename,
             )
             if not await aiofiles.ospath.isfile(mcworld_backup_file_path):
                 raise AppFileNotFoundError(
@@ -425,8 +445,10 @@ class ServerWorlds:
                 )
             try:
                 active_world_dir_name = str(await self.server.get_world_name())
-                self.server.logger.info(
-                    f"Target active world name for server '{self.server.server_name}' is '{active_world_dir_name}'."
+                self.logger.debug(
+                    "Target active world name for server '%s' is '%s'.",
+                    self.server.server_name,
+                    active_world_dir_name,
                 )
             except (AppFileNotFoundError, ConfigParseError, Exception) as e:
                 raise BackupRestoreError(
@@ -436,8 +458,11 @@ class ServerWorlds:
                 await self.extract_mcworld(
                     mcworld_backup_file_path, active_world_dir_name
                 )
-                self.server.logger.info(
-                    f"Server '{self.server.server_name}': Active world import from '{mcworld_filename}' completed successfully into '{active_world_dir_name}'."
+                self.logger.info(
+                    "Server '%s': Active world import from '%s' completed successfully into '%s'.",
+                    self.server.server_name,
+                    mcworld_filename,
+                    active_world_dir_name,
                 )
                 return active_world_dir_name
             except (
@@ -486,16 +511,24 @@ class ServerWorlds:
                 active_world_dir = await self._get_active_world_directory_path()
                 active_world_name = os.path.basename(active_world_dir)
             except (AppFileNotFoundError, ConfigParseError, Exception) as e:
-                self.server.logger.error(
-                    f"Server '{self.server.server_name}': Cannot delete active world, failed to determine path: {e}"
+                log_operation_error(
+                    self.logger,
+                    "Server '%s': Cannot delete active world, failed to determine path: %s",
+                    self.server.server_name,
+                    e,
+                    error=e,
                 )
                 raise
-            self.server.logger.warning(
-                f"Server '{self.server.server_name}': Attempting to delete active world directory: '{active_world_dir}'. THIS IS A DESTRUCTIVE operation."
+            self.logger.debug(
+                "Deleting active world '%s' for server '%s'.",
+                active_world_dir,
+                self.server.server_name,
             )
             if not await aiofiles.ospath.exists(active_world_dir):
-                self.server.logger.info(
-                    f"Server '{self.server.server_name}': Active world directory '{active_world_dir}' does not exist. Nothing to delete."
+                self.logger.debug(
+                    "Server '%s': Active world directory '%s' does not exist. Nothing to delete.",
+                    self.server.server_name,
+                    active_world_dir,
                 )
                 return True
             if not await aiofiles.ospath.isdir(active_world_dir):
@@ -507,8 +540,10 @@ class ServerWorlds:
                 f"active world directory '{active_world_name}' for server '{self.server.server_name}'",
             )
             if success:
-                self.server.logger.info(
-                    f"Server '{self.server.server_name}': Successfully deleted active world directory '{active_world_dir}'."
+                self.logger.info(
+                    "Server '%s': Successfully deleted active world directory '%s'.",
+                    self.server.server_name,
+                    active_world_dir,
                 )
             else:
                 raise FileOperationError(
@@ -529,13 +564,17 @@ class ServerWorlds:
         """
         icon_path = await self.get_world_icon_filesystem_path()
         if icon_path and await aiofiles.ospath.isfile(icon_path):
-            self.server.logger.debug(
-                f"Server '{self.server.server_name}': World icon found at '{icon_path}' asynchronously."
+            self.logger.debug(
+                "Server '%s': World icon found at '%s'.",
+                self.server.server_name,
+                icon_path,
             )
             return True
         if icon_path:
-            self.server.logger.debug(
-                f"Server '{self.server.server_name}': World icon not found or is not a file at determined path '{icon_path}' asynchronously."
+            self.logger.debug(
+                "Server '%s': World icon not found or is not a file at determined path '%s'.",
+                self.server.server_name,
+                icon_path,
             )
         return False
 
@@ -558,7 +597,9 @@ class ServerWorlds:
             active_world_dir = await self._get_active_world_directory_path()
             return os.path.join(active_world_dir, self.world_icon_filename)
         except (AppFileNotFoundError, ConfigParseError, Exception) as e:
-            self.server.logger.warning(
-                f"Server '{self.server.server_name}': Cannot determine world icon path because active world name is unavailable: {e}"
+            self.logger.warning(
+                "Server '%s': Cannot determine world icon path because active world name is unavailable: %s",
+                self.server.server_name,
+                e,
             )
             return None

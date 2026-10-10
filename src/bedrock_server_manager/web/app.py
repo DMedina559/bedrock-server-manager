@@ -15,6 +15,7 @@ from starlette.exceptions import HTTPException as StarletteHTTPException
 from ..api.models.common import APIErrorResponse, ErrorEnvelope
 from ..config import get_installed_version
 from ..context import AppContext
+from ..logging import log_operation_error
 from . import routers
 
 mimetypes.add_type("application/javascript", ".js")
@@ -48,10 +49,10 @@ def create_web_app(app_context: AppContext) -> FastAPI:  # noqa: C901
             yield
         finally:
             # Shutdown logic goes here
-            logger.info("Running web app shutdown hooks...")
+            logger.debug("Running web app shutdown hooks...")
 
             await app_context.shutdown()
-            logger.info("Web app shutdown hooks complete.")
+            logger.debug("Web app shutdown hooks complete.")
 
     version = get_installed_version()
 
@@ -130,7 +131,13 @@ def create_web_app(app_context: AppContext) -> FastAPI:  # noqa: C901
                 status_code = 400
             else:
                 status_code = 500
-                logger.error("API operation failed", exc_info=error)
+                log_operation_error(
+                    logger,
+                    "HTTP operation failed: %s %s",
+                    request.method,
+                    request.url.path,
+                    error=error,
+                )
             payload = error_response(error)
         return JSONResponse(
             status_code=status_code,
@@ -174,7 +181,7 @@ def create_web_app(app_context: AppContext) -> FastAPI:  # noqa: C901
     # If "*" is present, we use allow_origin_regex=".*" to dynamically reflect the origin.
     allow_all_origins = "*" in allowed_origins
 
-    logger.info(f"CORS Allowed Origins: {allowed_origins}")
+    logger.debug("CORS Allowed Origins: %s", allowed_origins)
 
     from .middleware.static import IngressAwareStaticFiles
 
@@ -192,10 +199,10 @@ def create_web_app(app_context: AppContext) -> FastAPI:  # noqa: C901
                 IngressAwareStaticFiles(directory=assets_subdir),
                 name="app_assets",
             )
-            logger.info(f"Mounted bsm-frontend assets from {assets_subdir}")
+            logger.debug("Mounted bsm-frontend assets from %s", assets_subdir)
         else:
             logger.warning(
-                f"bsm-frontend 'assets' subdirectory not found at {assets_subdir}"
+                "bsm-frontend 'assets' subdirectory not found at %s", assets_subdir
             )
 
         if os.path.isdir(image_subdir):
@@ -209,14 +216,14 @@ def create_web_app(app_context: AppContext) -> FastAPI:  # noqa: C901
                 IngressAwareStaticFiles(directory=image_subdir),
                 name="root_images",
             )
-            logger.info(f"Mounted bsm-frontend images from {image_subdir}")
+            logger.debug("Mounted bsm-frontend images from %s", image_subdir)
         else:
             logger.warning(
-                f"bsm-frontend 'image' subdirectory not found at {image_subdir}"
+                "bsm-frontend 'image' subdirectory not found at %s", image_subdir
             )
 
     else:
-        logger.warning(f"bsm-frontend static directory not found at {static_dir}")
+        logger.warning("bsm-frontend static directory not found at %s", static_dir)
 
     # Mount custom themes directory
     themes_path = settings.get("paths.themes")

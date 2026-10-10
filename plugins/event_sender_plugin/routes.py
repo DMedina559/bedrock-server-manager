@@ -102,8 +102,8 @@ def define_routes(router: APIRouter, plugin_instance):
 
     @router.post("/trigger")
     async def trigger_event(payload: EventPayload):
-        plugin_instance.logger.info(
-            f"Received request to trigger event: {payload.event_name}"
+        plugin_instance.logger.debug(
+            "Received request to trigger event: %s", payload.event_name
         )
         try:
             args = json.loads(payload.args_json)
@@ -126,12 +126,12 @@ def define_routes(router: APIRouter, plugin_instance):
                 }
             )
         except json.JSONDecodeError as e:
-            plugin_instance.logger.error(f"Failed to parse JSON payload: {e}")
+            plugin_instance.logger.debug("Failed to parse JSON payload: %s", e)
             return JSONResponse(
                 status_code=400, content={"error": f"Invalid JSON format: {e}"}
             )
         except Exception as e:
-            plugin_instance.logger.error(f"Error triggering event: {e}")
+            plugin_instance.logger.exception("Error triggering event: %s", e)
             return JSONResponse(
                 status_code=500, content={"error": f"Failed to trigger event: {e}"}
             )

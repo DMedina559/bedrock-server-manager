@@ -9,6 +9,7 @@ from ..error import (
     MissingArgumentError,
     UserInputError,
 )
+from ..logging import log_operation_error
 from ..plugins.api_bridge import api_method
 from ..plugins.event_trigger import trigger_event
 from ..plugins.runtime_capabilities import server_lifecycle_manager
@@ -47,20 +48,21 @@ async def install_new_server(
         core_validate_server_name_format(server_name)
         server = app_context.get_server(server_name)
     except BSMError as e:
-        logger.error(
-            f"API: Installation failed for '{server_name}': {e}", exc_info=True
+        log_operation_error(
+            logger, "Installation failed for '%s': %s", server_name, e, error=e
         )
         raise
     except Exception as e:
-        logger.error(
-            f"API: Unexpected error installing '{server_name}': {e}", exc_info=True
+        log_operation_error(
+            logger, "Unexpected error installing '%s': %s", server_name, e, error=e
         )
         raise
     try:
         await server.operation_lock.acquire(timeout=300)
     except asyncio.TimeoutError:
         logger.warning(
-            f"An operation for '{server_name}' is already in progress. Skipping installation."
+            "An operation for '%s' is already in progress. Skipping installation.",
+            server_name,
         )
         return InstallNewServerResponse.model_validate(
             {
@@ -71,8 +73,10 @@ async def install_new_server(
     try:
         if await server.is_installed():
             raise UserInputError(f"Server '{server_name}' is already installed.")
-        logger.info(
-            f"API: Installing new server '{server_name}', target version '{target_version}'."
+        logger.debug(
+            "Installing new server '%s', target version '%s'.",
+            server_name,
+            target_version,
         )
         await install_or_update(server, target_version, server_zip_path=server_zip_path)
         return InstallNewServerResponse.model_validate(
@@ -83,13 +87,13 @@ async def install_new_server(
             }
         )
     except BSMError as e:
-        logger.error(
-            f"API: Installation failed for '{server_name}': {e}", exc_info=True
+        log_operation_error(
+            logger, "Installation failed for '%s': %s", server_name, e, error=e
         )
         raise
     except Exception as e:
-        logger.error(
-            f"API: Unexpected error installing '{server_name}': {e}", exc_info=True
+        log_operation_error(
+            logger, "Unexpected error installing '%s': %s", server_name, e, error=e
         )
         raise
     finally:
@@ -117,18 +121,21 @@ async def update_server(
             raise InvalidServerNameError("Server name cannot be empty.")
         server = app_context.get_server(server_name)
     except BSMError as e:
-        logger.error(f"API: Update failed for '{server_name}': {e}", exc_info=True)
+        log_operation_error(
+            logger, "Update failed for '%s': %s", server_name, e, error=e
+        )
         raise
     except Exception as e:
-        logger.error(
-            f"API: Unexpected error updating '{server_name}': {e}", exc_info=True
+        log_operation_error(
+            logger, "Unexpected error updating '%s': %s", server_name, e, error=e
         )
         raise
     try:
         await server.operation_lock.acquire(timeout=300)
     except asyncio.TimeoutError:
         logger.warning(
-            f"An operation for '{server_name}' is already in progress. Skipping update."
+            "An operation for '%s' is already in progress. Skipping update.",
+            server_name,
         )
         return UpdateServerResponse.model_validate(
             {
@@ -138,8 +145,8 @@ async def update_server(
         )
     try:
         target_version = await server.get_target_version()
-        logger.info(
-            f"API: Updating server '{server_name}'. Send message: {send_message}"
+        logger.debug(
+            "Updating server '%s'. Send message: %s", server_name, send_message
         )
         if not await is_update_needed(server, target_version):
             return UpdateServerResponse.model_validate(
@@ -156,10 +163,12 @@ async def update_server(
             restart_on_success_only=True,
             app_context=app_context,
         ):
-            logger.info(f"API: Backing up '{server_name}' before update...")
+            logger.debug("Backing up '%s' before update...", server_name)
             await server.backups.backup_all_data()
-            logger.info(
-                f"API: Performing update for '{server_name}' to target '{target_version}'..."
+            logger.debug(
+                "Performing update for '%s' to target '%s'...",
+                server_name,
+                target_version,
             )
             await install_or_update(server, target_version)
         return UpdateServerResponse.model_validate(
@@ -171,11 +180,13 @@ async def update_server(
             }
         )
     except BSMError as e:
-        logger.error(f"API: Update failed for '{server_name}': {e}", exc_info=True)
+        log_operation_error(
+            logger, "Update failed for '%s': %s", server_name, e, error=e
+        )
         raise
     except Exception as e:
-        logger.error(
-            f"API: Unexpected error updating '{server_name}': {e}", exc_info=True
+        log_operation_error(
+            logger, "Unexpected error updating '%s': %s", server_name, e, error=e
         )
         raise
     finally:

@@ -17,6 +17,7 @@ from typing import Optional
 import uvicorn
 
 from ..context import AppContext
+from ..logging import configure_web_logging
 from .app import create_web_app
 
 logger = logging.getLogger(__name__)
@@ -36,10 +37,10 @@ def run_web_server(  # noqa: C901
     # Determine port to use
     final_port = 11325  # Default fallback
     if port is not None:
-        logger.info(f"Using port provided via command-line: {port}")
+        logger.debug("Using port provided via command-line: %s", port)
         final_port = port
     else:
-        logger.info("No port via command-line, using settings.")
+        logger.debug("No port via command-line, using settings.")
         port_setting_key = "web.port"
         port_val = settings.get(port_setting_key, 11325)
         try:
@@ -48,14 +49,12 @@ def run_web_server(  # noqa: C901
                 raise ValueError("Port out of range")
             final_port = settings_port
         except (ValueError, TypeError):
-            logger.error(
-                f"Invalid port number configured: {port_val}. Using default {final_port}."
-            )
-    logger.info(f"FastAPI server configured to run on port: {final_port}")
+            logger.warning("Invalid web port %r; using port %s.", port_val, final_port)
+    logger.debug("FastAPI server configured to run on port: %s", final_port)
 
     hosts_to_use_cli: Optional[str] = None
     if host:
-        logger.info(f"Using host(s) provided via command-line: {host}")
+        logger.debug("Using host(s) provided via command-line: %s", host)
         if not isinstance(host, str):
             raise ValueError("Host must be a string, representing an IP or hostname.")
         hosts_to_use_cli = host
@@ -64,10 +63,10 @@ def run_web_server(  # noqa: C901
 
     if hosts_to_use_cli:
         final_host_to_bind = hosts_to_use_cli
-        logger.info(f"Host from command-line: {final_host_to_bind}")
+        logger.debug("Host from command-line: %s", final_host_to_bind)
     else:
         # Fallback to settings if no command-line host is given.
-        logger.info("No host via command-line, using settings.")
+        logger.debug("No host via command-line, using settings.")
         settings_host = settings.get("web.host")
 
         if isinstance(settings_host, str) and settings_host:
@@ -76,39 +75,37 @@ def run_web_server(  # noqa: C901
         else:
             # Log a warning if the setting is invalid and use the default.
             logger.warning(
-                f"Host setting 'web.host' is invalid ('{settings_host}'). "
-                f"Defaulting to {final_host_to_bind}."
+                "Host setting 'web.host' is invalid ('%s'). Defaulting to %s.",
+                settings_host,
+                final_host_to_bind,
             )
 
     try:
         ipaddress.ip_address(final_host_to_bind)
-        logger.info(f"Uvicorn will bind to IP: {final_host_to_bind}")
+        logger.debug("Uvicorn will bind to IP: %s", final_host_to_bind)
     except ValueError:
-        logger.info(f"Uvicorn will bind to hostname: {final_host_to_bind}")
+        logger.debug("Uvicorn will bind to hostname: %s", final_host_to_bind)
 
-    uvicorn_log_level = "info"
     reload_enabled = False
 
     if debug:
         logger.warning("Running FastAPI in DEBUG mode (Uvicorn reload enabled).")
-        uvicorn_log_level = "debug"
         reload_enabled = True
     else:
-        logger.info("Uvicorn production mode with 1 worker.")
+        logger.debug("Uvicorn production mode with 1 worker.")
 
     server_mode = (
         "DEBUG (Uvicorn with reload)" if reload_enabled else "PRODUCTION (Uvicorn)"
     )
-    logger.info(f"Starting FastAPI web server in {server_mode} mode...")
-    logger.info(f"Listening on: http://{final_host_to_bind}:{final_port}")
+    logger.debug("Starting FastAPI web server in %s mode...", server_mode)
+    logger.info(
+        "Web server starting at http://%s:%s (%s mode).",
+        final_host_to_bind,
+        final_port,
+        "development" if debug else "production",
+    )
 
     try:
-        from uvicorn.config import LOGGING_CONFIG
-
-        # To prevent uvicorn from taking over the logger, we need to disable it.
-        # More info: https://github.com/encode/uvicorn/issues/1285
-        LOGGING_CONFIG["loggers"]["uvicorn"]["propagate"] = True
-
         # Create the FastAPI app
         app = create_web_app(app_context)
 
@@ -116,18 +113,20 @@ def run_web_server(  # noqa: C901
             app,
             host=final_host_to_bind,
             port=final_port,
-            log_config=LOGGING_CONFIG,
-            log_level=uvicorn_log_level.lower(),  # Ensure log level is lowercase
+            log_config=None,
+            log_level=None,  # Inherit the configured application logging level.
+            access_log=True,  # Classify access records at DEBUG without clearing handlers.
             reload=reload_enabled,
             workers=1,  # workers if not reload_enabled and workers > 1 else None,
             forwarded_allow_ips="*",
             proxy_headers=True,
             timeout_graceful_shutdown=10,
         )
+        configure_web_logging()
         server = uvicorn.Server(config)
         app_context._web_server = server
         server.run()
     except Exception as e:
-        logger.critical(f"Failed to start Uvicorn: {e}", exc_info=True)
+        logger.critical("Failed to start Uvicorn: %s", e, exc_info=True)
 
         raise

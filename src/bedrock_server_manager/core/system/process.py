@@ -74,6 +74,7 @@ from ...error import (
     ServerStopError,
     SystemError,
 )
+from ...logging import log_operation_error
 
 logger = logging.getLogger(__name__)
 
@@ -309,8 +310,8 @@ async def get_bedrock_launcher_pid_file_path(server_name: str, config_dir: str) 
         try:
             # aiofiles.os doesn't have makedirs, so we use to_thread
             await run_in_thread(os.makedirs, config_dir, exist_ok=True)
-            logger.info(
-                f"Created configuration directory for launcher PID: {config_dir}"
+            logger.debug(
+                "Created configuration directory for launcher PID: %s", config_dir
             )
         except OSError as e:
             raise AppFileNotFoundError(
@@ -346,7 +347,7 @@ async def read_pid_from_file(pid_file_path: str) -> Optional[int]:
         raise MissingArgumentError("PID file path cannot be empty.")
 
     if not await aiofiles.ospath.exists(pid_file_path):
-        logger.debug(f"PID file not found: {pid_file_path}")
+        logger.debug("PID file not found: %s", pid_file_path)
         return None
 
     try:
@@ -354,16 +355,18 @@ async def read_pid_from_file(pid_file_path: str) -> Optional[int]:
             content = await f.read()
             pid_str = content.strip()
             if not pid_str:
-                logger.warning(f"PID file is empty: {pid_file_path}")
+                logger.warning("PID file is empty: %s", pid_file_path)
                 return None
             return int(pid_str)
     except ValueError:
         logger.warning(
-            f"Invalid content in PID file '{pid_file_path}'. Expected an integer."
+            "Invalid content in PID file '%s'. Expected an integer.", pid_file_path
         )
         return None
     except OSError as e:
-        logger.error(f"Error reading PID file '{pid_file_path}': {e}", exc_info=True)
+        log_operation_error(
+            logger, "Error reading PID file '%s': %s", pid_file_path, e, error=e
+        )
         return None
 
 
@@ -393,7 +396,7 @@ async def write_pid_to_file(pid_file_path: str, pid: int):
     if directory and not await aiofiles.ospath.exists(directory):
         try:
             os.makedirs(directory, exist_ok=True)
-            logger.debug(f"Created directory for PID file: {directory}")
+            logger.debug("Created directory for PID file: %s", directory)
         except OSError as e:
             raise FileOperationError(
                 f"Failed to create directory '{directory}' for PID file: {e}"
@@ -402,7 +405,7 @@ async def write_pid_to_file(pid_file_path: str, pid: int):
     try:
         async with aiofiles.open(pid_file_path, "w", encoding="utf-8") as f:
             await f.write(str(pid))
-        logger.debug(f"Wrote PID {pid} to '{pid_file_path}'")
+        logger.debug("Wrote PID %s to '%s'", pid, pid_file_path)
     except OSError as e:
         raise FileOperationError(
             f"Failed to write PID {pid} to '{pid_file_path}': {e}"
@@ -463,9 +466,7 @@ async def launch_detached_process(
     for index, argument in enumerate(logged_command[:-1]):
         if argument == "--db-url":
             logged_command[index + 1] = "<redacted>"
-    logger.info(
-        f"Executing guarded detached command asynchronously: {' '.join(logged_command)}"
-    )
+    logger.debug("Executing guarded detached command: %s", " ".join(logged_command))
 
     guarded_proc = GuardedProcess(command)
 
@@ -494,7 +495,7 @@ async def launch_detached_process(
         raise SystemError(f"OS error starting detached process: {e}") from e
 
     pid = process.pid
-    logger.info(f"Successfully started guarded process asynchronously with PID: {pid}")
+    logger.debug("Successfully started guarded process with PID: %s", pid)
     await write_pid_to_file(launcher_pid_file_path, pid)
     return pid
 
@@ -613,7 +614,7 @@ async def verify_process_identity(  # noqa: C901
         raise
 
     logger.debug(
-        f"Process {pid} (Name: {proc_name}) verified successfully against signature."
+        "Process %s (Name: %s) verified successfully against signature.", pid, proc_name
     )
 
 
@@ -630,15 +631,16 @@ async def get_verified_bedrock_process(
         return None
 
     if not isinstance(server_name, str) or not server_name:
-        logger.error("get_verified_bedrock_process: server_name is invalid.")
+        logger.debug("Cannot verify process without a server name.")
         return None
     if (
         not isinstance(server_dir, str)
         or not server_dir
         or not await aiofiles.ospath.isdir(server_dir)
     ):
-        logger.error(
-            f"get_verified_bedrock_process: server_dir '{server_dir}' is invalid or not a directory."
+        logger.debug(
+            "get_verified_bedrock_process: server_dir '%s' is invalid or not a directory.",
+            server_dir,
         )
         return None
     if (
@@ -646,8 +648,9 @@ async def get_verified_bedrock_process(
         or not config_dir
         or not await aiofiles.ospath.isdir(config_dir)
     ):
-        logger.error(
-            f"get_verified_bedrock_process: config_dir '{config_dir}' is invalid or not a directory."
+        logger.debug(
+            "get_verified_bedrock_process: config_dir '%s' is invalid or not a directory.",
+            config_dir,
         )
         return None
 
@@ -656,12 +659,12 @@ async def get_verified_bedrock_process(
         pid = await read_pid_from_file(pid_file_path)
 
         if pid is None:
-            logger.debug(f"No valid PID found in file for server '{server_name}'.")
+            logger.debug("No valid PID found in file for server '%s'.", server_name)
             return None
 
         if not await is_process_running(pid):
             logger.debug(
-                f"Stale PID {pid} found for '{server_name}'. Process not running."
+                "Stale PID %s found for '%s'. Process not running.", pid, server_name
             )
             await remove_pid_file_if_exists(pid_file_path)
             return None
@@ -688,7 +691,7 @@ async def get_verified_bedrock_process(
         MissingArgumentError,  # From called functions if somehow inputs are bad despite checks
     ) as e:
         # These are expected "not running" or "mismatch" scenarios.
-        logger.debug(f"Verification failed for server '{server_name}': {e}")
+        logger.debug("Verification failed for server '%s': %s", server_name, e)
         # Attempt to clean up PID file if verification failed for a running PID
         if (
             "pid" in locals()
@@ -697,7 +700,9 @@ async def get_verified_bedrock_process(
         ):
             if isinstance(e, ServerProcessError):  # Mismatch
                 logger.debug(
-                    f"Cleaning up PID file '{pid_file_path}' due to verification mismatch for PID {pid}."
+                    "Cleaning up PID file '%s' due to verification mismatch for PID %s.",
+                    pid_file_path,
+                    pid,
                 )
                 await remove_pid_file_if_exists(pid_file_path)
         return None
@@ -706,9 +711,12 @@ async def get_verified_bedrock_process(
         Exception,
     ) as e:  # SystemError from psutil functions, or any other unexpected
         # These are more serious, unexpected errors.
-        logger.error(
-            f"Unexpected error getting verified process for '{server_name}': {e}",
-            exc_info=True,
+        log_operation_error(
+            logger,
+            "Unexpected error getting verified process for '%s': %s",
+            server_name,
+            e,
+            error=e,
         )
         return None
 
@@ -759,25 +767,28 @@ async def terminate_process_by_pid(  # noqa: C901
         def _terminate() -> None:
             process = psutil.Process(pid)
             # 1. Attempt graceful termination first.
-            logger.info(f"Attempting graceful termination (SIGTERM) for PID {pid}...")
+            logger.debug("Attempting graceful termination (SIGTERM) for PID %s...", pid)
             process.terminate()
             try:
                 process.wait(timeout=terminate_timeout)
-                logger.info(f"Process {pid} terminated gracefully.")
+                logger.debug("Process %s terminated gracefully.", pid)
             except psutil.TimeoutExpired:
                 # 2. If graceful termination fails, resort to forceful killing.
                 logger.warning(
-                    f"Process {pid} did not terminate gracefully within {terminate_timeout}s. Attempting kill (SIGKILL)..."
+                    "Process %s did not terminate gracefully within %ss. Attempting kill (SIGKILL)...",
+                    pid,
+                    terminate_timeout,
                 )
                 process.kill()
                 process.wait(timeout=kill_timeout)
-                logger.info(f"Process {pid} forcefully killed.")
+                logger.info("Process %s forcefully killed.", pid)
 
         await run_in_thread(_terminate)
     except psutil.NoSuchProcess:
         # This is not an error; the process is already gone.
-        logger.warning(
-            f"Process with PID {pid} disappeared or was already stopped during termination attempt."
+        logger.debug(
+            "Process with PID %s disappeared or was already stopped during termination attempt.",
+            pid,
         )
     except psutil.AccessDenied:
         raise PermissionsError(
@@ -814,9 +825,9 @@ async def remove_pid_file_if_exists(pid_file_path: str) -> bool:
     if await aiofiles.ospath.exists(pid_file_path):
         try:
             await run_in_thread(os.remove, pid_file_path)
-            logger.info(f"Removed PID file '{pid_file_path}'.")
+            logger.debug("Removed PID file '%s'.", pid_file_path)
             return True
         except OSError as e:
-            logger.warning(f"Could not remove PID file '{pid_file_path}': {e}")
+            logger.warning("Could not remove PID file '%s': %s", pid_file_path, e)
             return False
     return True

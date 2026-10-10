@@ -13,6 +13,7 @@ import logging
 from typing import TYPE_CHECKING, Any, Callable, Dict, Optional
 
 from ..error import BSMError, FileOperationError
+from ..logging import RepeatedFailureReporter, log_operation_error
 from .player import save_player_data
 
 if TYPE_CHECKING:
@@ -55,10 +56,11 @@ class BedrockProcessManager:
         self.servers: Dict[str, "BedrockServer"] = {}
         self.restart_attempts: dict[str, int] = {}
         self.logger = logging.getLogger(__name__)
+        self._failures = RepeatedFailureReporter(self.logger)
         self._shutdown_event = asyncio.Event()
         self.player_scan_counter = 0
         self.monitoring_task: Optional[asyncio.Task[Any]] = None
-        self.logger.info("BedrockProcessManager initialized.")
+        self.logger.debug("BedrockProcessManager initialized.")
 
     async def start(self):
         """Call this from the main thread to start monitoring."""
@@ -71,8 +73,8 @@ class BedrockProcessManager:
         Args:
             server (BedrockServer): The server instance to monitor.
         """
-        self.logger.info(
-            f"Adding server '{server.server_name}' to process manager for monitoring."
+        self.logger.debug(
+            "Adding server '%s' to process manager for monitoring.", server.server_name
         )
         self.servers[server.server_name] = server
 
@@ -86,13 +88,15 @@ class BedrockProcessManager:
             server_name (str): The name of the server to remove.
         """
         if server_name in self.servers:
-            self.logger.info(f"Removing server '{server_name}' from process manager.")
+            self.logger.debug("Removing server '%s' from process manager.", server_name)
             del self.servers[server_name]
             self.restart_attempts.pop(server_name, None)
+            for phase in ("probe", "recovery", "players"):
+                self._failures.failures.pop(f"{phase}:{server_name}", None)
 
     async def quiesce(self) -> None:
         """Stop monitoring and automatic restarts before draining operations."""
-        self.logger.info("Shutdown signal received. Stopping server monitoring.")
+        self.logger.debug("Shutdown signal received. Stopping server monitoring.")
         self._shutdown_event.set()
 
         if self.monitoring_task and not self.monitoring_task.done():
@@ -113,7 +117,7 @@ class BedrockProcessManager:
         await self.quiesce()
 
         # Concurrently shut down all servers
-        self.logger.info("ProcessManager: Stopping all running servers concurrently...")
+        self.logger.debug("Stopping all running servers concurrently...")
 
         async def _stop_server(server_name, server):
             try:
@@ -127,16 +131,23 @@ class BedrockProcessManager:
                         raise BSMError("Process manager API is not available.")
                     await self.api.server.stop({"server_name": server_name})
                 except Exception as e:
-                    self.logger.error(
-                        f"ProcessManager: Error stopping '{server_name}' via API: {e}. Attempting direct stop."
+                    log_operation_error(
+                        self.logger,
+                        "Error stopping '%s' via API: %s. Attempting direct stop.",
+                        server_name,
+                        e,
+                        error=e,
                     )
                     await server.stop()
 
-                self.logger.info(f"ProcessManager: Stopped server '{server_name}'")
+                self.logger.debug("Stopped server '%s'", server_name)
             except Exception as e_stop:
-                self.logger.error(
-                    f"ProcessManager: Failed to stop server '{server_name}': {e_stop}",
-                    exc_info=True,
+                log_operation_error(
+                    self.logger,
+                    "Failed to stop server '%s': %s",
+                    server_name,
+                    e_stop,
+                    error=e_stop,
                 )
 
         tasks = [
@@ -159,22 +170,31 @@ class BedrockProcessManager:
         max_retries = self.settings.get("monitoring.max_retries", 3)
 
         if self.restart_attempts.get(server.server_name, 0) > max_retries:
-            self.logger.critical(
-                f"Server '{server.server_name}' has reached the maximum restart limit of {max_retries}. Will not attempt to restart again."
+            self.logger.error(
+                "Server '%s' reached the restart limit (%s attempts); automatic recovery has stopped.",
+                server.server_name,
+                max_retries,
             )
             await self.write_error_status(server.server_name)
             await self.remove_server(server.server_name)  # Stop monitoring
             return
 
         self.logger.info(
-            f"Attempting to restart server '{server.server_name}'. Attempt {self.restart_attempts.get(server.server_name, 0)}/{max_retries}."
+            "Attempting to restart server '%s'. Attempt %s/%s.",
+            server.server_name,
+            self.restart_attempts.get(server.server_name, 0),
+            max_retries,
         )
         try:
             await server.start()
-            self.logger.info(f"Server '{server.server_name}' restarted successfully.")
+            self.logger.debug("Server '%s' restarted successfully.", server.server_name)
         except Exception as e:
-            self.logger.critical(
-                f"Failed to restart server '{server.server_name}': {e}", exc_info=True
+            log_operation_error(
+                self.logger,
+                "Could not restart server '%s': %s",
+                server.server_name,
+                e,
+                error=e,
             )
             await asyncio.sleep(5)
 
@@ -194,8 +214,12 @@ class BedrockProcessManager:
             try:
                 await server.set_status_in_config("ERROR")
             except BSMError as e:
-                self.logger.error(
-                    f"Error writing status for server '{server_name}': {e}"
+                log_operation_error(
+                    self.logger,
+                    "Error writing status for server '%s': %s",
+                    server_name,
+                    e,
+                    error=e,
                 )
                 raise FileOperationError(
                     f"Failed to write status for server '{server_name}'."
@@ -222,8 +246,9 @@ class BedrockProcessManager:
             monitoring_interval = 10
             player_log_monitoring_interval_sec = 10
 
-        self.logger.info(
-            f"Async server monitoring loop started with a {monitoring_interval} second interval."
+        self.logger.debug(
+            "Async server monitoring loop started with a %s second interval.",
+            monitoring_interval,
         )
 
         while not self._shutdown_event.is_set():
@@ -246,27 +271,36 @@ class BedrockProcessManager:
                 try:
                     is_running = await server.is_running()
                     await server.reconcile_status(is_running)
-                except Exception:
-                    self.logger.exception("Could not probe server '%s'", server_name)
+                    self._failures.recover(f"probe:{server_name}")
+                except Exception as error:
+                    self._failures.report(
+                        f"probe:{server_name}",
+                        "Server monitoring unavailable (%s): %s; retrying.",
+                        error,
+                    )
                     continue
 
                 if not is_running:
                     if not server.process.intentionally_stopped:
                         self.logger.warning(
-                            f"Monitored server '{server.server_name}' has crashed."
+                            "Monitored server '%s' has crashed.", server.server_name
                         )
                         self.restart_attempts[server_name] = (
                             self.restart_attempts.get(server_name, 0) + 1
                         )
                         try:
                             await self._try_restart_server(server)
-                        except Exception:
-                            self.logger.exception(
-                                "Could not recover server '%s'", server_name
+                            self._failures.recover(f"recovery:{server_name}")
+                        except Exception as error:
+                            self._failures.report(
+                                f"recovery:{server_name}",
+                                "Server recovery unavailable (%s): %s; retrying.",
+                                error,
                             )
                     else:
-                        self.logger.info(
-                            f"Server '{server.server_name}' was stopped intentionally. Removing from monitoring."
+                        self.logger.debug(
+                            "Server '%s' was stopped intentionally. Removing from monitoring.",
+                            server.server_name,
                         )
                         await self.remove_server(server_name)
                 elif self.player_scan_counter >= player_log_monitoring_interval_sec:
@@ -282,8 +316,11 @@ class BedrockProcessManager:
                             server.player_count != previous_player_count
                             or server.players != previous_players
                         ):
-                            self.logger.info(
-                                f"Player list/count changed for server '{server.server_name}': count {previous_player_count} -> {server.player_count}"
+                            self.logger.debug(
+                                "Player list/count changed for server '%s': count %s -> %s",
+                                server.server_name,
+                                previous_player_count,
+                                server.player_count,
                             )
                             # Call the API bridge to handle events and websockets properly
                             try:
@@ -300,7 +337,7 @@ class BedrockProcessManager:
                                 )
                             except Exception as e:
                                 self.logger.warning(
-                                    f"Could not trigger player stats update API: {e}"
+                                    "Could not trigger player stats update API: %s", e
                                 )
 
                         # Enforce bans
@@ -326,24 +363,32 @@ class BedrockProcessManager:
                                             )
                                             p_name = p.get("name", "Unknown")
                                             self.logger.warning(
-                                                f"Banned player '{p_name}' ({xuid}) detected. Kicking..."
+                                                "Kicking banned player '%s' from server '%s'.",
+                                                p_name,
+                                                server.server_name,
                                             )
                                             try:
                                                 await server.send_command(
                                                     f'kick "{p_name}" {reason}'
                                                 )
                                             except Exception as kick_err:
-                                                self.logger.error(
-                                                    f"Failed to kick banned player '{p_name}': {kick_err}"
+                                                log_operation_error(
+                                                    self.logger,
+                                                    "Failed to kick banned player '%s': %s",
+                                                    p_name,
+                                                    kick_err,
+                                                    error=kick_err,
                                                 )
                             except AttributeError as e:
                                 self.logger.warning(
-                                    f"Could not trigger get_server_bans: {e}"
+                                    "Could not trigger get_server_bans: %s", e
                                 )
 
                         if server.players:
-                            self.logger.info(
-                                f"Server '{server.server_name}' has {server.player_count} players online. Scanning for players."
+                            self.logger.debug(
+                                "Server '%s' has %s players online. Scanning for players.",
+                                server.server_name,
+                                server.player_count,
                             )
                             players = await server.player_tracker.scan_log_for_players(
                                 incremental=True
@@ -354,10 +399,13 @@ class BedrockProcessManager:
                                     self.storage,
                                     players,
                                 )
+                        self._failures.recover(f"players:{server_name}")
                     except Exception as e:
                         server.players = []
-                        self.logger.error(
-                            f"Error processing players for server '{server.server_name}': {e}"
+                        self._failures.report(
+                            f"players:{server_name}",
+                            "Player monitoring unavailable (%s): %s; retrying.",
+                            e,
                         )
             if self.player_scan_counter >= player_log_monitoring_interval_sec:
                 self.player_scan_counter = 0

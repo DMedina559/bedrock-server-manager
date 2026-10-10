@@ -12,7 +12,7 @@ class LifecycleTestPlugin(PluginBase):
 
     @app_event("on_load")
     async def plugin_loaded(self, **kwargs):
-        self.logger.info("Lifecycle Test Plugin loaded.")
+        self.logger.debug("Lifecycle Test Plugin loaded.")
 
     @app_event("after_server_start")
     async def run_lifecycle_test(self, **kwargs: Any):
@@ -20,24 +20,25 @@ class LifecycleTestPlugin(PluginBase):
         server_name = str(kwargs.get("server_name"))
         result: Dict[str, Any] = kwargs.get("result", {})
         if result.get("status") == "success":
-            self.logger.info(
-                f"Server '{server_name}' started. Now testing lifecycle manager."
+            self.logger.debug(
+                "Server '%s' started. Now testing lifecycle manager.", server_name
             )
 
             try:
                 async with self.api.runtime.server_lifecycle_manager(
                     server_name, stop_before=True, start_after=True
                 ):
-                    self.logger.info(
+                    self.logger.debug(
                         "Inside the lifecycle manager's 'async with' block. Server should be stopped now."
                     )
-                    self.logger.info(
+                    self.logger.debug(
                         "Finished work inside the 'async with' block. Server should restart shortly."
                     )
 
-                self.logger.info("Lifecycle manager test completed successfully.")
+                self.logger.debug("Lifecycle manager test completed successfully.")
             except Exception as e:
                 self.logger.error(
-                    f"An error occurred during the lifecycle manager test: {e}",
+                    "An error occurred during the lifecycle manager test: %s",
+                    e,
                     exc_info=True,
                 )

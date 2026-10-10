@@ -34,7 +34,7 @@ async def validate_server_exists(
         fastapi.HTTPException: With status code 400 if the `server_name`
             has an invalid format.
     """
-    logger.debug(f"Dependency: Validating existence of server '{server_name}'.")
+    logger.debug("Dependency: Validating existence of server '%s'.", server_name)
     from ...utils import server as server_utils
 
     try:
@@ -43,17 +43,17 @@ async def validate_server_exists(
         if not await server_utils.validate_server(
             server_name=server_name, app_context=app_context
         ):
-            logger.warning(f"Dependency: Server '{server_name}' not found or invalid.")
+            logger.warning("Dependency: Server '%s' not found or invalid.", server_name)
             raise HTTPException(
                 status_code=status.HTTP_404_NOT_FOUND,
                 detail=f"Server '{server_name}' is not installed or the installation is invalid.",
             )
         # If server exists, the dependency does nothing and request proceeds.
-        logger.debug(f"Dependency: Server '{server_name}' validated successfully.")
+        logger.debug("Dependency: Server '%s' validated successfully.", server_name)
         return server_name  # Can return the validated item if needed by the route
 
     except InvalidServerNameError as e:  # If server_name format is invalid
         logger.warning(
-            f"Dependency: Invalid server name format for '{server_name}': {e}"
+            "Dependency: Invalid server name format for '%s': %s", server_name, e
         )
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(e))

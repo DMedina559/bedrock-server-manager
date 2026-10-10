@@ -2,6 +2,7 @@
 
 import glob
 import json
+import logging
 import os
 import re
 import shutil
@@ -21,6 +22,7 @@ from ...error import (
     MissingArgumentError,
     UserInputError,
 )
+from ...logging import log_operation_error
 from ...utils.io import load_json, save_json
 from ...utils.threads import run_in_thread
 from ..files import extract_archive, file_transaction, temporary_directory
@@ -35,6 +37,9 @@ class ServerAddons:
 
     def __init__(self, server: "BedrockServer") -> None:
         self.server = server
+        self.logger = logging.LoggerAdapter(
+            logging.getLogger(__name__), {"server_name": server.server_name}
+        )
 
     async def process_addon_file(self, addon_file_path: str) -> None:
         """Processes an addon file asynchronously.
@@ -60,21 +65,23 @@ class ServerAddons:
         async with self.server.operation_lock:
             if not addon_file_path:
                 raise MissingArgumentError("Addon file path cannot be empty.")
-            self.server.logger.info(
-                f"Server '{self.server.server_name}': Processing addon file '{os.path.basename(addon_file_path)}'."
+            self.logger.debug(
+                "Server '%s': Processing addon file '%s'.",
+                self.server.server_name,
+                os.path.basename(addon_file_path),
             )
             if not await aiofiles.ospath.isfile(addon_file_path):
                 raise AppFileNotFoundError(addon_file_path, "Addon file")
             addon_file_lower = addon_file_path.lower()
             if addon_file_lower.endswith(".mcaddon"):
-                self.server.logger.debug("Detected .mcaddon file type. Delegating.")
+                self.logger.debug("Detected .mcaddon file type. Delegating.")
                 await self._process_mcaddon_archive(addon_file_path)
             elif addon_file_lower.endswith(".mcpack"):
-                self.server.logger.debug("Detected .mcpack file type. Delegating.")
+                self.logger.debug("Detected .mcpack file type. Delegating.")
                 await self._process_mcpack_archive(addon_file_path)
             else:
                 err_msg = f"Unsupported addon file type: '{os.path.basename(addon_file_path)}'. Only .mcaddon and .mcpack are supported."
-                self.server.logger.error(err_msg)
+                self.logger.error(err_msg)
                 raise UserInputError(err_msg)
 
     async def list_installed_addons(
@@ -122,8 +129,10 @@ class ServerAddons:
         """
         if world_name is None:
             world_name = await self.server.get_world_name()
-        self.server.logger.info(
-            f"Listing addons for world '{world_name}' in server '{self.server.server_name}'."
+        self.logger.debug(
+            "Listing addons for world '%s' in server '%s'.",
+            world_name,
+            self.server.server_name,
         )
         world_dir = os.path.join(self.server.paths.server_dir, "worlds", world_name)
         if not await aiofiles.ospath.isdir(world_dir):
@@ -174,8 +183,8 @@ class ServerAddons:
                 raise UserInputError("Pack type must be 'behavior' or 'resource'.")
             if world_name is None:
                 world_name = await self.server.get_world_name()
-            self.server.logger.info(
-                f"Enabling {pack_type} pack '{pack_uuid}' in world '{world_name}'."
+            self.logger.info(
+                "Enabling %s pack '%s' in world '%s'.", pack_type, pack_uuid, world_name
             )
             world_dir = os.path.join(self.server.paths.server_dir, "worlds", world_name)
             pack_folder_name = f"{pack_type}_packs"
@@ -219,8 +228,12 @@ class ServerAddons:
                 raise UserInputError("Pack type must be 'behavior' or 'resource'.")
             if world_name is None:
                 world_name = await self.server.get_world_name()
-            self.server.logger.info(
-                f"Updating subpack to '{subpack_name}' for {pack_type} pack '{pack_uuid}' in world '{world_name}'."
+            self.logger.info(
+                "Updating subpack to '%s' for %s pack '%s' in world '%s'.",
+                subpack_name,
+                pack_type,
+                pack_uuid,
+                world_name,
             )
             world_dir = os.path.join(self.server.paths.server_dir, "worlds", world_name)
             pack_folder_name = f"{pack_type}_packs"
@@ -253,8 +266,10 @@ class ServerAddons:
                 lock = self.server.get_file_lock(world_json_path)
                 async with lock:
                     await save_json(packs_list, world_json_path, indent=2)
-                self.server.logger.debug(
-                    f"Successfully wrote updated subpack '{subpack_name}' to '{json_filename_basename}'."
+                self.logger.debug(
+                    "Successfully wrote updated subpack '%s' to '%s'.",
+                    subpack_name,
+                    json_filename_basename,
                 )
             except OSError as e:
                 raise FileOperationError(
@@ -278,8 +293,11 @@ class ServerAddons:
                 raise UserInputError("Pack type must be 'behavior' or 'resource'.")
             if world_name is None:
                 world_name = await self.server.get_world_name()
-            self.server.logger.info(
-                f"Disabling {pack_type} pack '{pack_uuid}' in world '{world_name}'."
+            self.logger.info(
+                "Disabling %s pack '%s' in world '%s'.",
+                pack_type,
+                pack_uuid,
+                world_name,
             )
             world_dir = os.path.join(self.server.paths.server_dir, "worlds", world_name)
             pack_folder_name = f"{pack_type}_packs"
@@ -306,8 +324,8 @@ class ServerAddons:
                 raise UserInputError("Pack type must be 'behavior' or 'resource'.")
             if world_name is None:
                 world_name = await self.server.get_world_name()
-            self.server.logger.info(
-                f"Reordering {pack_type} packs in world '{world_name}'."
+            self.logger.info(
+                "Reordering %s packs in world '%s'.", pack_type, world_name
             )
             world_dir = os.path.join(self.server.paths.server_dir, "worlds", world_name)
             pack_folder_name = f"{pack_type}_packs"
@@ -332,8 +350,10 @@ class ServerAddons:
                 lock = self.server.get_file_lock(world_json_path)
                 async with lock:
                     await save_json(new_packs_list, world_json_path, indent=2)
-                self.server.logger.info(
-                    f"Successfully reordered {pack_type} packs in world '{world_name}'."
+                self.logger.info(
+                    "Successfully reordered %s packs in world '%s'.",
+                    pack_type,
+                    world_name,
                 )
             except OSError as e:
                 raise FileOperationError(
@@ -392,8 +412,11 @@ class ServerAddons:
                 raise UserInputError("Pack type must be 'behavior' or 'resource'.")
             if world_name is None:
                 world_name = await self.server.get_world_name()
-            self.server.logger.info(
-                f"Exporting {pack_type} pack '{pack_uuid}' from world '{world_name}'."
+            self.logger.info(
+                "Exporting %s pack '%s' from world '%s'.",
+                pack_type,
+                pack_uuid,
+                world_name,
             )
             world_dir = os.path.join(self.server.paths.server_dir, "worlds", world_name)
             pack_folder_name = f"{pack_type}_packs"
@@ -416,8 +439,8 @@ class ServerAddons:
             export_file_path = os.path.join(export_dir, export_filename)
             await run_in_thread(os.makedirs, export_dir, exist_ok=True)
             try:
-                self.server.logger.debug(
-                    f"Zipping '{pack_source_path}' to '{export_file_path}'"
+                self.logger.debug(
+                    "Zipping '%s' to '%s'", pack_source_path, export_file_path
                 )
 
                 def _do_export():
@@ -433,8 +456,10 @@ class ServerAddons:
                                 zipf.write(file_path, archive_name)
 
                 await run_in_thread(_do_export)
-                self.server.logger.info(
-                    f"Successfully exported addon '{pack_name}' to '{export_file_path}'."
+                self.logger.info(
+                    "Successfully exported addon '%s' to '%s'.",
+                    pack_name,
+                    export_file_path,
                 )
                 return export_file_path
             except (OSError, zipfile.BadZipFile) as e:
@@ -482,8 +507,11 @@ class ServerAddons:
                 raise UserInputError("Pack type must be 'behavior' or 'resource'.")
             if world_name is None:
                 world_name = await self.server.get_world_name()
-            self.server.logger.info(
-                f"Removing {pack_type} pack '{pack_uuid}' from world '{world_name}'."
+            self.logger.info(
+                "Removing %s pack '%s' from world '%s'.",
+                pack_type,
+                pack_uuid,
+                world_name,
             )
             world_dir = os.path.join(self.server.paths.server_dir, "worlds", world_name)
             pack_folder_name = f"{pack_type}_packs"
@@ -494,19 +522,18 @@ class ServerAddons:
                 (p for p in physical_packs if p["uuid"] == pack_uuid), None
             )
             if not target_pack:
-                self.server.logger.warning(
-                    f"Pack files for UUID '{pack_uuid}' not found. Attempting to clean activation JSON."
+                self.logger.warning(
+                    "Pack files for UUID '%s' not found. Attempting to clean activation JSON.",
+                    pack_uuid,
                 )
             else:
                 pack_name = target_pack["name"]
                 pack_source_path = target_pack["path"]
                 try:
-                    self.server.logger.debug(
-                        f"Deleting pack folder: {pack_source_path}"
-                    )
+                    self.logger.debug("Deleting pack folder: %s", pack_source_path)
                     await run_in_thread(shutil.rmtree, pack_source_path)
-                    self.server.logger.info(
-                        f"Successfully deleted files for pack '{pack_name}'."
+                    self.logger.info(
+                        "Successfully deleted files for pack '%s'.", pack_name
                     )
                 except OSError as e:
                     raise FileOperationError(
@@ -538,14 +565,17 @@ class ServerAddons:
                 the temporary directory, or during the extraction of the archive
                 (e.g., due to permission issues or disk full).
         """
-        self.server.logger.info(
-            f"Server '{self.server.server_name}': Processing .mcaddon '{os.path.basename(mcaddon_file_path)}'."
+        self.logger.debug(
+            "Server '%s': Processing .mcaddon '%s'.",
+            self.server.server_name,
+            os.path.basename(mcaddon_file_path),
         )
         async with temporary_directory() as temporary:
             temp_dir = str(temporary)
             try:
-                self.server.logger.info(
-                    f"Extracting '{os.path.basename(mcaddon_file_path)}' to temp dir..."
+                self.logger.debug(
+                    "Extracting '%s' to temp dir...",
+                    os.path.basename(mcaddon_file_path),
                 )
 
                 def _extract():
@@ -553,8 +583,8 @@ class ServerAddons:
                         extract_archive(zip_ref, temp_dir)
 
                 await run_in_thread(_extract)
-                self.server.logger.debug(
-                    f"Successfully extracted '{os.path.basename(mcaddon_file_path)}'."
+                self.logger.debug(
+                    "Successfully extracted '%s'.", os.path.basename(mcaddon_file_path)
                 )
             except zipfile.BadZipFile as e:
                 raise ExtractError(
@@ -598,28 +628,34 @@ class ServerAddons:
                 :meth:`~.core.server.world.ServerWorlds.extract_mcworld`,
                 are not available on the server instance.
         """
-        self.server.logger.debug(
-            f"Server '{self.server.server_name}': Processing extracted .mcaddon contents in '{temp_dir_with_extracted_files}'."
+        self.logger.debug(
+            "Server '%s': Processing extracted .mcaddon contents in '%s'.",
+            self.server.server_name,
+            temp_dir_with_extracted_files,
         )
         mcworld_files_found = await run_in_thread(
             glob.glob, os.path.join(temp_dir_with_extracted_files, "*.mcworld")
         )
         if mcworld_files_found:
-            self.server.logger.info(
-                f"Found {len(mcworld_files_found)} .mcworld file(s) in .mcaddon."
+            self.logger.debug(
+                "Found %s .mcworld file(s) in .mcaddon.", len(mcworld_files_found)
             )
             active_world_name = await self.server.get_world_name()
             for world_file_path in mcworld_files_found:
                 world_filename_basename = os.path.basename(world_file_path)
-                self.server.logger.info(
-                    f"Processing extracted world file: '{world_filename_basename}' into active world '{active_world_name}'."
+                self.logger.debug(
+                    "Processing extracted world file: '%s' into active world '%s'.",
+                    world_filename_basename,
+                    active_world_name,
                 )
                 try:
                     await self.server.worlds.extract_mcworld(
                         world_file_path, active_world_name
                     )
-                    self.server.logger.info(
-                        f"Successfully processed '{world_filename_basename}' into world '{active_world_name}'."
+                    self.logger.debug(
+                        "Successfully processed '%s' into world '%s'.",
+                        world_filename_basename,
+                        active_world_name,
                     )
                 except Exception as e:
                     raise FileOperationError(
@@ -629,13 +665,13 @@ class ServerAddons:
             glob.glob, os.path.join(temp_dir_with_extracted_files, "*.mcpack")
         )
         if mcpack_files_found:
-            self.server.logger.info(
-                f"Found {len(mcpack_files_found)} .mcpack file(s) in .mcaddon."
+            self.logger.debug(
+                "Found %s .mcpack file(s) in .mcaddon.", len(mcpack_files_found)
             )
             for pack_file_path in mcpack_files_found:
                 pack_filename_basename = os.path.basename(pack_file_path)
-                self.server.logger.info(
-                    f"Processing extracted pack file: '{pack_filename_basename}'."
+                self.logger.debug(
+                    "Processing extracted pack file: '%s'.", pack_filename_basename
                 )
                 try:
                     await self._process_mcpack_archive(pack_file_path)
@@ -651,13 +687,13 @@ class ServerAddons:
             ):
                 found_pack_folders.append(item_path)
         if found_pack_folders:
-            self.server.logger.info(
-                f"Found {len(found_pack_folders)} pack folder(s) in .mcaddon."
+            self.logger.debug(
+                "Found %s pack folder(s) in .mcaddon.", len(found_pack_folders)
             )
             for pack_folder_path in found_pack_folders:
                 folder_name = os.path.basename(pack_folder_path)
-                self.server.logger.info(
-                    f"Processing extracted pack folder: '{folder_name}'."
+                self.logger.debug(
+                    "Processing extracted pack folder: '%s'.", folder_name
                 )
                 try:
                     await self._install_pack_from_extracted_data(
@@ -672,8 +708,9 @@ class ServerAddons:
             and (not mcpack_files_found)
             and (not found_pack_folders)
         ):
-            self.server.logger.warning(
-                f"No .mcworld, .mcpack files, or pack folders found in extracted .mcaddon at '{temp_dir_with_extracted_files}'."
+            self.logger.warning(
+                "No .mcworld, .mcpack files, or pack folders found in extracted .mcaddon at '%s'.",
+                temp_dir_with_extracted_files,
             )
 
     async def _process_mcpack_archive(self, mcpack_file_path: str) -> None:
@@ -700,22 +737,22 @@ class ServerAddons:
             # Note: Further errors can be raised by _install_pack_from_extracted_data
         """
         mcpack_filename = os.path.basename(mcpack_file_path)
-        self.server.logger.info(
-            f"Server '{self.server.server_name}': Processing .mcpack '{mcpack_filename}'."
+        self.logger.debug(
+            "Server '%s': Processing .mcpack '%s'.",
+            self.server.server_name,
+            mcpack_filename,
         )
         async with temporary_directory() as temporary:
             temp_dir = str(temporary)
             try:
-                self.server.logger.info(
-                    f"Extracting '{mcpack_filename}' to temp dir..."
-                )
+                self.logger.debug("Extracting '%s' to temp dir...", mcpack_filename)
 
                 def _extract():
                     with zipfile.ZipFile(mcpack_file_path, "r") as zip_ref:
                         extract_archive(zip_ref, temp_dir)
 
                 await run_in_thread(_extract)
-                self.server.logger.debug(f"Successfully extracted '{mcpack_filename}'.")
+                self.logger.debug("Successfully extracted '%s'.", mcpack_filename)
             except zipfile.BadZipFile as e:
                 raise ExtractError(
                     f"Invalid .mcpack (not a zip file): {mcpack_filename}"
@@ -734,8 +771,9 @@ class ServerAddons:
                     if os.path.isfile(
                         os.path.join(potential_nested_dir, "manifest.json")
                     ):
-                        self.server.logger.info(
-                            f"Detected nested pack directory: '{entries[0]}'. Adjusting source."
+                        self.logger.debug(
+                            "Detected nested pack directory: '%s'. Adjusting source.",
+                            entries[0],
                         )
                         install_source_dir = potential_nested_dir
             await self._install_pack_from_extracted_data(
@@ -784,8 +822,11 @@ class ServerAddons:
                 is not available.
         """
         original_mcpack_filename = os.path.basename(original_mcpack_path)
-        self.server.logger.debug(
-            f"Server '{self.server.server_name}': Processing manifest for pack from '{original_mcpack_filename}' in '{extracted_pack_dir}'."
+        self.logger.debug(
+            "Server '%s': Processing manifest for pack from '%s' in '%s'.",
+            self.server.server_name,
+            original_mcpack_filename,
+            extracted_pack_dir,
         )
         try:
             manifest = await self._extract_manifest_info(extracted_pack_dir)
@@ -793,8 +834,13 @@ class ServerAddons:
             uuid = manifest.header.uuid
             version_list = manifest.header.version
             addon_name = manifest.header.name
-            self.server.logger.info(
-                f"Manifest for '{original_mcpack_filename}': Type='{pack_type}', UUID='{uuid}', Version='{version_list}', Name='{addon_name}'"
+            self.logger.debug(
+                "Manifest for '%s': Type='%s', UUID='%s', Version='%s', Name='%s'",
+                original_mcpack_filename,
+                pack_type,
+                uuid,
+                version_list,
+                addon_name,
             )
             active_world_name = await self.server.get_world_name()
             active_world_dir = os.path.join(
@@ -842,8 +888,12 @@ class ServerAddons:
                 raise UserInputError(
                     f"Cannot install unknown pack type: '{pack_type}' for '{original_mcpack_filename}'"
                 )
-            self.server.logger.info(
-                f"Installing {pack_type_friendly_name} pack '{addon_name}' v{version_str} into: {target_install_path}"
+            self.logger.debug(
+                "Installing %s pack '%s' v%s into: %s",
+                pack_type_friendly_name,
+                addon_name,
+                version_str,
+                target_install_path,
             )
             existing_physical_packs = await self._scan_physical_packs(
                 active_world_dir, pack_folder_name
@@ -867,25 +917,38 @@ class ServerAddons:
                     await self._update_world_pack_json_file(
                         target_world_json_file, uuid, version_list
                     )
-            self.server.logger.info(
-                f"Successfully installed and activated {pack_type_friendly_name} pack '{addon_name}' v{version_str} for server '{self.server.server_name}'."
+            self.logger.info(
+                "Successfully installed and activated %s pack '%s' v%s for server '%s'.",
+                pack_type_friendly_name,
+                addon_name,
+                version_str,
+                self.server.server_name,
             )
         except (AppFileNotFoundError, ConfigParseError) as e_manifest:
-            self.server.logger.error(
-                f"Failed to process manifest for '{original_mcpack_filename}': {e_manifest}",
-                exc_info=True,
+            log_operation_error(
+                self.logger,
+                "Failed to process manifest for '%s': %s",
+                original_mcpack_filename,
+                e_manifest,
+                error=e_manifest,
             )
             raise
         except (FileOperationError, UserInputError, AppFileNotFoundError) as e_install:
-            self.server.logger.error(
-                f"Failed to install pack from '{original_mcpack_filename}': {e_install}",
-                exc_info=True,
+            log_operation_error(
+                self.logger,
+                "Failed to install pack from '%s': %s",
+                original_mcpack_filename,
+                e_install,
+                error=e_install,
             )
             raise
         except Exception as e_unexp:
-            self.server.logger.error(
-                f"Unexpected error installing pack '{original_mcpack_filename}': {e_unexp}",
-                exc_info=True,
+            log_operation_error(
+                self.logger,
+                "Unexpected error installing pack '%s': %s",
+                original_mcpack_filename,
+                e_unexp,
+                error=e_unexp,
             )
             raise FileOperationError(
                 f"Unexpected error processing pack '{original_mcpack_filename}' for server '{self.server.server_name}': {e_unexp}"
@@ -946,8 +1009,11 @@ class ServerAddons:
                 creating the parent directory fails.
         """
         json_filename_basename = os.path.basename(world_json_file_path)
-        self.server.logger.debug(
-            f"Updating world pack JSON '{json_filename_basename}' for UUID: {pack_uuid}, Version: {pack_version_list}"
+        self.logger.debug(
+            "Updating world pack JSON '%s' for UUID: %s, Version: %s",
+            json_filename_basename,
+            pack_uuid,
+            pack_version_list,
         )
         packs_list = []
         try:
@@ -961,12 +1027,15 @@ class ServerAddons:
                         if isinstance(loaded_packs, list):
                             packs_list = loaded_packs
                         else:
-                            self.server.logger.warning(
-                                f"'{json_filename_basename}' content not a list. Will overwrite."
+                            self.logger.warning(
+                                "'%s' content not a list. Will overwrite.",
+                                json_filename_basename,
                             )
         except ValueError as e:
-            self.server.logger.warning(
-                f"Invalid JSON in '{json_filename_basename}'. Will overwrite. Error: {e}"
+            self.logger.warning(
+                "Invalid JSON in '%s'. Will overwrite. Error: %s",
+                json_filename_basename,
+                e,
             )
         except OSError as e:
             raise FileOperationError(
@@ -988,14 +1057,22 @@ class ServerAddons:
                     existing_version_tuple = tuple(existing_version_list)
                     if input_version_tuple != existing_version_tuple:
                         if input_version_tuple > existing_version_tuple:
-                            self.server.logger.info(
-                                f"Updating pack '{pack_uuid}' in '{json_filename_basename}' from v{existing_version_list} to v{pack_version_list}."
+                            self.logger.debug(
+                                "Updating pack '%s' in '%s' from v%s to v%s.",
+                                pack_uuid,
+                                json_filename_basename,
+                                existing_version_list,
+                                pack_version_list,
                             )
                         elif input_version_tuple < existing_version_tuple:
-                            self.server.logger.warning(
-                                f"Downgrading pack '{pack_uuid}' in '{json_filename_basename}' from v{existing_version_list} to v{pack_version_list}."
+                            self.logger.warning(
+                                "Downgrading pack '%s' in '%s' from v%s to v%s.",
+                                pack_uuid,
+                                json_filename_basename,
+                                existing_version_list,
+                                pack_version_list,
                             )
-                            self.server.logger.warning(
+                            self.logger.warning(
                                 "Downgrading packs can cause compatibility issues or data loss."
                             )
                         packs_list[i] = {
@@ -1003,14 +1080,20 @@ class ServerAddons:
                             "version": pack_version_list,
                         }
                 else:
-                    self.server.logger.warning(
-                        f"Pack '{pack_uuid}' in '{json_filename_basename}' has invalid version. Overwriting with v{pack_version_list}."
+                    self.logger.warning(
+                        "Pack '%s' in '%s' has invalid version. Overwriting with v%s.",
+                        pack_uuid,
+                        json_filename_basename,
+                        pack_version_list,
                     )
                     packs_list[i] = {"pack_id": pack_uuid, "version": pack_version_list}
                 break
         if not pack_entry_found:
-            self.server.logger.info(
-                f"Adding new pack '{pack_uuid}' v{pack_version_list} to '{json_filename_basename}'."
+            self.logger.debug(
+                "Adding new pack '%s' v%s to '%s'.",
+                pack_uuid,
+                pack_version_list,
+                json_filename_basename,
             )
             packs_list.append({"pack_id": pack_uuid, "version": pack_version_list})
         try:
@@ -1020,8 +1103,8 @@ class ServerAddons:
             lock = self.server.get_file_lock(world_json_file_path)
             async with lock:
                 await save_json(packs_list, world_json_file_path, indent=2)
-            self.server.logger.debug(
-                f"Successfully wrote updated packs to '{json_filename_basename}'."
+            self.logger.debug(
+                "Successfully wrote updated packs to '%s'.", json_filename_basename
             )
         except OSError as e:
             raise FileOperationError(
@@ -1093,8 +1176,10 @@ class ServerAddons:
                         }
                     )
                 except (AppFileNotFoundError, ConfigParseError) as e:
-                    self.server.logger.warning(
-                        f"Could not read manifest for pack in '{pack_full_path}'. Skipping. Reason: {e}"
+                    self.logger.warning(
+                        "Could not read manifest for pack in '%s'. Skipping. Reason: %s",
+                        pack_full_path,
+                        e,
                     )
         return installed_packs
 
@@ -1129,13 +1214,18 @@ class ServerAddons:
             if isinstance(data, list):
                 return data
             else:
-                self.server.logger.warning(
-                    f"File '{world_json_file_path}' does not contain a JSON list. Treating as empty."
+                self.logger.warning(
+                    "File '%s' does not contain a JSON list. Treating as empty.",
+                    world_json_file_path,
                 )
                 return []
         except (ValueError, OSError) as e:
-            self.server.logger.error(
-                f"Failed to read or parse '{world_json_file_path}': {e}"
+            log_operation_error(
+                self.logger,
+                "Failed to read or parse '%s': %s",
+                world_json_file_path,
+                e,
+                error=e,
             )
             return []
 
@@ -1248,8 +1338,8 @@ class ServerAddons:
         """
         json_filename = os.path.basename(world_json_file_path)
         if not await aiofiles.ospath.exists(world_json_file_path):
-            self.server.logger.debug(
-                f"Activation file '{json_filename}' not found. Nothing to remove."
+            self.logger.debug(
+                "Activation file '%s' not found. Nothing to remove.", json_filename
             )
             return
         original_packs_list = await self._read_world_activation_json(
@@ -1261,16 +1351,18 @@ class ServerAddons:
             p for p in original_packs_list if p.get("pack_id") != pack_uuid
         ]
         if len(original_packs_list) == len(updated_packs_list):
-            self.server.logger.debug(
-                f"Pack UUID '{pack_uuid}' not found in '{json_filename}'. No changes made."
+            self.logger.debug(
+                "Pack UUID '%s' not found in '%s'. No changes made.",
+                pack_uuid,
+                json_filename,
             )
             return
         try:
             lock = self.server.get_file_lock(world_json_file_path)
             async with lock:
                 await save_json(updated_packs_list, world_json_file_path, indent=2)
-            self.server.logger.info(
-                f"Removed pack '{pack_uuid}' from activation file '{json_filename}'."
+            self.logger.debug(
+                "Removed pack '%s' from activation file '%s'.", pack_uuid, json_filename
             )
         except OSError as e:
             raise FileOperationError(

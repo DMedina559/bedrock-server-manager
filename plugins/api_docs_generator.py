@@ -24,7 +24,7 @@ class APIDocsGenerator(PluginBase):
 
     @app_event("on_load")
     async def plugin_loaded(self):
-        self.logger.info(
+        self.logger.debug(
             "API Docs Generator plugin loaded. Will generate docs on manager startup."
         )
 
@@ -55,7 +55,7 @@ class APIDocsGenerator(PluginBase):
 
             write_api_file()
             self.logger.info(
-                f"Successfully generated API documentation at: {api_output_path}"
+                "Successfully generated API documentation at: %s", api_output_path
             )
 
             # --- Event Docs ---
@@ -69,11 +69,11 @@ class APIDocsGenerator(PluginBase):
 
             write_event_file()
             self.logger.info(
-                f"Successfully generated Event documentation at: {event_output_path}"
+                "Successfully generated Event documentation at: %s", event_output_path
             )
 
         except Exception as e:
-            self.logger.error(f"Failed to generate documentation: {e}", exc_info=True)
+            self.logger.error("Failed to generate documentation: %s", e, exc_info=True)
 
     def _scan_codebase_for_events(self) -> List[Dict[str, Any]]:
         """
@@ -236,7 +236,9 @@ class APIDocsGenerator(PluginBase):
                                                 }
                                             )
                     except Exception as e:
-                        self.logger.debug(f"Could not parse source for {filepath}: {e}")
+                        self.logger.debug(
+                            "Could not parse source for %s: %s", filepath, e
+                        )
 
         # Deduplicate and sort
         unique_events = {}

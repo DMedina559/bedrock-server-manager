@@ -53,15 +53,14 @@ class RecursiveLoopPlugin(PluginBase):
 
     @app_event("on_load")
     async def plugin_loaded(self, **kwargs):
-        self.logger.info(
-            f"Plugin '{self.name}' v{self.version} loaded. "
-            "This plugin tests event loop protection. To run the test, start any server "
-            "in a way that does NOT set the GUARD_VARIABLE for the initial start trigger "
-            "(e.g., direct CLI call, or if api.server.start uses trigger_event)."
+        self.logger.debug(
+            "Plugin '%s' v%s loaded. This plugin tests event loop protection. To run the test, start any server in a way that does NOT set the GUARD_VARIABLE for the initial start trigger (e.g., direct CLI call, or if api.server.start uses trigger_event).",
+            self.name,
+            self.version,
         )
         self.logger.warning(
-            f"Plugin '{self.name}': This plugin will intentionally attempt to create an "
-            "A ('before_server_start') -> B ('before_backup') -> A' ('before_server_start') event dispatch loop."
+            "Plugin '%s': This plugin will intentionally attempt to create an A ('before_server_start') -> B ('before_backup') -> A' ('before_server_start') event dispatch loop.",
+            self.name,
         )
 
     @app_event("before_server_start")
@@ -69,10 +68,11 @@ class RecursiveLoopPlugin(PluginBase):
         """This is EVENT A in the A -> B -> A' loop."""
 
         server_name = kwargs.get("server_name")
-        self.logger.info(
-            f"--- LOOP TEST (EVENT A - Handler Call): 'before_server_start' entered for server '{server_name}'."
+        self.logger.debug(
+            "--- LOOP TEST (EVENT A - Handler Call): 'before_server_start' entered for server '%s'.",
+            server_name,
         )
-        self.logger.info(
+        self.logger.debug(
             "--- LOOP TEST (A->B): From 'before_server_start', calling self.api.backup_restore.backup_all() to trigger 'before_backup'."
         )
         try:
@@ -83,11 +83,12 @@ class RecursiveLoopPlugin(PluginBase):
             ).model_dump(mode="python")
         except Exception as e:
             self.logger.error(
-                f"--- LOOP TEST (EVENT A): API call self.api.backup_restore.backup_all() failed unexpectedly: {e}",
+                "--- LOOP TEST (EVENT A): API call self.api.backup_restore.backup_all() failed unexpectedly: %s",
+                e,
                 exc_info=True,
             )
 
-        self.logger.info(
+        self.logger.debug(
             "--- LOOP TEST (EVENT A - Handler Call): Finished 'before_server_start' handler execution."
         )
 
@@ -96,10 +97,11 @@ class RecursiveLoopPlugin(PluginBase):
         """This is EVENT B in the A -> B -> A' loop."""
 
         server_name = kwargs.get("server_name")
-        self.logger.info(
-            f"--- LOOP TEST (EVENT B - Handler Call): 'before_backup' entered for server '{server_name}'."
+        self.logger.debug(
+            "--- LOOP TEST (EVENT B - Handler Call): 'before_backup' entered for server '%s'.",
+            server_name,
         )
-        self.logger.info(
+        self.logger.debug(
             "--- LOOP TEST (B->A' - Recursive Attempt): From 'before_backup', DANGEROUS CALL! "
             "Attempting self.api.server.start() to re-trigger 'before_server_start' event dispatch."
         )
@@ -110,7 +112,7 @@ class RecursiveLoopPlugin(PluginBase):
             # The api.server.start() function itself will still run its internal logic.
             await self.api.server.start({"server_name": server_name})
 
-            self.logger.info(
+            self.logger.debug(
                 "--- LOOP TEST (EVENT B): Recursive self.api.server.start() call completed. "
                 "This indicates the API call itself did not crash. "
                 "Crucially, check application DEBUG logs for a message like "
@@ -119,10 +121,11 @@ class RecursiveLoopPlugin(PluginBase):
             )
         except Exception as e:
             self.logger.error(
-                f"--- LOOP TEST (EVENT B): Recursive API call self.api.server.start() failed unexpectedly: {e}",
+                "--- LOOP TEST (EVENT B): Recursive API call self.api.server.start() failed unexpectedly: %s",
+                e,
                 exc_info=True,
             )
 
-        self.logger.info(
+        self.logger.debug(
             "--- LOOP TEST (EVENT B - Handler Call): Finished 'before_backup' handler execution."
         )

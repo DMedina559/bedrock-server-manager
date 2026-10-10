@@ -26,6 +26,7 @@ from ..core.player import (
     save_player_data,
 )
 from ..error import BSMError, UserInputError
+from ..logging import log_operation_error
 from ..plugins.api_bridge import api_method
 from ..plugins.event_trigger import trigger_event
 from .models.player import (
@@ -51,7 +52,7 @@ async def add_players_manually(
     Invalid requests fail validation before side effects; operation failures raise application exceptions.
     """
     player_strings = request.player_strings
-    logger.info(f"API: Adding players manually: {player_strings}")
+    logger.debug("Registering %s player entries.", len(player_strings))
     storage = app_context.storage
     if storage is None:
         raise BSMError("Storage is not initialized.")
@@ -78,7 +79,7 @@ async def add_players_manually(
     except BSMError:
         raise
     except Exception as e:
-        logger.error(f"API: Unexpected error adding players: {e}", exc_info=True)
+        log_operation_error(logger, "Unexpected error adding players: %s", e, error=e)
         raise
 
 
@@ -91,7 +92,7 @@ async def get_all_known_players(
     Accepts GetAllKnownPlayersRequest and returns GetAllKnownPlayersResponse.
     Invalid requests fail validation before side effects; operation failures raise application exceptions.
     """
-    logger.info("API: Request to get all known players.")
+    logger.debug("Request to get all known players.")
     storage = app_context.storage
     if storage is None:
         raise BSMError("Storage is not initialized.")
@@ -101,7 +102,7 @@ async def get_all_known_players(
             {"status": "success", "players": players}
         )
     except Exception as e:
-        logger.error(f"API: Unexpected error getting players: {e}", exc_info=True)
+        log_operation_error(logger, "Unexpected error getting players: %s", e, error=e)
         raise
 
 
@@ -117,7 +118,7 @@ async def scan_and_update_player_db(
     Accepts ScanAndUpdatePlayerDbRequest and returns ScanAndUpdatePlayerDbResponse.
     Invalid requests fail validation before side effects; operation failures raise application exceptions.
     """
-    logger.info("API: Request to scan all server logs and update player DB.")
+    logger.debug("Request to scan all server logs and update player DB.")
     storage = app_context.storage
     if storage is None:
         raise BSMError("Storage is not initialized.")
@@ -133,5 +134,7 @@ async def scan_and_update_player_db(
     except BSMError:
         raise
     except Exception as e:
-        logger.error(f"API: Unexpected error scanning for players: {e}", exc_info=True)
+        log_operation_error(
+            logger, "Unexpected error scanning for players: %s", e, error=e
+        )
         raise

@@ -10,6 +10,7 @@ from ..error import (
     InvalidServerNameError,
     MissingArgumentError,
 )
+from ..logging import log_operation_error
 from ..plugins.api_bridge import api_method
 from ..plugins.api_contract import validate_contract
 from ..plugins.event_trigger import trigger_event
@@ -67,25 +68,26 @@ async def get_world_name(
     server_name = request.server_name
     if not server_name:
         raise InvalidServerNameError("Server name cannot be empty.")
-    logger.debug(f"API: Attempting to get world name for server '{server_name}'...")
+    logger.debug("Attempting to get world name for server '%s'...", server_name)
     try:
         server = app_context.get_server(server_name)
         world_name_str = await server.get_world_name()
-        logger.info(
-            f"API: Retrieved world name for '{server_name}': '{world_name_str}'"
-        )
+        logger.debug("Retrieved world name for '%s': '%s'", server_name, world_name_str)
         return GetWorldNameResponse.model_validate(
             {"status": "success", "world_name": world_name_str}
         )
     except BSMError as e:
-        logger.error(
-            f"API: Failed to get world name for '{server_name}': {e}", exc_info=True
+        log_operation_error(
+            logger, "Failed to get world name for '%s': %s", server_name, e, error=e
         )
         raise
     except Exception as e:
-        logger.error(
-            f"API: Unexpected error getting world name for '{server_name}': {e}",
-            exc_info=True,
+        log_operation_error(
+            logger,
+            "Unexpected error getting world name for '%s': %s",
+            server_name,
+            e,
+            error=e,
         )
         raise
 
@@ -113,7 +115,8 @@ async def export_world(
         await server.operation_lock.acquire(timeout=300)
     except asyncio.TimeoutError:
         logger.warning(
-            f"An operation for '{server_name}' is already in progress. Skipping concurrent export."
+            "An operation for '%s' is already in progress. Skipping concurrent export.",
+            server_name,
         )
         return ExportWorldResponse.model_validate(
             {
@@ -132,19 +135,19 @@ async def export_world(
                     "CONTENT_DIR setting missing for default export directory."
                 )
             effective_export_dir = os.path.join(content_base_dir, "worlds")
-        logger.info(f"API: Initiating world export for '{server_name}'")
+        logger.debug("Initiating world export for '%s'", server_name)
         try:
             os.makedirs(effective_export_dir, exist_ok=True)
             world_name_str = await server.get_world_name()
             timestamp = get_timestamp()
             export_filename = f"{world_name_str}_export_{timestamp}.mcworld"
             export_file_path = os.path.join(effective_export_dir, export_filename)
-            logger.info(
-                f"API: Exporting world '{world_name_str}' to '{export_file_path}'..."
+            logger.debug(
+                "Exporting world '%s' to '%s'...", world_name_str, export_file_path
             )
             await server.worlds.export_world(world_name_str, export_file_path)
-            logger.info(
-                f"API: World for server '{server_name}' exported to '{export_file_path}'."
+            logger.debug(
+                "World for server '%s' exported to '%s'.", server_name, export_file_path
             )
             return ExportWorldResponse.model_validate(
                 {
@@ -154,14 +157,17 @@ async def export_world(
                 }
             )
         except (BSMError, ValueError) as e:
-            logger.error(
-                f"API: Failed to export world for '{server_name}': {e}", exc_info=True
+            log_operation_error(
+                logger, "Failed to export world for '%s': %s", server_name, e, error=e
             )
             raise
         except Exception as e:
-            logger.error(
-                f"API: Unexpected error exporting world for '{server_name}': {e}",
-                exc_info=True,
+            log_operation_error(
+                logger,
+                "Unexpected error exporting world for '%s': %s",
+                server_name,
+                e,
+                error=e,
             )
             raise
     finally:
@@ -193,8 +199,9 @@ async def import_world(
     try:
         await server.operation_lock.acquire(timeout=300)
     except asyncio.TimeoutError:
-        logger.warning(
-            f"An operation for '{server_name}' is already in progress. Skipping concurrent import."
+        logger.debug(
+            "An operation for '%s' is already in progress. Skipping concurrent import.",
+            server_name,
         )
         return ImportWorldResponse.model_validate(
             {
@@ -204,8 +211,11 @@ async def import_world(
         )
     try:
         selected_filename = os.path.basename(selected_file_path)
-        logger.info(
-            f"API: Initiating world import for '{server_name}' from '{selected_filename}' (Stop/Start: {stop_start_server})"
+        logger.debug(
+            "Initiating world import for '%s' from '%s' (Stop/Start: %s)",
+            server_name,
+            selected_filename,
+            stop_start_server,
         )
         try:
             if not os.path.isfile(selected_file_path):
@@ -216,14 +226,18 @@ async def import_world(
             async with server_lifecycle_manager(
                 server_name, stop_before=stop_start_server, app_context=app_context
             ):
-                logger.info(
-                    f"API: Importing world from '{selected_filename}' into server '{server_name}'..."
+                logger.debug(
+                    "Importing world from '%s' into server '%s'...",
+                    selected_filename,
+                    server_name,
                 )
                 imported_world_name = await server.worlds.import_world(
                     selected_file_path
                 )
-            logger.info(
-                f"API: World import from '{selected_filename}' for server '{server_name}' completed."
+            logger.debug(
+                "World import from '%s' for server '%s' completed.",
+                selected_filename,
+                server_name,
             )
             return ImportWorldResponse.model_validate(
                 {
@@ -232,14 +246,17 @@ async def import_world(
                 }
             )
         except (BSMError, FileNotFoundError) as e:
-            logger.error(
-                f"API: Failed to import world for '{server_name}': {e}", exc_info=True
+            log_operation_error(
+                logger, "Failed to import world for '%s': %s", server_name, e, error=e
             )
             raise
         except Exception as e:
-            logger.error(
-                f"API: Unexpected error importing world for '{server_name}': {e}",
-                exc_info=True,
+            log_operation_error(
+                logger,
+                "Unexpected error importing world for '%s': %s",
+                server_name,
+                e,
+                error=e,
             )
             raise
     finally:
@@ -267,8 +284,9 @@ async def reset_world(
     try:
         await server.operation_lock.acquire(timeout=300)
     except asyncio.TimeoutError:
-        logger.warning(
-            f"An operation for '{server_name}' is already in progress. Skipping concurrent reset."
+        logger.debug(
+            "An operation for '%s' is already in progress. Skipping concurrent reset.",
+            server_name,
         )
         return ResetWorldResponse.model_validate(
             {
@@ -277,7 +295,7 @@ async def reset_world(
             }
         )
     try:
-        logger.info(f"API: Initiating world reset for server '{server_name}'...")
+        logger.debug("Initiating world reset for server '%s'...", server_name)
         try:
             world_name_for_msg = await server.get_world_name()
             async with server_lifecycle_manager(
@@ -287,12 +305,15 @@ async def reset_world(
                 restart_on_success_only=True,
                 app_context=app_context,
             ):
-                logger.info(
-                    f"API: Attempting to delete world directory for world '{world_name_for_msg}'..."
+                logger.debug(
+                    "Attempting to delete world directory for world '%s'...",
+                    world_name_for_msg,
                 )
                 await server.worlds.delete_world()
-            logger.info(
-                f"API: World '{world_name_for_msg}' for server '{server_name}' has been successfully reset."
+            logger.debug(
+                "World '%s' for server '%s' has been successfully reset.",
+                world_name_for_msg,
+                server_name,
             )
             return ResetWorldResponse.model_validate(
                 {
@@ -301,14 +322,17 @@ async def reset_world(
                 }
             )
         except BSMError as e:
-            logger.error(
-                f"API: Failed to reset world for '{server_name}': {e}", exc_info=True
+            log_operation_error(
+                logger, "Failed to reset world for '%s': %s", server_name, e, error=e
             )
             raise
         except Exception as e:
-            logger.error(
-                f"API: Unexpected error resetting world for '{server_name}': {e}",
-                exc_info=True,
+            log_operation_error(
+                logger,
+                "Unexpected error resetting world for '%s': %s",
+                server_name,
+                e,
+                error=e,
             )
             raise
     finally:

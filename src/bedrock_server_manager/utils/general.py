@@ -13,6 +13,7 @@ from datetime import datetime
 from typing import Any, List
 
 from ..error import AppFileNotFoundError, FileOperationError
+from ..logging import log_operation_error
 
 logger = logging.getLogger(__name__)
 
@@ -66,14 +67,14 @@ def startup_checks(
         if dir_path and isinstance(dir_path, str):
             try:
                 os.makedirs(dir_path, exist_ok=True)
-                # logger.debug(f"Ensured directory exists: {dir_path} (Setting: {name})")
             except OSError as e:
-                logger.error(
-                    f"Failed to create directory {dir_path}: {e}", exc_info=True
+                log_operation_error(
+                    logger, "Failed to create directory %s: %s", dir_path, e, error=e
                 )
         elif not dir_path:
             logger.warning(
-                f"Directory path for '{name}' is missing in settings. Skipping creation."
+                "Directory path for '%s' is missing in settings. Skipping creation.",
+                name,
             )
 
     logger.debug("Startup checks completed.")
@@ -188,7 +189,6 @@ def get_timestamp() -> str:
         str: The current timestamp in YYYYMMDD_HHMMSS format.
     """
     timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
-    # logger.debug(f"Generated timestamp: {timestamp}")
     return timestamp
 
 
@@ -207,7 +207,7 @@ async def list_content_files(
     target_dir = os.path.join(content_dir, sub_folder)
     if not os.path.isdir(target_dir):
         logger.debug(
-            f"BSM: Content sub-directory '{target_dir}' not found. Returning empty list."
+            "Content sub-directory '%s' not found. Returning empty list.", target_dir
         )
         return []
 

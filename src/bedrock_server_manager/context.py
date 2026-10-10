@@ -10,6 +10,8 @@ from typing import TYPE_CHECKING, Any, Dict, Optional
 
 from sqlalchemy import inspect, select
 
+from .logging import log_operation_error
+
 if TYPE_CHECKING:
     from asyncio import AbstractEventLoop
 
@@ -174,8 +176,11 @@ class AppContext:
                     await component.shutdown()
                 except Exception as error:
                     errors.append(error)
-                    getLogger(__name__).exception(
-                        "Component shutdown failed: %s", type(component).__name__
+                    log_operation_error(
+                        getLogger(__name__),
+                        "Component shutdown failed: %s",
+                        type(component).__name__,
+                        error=error,
                     )
         try:
             await self.flush()

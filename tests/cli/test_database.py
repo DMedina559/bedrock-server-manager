@@ -94,3 +94,21 @@ async def test_version_mismatch_rejection_preserves_database(
     assert "version mismatch" in result.output
     await app_context.settings.reload()
     assert app_context.settings.get("custom.integration") == "original"
+
+
+async def test_backup_failure_preserves_original_error(
+    invoke_database, tmp_path, caplog
+):
+    import logging
+
+    with caplog.at_level(logging.ERROR):
+        result = await invoke_database("backup", "--output", str(tmp_path))
+    assert result.exit_code == 1
+    assert "Database backup failed" in result.output
+    failures = [
+        record
+        for record in caplog.records
+        if "Database backup failed" in record.getMessage()
+    ]
+    assert len(failures) == 1
+    assert isinstance(failures[0].exc_info[1], OSError)

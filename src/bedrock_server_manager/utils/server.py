@@ -26,6 +26,7 @@ from ..error import (
     InvalidServerNameError,
     MissingArgumentError,
 )
+from ..logging import log_operation_error
 
 logger = logging.getLogger(__name__)
 
@@ -54,7 +55,7 @@ def core_validate_server_name_format(server_name: str) -> None:
             "Invalid server name format. Only use letters (a-z, A-Z), "
             "numbers (0-9), hyphens (-), and underscores (_)."
         )
-    logger.debug(f"Server name '{server_name}' format is valid.")
+    logger.debug("Server name '%s' format is valid.", server_name)
 
 
 # --- Server Discovery and Validation ---
@@ -65,15 +66,16 @@ async def validate_server(server_name: str, app_context: AppContext) -> bool:
     if not server_name:
         raise MissingArgumentError("Server name cannot be empty for validation.")
 
-    logger.debug(f"BSM: Validating server '{server_name}' using BedrockServer class.")
+    logger.debug("Validating server '%s' using BedrockServer class.", server_name)
     try:
         server_instance = app_context.get_server(server_name)
         is_valid = await server_instance.is_installed()
         if is_valid:
-            logger.debug(f"BSM: Server '{server_name}' validation successful.")
+            logger.debug("Server '%s' validation successful.", server_name)
         else:
             logger.debug(
-                f"BSM: Server '{server_name}' validation failed (directory or executable missing)."
+                "Server '%s' validation failed (directory or executable missing).",
+                server_name,
             )
         return is_valid
     except (
@@ -84,7 +86,7 @@ async def validate_server(server_name: str, app_context: AppContext) -> bool:
         Exception,
     ) as e_val:
         logger.warning(
-            f"BSM: Validation failed for server '{server_name}' due to an error: {e_val}"
+            "Validation failed for server '%s' due to an error: %s", server_name, e_val
         )
         return False
 
@@ -110,7 +112,8 @@ async def get_servers_data(
 
             if not await server.is_installed():
                 logger.debug(
-                    f"Skipping '{server_name_candidate}': Not a valid server installation."
+                    "Skipping '%s': Not a valid server installation.",
+                    server_name_candidate,
                 )
                 continue
 
@@ -124,7 +127,7 @@ async def get_servers_data(
             error_messages.append(msg)
         except Exception as e:
             msg = f"An unexpected error occurred while processing server '{server_name_candidate}': {e}"
-            logger.error(msg, exc_info=True)
+            log_operation_error(logger, msg, error=e)
             error_messages.append(msg)
 
     servers_data.sort(key=lambda s: s.get("name", "").lower())

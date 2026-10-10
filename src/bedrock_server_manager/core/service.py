@@ -27,6 +27,7 @@ from ..error import (
     PermissionsError,
     SystemError,
 )
+from ..logging import log_operation_error
 
 if platform.system() == "Linux":
     from .system import linux as system_linux_utils
@@ -91,14 +92,15 @@ def create_web_service_file(  # noqa: C901
         if not os.path.isdir(working_dir):
             try:
                 os.makedirs(working_dir, exist_ok=True)
-                logger.debug(f"Ensured working directory exists: {working_dir}")
+                logger.debug("Ensured working directory exists: %s", working_dir)
             except OSError as e:
                 raise FileOperationError(
                     f"Failed to create working directory {working_dir} for service: {e}"
                 )
 
-        logger.info(
-            f"Creating/updating systemd service file '{WEB_SERVICE_SYSTEMD_NAME}' for Web UI."
+        logger.debug(
+            "Creating/updating systemd service file '%s' for Web UI.",
+            WEB_SERVICE_SYSTEMD_NAME,
         )
         try:
             system_linux_utils.create_systemd_service_file(
@@ -114,7 +116,8 @@ def create_web_service_file(  # noqa: C901
                 after_targets="network.target",
             )
             logger.info(
-                f"Systemd service file for '{WEB_SERVICE_SYSTEMD_NAME}' created/updated successfully."
+                "Systemd service file for '%s' created/updated successfully.",
+                WEB_SERVICE_SYSTEMD_NAME,
             )
         except (
             MissingArgumentError,
@@ -123,8 +126,11 @@ def create_web_service_file(  # noqa: C901
             AppFileNotFoundError,
             FileOperationError,
         ) as e:
-            logger.error(
-                f"Failed to create/update systemd service file for Web UI: {e}"
+            log_operation_error(
+                logger,
+                "Failed to create/update systemd service file for Web UI: %s",
+                e,
+                error=e,
             )
             raise
 
@@ -143,11 +149,12 @@ def create_web_service_file(  # noqa: C901
         actual_svc_name_arg = f'"{WEB_SERVICE_WINDOWS_NAME_INTERNAL}"'
         windows_service_binpath_command = f"{quoted_main_exepath} -m bedrock_server_manager service _run-web {actual_svc_name_arg}"
 
-        logger.info(
-            f"Creating/updating Windows service '{WEB_SERVICE_WINDOWS_NAME_INTERNAL}' for Web UI."
+        logger.debug(
+            "Creating/updating Windows service '%s' for Web UI.",
+            WEB_SERVICE_WINDOWS_NAME_INTERNAL,
         )
         logger.debug(
-            f"Service binPath command will be: {windows_service_binpath_command}"
+            "Service binPath command will be: %s", windows_service_binpath_command
         )
 
         try:
@@ -160,7 +167,8 @@ def create_web_service_file(  # noqa: C901
                 password=password,
             )
             logger.info(
-                f"Windows service '{WEB_SERVICE_WINDOWS_NAME_INTERNAL}' created/updated successfully."
+                "Windows service '%s' created/updated successfully.",
+                WEB_SERVICE_WINDOWS_NAME_INTERNAL,
             )
         except (
             MissingArgumentError,
@@ -170,7 +178,12 @@ def create_web_service_file(  # noqa: C901
             AppFileNotFoundError,
             FileOperationError,
         ) as e:
-            logger.error(f"Failed to create/update Windows service for Web UI: {e}")
+            log_operation_error(
+                logger,
+                "Failed to create/update Windows service for Web UI: %s",
+                e,
+                error=e,
+            )
             raise
     else:
         raise SystemError(f"Web UI service creation is not supported on OS: {os_type}")
@@ -190,7 +203,7 @@ def check_web_service_exists(system: bool = False) -> bool:
             WEB_SERVICE_WINDOWS_NAME_INTERNAL
         )
     else:
-        logger.debug(f"Web service existence check not supported on OS: {os_type}")
+        logger.debug("Web service existence check not supported on OS: %s", os_type)
         return False
 
 
@@ -199,20 +212,21 @@ def enable_web_service(system: bool = False) -> None:
     os_type = platform.system()
     if os_type == "Linux":
         _ensure_linux_for_web_service("enable_web_service")
-        logger.info(
-            f"Enabling systemd service '{WEB_SERVICE_SYSTEMD_NAME}' for Web UI."
+        logger.debug(
+            "Enabling systemd service '%s' for Web UI.", WEB_SERVICE_SYSTEMD_NAME
         )
         system_linux_utils.enable_systemd_service(
             WEB_SERVICE_SYSTEMD_NAME, system=system
         )
-        logger.info(f"Systemd service '{WEB_SERVICE_SYSTEMD_NAME}' enabled.")
+        logger.info("Systemd service '%s' enabled.", WEB_SERVICE_SYSTEMD_NAME)
     elif os_type == "Windows":
         _ensure_windows_for_web_service("enable_web_service")
-        logger.info(
-            f"Enabling Windows service '{WEB_SERVICE_WINDOWS_NAME_INTERNAL}' for Web UI."
+        logger.debug(
+            "Enabling Windows service '%s' for Web UI.",
+            WEB_SERVICE_WINDOWS_NAME_INTERNAL,
         )
         system_windows_utils.enable_windows_service(WEB_SERVICE_WINDOWS_NAME_INTERNAL)
-        logger.info(f"Windows service '{WEB_SERVICE_WINDOWS_NAME_INTERNAL}' enabled.")
+        logger.info("Windows service '%s' enabled.", WEB_SERVICE_WINDOWS_NAME_INTERNAL)
     else:
         raise SystemError(f"Web UI service enabling is not supported on OS: {os_type}")
 
@@ -222,20 +236,21 @@ def disable_web_service(system: bool = False) -> None:
     os_type = platform.system()
     if os_type == "Linux":
         _ensure_linux_for_web_service("disable_web_service")
-        logger.info(
-            f"Disabling systemd service '{WEB_SERVICE_SYSTEMD_NAME}' for Web UI."
+        logger.debug(
+            "Disabling systemd service '%s' for Web UI.", WEB_SERVICE_SYSTEMD_NAME
         )
         system_linux_utils.disable_systemd_service(
             WEB_SERVICE_SYSTEMD_NAME, system=system
         )
-        logger.info(f"Systemd service '{WEB_SERVICE_SYSTEMD_NAME}' disabled.")
+        logger.info("Systemd service '%s' disabled.", WEB_SERVICE_SYSTEMD_NAME)
     elif os_type == "Windows":
         _ensure_windows_for_web_service("disable_web_service")
-        logger.info(
-            f"Disabling Windows service '{WEB_SERVICE_WINDOWS_NAME_INTERNAL}' for Web UI."
+        logger.debug(
+            "Disabling Windows service '%s' for Web UI.",
+            WEB_SERVICE_WINDOWS_NAME_INTERNAL,
         )
         system_windows_utils.disable_windows_service(WEB_SERVICE_WINDOWS_NAME_INTERNAL)
-        logger.info(f"Windows service '{WEB_SERVICE_WINDOWS_NAME_INTERNAL}' disabled.")
+        logger.info("Windows service '%s' disabled.", WEB_SERVICE_WINDOWS_NAME_INTERNAL)
     else:
         raise SystemError(f"Web UI service disabling is not supported on OS: {os_type}")
 
@@ -249,7 +264,7 @@ def remove_web_service_file(system: bool = False) -> bool:
             WEB_SERVICE_SYSTEMD_NAME, system=system
         )
         if os.path.isfile(service_file_path):
-            logger.info(f"Removing systemd service file: {service_file_path}")
+            logger.debug("Removing systemd service file: %s", service_file_path)
             try:
                 os.remove(service_file_path)
                 systemctl_cmd = shutil.which("systemctl")
@@ -264,7 +279,8 @@ def remove_web_service_file(system: bool = False) -> bool:
                         capture_output=True,
                     )
                 logger.info(
-                    f"Removed systemd service file for Web UI '{WEB_SERVICE_SYSTEMD_NAME}' and reloaded daemon."
+                    "Removed systemd service file for Web UI '%s' and reloaded daemon.",
+                    WEB_SERVICE_SYSTEMD_NAME,
                 )
                 return True
             except OSError as e:
@@ -273,17 +289,20 @@ def remove_web_service_file(system: bool = False) -> bool:
                 ) from e
         else:
             logger.debug(
-                f"Systemd service file for Web UI '{WEB_SERVICE_SYSTEMD_NAME}' not found. No removal needed."
+                "Systemd service file for Web UI '%s' not found. No removal needed.",
+                WEB_SERVICE_SYSTEMD_NAME,
             )
             return True
     elif os_type == "Windows":
         _ensure_windows_for_web_service("remove_web_service_file")
-        logger.info(
-            f"Removing Windows service '{WEB_SERVICE_WINDOWS_NAME_INTERNAL}' for Web UI."
+        logger.debug(
+            "Removing Windows service '%s' for Web UI.",
+            WEB_SERVICE_WINDOWS_NAME_INTERNAL,
         )
         system_windows_utils.delete_windows_service(WEB_SERVICE_WINDOWS_NAME_INTERNAL)
         logger.info(
-            f"Windows service '{WEB_SERVICE_WINDOWS_NAME_INTERNAL}' removed (if it existed)."
+            "Windows service '%s' removed (if it existed).",
+            WEB_SERVICE_WINDOWS_NAME_INTERNAL,
         )
         return True
     else:
@@ -314,12 +333,15 @@ def is_web_service_active(system: bool = False) -> bool:  # noqa: C901
             )
             is_active = process.returncode == 0 and process.stdout.strip() == "active"
             logger.debug(
-                f"Web UI service '{WEB_SERVICE_SYSTEMD_NAME}' active status: {process.stdout.strip()} -> {is_active}"
+                "Web UI service '%s' active status: %s -> %s",
+                WEB_SERVICE_SYSTEMD_NAME,
+                process.stdout.strip(),
+                is_active,
             )
             return is_active
         except Exception as e:
-            logger.error(
-                f"Error checking Web UI systemd active status: {e}", exc_info=True
+            log_operation_error(
+                logger, "Error checking Web UI systemd active status: %s", e, error=e
             )
             return False
     elif os_type == "Windows":
@@ -339,25 +361,30 @@ def is_web_service_active(system: bool = False) -> bool:  # noqa: C901
             )
             is_running = "STATE" in result and "RUNNING" in result
             logger.debug(
-                f"Web UI service '{WEB_SERVICE_WINDOWS_NAME_INTERNAL}' running state from query: {is_running}"
+                "Web UI service '%s' running state from query: %s",
+                WEB_SERVICE_WINDOWS_NAME_INTERNAL,
+                is_running,
             )
             return is_running
         except subprocess.CalledProcessError:
             logger.debug(
-                f"Web UI service '{WEB_SERVICE_WINDOWS_NAME_INTERNAL}' not found or error during query."
+                "Web UI service '%s' not found or error during query.",
+                WEB_SERVICE_WINDOWS_NAME_INTERNAL,
             )
             return False
         except FileNotFoundError:
             logger.warning("`sc.exe` command not found unexpectedly.")
             return False
         except Exception as e:
-            logger.error(
-                f"Error checking Web UI Windows service active status: {e}",
-                exc_info=True,
+            log_operation_error(
+                logger,
+                "Error checking Web UI Windows service active status: %s",
+                e,
+                error=e,
             )
             return False
     else:
-        logger.debug(f"Web UI service active check not supported on OS: {os_type}")
+        logger.debug("Web UI service active check not supported on OS: %s", os_type)
         return False
 
 
@@ -385,12 +412,15 @@ def is_web_service_enabled(system: bool = False) -> bool:  # noqa: C901
             )
             is_enabled = process.returncode == 0 and process.stdout.strip() == "enabled"
             logger.debug(
-                f"Web UI service '{WEB_SERVICE_SYSTEMD_NAME}' enabled status: {process.stdout.strip()} -> {is_enabled}"
+                "Web UI service '%s' enabled status: %s -> %s",
+                WEB_SERVICE_SYSTEMD_NAME,
+                process.stdout.strip(),
+                is_enabled,
             )
             return is_enabled
         except Exception as e:
-            logger.error(
-                f"Error checking Web UI systemd enabled status: {e}", exc_info=True
+            log_operation_error(
+                logger, "Error checking Web UI systemd enabled status: %s", e, error=e
             )
             return False
     elif os_type == "Windows":
@@ -410,23 +440,28 @@ def is_web_service_enabled(system: bool = False) -> bool:  # noqa: C901
             )
             is_auto_start = "START_TYPE" in result and "AUTO_START" in result
             logger.debug(
-                f"Web UI service '{WEB_SERVICE_WINDOWS_NAME_INTERNAL}' auto_start state from qc: {is_auto_start}"
+                "Web UI service '%s' auto_start state from qc: %s",
+                WEB_SERVICE_WINDOWS_NAME_INTERNAL,
+                is_auto_start,
             )
             return is_auto_start
         except subprocess.CalledProcessError:
             logger.debug(
-                f"Web UI service '{WEB_SERVICE_WINDOWS_NAME_INTERNAL}' not found or error during qc."
+                "Web UI service '%s' not found or error during qc.",
+                WEB_SERVICE_WINDOWS_NAME_INTERNAL,
             )
             return False
         except FileNotFoundError:
             logger.warning("`sc.exe` command not found unexpectedly.")
             return False
         except Exception as e:
-            logger.error(
-                f"Error checking Web UI Windows service enabled status: {e}",
-                exc_info=True,
+            log_operation_error(
+                logger,
+                "Error checking Web UI Windows service enabled status: %s",
+                e,
+                error=e,
             )
             return False
     else:
-        logger.debug(f"Web UI service enabled check not supported on OS: {os_type}")
+        logger.debug("Web UI service enabled check not supported on OS: %s", os_type)
         return False

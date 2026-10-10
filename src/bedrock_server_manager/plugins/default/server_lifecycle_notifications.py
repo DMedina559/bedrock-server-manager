@@ -7,6 +7,7 @@ import asyncio
 from typing import Any
 
 from bedrock_server_manager import PluginBase, app_event
+from bedrock_server_manager.logging import log_operation_error
 
 
 class ServerLifecycleNotificationsPlugin(PluginBase):
@@ -29,7 +30,7 @@ class ServerLifecycleNotificationsPlugin(PluginBase):
         self.post_stop_settle_delay: int = 1
         self.post_start_settle_delay: int = 1
 
-        self.logger.info(
+        self.logger.debug(
             "Plugin loaded. Will manage server lifecycle notifications and delays."
         )
 
@@ -42,15 +43,20 @@ class ServerLifecycleNotificationsPlugin(PluginBase):
             if response and response.status == "success":
                 return bool(response.is_running)
             self.logger.warning(
-                f"Could not determine running status for '{server_name}'. API: {response}"
+                "Could not determine running status for '%s'.",
+                server_name,
             )
         except AttributeError:
             self.logger.error(
                 "API is missing 'get_server_running_status'. Cannot check server status."
             )
         except Exception as e:
-            self.logger.error(
-                f"Error checking server status for '{server_name}': {e}", exc_info=True
+            log_operation_error(
+                self.logger,
+                "Error checking server status for '%s': %s",
+                server_name,
+                e,
+                error=e,
             )
         return False
 
@@ -69,24 +75,28 @@ class ServerLifecycleNotificationsPlugin(PluginBase):
                 await self.api.server.send_command(
                     request={"server_name": server_name, "command": command}
                 )
-                self.logger.info(
-                    f"Sent {context} message to '{server_name}': {message}"
+                self.logger.debug(
+                    "Sent %s message to '%s': %s", context, server_name, message
                 )
             except Exception as e:
-                self.logger.error(
-                    f"Failed to send {context} message to '{server_name}': {e}",
-                    exc_info=True,
+                log_operation_error(
+                    self.logger,
+                    "Failed to send %s message to '%s': %s",
+                    context,
+                    server_name,
+                    e,
+                    error=e,
                 )
         else:
-            self.logger.info(
-                f"Server '{server_name}' not running, skipping {context} message."
+            self.logger.debug(
+                "Server '%s' not running, skipping %s message.", server_name, context
             )
 
     @app_event("before_server_stop")
     async def send_shutdown_warning(self, **kwargs: Any) -> None:
         """Sends a shutdown warning and waits before the server stops."""
         server_name = str(kwargs.get("server_name"))
-        self.logger.debug(f"Handling before_server_stop for '{server_name}'.")
+        self.logger.debug("Handling before_server_stop for '%s'.", server_name)
 
         summary = await self.api.server.get_summary(
             request={"server_name": server_name}
@@ -106,8 +116,10 @@ class ServerLifecycleNotificationsPlugin(PluginBase):
                     server_name, warning_message, "shutdown warning"
                 )
 
-                self.logger.info(
-                    f"Waiting {self.stop_warning_delay}s before '{server_name}' stops."
+                self.logger.debug(
+                    "Waiting %ss before '%s' stops.",
+                    self.stop_warning_delay,
+                    server_name,
                 )
                 await asyncio.sleep(self.stop_warning_delay)
 
@@ -117,10 +129,12 @@ class ServerLifecycleNotificationsPlugin(PluginBase):
 
         server_name = kwargs.get("server_name")
         result = kwargs.get("result")
-        self.logger.debug(f"Handling after_server_stop for '{server_name}'.")
+        self.logger.debug("Handling after_server_stop for '%s'.", server_name)
         if getattr(result, "status", None) == "success":
-            self.logger.info(
-                f"Waiting {self.post_stop_settle_delay}s after '{server_name}' stopped."
+            self.logger.debug(
+                "Waiting %ss after '%s' stopped.",
+                self.post_stop_settle_delay,
+                server_name,
             )
             await asyncio.sleep(self.post_stop_settle_delay)
 
@@ -129,7 +143,7 @@ class ServerLifecycleNotificationsPlugin(PluginBase):
         """Sends a final warning before server data is deleted if the server is running."""
 
         server_name = str(kwargs.get("server_name"))
-        self.logger.debug(f"Handling before_delete_server_data for '{server_name}'.")
+        self.logger.debug("Handling before_delete_server_data for '%s'.", server_name)
 
         summary = await self.api.server.get_summary(
             request={"server_name": server_name}
@@ -151,7 +165,9 @@ class ServerLifecycleNotificationsPlugin(PluginBase):
         server_name = str(kwargs.get("server_name"))
         target_version = kwargs.get("target_version")
         self.logger.debug(
-            f"Handling before_server_update for '{server_name}' to v{target_version}."
+            "Handling before_server_update for '%s' to v%s.",
+            server_name,
+            target_version,
         )
 
         summary = await self.api.server.get_summary(
@@ -173,9 +189,11 @@ class ServerLifecycleNotificationsPlugin(PluginBase):
 
         server_name = kwargs.get("server_name")
         result = kwargs.get("result")
-        self.logger.debug(f"Handling after_server_start for '{server_name}'.")
+        self.logger.debug("Handling after_server_start for '%s'.", server_name)
         if getattr(result, "status", None) == "success":
-            self.logger.info(
-                f"Waiting {self.post_start_settle_delay}s after '{server_name}' started."
+            self.logger.debug(
+                "Waiting %ss after '%s' started.",
+                self.post_start_settle_delay,
+                server_name,
             )
             await asyncio.sleep(self.post_start_settle_delay)

@@ -1,5 +1,6 @@
 """Bedrock allowlist component."""
 
+import logging
 from typing import TYPE_CHECKING, Any, Dict, List
 
 import aiofiles.ospath
@@ -22,11 +23,16 @@ class ServerAllowlist:
 
     def __init__(self, server: "BedrockServer") -> None:
         self.server = server
+        self.logger = logging.LoggerAdapter(
+            logging.getLogger(__name__), {"server_name": server.server_name}
+        )
 
     async def get_allowlist(self) -> List[Dict[str, Any]]:
         """Reads the `allowlist.json` file asynchronously and returns its contents."""
-        self.server.logger.debug(
-            f"Server '{self.server.server_name}': Loading allowlist from {self.server.paths.allowlist_json_path}"
+        self.logger.debug(
+            "Server '%s': Loading allowlist from %s",
+            self.server.server_name,
+            self.server.paths.allowlist_json_path,
         )
         if not await aiofiles.ospath.isdir(self.server.paths.server_dir):
             raise AppFileNotFoundError(self.server.paths.server_dir, "Server directory")
@@ -45,8 +51,9 @@ class ServerAllowlist:
                         for entry in ALLOWLIST.validate_python(loaded_data)
                     ]
                 elif loaded_data:
-                    self.server.logger.warning(
-                        f"Allowlist file '{self.server.paths.allowlist_json_path}' is not a JSON list. Treating as empty."
+                    self.logger.warning(
+                        "Allowlist file '%s' is not a JSON list. Treating as empty.",
+                        self.server.paths.allowlist_json_path,
                     )
             except ValueError as e:
                 raise ConfigParseError(
@@ -57,8 +64,9 @@ class ServerAllowlist:
                     f"Failed to read allowlist '{self.server.paths.allowlist_json_path}': {e}"
                 ) from e
         else:
-            self.server.logger.debug(
-                f"Allowlist file '{self.server.paths.allowlist_json_path}' does not exist. Returning empty list."
+            self.logger.debug(
+                "Allowlist file '%s' does not exist. Returning empty list.",
+                self.server.paths.allowlist_json_path,
             )
         return allowlist_entries
 
@@ -73,8 +81,10 @@ class ServerAllowlist:
                 raise AppFileNotFoundError(
                     self.server.paths.server_dir, "Server directory"
                 )
-            self.server.logger.info(
-                f"Server '{self.server.server_name}': Adding {len(players_to_add)} player(s) to allowlist."
+            self.logger.debug(
+                "Server '%s': Adding %s player(s) to allowlist.",
+                self.server.server_name,
+                len(players_to_add),
             )
             current_allowlist = await self.get_allowlist()
             existing_names_lower = {
@@ -89,8 +99,8 @@ class ServerAllowlist:
                     or not player_entry.get("name")
                     or (not isinstance(player_entry.get("name"), str))
                 ):
-                    self.server.logger.warning(
-                        f"Skipping invalid player entry for allowlist: {player_entry}"
+                    self.logger.warning(
+                        "Skipping invalid player entry for allowlist: %s", player_entry
                     )
                     continue
                 player_name = player_entry["name"]
@@ -100,12 +110,13 @@ class ServerAllowlist:
                     current_allowlist.append(player_entry)
                     existing_names_lower.add(player_name.lower())
                     added_count += 1
-                    self.server.logger.debug(
-                        f"Player '{player_name}' prepared for allowlist addition."
+                    self.logger.debug(
+                        "Player '%s' prepared for allowlist addition.", player_name
                     )
                 else:
-                    self.server.logger.warning(
-                        f"Player '{player_name}' already in allowlist or added in this batch. Skipping."
+                    self.logger.debug(
+                        "Player '%s' already in allowlist or added in this batch. Skipping.",
+                        player_name,
                     )
             if added_count > 0:
                 try:
@@ -118,16 +129,19 @@ class ServerAllowlist:
                             self.server.paths.allowlist_json_path,
                             indent=4,
                         )
-                    self.server.logger.info(
-                        f"Successfully updated allowlist for '{self.server.server_name}'. {added_count} players added."
+                    self.logger.info(
+                        "Successfully updated allowlist for '%s'. %s players added.",
+                        self.server.server_name,
+                        added_count,
                     )
                 except OSError as e:
                     raise FileOperationError(
                         f"Failed to write allowlist '{self.server.paths.allowlist_json_path}': {e}"
                     ) from e
             else:
-                self.server.logger.info(
-                    f"No new players added to allowlist for '{self.server.server_name}'."
+                self.logger.debug(
+                    "No new players added to allowlist for '%s'.",
+                    self.server.server_name,
                 )
             return added_count
 
@@ -142,8 +156,10 @@ class ServerAllowlist:
                 raise AppFileNotFoundError(
                     self.server.paths.server_dir, "Server directory"
                 )
-            self.server.logger.info(
-                f"Server '{self.server.server_name}': Removing player '{player_name_to_remove}' from allowlist."
+            self.logger.debug(
+                "Server '%s': Removing player '%s' from allowlist.",
+                self.server.server_name,
+                player_name_to_remove,
             )
             current_allowlist = await self.get_allowlist()
             name_lower_to_remove = player_name_to_remove.lower()
@@ -166,8 +182,10 @@ class ServerAllowlist:
                             self.server.paths.allowlist_json_path,
                             indent=4,
                         )
-                    self.server.logger.info(
-                        f"Successfully removed '{player_name_to_remove}' from allowlist for '{self.server.server_name}'."
+                    self.logger.info(
+                        "Successfully removed '%s' from allowlist for '%s'.",
+                        player_name_to_remove,
+                        self.server.server_name,
                     )
                     return True
                 except OSError as e:
@@ -175,7 +193,9 @@ class ServerAllowlist:
                         f"Failed to write allowlist '{self.server.paths.allowlist_json_path}': {e}"
                     ) from e
             else:
-                self.server.logger.warning(
-                    f"Player '{player_name_to_remove}' not found in allowlist for '{self.server.server_name}'."
+                self.logger.debug(
+                    "Player '%s' not found in allowlist for '%s'.",
+                    player_name_to_remove,
+                    self.server.server_name,
                 )
                 return False

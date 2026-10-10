@@ -31,6 +31,7 @@ from ..error import (
     SendCommandError,
     ServerNotRunningError,
 )
+from ..logging import log_operation_error
 from ..plugins.api_bridge import api_method
 from ..plugins.api_contract import validate_contract
 from ..plugins.event_trigger import trigger_event
@@ -67,7 +68,7 @@ async def list_available_addons(
     Accepts ListAvailableAddonsRequest and returns ListAvailableAddonsResponse.
     Invalid requests fail validation before side effects; operation failures raise application exceptions.
     """
-    logger.debug("API: Requesting list of available addons.")
+    logger.debug("Requesting list of available addons.")
     try:
         content_dir = app_context.settings.get("paths.content")
         addons = await list_content_files(
@@ -79,7 +80,7 @@ async def list_available_addons(
     except FileError:
         raise
     except Exception as e:
-        logger.error(f"API: Unexpected error listing addons: {e}", exc_info=True)
+        log_operation_error(logger, "Unexpected error listing addons: %s", e, error=e)
         raise
 
 
@@ -112,7 +113,8 @@ async def import_addon(
         await server.operation_lock.acquire(timeout=300)
     except asyncio.TimeoutError:
         logger.warning(
-            f"An operation for '{server_name}' is already in progress. Skipping concurrent import."
+            "An operation for '%s' is already in progress. Skipping concurrent import.",
+            server_name,
         )
         return ImportAddonResponse.model_validate(
             {
@@ -122,8 +124,12 @@ async def import_addon(
         )
     try:
         addon_filename = os.path.basename(addon_file_path)
-        logger.info(
-            f"API: Initiating addon import for '{server_name}' from '{addon_filename}'. Stop/Start: {stop_start_server}, RestartOnSuccess: {restart_only_on_success}"
+        logger.debug(
+            "Initiating addon import for '%s' from '%s'. Stop/Start: %s, RestartOnSuccess: %s",
+            server_name,
+            addon_filename,
+            stop_start_server,
+            restart_only_on_success,
         )
         try:
             if await server.is_running():
@@ -131,7 +137,9 @@ async def import_addon(
                     await server.send_command("say Installing addon...")
                 except (SendCommandError, ServerNotRunningError) as e:
                     logger.warning(
-                        f"API: Failed to send addon installation warning to '{server_name}': {e}"
+                        "Failed to send addon installation warning to '%s': %s",
+                        server_name,
+                        e,
                     )
             async with server_lifecycle_manager(
                 server_name,
@@ -140,12 +148,16 @@ async def import_addon(
                 restart_on_success_only=restart_only_on_success,
                 app_context=app_context,
             ):
-                logger.info(
-                    f"API: Processing addon file '{addon_filename}' for server '{server_name}'..."
+                logger.debug(
+                    "Processing addon file '%s' for server '%s'...",
+                    addon_filename,
+                    server_name,
                 )
                 await server.addons.process_addon_file(addon_file_path)
-                logger.info(
-                    f"API: Core addon processing completed for '{addon_filename}' on '{server_name}'."
+                logger.debug(
+                    "Core addon processing completed for '%s' on '%s'.",
+                    addon_filename,
+                    server_name,
                 )
             message = f"Addon '{addon_filename}' installed successfully for server '{server_name}'."
             if stop_start_server:
@@ -154,15 +166,22 @@ async def import_addon(
                 {"status": "success", "message": message}
             )
         except BSMError as e:
-            logger.error(
-                f"API: Addon import failed for '{addon_filename}' on '{server_name}': {e}",
-                exc_info=True,
+            log_operation_error(
+                logger,
+                "Addon import failed for '%s' on '%s': %s",
+                addon_filename,
+                server_name,
+                e,
+                error=e,
             )
             raise
         except Exception as e:
-            logger.error(
-                f"API: Unexpected error during addon import for '{server_name}': {e}",
-                exc_info=True,
+            log_operation_error(
+                logger,
+                "Unexpected error during addon import for '%s': %s",
+                server_name,
+                e,
+                error=e,
             )
             raise
     finally:
@@ -228,15 +247,23 @@ async def enable_addon(
             }
         )
     except BSMError as e:
-        logger.error(
-            f"API: Error enabling addon '{pack_uuid}' on '{server_name}': {e}",
-            exc_info=True,
+        log_operation_error(
+            logger,
+            "Error enabling addon '%s' on '%s': %s",
+            pack_uuid,
+            server_name,
+            e,
+            error=e,
         )
         raise
     except Exception as e:
-        logger.error(
-            f"API: Unexpected error enabling addon '{pack_uuid}' on '{server_name}': {e}",
-            exc_info=True,
+        log_operation_error(
+            logger,
+            "Unexpected error enabling addon '%s' on '%s': %s",
+            pack_uuid,
+            server_name,
+            e,
+            error=e,
         )
         raise
     finally:
@@ -286,15 +313,23 @@ async def disable_addon(
             }
         )
     except BSMError as e:
-        logger.error(
-            f"API: Error disabling addon '{pack_uuid}' on '{server_name}': {e}",
-            exc_info=True,
+        log_operation_error(
+            logger,
+            "Error disabling addon '%s' on '%s': %s",
+            pack_uuid,
+            server_name,
+            e,
+            error=e,
         )
         raise
     except Exception as e:
-        logger.error(
-            f"API: Unexpected error disabling addon '{pack_uuid}' on '{server_name}': {e}",
-            exc_info=True,
+        log_operation_error(
+            logger,
+            "Unexpected error disabling addon '%s' on '%s': %s",
+            pack_uuid,
+            server_name,
+            e,
+            error=e,
         )
         raise
     finally:
@@ -347,15 +382,23 @@ async def update_subpack(
             }
         )
     except BSMError as e:
-        logger.error(
-            f"API: Error updating subpack for addon '{pack_uuid}' on '{server_name}': {e}",
-            exc_info=True,
+        log_operation_error(
+            logger,
+            "Error updating subpack for addon '%s' on '%s': %s",
+            pack_uuid,
+            server_name,
+            e,
+            error=e,
         )
         raise
     except Exception as e:
-        logger.error(
-            f"API: Unexpected error updating subpack for addon '{pack_uuid}' on '{server_name}': {e}",
-            exc_info=True,
+        log_operation_error(
+            logger,
+            "Unexpected error updating subpack for addon '%s' on '%s': %s",
+            pack_uuid,
+            server_name,
+            e,
+            error=e,
         )
         raise
     finally:
@@ -405,15 +448,23 @@ async def uninstall_addon(
             }
         )
     except BSMError as e:
-        logger.error(
-            f"API: Error uninstalling addon '{pack_uuid}' on '{server_name}': {e}",
-            exc_info=True,
+        log_operation_error(
+            logger,
+            "Error uninstalling addon '%s' on '%s': %s",
+            pack_uuid,
+            server_name,
+            e,
+            error=e,
         )
         raise
     except Exception as e:
-        logger.error(
-            f"API: Unexpected error uninstalling addon '{pack_uuid}' on '{server_name}': {e}",
-            exc_info=True,
+        log_operation_error(
+            logger,
+            "Unexpected error uninstalling addon '%s' on '%s': %s",
+            pack_uuid,
+            server_name,
+            e,
+            error=e,
         )
         raise
     finally:
@@ -463,14 +514,17 @@ async def reorder_addons(
             }
         )
     except BSMError as e:
-        logger.error(
-            f"API: Error reordering addons on '{server_name}': {e}", exc_info=True
+        log_operation_error(
+            logger, "Error reordering addons on '%s': %s", server_name, e, error=e
         )
         raise
     except Exception as e:
-        logger.error(
-            f"API: Unexpected error reordering addons on '{server_name}': {e}",
-            exc_info=True,
+        log_operation_error(
+            logger,
+            "Unexpected error reordering addons on '%s': %s",
+            server_name,
+            e,
+            error=e,
         )
         raise
     finally:

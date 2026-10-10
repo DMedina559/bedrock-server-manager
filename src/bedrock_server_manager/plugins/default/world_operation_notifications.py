@@ -6,6 +6,7 @@ Plugin to send in-game notifications before world operations like export, import
 from typing import Any
 
 from bedrock_server_manager import PluginBase, app_event
+from bedrock_server_manager.logging import log_operation_error
 
 
 class WorldOperationNotificationsPlugin(PluginBase):
@@ -21,7 +22,9 @@ class WorldOperationNotificationsPlugin(PluginBase):
     @app_event("on_load")
     async def plugin_loaded(self):
         """Logs a message when the plugin is loaded."""
-        self.logger.info("Plugin loaded. Will send notifications for world operations.")
+        self.logger.debug(
+            "Plugin loaded. Will send notifications for world operations."
+        )
 
     async def _is_server_running(self, server_name: str) -> bool:
         """Checks if a server is currently running via the API."""
@@ -32,15 +35,20 @@ class WorldOperationNotificationsPlugin(PluginBase):
             if response and response.status == "success":
                 return bool(response.is_running)
             self.logger.warning(
-                f"Could not determine running status for '{server_name}'. API: {response}"
+                "Could not determine running status for '%s'.",
+                server_name,
             )
         except AttributeError:
             self.logger.error(
                 "API is missing 'get_server_running_status'. Cannot check server status."
             )
         except Exception as e:
-            self.logger.error(
-                f"Error checking server status for '{server_name}': {e}", exc_info=True
+            log_operation_error(
+                self.logger,
+                "Error checking server status for '%s': %s",
+                server_name,
+                e,
+                error=e,
             )
         return False
 
@@ -57,17 +65,21 @@ class WorldOperationNotificationsPlugin(PluginBase):
                 await self.api.server.send_command(
                     request={"server_name": server_name, "command": command}
                 )
-                self.logger.info(
-                    f"Sent {context} warning to '{server_name}': {message}"
+                self.logger.debug(
+                    "Sent %s warning to '%s': %s", context, server_name, message
                 )
             except Exception as e:
-                self.logger.error(
-                    f"Failed to send {context} warning to '{server_name}': {e}",
-                    exc_info=True,
+                log_operation_error(
+                    self.logger,
+                    "Failed to send %s warning to '%s': %s",
+                    context,
+                    server_name,
+                    e,
+                    error=e,
                 )
         else:
-            self.logger.info(
-                f"Server '{server_name}' not running, skipping {context} warning."
+            self.logger.debug(
+                "Server '%s' not running, skipping %s warning.", server_name, context
             )
 
     @app_event("before_world_export")
@@ -77,7 +89,7 @@ class WorldOperationNotificationsPlugin(PluginBase):
         server_name = str(kwargs.get("server_name"))
         export_dir = kwargs.get("export_dir")
         self.logger.debug(
-            f"Handling before_world_export for '{server_name}' to '{export_dir}'."
+            "Handling before_world_export for '%s' to '%s'.", server_name, export_dir
         )
         summary = await self.api.server.get_summary(
             request={"server_name": server_name}
@@ -99,7 +111,7 @@ class WorldOperationNotificationsPlugin(PluginBase):
         server_name = str(kwargs.get("server_name"))
         file_path = kwargs.get("file_path")
         self.logger.debug(
-            f"Handling before_world_import for '{server_name}' from '{file_path}'."
+            "Handling before_world_import for '%s' from '%s'.", server_name, file_path
         )
         summary = await self.api.server.get_summary(
             request={"server_name": server_name}
@@ -119,9 +131,9 @@ class WorldOperationNotificationsPlugin(PluginBase):
         """Sends a critical warning before a world reset operation."""
 
         server_name = str(kwargs.get("server_name"))
-        self.logger.debug(f"Handling before_world_reset for '{server_name}'.")
-        self.logger.warning(
-            f"Critical operation: World reset initiated for server '{server_name}'."
+        self.logger.debug("Handling before_world_reset for '%s'.", server_name)
+        self.logger.debug(
+            "Critical operation: World reset initiated for server '%s'.", server_name
         )
         summary = await self.api.server.get_summary(
             request={"server_name": server_name}

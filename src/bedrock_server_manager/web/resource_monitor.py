@@ -3,6 +3,7 @@ import asyncio
 import logging
 from typing import TYPE_CHECKING, Callable
 
+from ..logging import RepeatedFailureReporter
 from .websocket_manager import ConnectionManager
 
 if TYPE_CHECKING:
@@ -32,6 +33,7 @@ class ResourceMonitor:
         self.connection_manager = connection_manager
         self.server_provider = server_provider
         self._task: asyncio.Task | None = None
+        self._failures = RepeatedFailureReporter(logger)
 
     async def _monitor_loop(self):
         """
@@ -65,8 +67,13 @@ class ResourceMonitor:
                                 await connection_manager.broadcast_to_topic(
                                     topic, message
                                 )
+                self._failures.recover("resource monitoring")
             except Exception as e:
-                logger.error(f"Error in resource monitor loop: {e}", exc_info=True)
+                self._failures.report(
+                    "resource monitoring",
+                    "Resource updates unavailable (%s): %s; retrying.",
+                    e,
+                )
 
             await asyncio.sleep(3)  # Broadcast every 3 seconds
 
@@ -74,14 +81,14 @@ class ResourceMonitor:
         """Starts the background monitoring task."""
         if self._task is None or self._task.done():
             self._task = asyncio.create_task(self._monitor_loop())
-            logger.info("Resource monitor background task started.")
+            logger.debug("Resource monitor background task started.")
 
     def stop(self):
         """Stops the background monitoring task."""
         if self._task and not self._task.done():
             self._task.cancel()
             self._task = None
-            logger.info("Resource monitor background task stopped.")
+            logger.debug("Resource monitor background task stopped.")
 
     async def shutdown(self) -> None:
         """Cancel and await the monitor before releasing its dependencies."""

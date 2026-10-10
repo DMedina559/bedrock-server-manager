@@ -15,6 +15,7 @@ from ...api.errors import error_response
 from ...api.models.common import APIErrorResponse, ErrorEnvelope
 from ...context import AppContext
 from ...error import AppFileNotFoundError, UserInputError
+from ...logging import log_operation_error
 from ..deps import get_app_context, get_moderator_user, validate_server_exists
 from ..schemas import (
     PermissionsGetResponse,
@@ -73,8 +74,8 @@ async def post_permissions_set(
                 )
             )
             if error_statuses[-1] == 500:
-                logger.error(
-                    "Permission update failed for %s", item.xuid, exc_info=True
+                log_operation_error(
+                    logger, "Permission update failed for %s", item.xuid, error=error
                 )
 
     if not errors:

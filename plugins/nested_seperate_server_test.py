@@ -81,22 +81,26 @@ class NestedDifferentServerStartPlugin(PluginBase):
         global _server_b_triggered_by_this_plugin
         _server_b_triggered_by_this_plugin = False  # Reset state on load/reload
 
-        self.logger.info(f"Plugin '{self.name}' v{self.version} loaded.")
+        self.logger.debug("Plugin '%s' v%s loaded.", self.name, self.version)
         if SERVER_A_NAME_TRIGGER == SERVER_B_NAME_NESTED:
             self.logger.error(
-                f"'{self.name}' Misconfiguration: SERVER_A_NAME_TRIGGER ('{SERVER_A_NAME_TRIGGER}') "
-                f"and SERVER_B_NAME_NESTED ('{SERVER_B_NAME_NESTED}') are the same. "
-                "This test requires two different server names. Plugin might not work as intended."
+                "'%s' Misconfiguration: SERVER_A_NAME_TRIGGER ('%s') and SERVER_B_NAME_NESTED ('%s') are the same. This test requires two different server names. Plugin might not work as intended.",
+                self.name,
+                SERVER_A_NAME_TRIGGER,
+                SERVER_B_NAME_NESTED,
             )
             return
 
-        self.logger.info(
-            f"'{self.name}': Test Instructions:\n"
-            f"  1. Ensure this plugin is enabled and BSM DEBUG logging for PluginManager is active.\n"
-            f"  2. Ensure servers '{SERVER_A_NAME_TRIGGER}' and '{SERVER_B_NAME_NESTED}' are configured in BSM.\n"
-            f"  3. Manually start server '{SERVER_A_NAME_TRIGGER}'.\n"
-            f"  4. This plugin's 'before_server_start' for '{SERVER_A_NAME_TRIGGER}' will attempt to start '{SERVER_B_NAME_NESTED}'.\n"
-            f"  5. Expect to see 'before_server_start' logs from this plugin for BOTH '{SERVER_A_NAME_TRIGGER}' AND '{SERVER_B_NAME_NESTED}'."
+        self.logger.debug(
+            "'%s': Test Instructions:\n  1. Ensure this plugin is enabled and BSM DEBUG logging for PluginManager is active.\n  2. Ensure servers '%s' and '%s' are configured in BSM.\n  3. Manually start server '%s'.\n  4. This plugin's 'before_server_start' for '%s' will attempt to start '%s'.\n  5. Expect to see 'before_server_start' logs from this plugin for BOTH '%s' AND '%s'.",
+            self.name,
+            SERVER_A_NAME_TRIGGER,
+            SERVER_B_NAME_NESTED,
+            SERVER_A_NAME_TRIGGER,
+            SERVER_A_NAME_TRIGGER,
+            SERVER_B_NAME_NESTED,
+            SERVER_A_NAME_TRIGGER,
+            SERVER_B_NAME_NESTED,
         )
 
     @app_event("before_server_start")
@@ -105,50 +109,58 @@ class NestedDifferentServerStartPlugin(PluginBase):
 
         server_name = kwargs.get("server_name")
 
-        self.logger.info(
-            f"--- NESTED TEST: 'before_server_start' invoked for server '{server_name}'."
+        self.logger.debug(
+            "--- NESTED TEST: 'before_server_start' invoked for server '%s'.",
+            server_name,
         )
 
         if (
             server_name == SERVER_A_NAME_TRIGGER
             and not _server_b_triggered_by_this_plugin
         ):
-            self.logger.info(
-                f"--- NESTED TEST (Server A: '{SERVER_A_NAME_TRIGGER}'): This is the initial trigger. "
-                f"Attempting to start Server B ('{SERVER_B_NAME_NESTED}')."
+            self.logger.debug(
+                "--- NESTED TEST (Server A: '%s'): This is the initial trigger. Attempting to start Server B ('%s').",
+                SERVER_A_NAME_TRIGGER,
+                SERVER_B_NAME_NESTED,
             )
             _server_b_triggered_by_this_plugin = True  # Set flag to avoid re-triggering from Server B's handler if it's this plugin
             try:
                 # This API call should trigger 'before_server_start' for SERVER_B_NAME_NESTED.
                 # The granular re-entrancy guard should allow its handlers to run.
                 await self.api.server.start({"server_name": SERVER_B_NAME_NESTED})
-                self.logger.info(
-                    f"--- NESTED TEST (Server A: '{SERVER_A_NAME_TRIGGER}'): Call to start Server B ('{SERVER_B_NAME_NESTED}') initiated."
+                self.logger.debug(
+                    "--- NESTED TEST (Server A: '%s'): Call to start Server B ('%s') initiated.",
+                    SERVER_A_NAME_TRIGGER,
+                    SERVER_B_NAME_NESTED,
                 )
             except Exception as e:
                 self.logger.error(
-                    f"--- NESTED TEST (Server A: '{SERVER_A_NAME_TRIGGER}'): API call self.api.server.start "
-                    f"for '{SERVER_B_NAME_NESTED}' failed unexpectedly: {e}",
+                    "--- NESTED TEST (Server A: '%s'): API call self.api.server.start for '%s' failed unexpectedly: %s",
+                    SERVER_A_NAME_TRIGGER,
+                    SERVER_B_NAME_NESTED,
+                    e,
                     exc_info=True,
                 )
 
         elif server_name == SERVER_B_NAME_NESTED:
             # This block is expected to be reached if the granular guard works correctly.
-            self.logger.info(
-                f"--- NESTED TEST (Server B: '{SERVER_B_NAME_NESTED}'): 'before_server_start' successfully "
-                "dispatched for the nested server start. Granular guard test PASSED for this step."
+            self.logger.debug(
+                "--- NESTED TEST (Server B: '%s'): 'before_server_start' successfully dispatched for the nested server start. Granular guard test PASSED for this step.",
+                SERVER_B_NAME_NESTED,
             )
             # Do not trigger further starts from here to prevent complex loops in this test.
 
         else:
             self.logger.debug(
-                f"--- NESTED TEST: 'before_server_start' for '{server_name}' is not part of the primary test flow. Ignoring."
+                "--- NESTED TEST: 'before_server_start' for '%s' is not part of the primary test flow. Ignoring.",
+                server_name,
             )
 
-        self.logger.info(
-            f"--- NESTED TEST: Finished 'before_server_start' for server '{server_name}'."
+        self.logger.debug(
+            "--- NESTED TEST: Finished 'before_server_start' for server '%s'.",
+            server_name,
         )
 
     @app_event("on_unload")
     async def plugin_unloaded(self, **kwargs):
-        self.logger.info(f"Plugin '{self.name}' v{self.version} is unloading.")
+        self.logger.debug("Plugin '%s' v%s is unloading.", self.name, self.version)

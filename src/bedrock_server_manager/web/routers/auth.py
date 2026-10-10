@@ -61,13 +61,13 @@ async def api_login_for_access_token(
             detail="Username and password cannot be empty.",
         )
 
-    logger.info(f"API login attempt for '{form_data.username}'")
+    logger.debug("API login attempt for '%s'", form_data.username)
     authenticated_username = await authenticate_user(
         app_context, form_data.username, form_data.password
     )
 
     if not authenticated_username:
-        logger.warning(f"Invalid API login attempt for '{form_data.username}'.")
+        logger.warning("Invalid API login attempt for '%s'.", form_data.username)
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
             detail="Incorrect username or password",
@@ -90,7 +90,7 @@ async def api_login_for_access_token(
         expires_delta=expires_delta,
     )
 
-    logger.info(f"API login successful for '{form_data.username}'. JWT created.")
+    logger.info("User '%s' signed in.", form_data.username)
     is_secure = (
         request.url.scheme == "https"
         or request.headers.get("x-forwarded-proto", "") == "https"
@@ -168,7 +168,7 @@ async def reauth(
         expires_delta=expires_delta,
     )
 
-    logger.info(f"Token refreshed for '{current_user.username}'.")
+    logger.debug("Token refreshed for '%s'.", current_user.username)
     is_secure = (
         request.url.scheme == "https"
         or request.headers.get("x-forwarded-proto", "") == "https"
@@ -202,7 +202,7 @@ async def logout(
     This endpoint serves as an explicit logout action for auditing purposes.
     """
     username = current_user.username
-    logger.info(f"User '{username}' explicitly logged out.")
+    logger.info("User '%s' explicitly logged out.", username)
 
     response = JSONResponse(
         content={"status": "success", "message": "Successfully logged out."},

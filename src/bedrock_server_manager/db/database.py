@@ -87,6 +87,7 @@ class Database:
 
         self.engine = create_async_engine(
             db_url,
+            hide_parameters=True,
             connect_args=connect_args,
             pool_pre_ping=True,
             pool_recycle=3600,
@@ -121,7 +122,7 @@ class Database:
         alembic_cfg.set_main_option("skip_logging_config", "true")
         alembic_cfg.set_main_option("sqlalchemy.url", sync_url)
 
-        sync_engine = create_engine(sync_url)
+        sync_engine = create_engine(sync_url, hide_parameters=True)
         with sync_engine.begin() as connection:
             alembic_cfg.attributes["connection"] = connection
             command.upgrade(alembic_cfg, "head")
@@ -141,7 +142,7 @@ class Database:
             head = script.get_current_head()
             return str(head) if head is not None else None
         except Exception as e:
-            logging.warning(f"Failed to resolve Alembic head revision: {e}")
+            logging.warning("Failed to resolve Alembic head revision: %s", e)
             return None
 
     def _run_alembic_downgrade(self, revision: str = "-1") -> None:
@@ -156,7 +157,7 @@ class Database:
         alembic_cfg.set_main_option("skip_logging_config", "true")
         alembic_cfg.set_main_option("sqlalchemy.url", sync_url)
 
-        sync_engine = create_engine(sync_url)
+        sync_engine = create_engine(sync_url, hide_parameters=True)
         with sync_engine.begin() as connection:
             alembic_cfg.attributes["connection"] = connection
             command.downgrade(alembic_cfg, revision)

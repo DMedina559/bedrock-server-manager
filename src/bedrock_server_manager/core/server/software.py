@@ -1,5 +1,6 @@
 """Bedrock software installation operations, independent of server inheritance."""
 
+import logging
 from typing import TYPE_CHECKING, Optional
 
 from ...error import (
@@ -9,8 +10,11 @@ from ...error import (
     PermissionsError,
     ServerStopError,
 )
+from ...logging import log_operation_error
 from ..downloader import BedrockDownloader
 from .removal import set_filesystem_permissions
+
+logger = logging.getLogger(__name__)
 
 if TYPE_CHECKING:
     from ..bedrock_server import BedrockServer
@@ -46,7 +50,7 @@ async def is_update_needed(
         )
         return not available or current != available
     except Exception:
-        server.logger.warning(
+        logger.warning(
             "Could not resolve Bedrock release %r for %s; assuming an update is needed.",
             target,
             server.server_name,
@@ -69,19 +73,25 @@ async def _install_or_update(
         raise MissingArgumentError(
             "Target version specification cannot be empty and must be a string."
         )
-    server.logger.info(
-        f"Server '{server.server_name}': Initiating async install/update to version spec '{target_version_specification}'. Force reinstall: {force_reinstall}"
+    logger.debug(
+        "Server '%s': Initiating install/update to version spec '%s'. Force reinstall: %s",
+        server.server_name,
+        target_version_specification,
+        force_reinstall,
     )
     is_currently_installed: bool = await server.is_installed()
     if not force_reinstall and is_currently_installed:
         if not await is_update_needed(server, target_version_specification):
-            server.logger.info(
-                f"Server '{server.server_name}' is already at the target version or latest for '{target_version_specification}'. No action taken."
+            logger.info(
+                "Server '%s' is already at the target version or latest for '%s'. No action taken.",
+                server.server_name,
+                target_version_specification,
             )
             return
     if await server.is_running():
-        server.logger.info(
-            f"Server '{server.server_name}' is running. Stopping before install/update."
+        logger.debug(
+            "Server '%s' is running. Stopping before install/update.",
+            server.server_name,
         )
         try:
             await server.stop()
@@ -99,8 +109,11 @@ async def _install_or_update(
     try:
         await server.set_status_in_config(status_to_set)
     except Exception as e_stat:
-        server.logger.warning(
-            f"Could not set status to {status_to_set} for '{server.server_name}': {e_stat}"
+        logger.warning(
+            "Could not set status to %s for '%s': %s",
+            status_to_set,
+            server.server_name,
+            e_stat,
         )
     try:
         if not is_currently_installed:
@@ -108,8 +121,10 @@ async def _install_or_update(
                 target_version_specification.strip().upper()
             )
     except Exception as e_set_target:
-        server.logger.warning(
-            f"Could not set target version for '{server.server_name}': {e_set_target}"
+        logger.warning(
+            "Could not set target version for '%s': %s",
+            server.server_name,
+            e_set_target,
         )
     downloader = BedrockDownloader(
         settings_obj=server.settings,
@@ -119,8 +134,10 @@ async def _install_or_update(
     )
     actual_version_downloaded: Optional[str] = None
     try:
-        server.logger.info(
-            f"Server '{server.server_name}': Performing full setup for '{target_version_specification}'..."
+        logger.debug(
+            "Server '%s': Performing full setup for '%s'...",
+            server.server_name,
+            target_version_specification,
         )
         is_update_op_for_extraction = is_currently_installed and (not force_reinstall)
         actual_version_downloaded = await downloader.full_server_setup(
@@ -131,8 +148,12 @@ async def _install_or_update(
         except PermissionsError:
             raise
         except Exception as e_perm:
-            server.logger.error(
-                f"Failed to set permissions for '{server.paths.server_dir}' during setup: {e_perm}. Installation may be incomplete."
+            log_operation_error(
+                logger,
+                "Failed to set permissions for '%s' during setup: %s. Installation may be incomplete.",
+                server.paths.server_dir,
+                e_perm,
+                error=e_perm,
             )
             raise PermissionsError(
                 f"Unexpected error setting permissions for '{server.paths.server_dir}'."
@@ -141,20 +162,29 @@ async def _install_or_update(
         await server.set_status_in_config(
             "UPDATED" if is_update_op_for_extraction else "INSTALLED"
         )
-        server.logger.info(
-            f"Server '{server.server_name}' successfully {('updated' if is_update_op_for_extraction else 'installed')} to version '{actual_version_downloaded}'."
+        logger.info(
+            "Server '%s' successfully %s to version '%s'.",
+            server.server_name,
+            "updated" if is_update_op_for_extraction else "installed",
+            actual_version_downloaded,
         )
     except BSMError as e_bsm_install:
-        server.logger.error(
-            f"Install/Update failed for server '{server.server_name}' due to a BSM error: {e_bsm_install}",
-            exc_info=True,
+        log_operation_error(
+            logger,
+            "Install/Update failed for server '%s' due to a BSM error: %s",
+            server.server_name,
+            e_bsm_install,
+            error=e_bsm_install,
         )
         await server.set_status_in_config("ERROR")
         raise
     except Exception as e_unexp_install:
-        server.logger.error(
-            f"Unexpected error during install/update for '{server.server_name}': {e_unexp_install}",
-            exc_info=True,
+        log_operation_error(
+            logger,
+            "Unexpected error during install/update for '%s': %s",
+            server.server_name,
+            e_unexp_install,
+            error=e_unexp_install,
         )
         await server.set_status_in_config("ERROR")
         raise FileOperationError(

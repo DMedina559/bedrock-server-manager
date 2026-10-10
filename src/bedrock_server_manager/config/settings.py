@@ -195,6 +195,6 @@ class Settings:
 
     async def reload(self):
         """Reloads the settings from the database asynchronously."""
-        logger.info("Reloading configuration from database asynchronously")
+        logger.debug("Reloading configuration from database")
         await self.load()
         logger.info("Configuration reloaded successfully.")

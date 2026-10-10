@@ -1,11 +1,13 @@
 """Bedrock player component."""
 
 import asyncio
+import logging
 import os
 import re
 from typing import TYPE_CHECKING, Dict, Iterator, List, Optional, Tuple
 
 from ...error import FileOperationError
+from ...logging import log_operation_error
 
 if TYPE_CHECKING:
     from ..bedrock_server import BedrockServer
@@ -16,6 +18,9 @@ class ServerPlayers:
 
     def __init__(self, server: "BedrockServer") -> None:
         self.server = server
+        self.logger = logging.LoggerAdapter(
+            logging.getLogger(__name__), {"server_name": server.server_name}
+        )
         self._log_file_cursor = 0
         self._scan_log_cursor = 0
 
@@ -75,9 +80,13 @@ class ServerPlayers:
                             if name and xuid:
                                 yield ("disconnect", name, xuid, f.tell())
         except OSError as e:
-            self.server.logger.error(
-                f"Error parsing log file '{log_file}' for server '{self.server.server_name}': {e}",
-                exc_info=True,
+            log_operation_error(
+                self.logger,
+                "Error parsing log file '%s' for server '%s': %s",
+                log_file,
+                self.server.server_name,
+                e,
+                error=e,
             )
 
     async def scan_log_for_players(
@@ -108,8 +117,11 @@ class ServerPlayers:
                 the log file (e.g., permission issues).
         """
         log_file = self.server.paths.server_log_path
-        self.server.logger.debug(
-            f"Server '{self.server.server_name}': Scanning log file for players: {log_file} (incremental={incremental}) asynchronously"
+        self.logger.debug(
+            "Server '%s': Scanning log file for players: %s (incremental=%s)",
+            self.server.server_name,
+            log_file,
+            incremental,
         )
         start_pos = self._scan_log_cursor if incremental else 0
         unique_players = {}
@@ -125,13 +137,20 @@ class ServerPlayers:
                 {"name": name, "xuid": xuid} for xuid, name in unique_players.items()
             ]
             if found_players:
-                self.server.logger.debug(
-                    f"Server '{self.server.server_name}': Found {len(found_players)} unique player(s) in log."
+                self.logger.debug(
+                    "Server '%s': Found %s unique player(s) in log.",
+                    self.server.server_name,
+                    len(found_players),
                 )
             return found_players
         except OSError as e:
-            self.server.logger.error(
-                f"Server '{self.server.server_name}': Failed to read log file '{log_file}' for player scanning: {e}"
+            log_operation_error(
+                self.logger,
+                "Server '%s': Failed to read log file '%s' for player scanning: %s",
+                self.server.server_name,
+                log_file,
+                e,
+                error=e,
             )
             raise FileOperationError(
                 f"Could not read log file for player scanning: {e}"

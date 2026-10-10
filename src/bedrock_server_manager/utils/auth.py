@@ -181,13 +181,15 @@ async def _get_user_from_token(
                     app_context.state.users.remove_dirty_user(username)
                     return user_resp
         except Exception as db_err:
-            logger.warning(f"Failed DB fallback lookup for user '{username}': {db_err}")
+            logger.warning(
+                "Failed DB fallback lookup for user '%s': %s", username, db_err
+            )
             return None
 
     except JWTError:
         return None
     except Exception as e:
-        logger.warning(f"Error during user token authentication: {e}")
+        logger.warning("Error during user token authentication: %s", e)
         return None
 
 

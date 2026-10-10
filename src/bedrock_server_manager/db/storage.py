@@ -24,6 +24,7 @@ from sqlalchemy.exc import OperationalError
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from ..error import BSMError, StorageError
+from ..logging import log_operation_error
 from ..state.app_state import AppState
 from ..state.changeset import ChangeSet
 from ..state.settings import SettingsState
@@ -90,8 +91,12 @@ class Storage:
                 if inspect.isawaitable(res):
                     await res
             except Exception as e:
-                logger.error(
-                    f"Error in state change listener {listener}: {e}", exc_info=True
+                log_operation_error(
+                    logger,
+                    "Error in state change listener %s: %s",
+                    listener,
+                    e,
+                    error=e,
                 )
 
     @asynccontextmanager

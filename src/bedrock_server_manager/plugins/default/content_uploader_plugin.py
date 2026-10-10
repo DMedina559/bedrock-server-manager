@@ -12,6 +12,7 @@ from fastapi import APIRouter, Depends, File, Request, UploadFile
 from fastapi.responses import JSONResponse
 
 from bedrock_server_manager import PluginBase, app_event
+from bedrock_server_manager.logging import log_operation_error
 from bedrock_server_manager.web import get_admin_user
 
 # Define allowed extensions
@@ -31,14 +32,16 @@ class ContentUploaderPlugin(PluginBase):
     async def plugin_loaded(self, **kwargs):
         self.router = APIRouter(tags=["Content Uploader Plugin"])
         self._define_routes()
-        self.logger.info(
-            f"ContentUploaderPlugin v{self.version} initialized with routes."
+        self.logger.debug(
+            "ContentUploaderPlugin v%s initialized with routes.", self.version
         )
 
         global MODULE_CONTENT_DIR_PATH
 
-        self.logger.info(
-            f"Plugin '{self.name}' v{self.version} loaded. Web uploader available at /content_uploader/page."
+        self.logger.debug(
+            "Plugin '%s' v%s loaded. Web uploader available at /content_uploader/page.",
+            self.name,
+            self.version,
         )
 
         try:
@@ -49,41 +52,49 @@ class ContentUploaderPlugin(PluginBase):
                 path_str = setting_result.value
                 if path_str and isinstance(path_str, str):
                     MODULE_CONTENT_DIR_PATH = Path(path_str)
-                    self.logger.info(
-                        f"Successfully fetched content path. Uploads will be stored relative to: {MODULE_CONTENT_DIR_PATH.resolve()}"
+                    self.logger.debug(
+                        "Successfully fetched content path. Uploads will be stored relative to: %s",
+                        MODULE_CONTENT_DIR_PATH.resolve(),
                     )
                 else:
                     self.logger.error(
-                        f"Content path ('paths.content') from settings is invalid: {path_str}. Using fallback."
+                        "Content path ('paths.content') from settings is invalid: %s. Using fallback.",
+                        path_str,
                     )
                     MODULE_CONTENT_DIR_PATH = None
             else:
                 self.logger.error(
-                    f"Failed to get 'paths.content'. API response: {setting_result}. Using fallback."
+                    "Content path unavailable; using the fallback upload directory.",
                 )
                 MODULE_CONTENT_DIR_PATH = None
         except Exception as e:
-            self.logger.error(
-                f"Exception fetching 'paths.content': {e}. Using fallback.",
-                exc_info=True,
+            log_operation_error(
+                self.logger,
+                "Exception fetching 'paths.content': %s. Using fallback.",
+                e,
+                error=e,
             )
             MODULE_CONTENT_DIR_PATH = None
 
         if not MODULE_CONTENT_DIR_PATH:
             MODULE_CONTENT_DIR_PATH = Path(os.getcwd()) / "plugin_uploads_fallback"
             self.logger.warning(
-                f"Using fallback upload directory: {MODULE_CONTENT_DIR_PATH.resolve()}"
+                "Using fallback upload directory: %s", MODULE_CONTENT_DIR_PATH.resolve()
             )
 
         try:
             MODULE_CONTENT_DIR_PATH.mkdir(parents=True, exist_ok=True)
-            self.logger.info(
-                f"Ensured base upload directory exists: {MODULE_CONTENT_DIR_PATH.resolve()}"
+            self.logger.debug(
+                "Ensured base upload directory exists: %s",
+                MODULE_CONTENT_DIR_PATH.resolve(),
             )
         except Exception as e:
-            self.logger.error(
-                f"Could not create/verify base upload directory {MODULE_CONTENT_DIR_PATH.resolve()}: {e}",
-                exc_info=True,
+            log_operation_error(
+                self.logger,
+                "Could not create/verify base upload directory %s: %s",
+                MODULE_CONTENT_DIR_PATH.resolve(),
+                e,
+                error=e,
             )
 
     def _define_routes(self):  # noqa: C901
@@ -179,45 +190,46 @@ class ContentUploaderPlugin(PluginBase):
 
                 if not target_subdir_name:
                     self.logger.warning(
-                        f"Upload failed: File '{filename}' has an invalid or unsupported extension '{file_ext}'."
+                        "Upload failed: File '%s' has an invalid or unsupported extension '%s'.",
+                        filename,
+                        file_ext,
                     )
                     message = f"Upload failed: File type '{file_ext}' is not allowed or unsupported."
                 else:
                     target_base_dir = MODULE_CONTENT_DIR_PATH / target_subdir_name
                     target_base_dir.mkdir(parents=True, exist_ok=True)
-                    self.logger.info(
-                        f"Ensured target upload subdirectory exists: {target_base_dir.resolve()}"
+                    self.logger.debug(
+                        "Ensured target upload subdirectory exists: %s",
+                        target_base_dir.resolve(),
                     )
 
                     safe_filename = Path(filename).name
                     destination_path = target_base_dir / safe_filename
                     destination_path_for_event = str(destination_path.resolve())
 
-                    self.logger.info(
-                        f"Attempting to save uploaded file '{filename}' to '{destination_path}'."
+                    self.logger.debug(
+                        "Attempting to save uploaded file '%s' to '%s'.",
+                        filename,
+                        destination_path,
                     )
                     with open(destination_path, "wb") as buffer:
                         shutil.copyfileobj(file.file, buffer)
 
                     self.logger.info(
-                        f"File '{filename}' saved successfully to '{destination_path}'."
+                        "File '%s' saved successfully to '%s'.",
+                        filename,
+                        destination_path,
                     )
                     message = f"File '{safe_filename}' uploaded successfully to: {target_subdir_name}/{safe_filename}"
                     event_status = "success"
 
-                    if file_ext == ".mcworld":
-                        self.logger.info(
-                            f'Placeholder: Post-upload, would call self.api.world.import_world(server_name, "{destination_path}")'
-                        )
-                    elif file_ext in [".mcpack", ".mcaddon"]:
-                        self.logger.info(
-                            f'Placeholder: Post-upload, would call self.api.addon.import_addon(server_name, "{destination_path}")'
-                        )
-
             except Exception as e:
-                self.logger.error(
-                    f"Error during file upload or processing for '{filename}': {e}",
-                    exc_info=True,
+                log_operation_error(
+                    self.logger,
+                    "Error during file upload or processing for '%s': %s",
+                    filename,
+                    e,
+                    error=e,
                 )
                 message = (
                     "An unexpected error occurred while processing the file upload."
@@ -247,8 +259,8 @@ class ContentUploaderPlugin(PluginBase):
 
     @app_event("on_unload")
     async def plugin_unloaded(self, **kwargs):
-        self.logger.info(f"Plugin '{self.name}' v{self.version} unloaded.")
+        self.logger.debug("Plugin '%s' v%s unloaded.", self.name, self.version)
 
     def get_fastapi_routers(self, **kwargs):
-        self.logger.debug(f"Providing FastAPI router for {self.name}")
+        self.logger.debug("Providing FastAPI router for %s", self.name)
         return [self.router]

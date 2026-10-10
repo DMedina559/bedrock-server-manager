@@ -64,33 +64,35 @@ class CustomEventLoopTestPlugin(PluginBase):
 
     @app_event("on_load")
     async def plugin_loaded(self):
-        self.logger.info(f"Plugin '{self.name}' v{self.version} loaded.")
+        self.logger.debug("Plugin '%s' v%s loaded.", self.name, self.version)
         self.logger.warning(
-            f"'{self.name}': This plugin will intentionally attempt to create a "
-            f"'{EVENT_X_NAME}' -> '{EVENT_Y_NAME}' -> (recursive) '{EVENT_X_NAME}' "
-            "custom event dispatch loop to test the PluginManager's custom event re-entrancy guard."
+            "'%s': This plugin will intentionally attempt to create a '%s' -> '%s' -> (recursive) '%s' custom event dispatch loop to test the PluginManager's custom event re-entrancy guard.",
+            self.name,
+            EVENT_X_NAME,
+            EVENT_Y_NAME,
+            EVENT_X_NAME,
         )
-        self.logger.info(
-            f"'{self.name}': To observe the test: \n"
-            f"  1. Ensure this plugin is enabled.\n"
-            f"  2. Set logging level for 'bedrock_server_manager.plugins.plugin_manager' to DEBUG.\n"
-            f"  3. The test initiates automatically. Observe application logs for "
-            f"'--- CUSTOM LOOP TEST ---' messages and the critical "
-            f"'Skipping recursive custom event' DEBUG message from PluginManager."
+        self.logger.debug(
+            "'%s': To observe the test: \n  1. Ensure this plugin is enabled.\n  2. Set logging level for 'bedrock_server_manager.plugins.plugin_manager' to DEBUG.\n  3. The test initiates automatically. Observe application logs for '--- CUSTOM LOOP TEST ---' messages and the critical 'Skipping recursive custom event' DEBUG message from PluginManager.",
+            self.name,
         )
 
         # Initial trigger for the event chain
-        self.logger.info(
-            f"--- CUSTOM LOOP TEST (ON_LOAD): Initial trigger by sending '{EVENT_X_NAME}'."
+        self.logger.debug(
+            "--- CUSTOM LOOP TEST (ON_LOAD): Initial trigger by sending '%s'.",
+            EVENT_X_NAME,
         )
         try:
             await self.api.send_event(EVENT_X_NAME, source_method="on_load")
-            self.logger.info(
-                f"--- CUSTOM LOOP TEST (ON_LOAD): Initial '{EVENT_X_NAME}' sent successfully."
+            self.logger.debug(
+                "--- CUSTOM LOOP TEST (ON_LOAD): Initial '%s' sent successfully.",
+                EVENT_X_NAME,
             )
         except Exception as e:
             self.logger.error(
-                f"--- CUSTOM LOOP TEST (ON_LOAD): Failed to send initial '{EVENT_X_NAME}': {e}",
+                "--- CUSTOM LOOP TEST (ON_LOAD): Failed to send initial '%s': %s",
+                EVENT_X_NAME,
+                e,
                 exc_info=True,
             )
 
@@ -106,21 +108,30 @@ class CustomEventLoopTestPlugin(PluginBase):
         )  # Should be self.name
         source_method = kwargs.get("source_method", "unknown")
 
-        self.logger.info(
-            f"--- CUSTOM LOOP TEST (HANDLER X): Received '{EVENT_X_NAME}' (Source: {source_method}, Triggered by: {triggering_plugin})."
+        self.logger.debug(
+            "--- CUSTOM LOOP TEST (HANDLER X): Received '%s' (Source: %s, Triggered by: %s).",
+            EVENT_X_NAME,
+            source_method,
+            triggering_plugin,
         )
-        self.logger.info(
-            f"--- CUSTOM LOOP TEST (HANDLER X -> Y): From '{EVENT_X_NAME}' handler, sending '{EVENT_Y_NAME}'."
+        self.logger.debug(
+            "--- CUSTOM LOOP TEST (HANDLER X -> Y): From '%s' handler, sending '%s'.",
+            EVENT_X_NAME,
+            EVENT_Y_NAME,
         )
         try:
             await self.api.send_event(EVENT_Y_NAME, source_event_x_payload=kwargs)
         except Exception as e:
             self.logger.error(
-                f"--- CUSTOM LOOP TEST (HANDLER X): Failed to send '{EVENT_Y_NAME}': {e}",
+                "--- CUSTOM LOOP TEST (HANDLER X): Failed to send '%s': %s",
+                EVENT_Y_NAME,
+                e,
                 exc_info=True,
             )
-        self.logger.info(
-            f"--- CUSTOM LOOP TEST (HANDLER X): Finished handling '{EVENT_X_NAME}' (Source: {source_method})."
+        self.logger.debug(
+            "--- CUSTOM LOOP TEST (HANDLER X): Finished handling '%s' (Source: %s).",
+            EVENT_X_NAME,
+            source_method,
         )
 
     @app_event(EVENT_Y_NAME)
@@ -132,15 +143,16 @@ class CustomEventLoopTestPlugin(PluginBase):
         triggering_plugin = kwargs.pop(
             "_triggering_plugin", self.name
         )  # Should be self.name
-        original_payload = kwargs.get("source_event_x_payload", {})
 
-        self.logger.info(
-            f"--- CUSTOM LOOP TEST (HANDLER Y): Received '{EVENT_Y_NAME}' (Triggered by: {triggering_plugin}). "
-            f"Original X payload: {original_payload}"
+        self.logger.debug(
+            "--- CUSTOM LOOP TEST (HANDLER Y): Received '%s' (Triggered by: %s). ",
+            EVENT_Y_NAME,
+            triggering_plugin,
         )
-        self.logger.info(
-            f"--- CUSTOM LOOP TEST (HANDLER Y -> X - Recursive Attempt): From '{EVENT_Y_NAME}' handler, "
-            f"DANGEROUSLY attempting to re-send '{EVENT_X_NAME}'."
+        self.logger.debug(
+            "--- CUSTOM LOOP TEST (HANDLER Y -> X - Recursive Attempt): From '%s' handler, DANGEROUSLY attempting to re-send '%s'.",
+            EVENT_Y_NAME,
+            EVENT_X_NAME,
         )
         try:
             # This send_event call will attempt to trigger EVENT_X_NAME again.
@@ -150,24 +162,23 @@ class CustomEventLoopTestPlugin(PluginBase):
                 EVENT_X_NAME, source_method="handle_event_y_recursive_attempt"
             )
 
-            self.logger.info(
-                f"--- CUSTOM LOOP TEST (HANDLER Y): Recursive self.api.send_event('{EVENT_X_NAME}') call completed. "
-                "This means the API call itself didn't crash due to a stack overflow from custom event recursion. "
-                "The **critical confirmation** of the re-entrancy guard is a DEBUG log message from "
-                "'bedrock_server_manager.plugins.plugin_manager' stating: "
-                f"'Skipping recursive custom event '{EVENT_X_NAME}'...'. "
+            self.logger.debug(
+                "--- CUSTOM LOOP TEST (HANDLER Y): Recursive self.api.send_event('%s') call completed. This means the API call itself didn't crash due to a stack overflow from custom event recursion. The **critical confirmation** of the re-entrancy guard is a DEBUG log message from 'bedrock_server_manager.plugins.plugin_manager' stating: 'Skipping recursive custom event '%s'...'. ",
+                EVENT_X_NAME,
+                EVENT_X_NAME,
             )
         except Exception as e:
             self.logger.error(
-                f"--- CUSTOM LOOP TEST (HANDLER Y): Recursive API call self.api.send_event('{EVENT_X_NAME}') "
-                f"failed unexpectedly: {e}",
+                "--- CUSTOM LOOP TEST (HANDLER Y): Recursive API call self.api.send_event('%s') failed unexpectedly: %s",
+                EVENT_X_NAME,
+                e,
                 exc_info=True,
             )
-        self.logger.info(
-            f"--- CUSTOM LOOP TEST (HANDLER Y): Finished handling '{EVENT_Y_NAME}'."
+        self.logger.debug(
+            "--- CUSTOM LOOP TEST (HANDLER Y): Finished handling '%s'.", EVENT_Y_NAME
         )
 
     @app_event("on_unload")
     async def on_unload(self, **kwargs):
         """Called when the plugin is unloaded."""
-        self.logger.info(f"Plugin '{self.name}' v{self.version} is unloading.")
+        self.logger.debug("Plugin '%s' v%s is unloading.", self.name, self.version)

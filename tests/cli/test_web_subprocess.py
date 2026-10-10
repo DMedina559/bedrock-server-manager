@@ -109,7 +109,6 @@ async def test_direct_web_cli_serves_http_and_shuts_down(web_process_config, tmp
             assert process.returncode == 1, log.read_text(errors="replace")
             # Click reports an interrupted foreground command with exit code 1.
             assert "Application shutdown complete" in log.read_text()
-            assert "CLI app shutdown hooks complete" in log.read_text()
             assert not (config / "web_server.pid").exists()
         finally:
             if process.returncode is None:

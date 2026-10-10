@@ -31,6 +31,7 @@ from ..error import (
     SystemError,
     UserInputError,
 )
+from ..logging import log_operation_error
 from ..plugins.api_contract import validate_contract
 from .models.web import (
     CreateWebUiServiceRequest,
@@ -78,19 +79,19 @@ def start_web_server(
     try:
         if mode not in ["direct", "detached"]:
             raise UserInputError("Invalid mode. Must be 'direct' or 'detached'.")
-        logger.info(f"API: Attempting to start web server in '{mode}' mode...")
+        logger.debug("Attempting to start web server in '%s' mode...", mode)
         if mode == "direct":
-            logger.info("BSM: Starting web application in direct mode (blocking)...")
+            logger.debug("Starting web application in direct mode (blocking)...")
             try:
                 from ..web.main import run_web_server as run_bsm_web_application
 
                 run_bsm_web_application(
                     app_context=app_context, host=host, port=port, debug=debug
                 )
-                logger.info("BSM: Web application (direct mode) shut down.")
+                logger.info("Web application (direct mode) shut down.")
             except (RuntimeError, ImportError) as e:
                 logger.critical(
-                    f"BSM: Failed to start web application directly: {e}", exc_info=True
+                    "Failed to start web application directly: %s", e, exc_info=True
                 )
                 raise
             return StartWebServerResponse.model_validate(
@@ -101,7 +102,7 @@ def start_web_server(
                 raise SystemError(
                     "Cannot start in detached mode: 'psutil' is required."
                 )
-            logger.info("API: Starting web server in detached mode...")
+            logger.debug("Starting web server in detached mode...")
             import sys
 
             pid_file_path = os.path.join(
@@ -168,10 +169,12 @@ def start_web_server(
                 }
             )
     except BSMError as e:
-        logger.error(f"API: Handled error starting web server: {e}", exc_info=True)
+        log_operation_error(logger, "Handled error starting web server: %s", e, error=e)
         raise
     except Exception as e:
-        logger.error(f"API: Unexpected error starting web server: {e}", exc_info=True)
+        log_operation_error(
+            logger, "Unexpected error starting web server: %s", e, error=e
+        )
         raise
     raise RuntimeError("Unsupported web server mode")
 
@@ -186,7 +189,7 @@ def stop_web_server(
     Invalid requests fail validation before side effects; operation failures raise application exceptions.
     """
     try:
-        logger.info("API: Attempting to stop detached web server...")
+        logger.debug("Attempting to stop detached web server...")
         if not PSUTIL_AVAILABLE:
             raise SystemError("'psutil' not installed. Cannot manage processes.")
         pid_file_path = os.path.join(app_context.settings.config_dir, "web_server.pid")
@@ -232,7 +235,9 @@ def stop_web_server(
     except BSMError:
         raise
     except Exception as e:
-        logger.error(f"API: Unexpected error stopping web server: {e}", exc_info=True)
+        log_operation_error(
+            logger, "Unexpected error stopping web server: %s", e, error=e
+        )
         raise
 
 
@@ -245,7 +250,7 @@ def get_web_server_status(
     Accepts GetWebServerStatusRequest and returns GetWebServerStatusResponse.
     Invalid requests fail validation before side effects; operation failures raise application exceptions.
     """
-    logger.debug("API: Getting web server status...")
+    logger.debug("Getting web server status...")
     if not PSUTIL_AVAILABLE:
         raise BSMError("'psutil' not installed. Cannot get process status.")
     pid = None
@@ -304,8 +309,8 @@ def get_web_server_status(
     except BSMError:
         raise
     except Exception as e:
-        logger.error(
-            f"API: Unexpected error getting web server status: {e}", exc_info=True
+        log_operation_error(
+            logger, "Unexpected error getting web server status: %s", e, error=e
         )
         raise
 
@@ -349,11 +354,13 @@ def create_web_ui_service(
             }
         )
     except BSMError as e:
-        logger.error(f"API: Failed to create Web UI system service: {e}", exc_info=True)
+        log_operation_error(
+            logger, "Failed to create Web UI system service: %s", e, error=e
+        )
         raise
     except Exception as e:
-        logger.error(
-            f"API: Unexpected error creating Web UI system service: {e}", exc_info=True
+        log_operation_error(
+            logger, "Unexpected error creating Web UI system service: %s", e, error=e
         )
         raise
 
@@ -378,11 +385,13 @@ def enable_web_ui_service(
             {"status": "success", "message": "Web UI service enabled successfully."}
         )
     except BSMError as e:
-        logger.error(f"API: Failed to enable Web UI system service: {e}", exc_info=True)
+        log_operation_error(
+            logger, "Failed to enable Web UI system service: %s", e, error=e
+        )
         raise
     except Exception as e:
-        logger.error(
-            f"API: Unexpected error enabling Web UI system service: {e}", exc_info=True
+        log_operation_error(
+            logger, "Unexpected error enabling Web UI system service: %s", e, error=e
         )
         raise
 
@@ -407,13 +416,13 @@ def disable_web_ui_service(
             {"status": "success", "message": "Web UI service disabled successfully."}
         )
     except BSMError as e:
-        logger.error(
-            f"API: Failed to disable Web UI system service: {e}", exc_info=True
+        log_operation_error(
+            logger, "Failed to disable Web UI system service: %s", e, error=e
         )
         raise
     except Exception as e:
-        logger.error(
-            f"API: Unexpected error disabling Web UI system service: {e}", exc_info=True
+        log_operation_error(
+            logger, "Unexpected error disabling Web UI system service: %s", e, error=e
         )
         raise
 
@@ -441,11 +450,13 @@ def remove_web_ui_service(
         else:
             raise BSMError("Web UI service removal failed or file not found.")
     except BSMError as e:
-        logger.error(f"API: Failed to remove Web UI system service: {e}", exc_info=True)
+        log_operation_error(
+            logger, "Failed to remove Web UI system service: %s", e, error=e
+        )
         raise
     except Exception as e:
-        logger.error(
-            f"API: Unexpected error removing Web UI system service: {e}", exc_info=True
+        log_operation_error(
+            logger, "Unexpected error removing Web UI system service: %s", e, error=e
         )
         raise
 
@@ -484,10 +495,12 @@ def get_web_ui_service_status(
             {"status": "success", **response_data}
         )
     except BSMError as e:
-        logger.error(f"API: Error getting Web UI service status: {e}", exc_info=True)
+        log_operation_error(
+            logger, "Error getting Web UI service status: %s", e, error=e
+        )
         raise
     except Exception as e:
-        logger.error(
-            f"API: Unexpected error getting Web UI service status: {e}", exc_info=True
+        log_operation_error(
+            logger, "Unexpected error getting Web UI service status: %s", e, error=e
         )
         raise

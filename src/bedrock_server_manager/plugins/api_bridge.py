@@ -86,15 +86,19 @@ def api_method(name: str, expose_to_plugins: bool = True) -> Callable[[F], F]:
 
         if api_domain not in ALLOWED_API_MODULES:
             logger.warning(
-                f"API Registration rejected: '{module_name}.{func.__name__}' is not in the allowed "
-                f"API modules list: {sorted(ALLOWED_API_MODULES)}"
+                "API Registration rejected: '%s.%s' is not in the allowed API modules list: %s",
+                module_name,
+                func.__name__,
+                sorted(ALLOWED_API_MODULES),
             )
             return func
 
         if name in _api_registry:
             logger.warning(
-                f"API Registration: Overwriting existing API function '{name}' "
-                f"with '{module_name}.{func.__name__}'."
+                "API Registration: Overwriting existing API function '%s' with '%s.%s'.",
+                name,
+                module_name,
+                func.__name__,
             )
 
         requires_context = False
@@ -115,8 +119,12 @@ def api_method(name: str, expose_to_plugins: bool = True) -> Callable[[F], F]:
             api_domain,
         )
         logger.debug(
-            f"API registered: '{name}' from '{module_name}' "
-            f"(expose_to_plugins={expose_to_plugins}, requires_context={requires_context}, requires_plugin_name={requires_plugin_name})."
+            "API registered: '%s' from '%s' (expose_to_plugins=%s, requires_context=%s, requires_plugin_name=%s).",
+            name,
+            module_name,
+            expose_to_plugins,
+            requires_context,
+            requires_plugin_name,
         )
         return func
 
@@ -166,7 +174,9 @@ def create_app_api(
     def api_dispatcher(name: str) -> Callable[..., Any]:
         if name not in _api_registry:
             logger.error(
-                f"Plugin '{plugin_name}' attempted to access unregistered API: '{name}'."
+                "Plugin '%s' attempted to access unregistered API: '%s'.",
+                plugin_name,
+                name,
             )
             raise AttributeError(
                 f"The API function '{name}' has not been registered or does not exist."
@@ -182,7 +192,7 @@ def create_app_api(
 
         if not expose_to_plugins and not is_core:
             logger.error(
-                f"Plugin '{plugin_name}' attempted to access internal API '{name}'."
+                "Plugin '%s' attempted to access internal API '%s'.", plugin_name, name
             )
             raise AttributeError(
                 f"The API function '{name}' is not exposed to plugins."

@@ -426,16 +426,19 @@ class BenchmarkPlugin(PluginBase):
                 await self.api.runtime.register_data_provider(
                     "benchmark:metrics", self.get_latest_metrics
                 )
-                self.logger.info(
+                self.logger.debug(
                     "Registered 'benchmark:metrics' WebSocket data provider."
                 )
             except Exception as err:
                 self.logger.warning(
-                    f"Could not register WebSocket data provider: {err}"
+                    "Could not register WebSocket data provider: %s", err
                 )
 
-        self.logger.info(
-            f"'{self.name}' v{self.version} loaded. PSUTIL available: {PSUTIL_AVAILABLE}."
+        self.logger.debug(
+            "'%s' v%s loaded. PSUTIL available: %s.",
+            self.name,
+            self.version,
+            PSUTIL_AVAILABLE,
         )
 
     async def get_latest_metrics(
@@ -477,12 +480,14 @@ class BenchmarkPlugin(PluginBase):
                 pass
 
         if pid:
-            self.logger.info(
-                f"Benchmark plugin notified: Server '{server_name}' started (PID: {pid})."
+            self.logger.debug(
+                "Benchmark plugin notified: Server '%s' started (PID: %s).",
+                server_name,
+                pid,
             )
         else:
-            self.logger.info(
-                f"Benchmark plugin notified: Server '{server_name}' started."
+            self.logger.debug(
+                "Benchmark plugin notified: Server '%s' started.", server_name
             )
 
         if server_name:
@@ -495,7 +500,9 @@ class BenchmarkPlugin(PluginBase):
         Hook triggered when a server stops. Removes or updates tracking for the server.
         """
         server_name = str(kwargs.get("server_name", "unknown"))
-        self.logger.info(f"Benchmark plugin notified: Server '{server_name}' stopped.")
+        self.logger.debug(
+            "Benchmark plugin notified: Server '%s' stopped.", server_name
+        )
         if server_name in self._tracked_servers:
             self._tracked_servers.pop(server_name, None)
 
@@ -532,7 +539,7 @@ class BenchmarkPlugin(PluginBase):
                 app_ram_mb = mem_info.rss / (1024 * 1024)
                 thread_count = self._main_process.num_threads()
             except Exception as err:
-                self.logger.debug(f"Error fetching main process info: {err}")
+                self.logger.debug("Error fetching main process info: %s", err)
 
         # Asyncio tasks & event loop lag
         task_count = len(asyncio.all_tasks())
@@ -591,7 +598,7 @@ class BenchmarkPlugin(PluginBase):
             elif isinstance(res, list):
                 active_servers_list = res
         except Exception as err:
-            self.logger.debug(f"Error querying active servers: {err}")
+            self.logger.debug("Error querying active servers: %s", err)
 
         # Merge tracked servers and active servers
         server_pids_to_check: Dict[str, Optional[int]] = {}
@@ -621,7 +628,7 @@ class BenchmarkPlugin(PluginBase):
                         p_info = res.get("process_info")
             except Exception as err:
                 self.logger.debug(
-                    f"API query for process info '{s_name}' failed: {err}"
+                    "API query for process info '%s' failed: %s", s_name, err
                 )
 
             if p_info and isinstance(p_info, dict):
@@ -701,15 +708,24 @@ class BenchmarkPlugin(PluginBase):
 
         servers_str = ", ".join(server_metrics) if server_metrics else "none"
 
-        log_msg = (
-            f"[Benchmark] App CPU: {app_cpu:.1f}% | RAM: {app_ram_mb:.1f}MB | "
-            f"Threads: {thread_count} | Tasks: {task_count} | Loop Lag: {loop_lag_ms:.2f}ms | "
-            f"Sys CPU: {sys_cpu:.1f}% | Sys RAM: {sys_ram_mb:.1f}MB ({sys_ram_pct:.1f}%) | "
-            f"Net: ^{net_tx_kbps:.1f}KB/s v{net_rx_kbps:.1f}KB/s | "
-            f"Disk: R {disk_read_kbps:.1f}KB/s W {disk_write_kbps:.1f}KB/s | "
-            f"Servers: [{servers_str}]"
+        self.logger.debug(
+            "Benchmark: app CPU %.1f%%, RAM %.1f MB, threads %s, tasks %s, loop lag %.2f ms; "
+            "system CPU %.1f%%, RAM %.1f MB (%.1f%%); network up/down %.1f/%.1f KB/s; "
+            "disk read/write %.1f/%.1f KB/s; servers: %s",
+            app_cpu,
+            app_ram_mb,
+            thread_count,
+            task_count,
+            loop_lag_ms,
+            sys_cpu,
+            sys_ram_mb,
+            sys_ram_pct,
+            net_tx_kbps,
+            net_rx_kbps,
+            disk_read_kbps,
+            disk_write_kbps,
+            servers_str,
         )
-        self.logger.info(log_msg)
 
         app_cpu_str = f"{app_cpu:.1f}%"
         app_ram_str = f"{app_ram_mb:.1f} MB"
@@ -765,7 +781,7 @@ class BenchmarkPlugin(PluginBase):
                 ).model_dump(mode="python")
             except Exception as err:
                 self.logger.debug(
-                    f"Failed to broadcast benchmark metrics over WebSocket: {err}"
+                    "Failed to broadcast benchmark metrics over WebSocket: %s", err
                 )
 
     def get_fastapi_routers(self, **kwargs: Any) -> list[Any]:
@@ -777,4 +793,4 @@ class BenchmarkPlugin(PluginBase):
         """
         Hook called when plugin is unloaded.
         """
-        self.logger.info(f"'{self.name}' v{self.version} unloaded.")
+        self.logger.debug("'%s' v%s unloaded.", self.name, self.version)

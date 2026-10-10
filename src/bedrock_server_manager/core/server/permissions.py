@@ -1,5 +1,6 @@
 """Bedrock permissions component."""
 
+import logging
 from typing import TYPE_CHECKING, Any, Dict, List, Optional
 
 import aiofiles.ospath
@@ -12,6 +13,7 @@ from ...error import (
     MissingArgumentError,
     UserInputError,
 )
+from ...logging import log_operation_error
 from ...utils.io import load_json, save_json
 from ..data import PERMISSIONS
 
@@ -24,6 +26,9 @@ class ServerPermissions:
 
     def __init__(self, server: "BedrockServer") -> None:
         self.server = server
+        self.logger = logging.LoggerAdapter(
+            logging.getLogger(__name__), {"server_name": server.server_name}
+        )
 
     async def set_player_permission(
         self, xuid: str, permission_level: str, player_name: Optional[str] = None
@@ -44,8 +49,11 @@ class ServerPermissions:
                 raise UserInputError(
                     f"Invalid permission '{perm_level_lower}'. Must be one of: {valid_perms}"
                 )
-            self.server.logger.info(
-                f"Server '{self.server.server_name}': Setting permission for XUID '{xuid}' to '{perm_level_lower}'."
+            self.logger.debug(
+                "Server '%s': Setting permission for XUID '%s' to '%s'.",
+                self.server.server_name,
+                xuid,
+                perm_level_lower,
             )
             permissions_list: List[Dict[str, Any]] = []
             if await aiofiles.ospath.isfile(self.server.paths.permissions_json_path):
@@ -59,12 +67,15 @@ class ServerPermissions:
                             for entry in PERMISSIONS.validate_python(loaded_data)
                         ]
                     elif loaded_data:
-                        self.server.logger.warning(
-                            f"Permissions file '{self.server.paths.permissions_json_path}' is not a list. Overwriting."
+                        self.logger.warning(
+                            "Permissions file '%s' is not a list. Overwriting.",
+                            self.server.paths.permissions_json_path,
                         )
                 except ValueError as e:
-                    self.server.logger.warning(
-                        f"Invalid JSON in permissions '{self.server.paths.permissions_json_path}'. Overwriting. Error: {e}"
+                    self.logger.warning(
+                        "Invalid JSON in permissions '%s'. Overwriting. Error: %s",
+                        self.server.paths.permissions_json_path,
+                        e,
                     )
                 except OSError as e:
                     raise FileOperationError(
@@ -103,16 +114,20 @@ class ServerPermissions:
                             self.server.paths.permissions_json_path,
                             indent=4,
                         )
-                    self.server.logger.info(
-                        f"Successfully updated permissions for XUID '{xuid}' for '{self.server.server_name}'."
+                    self.logger.info(
+                        "Successfully updated permissions for XUID '%s' for '%s'.",
+                        xuid,
+                        self.server.server_name,
                     )
                 except OSError as e:
                     raise FileOperationError(
                         f"Failed to write permissions '{self.server.paths.permissions_json_path}': {e}"
                     ) from e
             else:
-                self.server.logger.info(
-                    f"No changes needed for XUID '{xuid}' permissions for '{self.server.server_name}'."
+                self.logger.debug(
+                    "No changes needed for XUID '%s' permissions for '%s'.",
+                    xuid,
+                    self.server.server_name,
                 )
 
     async def get_formatted_permissions(self, storage: Any) -> List[Dict[str, Any]]:
@@ -123,8 +138,10 @@ class ServerPermissions:
             raise AppFileNotFoundError(
                 self.server.paths.permissions_json_path, "Permissions file"
             )
-        self.server.logger.debug(
-            f"Server '{self.server.server_name}': Reading and processing permissions from {self.server.paths.permissions_json_path} asynchronously"
+        self.logger.debug(
+            "Server '%s': Reading and processing permissions from %s",
+            self.server.server_name,
+            self.server.paths.permissions_json_path,
         )
         raw_permissions: List[Dict[str, Any]] = []
         try:
@@ -146,8 +163,11 @@ class ServerPermissions:
             known_players = await get_known_players(storage)
             player_map = {p["xuid"]: p["name"] for p in known_players}
         except Exception as e:
-            self.server.logger.error(
-                f"Error retrieving known players from database: {e}. Will use XUIDs as names where needed."
+            log_operation_error(
+                self.logger,
+                "Error retrieving known players from database: %s. Will use XUIDs as names where needed.",
+                e,
+                error=e,
             )
             player_map = {}
         processed_list: List[Dict[str, Any]] = []
@@ -165,8 +185,10 @@ class ServerPermissions:
                     }
                 )
             else:
-                self.server.logger.warning(
-                    f"Skipping malformed entry in '{self.server.paths.permissions_json_path}': {entry}"
+                self.logger.warning(
+                    "Skipping malformed entry in '%s': %s",
+                    self.server.paths.permissions_json_path,
+                    entry,
                 )
         processed_list.sort(key=lambda p: str(p.get("name", "")).lower())
         return processed_list
