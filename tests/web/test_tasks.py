@@ -252,7 +252,7 @@ async def test_cancelled_thread_remains_tracked_until_worker_exits(task_manager)
             await shutdown
 
 
-async def test_task_http_and_socket_snapshots_share_transition_versions(task_manager):
+async def test_task_http_and_socket_snapshots_share_transition_revisions(task_manager):
     started = asyncio.Event()
     finish = asyncio.Event()
 
@@ -276,7 +276,7 @@ async def test_task_http_and_socket_snapshots_share_transition_versions(task_man
     assert completed.revision > running.revision
 
 
-async def test_task_socket_and_http_use_identical_versions(
+async def test_task_socket_and_http_use_identical_revisions(
     task_manager, subscribed_socket, test_admin_user
 ):
     finish = asyncio.Event()

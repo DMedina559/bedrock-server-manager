@@ -29,7 +29,7 @@ from ..error import (
 )
 from ..logging import log_operation_error
 from ..plugins.api_bridge import api_method
-from ..state_version import state_clock
+from ..state_revision import revision_clock
 from .models.system import (
     GetBedrockProcessInfoRequest,
     GetBedrockProcessInfoResponse,
@@ -55,13 +55,13 @@ async def get_server_running_status(
     logger.debug("Checking running status for server '%s'...", server_name)
     try:
         server = app_context.get_server(server_name)
-        version = state_clock.capture()
+        revision = revision_clock.capture()
         is_running = await server.is_running()
         logger.debug(
             "is_running() check for '%s' returned: %s", server_name, is_running
         )
         return GetServerRunningStatusResponse.model_validate(
-            {"status": "success", "is_running": is_running, **version}
+            {"status": "success", "is_running": is_running, **revision}
         )
     except BSMError as e:
         log_operation_error(
@@ -98,7 +98,7 @@ async def get_bedrock_process_info(
     logger.debug("Getting process info for server '%s'...", server_name)
     try:
         server = app_context.get_server(server_name)
-        version = state_clock.capture()
+        revision = revision_clock.capture()
         process_info = await server.get_process_info()
         if process_info is None:
             return GetBedrockProcessInfoResponse.model_validate(
@@ -106,12 +106,12 @@ async def get_bedrock_process_info(
                     "status": "success",
                     "message": f"Server process '{server_name}' not found or is inaccessible.",
                     "process_info": None,
-                    **version,
+                    **revision,
                 }
             )
         else:
             return GetBedrockProcessInfoResponse.model_validate(
-                {"status": "success", "process_info": process_info, **version}
+                {"status": "success", "process_info": process_info, **revision}
             )
     except BSMError as e:
         log_operation_error(

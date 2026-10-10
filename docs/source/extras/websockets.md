@@ -176,14 +176,14 @@ state and may be ignored as duplicates. An epoch change requires clearing orderi
 watermarks and fetching fresh snapshots; UUID epochs are not sortable. A delayed
 message from a retired connection must not switch the client back to its old epoch.
 
-Task HTTP snapshots and `task_update.data` contain the same stored version for
+Task HTTP snapshots and `task_update.data` contain the same stored revision for
 that task transition. Repeated polling does not advance it. Fleet HTTP responses
 and each server entry, individual server summaries and running-status responses,
 process-info HTTP responses, and `resource_update.data`
-also carry versions. Plugin event envelopes carry them at the top level, covering
+also carry revisions. Plugin event envelopes carry them at the top level, covering
 server lifecycle and player changes without altering plugin callback arguments.
 
-Observation versions are reserved before asynchronous reads; event versions are
+Observation revisions are reserved before asynchronous reads; event revisions are
 reserved before plugin callbacks and socket delivery. A slow earlier read or
 callback therefore cannot become newer merely because its response arrives later.
 These are ordering tokens, not database transaction revisions: fleet reads are

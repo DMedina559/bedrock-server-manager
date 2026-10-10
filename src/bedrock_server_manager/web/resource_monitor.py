@@ -4,7 +4,7 @@ import logging
 from typing import TYPE_CHECKING, Callable
 
 from ..logging import RepeatedFailureReporter
-from ..state_version import state_clock
+from ..state_revision import revision_clock
 from .websocket_manager import ConnectionManager
 
 if TYPE_CHECKING:
@@ -56,7 +56,7 @@ class ResourceMonitor:
                         if server_name and callable(self.server_provider):
                             server = self.server_provider(server_name)
                             if server:
-                                version = state_clock.capture()
+                                revision = revision_clock.capture()
                                 process_info = await server.get_process_info()
                                 message = {
                                     "type": "resource_update",
@@ -64,7 +64,7 @@ class ResourceMonitor:
                                     "data": {
                                         "status": "success",
                                         "process_info": process_info,
-                                        **version,
+                                        **revision,
                                     },
                                 }
                                 await connection_manager.broadcast_to_topic(

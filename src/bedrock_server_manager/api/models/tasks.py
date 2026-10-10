@@ -4,7 +4,7 @@ from typing import Literal
 
 from pydantic import JsonValue
 
-from .common import APIErrorResponse, APIResponse, StateVersion
+from .common import APIErrorResponse, APIResponse, StateRevision
 
 
 class TaskAcceptedResponse(APIResponse):
@@ -13,7 +13,7 @@ class TaskAcceptedResponse(APIResponse):
     task_id: str
 
 
-class TaskSnapshot(StateVersion):
+class TaskSnapshot(StateRevision):
     id: str
     status: Literal[
         "queued", "running", "completed", "failed", "cancelling", "cancelled"

@@ -2,7 +2,7 @@ from typing import Any, Dict, List, Optional
 
 from pydantic import Field, JsonValue
 
-from ...api.models.common import APIRequest, PlayerInfo, ServerSummary, StateVersion
+from ...api.models.common import APIRequest, PlayerInfo, ServerSummary, StateRevision
 from ...api.models.player import PlayerScanDetails
 from ...api.models.system import ProcessInfo
 from .base import BaseApiResponse
@@ -53,7 +53,7 @@ ServerSchemaResponse = ServerSummary
 # --- Specific Response Models replacing GeneralApiResponse ---
 
 
-class ServersListResponse(BaseApiResponse, StateVersion):
+class ServersListResponse(BaseApiResponse, StateRevision):
     """Response model for lists of server data."""
 
     servers: Optional[List[ServerSummary]] = None
@@ -78,13 +78,13 @@ class AddPlayersResponse(BaseApiResponse):
     count: Optional[int] = None
 
 
-class ServerRunningStatusResponse(BaseApiResponse, StateVersion):
+class ServerRunningStatusResponse(BaseApiResponse, StateRevision):
     """Response model for server running status."""
 
     running: Optional[bool] = None
 
 
-class ServerProcessInfoResponse(BaseApiResponse, StateVersion):
+class ServerProcessInfoResponse(BaseApiResponse, StateRevision):
     """Response model for server process info."""
 
     process_info: Optional[ProcessInfo] = None

@@ -45,14 +45,14 @@ def test_system_requests_require_server_identity(model):
         model(server_name="")
 
 
-async def test_process_observation_version_precedes_delayed_read(
+async def test_process_observation_revision_precedes_delayed_read(
     app_context, real_bedrock_server, monkeypatch
 ):
     import asyncio
 
     from bedrock_server_manager.api.models.system import GetBedrockProcessInfoRequest
     from bedrock_server_manager.api.system import get_bedrock_process_info
-    from bedrock_server_manager.state_version import state_clock
+    from bedrock_server_manager.state_revision import revision_clock
 
     entered = asyncio.Event()
     release = asyncio.Event()
@@ -72,7 +72,7 @@ async def test_process_observation_version_precedes_delayed_read(
     try:
         async with asyncio.timeout(5):
             await entered.wait()
-        newer = state_clock.capture()
+        newer = revision_clock.capture()
         release.set()
         result = await pending
         assert result.epoch == newer["epoch"]

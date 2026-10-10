@@ -9,12 +9,12 @@ from typing import TypedDict
 from uuid import uuid4
 
 
-class StateStamp(TypedDict):
+class RevisionStamp(TypedDict):
     epoch: str
     revision: int
 
 
-class StateClock:
+class RevisionClock:
     """A thread-safe, JavaScript-safe sequence for one backend instance."""
 
     def __init__(self) -> None:
@@ -22,7 +22,7 @@ class StateClock:
         self._revision = 0
         self._lock = Lock()
 
-    def capture(self) -> StateStamp:
+    def capture(self) -> RevisionStamp:
         with self._lock:
             if self._revision >= 2**53 - 1:
                 raise OverflowError("State revision exhausted")
@@ -30,4 +30,4 @@ class StateClock:
             return {"epoch": self.epoch, "revision": self._revision}
 
 
-state_clock = StateClock()
+revision_clock = RevisionClock()

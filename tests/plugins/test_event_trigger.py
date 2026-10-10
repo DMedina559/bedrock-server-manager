@@ -84,13 +84,13 @@ async def test_event_hooks_publish_safe_payloads_to_real_socket(
         assert after["revision"] > before["revision"]
 
 
-async def test_delayed_plugin_callback_preserves_original_event_version(
+async def test_delayed_plugin_callback_preserves_original_event_revision(
     app_context, subscribed_socket, monkeypatch
 ):
     import asyncio
     import json
 
-    from bedrock_server_manager.state_version import state_clock
+    from bedrock_server_manager.state_revision import revision_clock
 
     entered = asyncio.Event()
     release = asyncio.Event()
@@ -113,7 +113,7 @@ async def test_delayed_plugin_callback_preserves_original_event_version(
         try:
             async with asyncio.timeout(5):
                 await entered.wait()
-            newer = state_clock.capture()
+            newer = revision_clock.capture()
             release.set()
             await pending
             async with asyncio.timeout(5):

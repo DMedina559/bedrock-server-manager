@@ -2,7 +2,7 @@ from typing import Any
 
 from pydantic import BaseModel, JsonValue, TypeAdapter
 
-from ..state_version import StateStamp, state_clock
+from ..state_revision import RevisionStamp, revision_clock
 
 _json_payload: TypeAdapter[JsonValue] = TypeAdapter(JsonValue)
 
@@ -27,13 +27,13 @@ async def broadcast_event(
     event_name: str,
     event_data: dict,
     *,
-    version: StateStamp | None = None,
+    revision: RevisionStamp | None = None,
 ):
     """Helper to broadcast event to websockets asynchronously."""
     if not app_context or not hasattr(app_context, "connection_manager"):
         return
 
-    version = version if version is not None else state_clock.capture()
+    revision = revision if revision is not None else revision_clock.capture()
     connection_manager = app_context.connection_manager
     public_data = {
         key: value
@@ -50,7 +50,7 @@ async def broadcast_event(
 
     message = {
         "type": "event",
-        **version,
+        **revision,
         "topic": f"event:{event_name}",
         "data": sanitized_data,
     }
