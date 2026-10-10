@@ -22,15 +22,19 @@ import logging
 import os
 from typing import Any, Dict
 
+from pydantic import ValidationError
+
 from ..config import API_COMMAND_BLACKLIST
 from ..context import AppContext
 from ..core.system import remove_pid_file_if_exists
 from ..error import (
     BlockedCommandError,
     BSMError,
+    ConfigParseError,
     InvalidServerNameError,
     MissingArgumentError,
     ServerError,
+    UserInputError,
 )
 from ..logging import log_operation_error
 from ..plugins.api_bridge import api_method
@@ -139,6 +143,8 @@ async def set_server_setting(
         return SetServerSettingResponse(
             message=f"Setting '{key}' updated for server '{server_name}'."
         )
+    except (ValidationError, ConfigParseError) as error:
+        raise UserInputError("Invalid server setting key or value.") from error
     except BSMError as e:
         log_operation_error(
             logger,
