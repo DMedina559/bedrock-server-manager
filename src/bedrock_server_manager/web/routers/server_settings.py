@@ -8,6 +8,8 @@ import logging
 from fastapi import APIRouter, Depends, HTTPException, status
 from pydantic import ValidationError
 
+from ...api import server as server_api
+from ...api.models import GetAllServerSettingsRequest, SetServerSettingRequest
 from ...context import AppContext
 from ...error import (
     BSMError,
@@ -48,11 +50,13 @@ async def get_server_settings(
     identity = current_user.username
     logger.debug("Get settings for server '%s' request by '%s'.", server_name, identity)
     try:
-        server = app_context.get_server(server_name)
-        config = server.configuration.as_settings()
+        result = await server_api.get_all_server_settings(
+            request=GetAllServerSettingsRequest(server_name=server_name),
+            app_context=app_context,
+        )
         return ServerSettingsResponse(
             status="success",
-            settings=config,
+            settings=result.settings,
             message=f"Successfully retrieved settings for server '{server_name}'.",
         )
     except HTTPException:
@@ -95,10 +99,14 @@ async def post_set_server_setting(
         identity,
     )
     try:
-        server = app_context.get_server(server_name)
-        await server.configuration.update(payload.key, payload.value)
+        result = await server_api.set_server_setting(
+            request=SetServerSettingRequest(
+                server_name=server_name, key=payload.key, value=payload.value
+            ),
+            app_context=app_context,
+        )
         return ServerSettingsResponse(
-            status="success",
+            status=result.status,
             message=f"Setting '{payload.key}' updated successfully for server '{server_name}'.",
             setting=payload,
         )

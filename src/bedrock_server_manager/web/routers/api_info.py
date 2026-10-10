@@ -95,6 +95,8 @@ async def get_server_running_status(
         return ServerRunningStatusResponse(
             status="success",
             running=bool(result.is_running),
+            epoch=result.epoch,
+            revision=result.revision,
             message=result.message,
         )
     except UserInputError as e:
@@ -199,6 +201,8 @@ async def get_server_process_info(
         return ServerProcessInfoResponse(
             status="success",
             process_info=result.process_info,
+            epoch=result.epoch,
+            revision=result.revision,
             message=result.message,
         )
 
@@ -434,7 +438,12 @@ async def get_servers_list(
         result = await app_api.get_all_servers_data(
             request=GetAllServersDataRequest(), app_context=app_context
         )
-        return ServersListResponse(status="success", servers=result.servers)
+        return ServersListResponse(
+            status="success",
+            servers=result.servers,
+            epoch=result.epoch,
+            revision=result.revision,
+        )
     except ValidationError:
         raise
     except Exception as e:

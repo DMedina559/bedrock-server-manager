@@ -123,7 +123,22 @@ class PlayerInfo(APIResponse):
     xuid: str
 
 
-class ServerSummary(APIResponse):
+class StateRevision(APIResponse):
+    """Optional for legacy producers; compare revisions only within an epoch."""
+
+    epoch: str | None = None
+    revision: int | None = Field(default=None, ge=1, le=2**53 - 1)
+
+    @model_validator(mode="after")
+    def validate_revision_pair(self) -> Self:
+        if self.epoch is not None and not self.epoch.strip():
+            raise ValueError("epoch must not be blank")
+        if (self.epoch is None) != (self.revision is None):
+            raise ValueError("epoch and revision must be supplied together")
+        return self
+
+
+class ServerSummary(StateRevision):
     name: str
     status: str
     version: str

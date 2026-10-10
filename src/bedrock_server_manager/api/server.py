@@ -22,20 +22,25 @@ import logging
 import os
 from typing import Any, Dict
 
+from pydantic import ValidationError
+
 from ..config import API_COMMAND_BLACKLIST
 from ..context import AppContext
 from ..core.system import remove_pid_file_if_exists
 from ..error import (
     BlockedCommandError,
     BSMError,
+    ConfigParseError,
     InvalidServerNameError,
     MissingArgumentError,
     ServerError,
+    UserInputError,
 )
 from ..logging import log_operation_error
 from ..plugins.api_bridge import api_method
 from ..plugins.api_contract import validate_contract
 from ..plugins.event_trigger import trigger_event
+from ..state_revision import revision_clock
 from .models import (
     RestartServerRequest,
     RestartServerResponse,
@@ -138,6 +143,8 @@ async def set_server_setting(
         return SetServerSettingResponse(
             message=f"Setting '{key}' updated for server '{server_name}'."
         )
+    except (ValidationError, ConfigParseError) as error:
+        raise UserInputError("Invalid server setting key or value.") from error
     except BSMError as e:
         log_operation_error(
             logger,
@@ -256,9 +263,13 @@ async def get_server_summary(
         server = app_context.get_server(server_name)
         if not await server.is_installed():
             raise BSMError(f"Server '{server_name}' is not installed.")
+        revision = revision_clock.capture()
         summary = await server.get_summary_info()
         return GetServerSummaryResponse.model_validate(
-            {"status": "success", "summary": summary.model_dump(mode="json")}
+            {
+                "status": "success",
+                "summary": {**summary.model_dump(mode="json"), **revision},
+            }
         )
     except Exception as e:
         log_operation_error(

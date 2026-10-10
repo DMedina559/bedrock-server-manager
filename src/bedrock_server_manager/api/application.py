@@ -26,6 +26,7 @@ from ..context import AppContext
 from ..error import BSMError, FileError
 from ..logging import log_operation_error
 from ..plugins.api_bridge import api_method
+from ..state_revision import revision_clock
 from ..utils import list_content_files
 from .models.application import (
     GetAllServersDataRequest,
@@ -77,9 +78,11 @@ async def get_all_servers_data(
     from ..utils import server as server_utils
 
     try:
+        revision = revision_clock.capture()
         servers_data, bsm_error_messages = await server_utils.get_servers_data(
             app_context=app_context
         )
+        servers_data = [dict(server, **revision) for server in servers_data]
         if bsm_error_messages:
             for err_msg in bsm_error_messages:
                 logger.error(
@@ -89,11 +92,12 @@ async def get_all_servers_data(
                 {
                     "status": "success",
                     "servers": servers_data,
+                    **revision,
                     "message": f"Completed with errors: {'; '.join(bsm_error_messages)}",
                 }
             )
         return GetAllServersDataResponse.model_validate(
-            {"status": "success", "servers": servers_data}
+            {"status": "success", "servers": servers_data, **revision}
         )
     except BSMError as e:
         log_operation_error(

@@ -62,3 +62,17 @@ async def test_create_first_user_already_exists(
     )
     assert response.status_code == 400
     assert response.json()["error"]["message"] == "Application has already been set up."
+
+
+def test_setup_operations_are_in_openapi(test_app):
+    schema = test_app.openapi()
+    assert (
+        schema["paths"]["/api/setup/status"]["get"]["operationId"] == "get_setup_status"
+    )
+    create = schema["paths"]["/api/setup/create-first-user"]["post"]
+    assert create["operationId"] == "create_first_user"
+    assert create["responses"]["200"]["content"]["application/json"]["schema"] == {
+        "$ref": "#/components/schemas/SetupAccountResponse"
+    }
+    fields = schema["components"]["schemas"]["SetupAccountResponse"]["properties"]
+    assert {"access_token", "token_type", "status", "message"} <= fields.keys()

@@ -11,6 +11,7 @@ from ..api.models.tasks import TaskSnapshot
 from ..error import APICancelledError
 from ..logging import log_operation_error
 from ..plugins.api_contract import APIResponseValidationError
+from ..state_revision import revision_clock
 from ..utils.threads import run_in_thread
 from .task_record import TaskRecord
 from .websocket_manager import ConnectionManager
@@ -88,7 +89,7 @@ class TaskManager:
         """Helper function to update the status of a task and notify client."""
         if task_id in self._tasks:
             data = dict(self._tasks[task_id])
-            data.update(status=status, message=message)
+            data.update(status=status, message=message, **revision_clock.capture())
             if result is not None:
                 data["result"] = (
                     result.model_dump(mode="json")
@@ -178,7 +179,10 @@ class TaskManager:
             raise RuntimeError("Cannot submit work for an unloading plugin.")
 
         candidate = TaskRecord(
-            status="queued", message="Task is queued.", username=username
+            status="queued",
+            message="Task is queued.",
+            username=username,
+            **revision_clock.capture(),
         )
         task_id = str(uuid.uuid4())
 
@@ -267,6 +271,8 @@ class TaskManager:
         return TaskSnapshot.model_validate(
             {
                 "id": task_id,
+                "epoch": record.epoch,
+                "revision": record.revision,
                 "status": record["status"],
                 "message": record["message"],
                 "result": result,

@@ -24,8 +24,15 @@ async def test_resource_monitor_broadcasts_actual_server_status(
         assert message == {
             "type": "resource_update",
             "topic": topic,
-            "data": {"status": "success", "process_info": None},
+            "data": {
+                "status": "success",
+                "process_info": None,
+                "epoch": message["data"]["epoch"],
+                "revision": message["data"]["revision"],
+            },
         }
+        assert message["data"]["revision"] > 0
+        assert message["data"]["epoch"]
         assert not await real_bedrock_server.is_running()
 
 
@@ -48,7 +55,10 @@ async def test_resource_monitor_recovers_after_provider_failure(
         async with asyncio.timeout(5):
             message = json.loads(await socket.recv())
         assert message["topic"] == topic
-        assert message["data"] == {"status": "success", "process_info": None}
+        assert message["data"]["status"] == "success"
+        assert message["data"]["process_info"] is None
+        assert message["data"]["revision"] > 0
+        assert message["data"]["epoch"]
 
 
 async def test_resource_monitor_broadcasts_live_process_then_stopped_state(
