@@ -15,13 +15,15 @@ class VersionlessPlugin(PluginBase):
 def test_concrete_plugin_initialization(app_context, caplog):
     api = create_app_api("my_plugin", app_context)
     logger = logging.getLogger("test.plugin")
-    with caplog.at_level(logging.INFO):
+    with caplog.at_level(logging.DEBUG):
         plugin = ValidPlugin("my_plugin", api, logger)
     assert plugin.name == "my_plugin"
     assert plugin.api is api
     assert plugin.logger is logger
     assert plugin.version == "1.2.3"
-    assert "Plugin 'my_plugin' v1.2.3 initialized and active." in caplog.text
+    record = next(record for record in caplog.records if record.name == logger.name)
+    assert record.levelno == logging.DEBUG
+    assert record.getMessage() == "Plugin 'my_plugin' v1.2.3 initialized."
 
 
 def test_concrete_plugin_no_version_warning(app_context, caplog):
