@@ -1,4 +1,4 @@
-from typing import Optional
+from typing import Literal, Optional
 
 from pydantic import BaseModel, Field
 
@@ -31,3 +31,10 @@ class UserLoginPayload(APIRequest):
     username: str = Field(..., min_length=1, max_length=80)
     password: str = Field(..., min_length=1)
     remember_me: bool = Field(default=False)
+
+
+class SetupAccountResponse(TokenResponse):
+    """First account creation returns the same session credentials as login."""
+
+    status: Literal["success"] = "success"
+    message: str

@@ -18,12 +18,11 @@ from ...utils import (
 )
 from ..deps import get_app_context
 from ..schemas import SetupStatusResponse, UserLoginPayload
+from ..schemas.auth import SetupAccountResponse
 
 logger = logging.getLogger(__name__)
 
-router = APIRouter(
-    prefix="/api/setup", tags=["Application Setup"], include_in_schema=False
-)
+router = APIRouter(prefix="/api/setup", tags=["Application Setup"])
 
 
 @router.get(
@@ -43,6 +42,7 @@ async def get_setup_status(
 @router.post(
     "/create-first-user",
     operation_id="create_first_user",
+    response_model=SetupAccountResponse,
 )
 async def create_first_user(
     data: UserLoginPayload,
@@ -70,12 +70,11 @@ async def create_first_user(
         data={"sub": record.username}, app_context=app_context
     )
     response = JSONResponse(
-        content={
-            "status": "success",
-            "message": "Admin account created and logged in successfully.",
-            "access_token": access_token,
-            "token_type": "bearer",
-        }
+        content=SetupAccountResponse(
+            message="Admin account created and logged in successfully.",
+            access_token=access_token,
+            token_type="bearer",
+        ).model_dump(mode="json")
     )
     response.set_cookie(
         key="access_token_cookie",
