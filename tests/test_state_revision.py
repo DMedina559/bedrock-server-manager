@@ -17,6 +17,7 @@ def test_revisions_are_unique_across_threads_and_epochs_change_per_instance():
 def test_state_revision_requires_complete_valid_metadata():
     import pytest
     from pydantic import ValidationError
+
     from bedrock_server_manager.api.models.common import StateRevision
 
     assert StateRevision().epoch is None
