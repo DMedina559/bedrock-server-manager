@@ -7,10 +7,8 @@ import copy
 import json
 from typing import TYPE_CHECKING, Any, Dict, Optional, cast
 
-from pydantic import BaseModel, SecretStr, ValidationError
+from pydantic import BaseModel, JsonValue, SecretStr, ValidationError
 from pydantic_core import PydanticUndefined, to_jsonable_python
-
-from pydantic import JsonValue
 
 from ..server_validation import valid_server_names
 from ..state.changeset import ChangeSet

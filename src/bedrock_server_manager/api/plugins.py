@@ -28,11 +28,10 @@ from ..plugins.api_bridge import api_method
 from ..plugins.api_contract import validate_contract
 from ..plugins.event_trigger import trigger_event
 from .models.plugins import (
-    GetPluginSettingsRequest,
-    GetPluginSettingsResponse,
-    UpdatePluginSettingsRequest,
     GetPluginSettingRequest,
     GetPluginSettingResponse,
+    GetPluginSettingsRequest,
+    GetPluginSettingsResponse,
     GetPluginStatusesRequest,
     GetPluginStatusesResponse,
     ReloadPluginsRequest,
@@ -45,6 +44,7 @@ from .models.plugins import (
     SetPluginStatusResponse,
     TriggerExternalAppEventRequest,
     TriggerExternalAppEventResponse,
+    UpdatePluginSettingsRequest,
 )
 
 logger = logging.getLogger(__name__)

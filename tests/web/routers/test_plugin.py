@@ -96,10 +96,11 @@ async def test_unknown_plugin_is_rejected(admin_auth_client):
 async def test_typed_plugin_settings_are_validated_and_persisted(
     admin_auth_client, unauth_client, app_context, tmp_path
 ):
+    import pytest
     from sqlalchemy import select
+
     from bedrock_server_manager.db.models import PluginSetting
     from bedrock_server_manager.error import UserInputError
-    import pytest
 
     (tmp_path / "plugins" / "typed_settings.py").write_text(
         """from pydantic import BaseModel, ConfigDict, Field, SecretStr
@@ -193,6 +194,7 @@ async def test_bundled_notification_settings(
     admin_auth_client, plugin_factory, filename, values
 ):
     from pathlib import Path
+
     import bedrock_server_manager.plugins.default as bundled
 
     plugin = await plugin_factory(
@@ -224,6 +226,7 @@ async def test_backup_settings_use_live_valid_server_choices(
     admin_auth_client, plugin_factory, real_bedrock_server, app_context
 ):
     from pathlib import Path
+
     import bedrock_server_manager.plugins.default as bundled
 
     plugin = await plugin_factory(

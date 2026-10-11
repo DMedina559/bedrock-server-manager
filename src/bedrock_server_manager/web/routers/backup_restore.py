@@ -40,8 +40,8 @@ from ...api import backup_restore as backup_restore_api
 from ...context import AppContext
 from ...error import AppFileNotFoundError, BSMError, UserInputError
 from ...logging import log_operation_error
-from ..deps.server import validate_server_registered
 from ..deps import get_app_context, get_moderator_user, validate_server_exists
+from ..deps.server import validate_server_registered
 from ..schemas import (
     BackupActionPayload,
     RestoreActionPayload,

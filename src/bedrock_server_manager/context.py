@@ -687,8 +687,8 @@ class AppContext:
         self, server_name: str, *, require_installation: bool = True
     ) -> "BedrockServer":
         """Retrieve a registered server, rejecting invalid and unknown names."""
-        from .utils.server import core_validate_server_name_format
         from .error import InvalidServerNameError
+        from .utils.server import core_validate_server_name_format
 
         core_validate_server_name_format(server_name)
         if self.state.servers.get(server_name) is None:
@@ -697,12 +697,14 @@ class AppContext:
             return self.prepare_server(server_name)
         # Recheck files even for cached handles, since an installation can disappear.
         import os
+
         from .error import AppFileNotFoundError
 
         server = self._servers.get(server_name)
         if server is None:
-            from .core.server.paths import ServerPaths
             import platform
+
+            from .core.server.paths import ServerPaths
 
             paths = ServerPaths(
                 server_name,

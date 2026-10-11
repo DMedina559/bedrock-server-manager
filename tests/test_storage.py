@@ -179,6 +179,7 @@ async def test_alembic_migrations_upgrade_and_downgrade(tmp_path):
 
 async def test_plugin_settings_are_separate_and_preserve_json_types(db, tmp_path):
     from sqlalchemy import select
+
     from bedrock_server_manager.db.models import PluginSetting, Setting
 
     storage = Storage(db, data_dir=str(tmp_path))
@@ -217,6 +218,7 @@ async def test_plugin_settings_are_separate_and_preserve_json_types(db, tmp_path
 
 def test_plugin_settings_migration_round_trip(tmp_path):
     from importlib.resources import files
+
     from alembic import command
     from alembic.config import Config
     from sqlalchemy import (

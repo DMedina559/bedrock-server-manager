@@ -119,8 +119,6 @@ from .properties import (
     ValidatePropertyValueResponse,
 )
 from .server import (
-    GetValidServerNamesRequest,
-    GetValidServerNamesResponse,
     DeleteServerDataRequest,
     DeleteServerDataResponse,
     GetAllServerSettingsRequest,
@@ -129,6 +127,8 @@ from .server import (
     GetServerSettingResponse,
     GetServerSummaryRequest,
     GetServerSummaryResponse,
+    GetValidServerNamesRequest,
+    GetValidServerNamesResponse,
     RestartServerRequest,
     RestartServerResponse,
     SendCommandRequest,

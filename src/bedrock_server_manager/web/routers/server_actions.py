@@ -44,13 +44,13 @@ from ...error import (
     UserInputError,
 )
 from ...logging import log_operation_error
-from ..deps.server import validate_server_registered
 from ..deps import (
     get_admin_user,
     get_app_context,
     get_moderator_user,
     validate_server_exists,
 )
+from ..deps.server import validate_server_registered
 from ..schemas import ActionResponse, CommandPayload, ServerSchemaResponse, UserResponse
 from ..schemas.base import TaskAcceptedResponse
 

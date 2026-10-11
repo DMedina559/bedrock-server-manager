@@ -50,8 +50,6 @@ from .models import (
     StopServerResponse,
 )
 from .models.server import (
-    GetValidServerNamesRequest,
-    GetValidServerNamesResponse,
     DeleteServerDataRequest,
     DeleteServerDataResponse,
     GetAllServerSettingsRequest,
@@ -60,6 +58,8 @@ from .models.server import (
     GetServerSettingResponse,
     GetServerSummaryRequest,
     GetServerSummaryResponse,
+    GetValidServerNamesRequest,
+    GetValidServerNamesResponse,
     SendCommandRequest,
     SendCommandResponse,
     SetServerCustomValueRequest,

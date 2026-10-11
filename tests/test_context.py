@@ -125,6 +125,7 @@ def test_server_lookup_rejects_unknown_or_invalid_names(app_context, name):
 
 def test_server_lookup_rechecks_properties(app_context, real_bedrock_server):
     from pathlib import Path
+
     from bedrock_server_manager.error import AppFileNotFoundError
 
     name = real_bedrock_server.server_name
