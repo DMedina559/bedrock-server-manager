@@ -11,6 +11,7 @@ from sqlalchemy.orm.attributes import flag_modified
 from ...state.validation import json_equal
 from ..database import Database
 from ..models import Setting
+from .plugin_settings import PluginSettingsRepository
 
 
 class SettingsRepository:
@@ -18,18 +19,29 @@ class SettingsRepository:
 
     def __init__(self, db: Database | None = None):
         self.db = db
+        self.plugin_settings = PluginSettingsRepository()
 
     async def get_all_settings(self, session: AsyncSession) -> Dict[str, Any]:
         """Retrieves all settings as a dictionary of key-value pairs."""
         result = await session.execute(select(Setting))
         settings_records = result.scalars().all()
-        return {str(record.key): record.value for record in settings_records}
+        values: Dict[str, Any] = {
+            str(record.key): record.value for record in settings_records
+        }
+        plugin_values = await self.plugin_settings.get_all(session)
+        if plugin_values:
+            values["plugin_settings"] = plugin_values
+        return values
 
     async def save_settings(
         self, session: AsyncSession, settings_dict: Dict[str, Any]
     ) -> None:
         """Persists a dictionary of key-value settings and removes obsolete flat dot-notation records."""
+        if "plugin_settings" in settings_dict:
+            await self.plugin_settings.save(session, settings_dict["plugin_settings"])
         for key, value in settings_dict.items():
+            if key == "plugin_settings" or key.startswith("plugin_settings."):
+                continue
             result = await session.execute(select(Setting).filter_by(key=key))
             setting = result.scalars().first()
             if setting:
@@ -45,6 +57,11 @@ class SettingsRepository:
         result = await session.execute(select(Setting))
         all_records = result.scalars().all()
         for record in all_records:
+            if record.key == "plugin_settings" or str(record.key).startswith(
+                "plugin_settings."
+            ):
+                await session.delete(record)
+                continue
             if "." in str(record.key):
                 root_key = str(record.key).split(".")[0]
                 if root_key in settings_dict and isinstance(

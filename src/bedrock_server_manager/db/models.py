@@ -84,6 +84,15 @@ class Setting(Base):
     value: Mapped[JsonValue] = mapped_column(JSON, nullable=True)
 
 
+class PluginSetting(Base):
+    """Plugin-owned configuration, retained independently of plugin registration."""
+
+    __tablename__ = "plugin_settings"
+
+    plugin_name: Mapped[str] = mapped_column(String(255), primary_key=True)
+    settings: Mapped[dict[str, JsonValue]] = mapped_column(JSON, nullable=False)
+
+
 class Server(Base):
     """
     Represents a registered Bedrock server.
