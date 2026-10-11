@@ -27,7 +27,7 @@ STATIC_DIR = bsm_frontend.get_static_dir()
 
 logger = logging.getLogger(__name__)
 
-router = APIRouter()
+router = APIRouter(tags=["Appearance"])
 
 
 # --- Route: Serve Custom Panorama ---
@@ -35,7 +35,6 @@ router = APIRouter()
     "/api/panorama",
     operation_id="get_panorama",
     response_class=FileResponse,
-    tags=["Application"],
 )
 async def serve_custom_panorama_api(
     app_context: AppContext = Depends(get_app_context),

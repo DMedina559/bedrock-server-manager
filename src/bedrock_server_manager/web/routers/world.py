@@ -35,9 +35,7 @@ from ..schemas.base import TaskAcceptedResponse
 
 logger = logging.getLogger(__name__)
 
-router = APIRouter(
-    tags=["World Management"],
-)
+router = APIRouter(tags=["World Management"])
 
 STATIC_DIR = bsm_frontend.get_static_dir()
 
@@ -46,7 +44,6 @@ STATIC_DIR = bsm_frontend.get_static_dir()
     "/api/content/worlds",
     operation_id="list_available_worlds",
     response_model=ContentListResponse,
-    tags=["Content Management"],
 )
 async def get_worlds_list(
     current_user: UserResponse = Depends(get_moderator_user),
@@ -85,7 +82,6 @@ async def get_worlds_list(
     operation_id="install_world",
     response_model=TaskAcceptedResponse,
     status_code=status.HTTP_202_ACCEPTED,
-    tags=["Content Management"],
 )
 async def post_world_install(
     payload: FileNamePayload,
@@ -198,7 +194,6 @@ async def post_world_install(
     operation_id="export_world",
     response_model=TaskAcceptedResponse,
     status_code=status.HTTP_202_ACCEPTED,
-    tags=["Content Management"],
 )
 async def post_world_export(
     server_name: str = Depends(validate_server_exists),
@@ -258,7 +253,6 @@ async def post_world_export(
     operation_id="reset_world",
     response_model=TaskAcceptedResponse,
     status_code=status.HTTP_202_ACCEPTED,
-    tags=["Server Management"],
 )
 async def delete_world_reset(
     server_name: str = Depends(validate_server_exists),

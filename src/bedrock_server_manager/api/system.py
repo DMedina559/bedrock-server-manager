@@ -21,6 +21,7 @@ such as the web UI or CLI, to provide system-level control and monitoring.
 """
 
 import logging
+import time
 
 from ..context import AppContext
 from ..error import (
@@ -30,6 +31,12 @@ from ..error import (
 from ..logging import log_operation_error
 from ..plugins.api_bridge import api_method
 from ..state_revision import revision_clock
+from .models.health import (
+    GetApplicationHealthRequest,
+    GetApplicationHealthResponse,
+    HealthCheck,
+)
+from .models.metrics import GetApplicationMetricsRequest, GetApplicationMetricsResponse
 from .models.system import (
     GetBedrockProcessInfoRequest,
     GetBedrockProcessInfoResponse,
@@ -127,3 +134,52 @@ async def get_bedrock_process_info(
             error=e,
         )
         raise
+
+
+@api_method("get_application_metrics")
+async def get_application_metrics(
+    request: GetApplicationMetricsRequest, *, app_context: AppContext
+) -> GetApplicationMetricsResponse:
+    """Return shared, bounded performance history without sampling per request."""
+    return await app_context.metrics_service.snapshot()
+
+
+@api_method("get_application_health")
+async def get_application_health(
+    request: GetApplicationHealthRequest, *, app_context: AppContext
+) -> GetApplicationHealthResponse:
+    """Read-only readiness checks; dependency errors never expose credentials."""
+    try:
+        database_healthy = await app_context.db.check_health()
+    except Exception:
+        database_healthy = False
+    results = {
+        "lifecycle": (
+            app_context.lifecycle_phase == "ready",
+            "Application ready",
+            f"Application {app_context.lifecycle_phase}",
+        ),
+        "database": (database_healthy, "Database reachable", "Database unavailable"),
+        "state": (
+            app_context.state_loaded,
+            "Application state loaded",
+            "Application state unavailable",
+        ),
+        "metrics": (
+            app_context.metrics_service.check_health(),
+            "Metrics sampler active",
+            "Metrics sampler stopped or stale",
+        ),
+    }
+    checks = {
+        name: HealthCheck(healthy=healthy, message=ok if healthy else failed)
+        for name, (healthy, ok, failed) in results.items()
+    }
+    return GetApplicationHealthResponse(
+        lifecycle=app_context.lifecycle_phase,
+        health=(
+            "healthy" if all(check.healthy for check in checks.values()) else "degraded"
+        ),
+        checks=checks,
+        checked_at=time.time(),
+    )

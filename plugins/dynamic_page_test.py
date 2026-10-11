@@ -346,7 +346,6 @@ class DynamicPageTestPlugin(PluginBase):
 
         @self.router.post(
             "/api/dynamic_page_test/submit",
-            tags=["Dynamic Page Test Plugin"],
             summary="Echo Submit",
         )
         async def submit_test_form(

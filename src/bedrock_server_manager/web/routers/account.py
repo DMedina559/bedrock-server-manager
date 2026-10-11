@@ -28,9 +28,7 @@ from ..schemas import (
     UserResponse,
 )
 
-router = APIRouter(
-    tags=["Account Management"],
-)
+router = APIRouter(tags=["Account Management"])
 
 
 @router.get("/api/account", operation_id="get_account", response_model=UserResponse)
@@ -47,7 +45,6 @@ async def get_account_api(
     "/api/account/theme",
     operation_id="update_account_theme",
     response_model=BaseApiResponse,
-    tags=["Themes"],
 )
 async def post_update_theme(
     theme_update: ThemeUpdatePayload,
@@ -93,7 +90,6 @@ async def post_update_profile(
     "/api/account/change-password",
     operation_id="change_password",
     response_model=BaseApiResponse,
-    tags=["Password", "Authentication"],
 )
 async def post_change_password(
     data: ChangePasswordPayload,

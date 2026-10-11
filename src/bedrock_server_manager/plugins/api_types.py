@@ -33,6 +33,10 @@ from bedrock_server_manager.api.models import (
     GetAllServersDataResponse,
     GetAllServerSettingsRequest,
     GetAllServerSettingsResponse,
+    GetApplicationHealthRequest,
+    GetApplicationHealthResponse,
+    GetApplicationMetricsRequest,
+    GetApplicationMetricsResponse,
     GetBedrockProcessInfoRequest,
     GetBedrockProcessInfoResponse,
     GetGlobalSettingRequest,
@@ -359,6 +363,14 @@ class SettingsAPI(Protocol):
 
 
 class SystemAPI(Protocol):
+    async def get_application_health(
+        self, request: GetApplicationHealthRequest | Mapping[str, object]
+    ) -> GetApplicationHealthResponse: ...
+
+    async def get_application_metrics(
+        self, request: GetApplicationMetricsRequest | Mapping[str, object]
+    ) -> GetApplicationMetricsResponse: ...
+
     async def get_bedrock_process_info(
         self, request: GetBedrockProcessInfoRequest | Mapping[str, object]
     ) -> GetBedrockProcessInfoResponse: ...
@@ -500,6 +512,8 @@ API_METHODS: dict[str, dict[str, str]] = {
         "set_custom_global_setting": "set_custom_global_setting",
     },
     "system": {
+        "get_application_health": "get_application_health",
+        "get_application_metrics": "get_application_metrics",
         "get_bedrock_process_info": "get_bedrock_process_info",
         "get_server_running_status": "get_server_running_status",
     },

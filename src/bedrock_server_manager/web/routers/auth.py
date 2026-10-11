@@ -35,15 +35,14 @@ from ..schemas import TokenResponse, UserResponse
 
 logger = logging.getLogger(__name__)
 
-router = APIRouter(
-    prefix="/auth",
-    tags=["Authentication"],
-)
+router = APIRouter(prefix="/auth", tags=["Authentication"])
 
 
 # --- API Login Route ---
 @router.post(
-    "/token", operation_id="login", response_model=TokenResponse, tags=["Login"]
+    "/token",
+    operation_id="login",
+    response_model=TokenResponse,
 )
 async def api_login_for_access_token(
     request: Request,
@@ -116,7 +115,6 @@ async def api_login_for_access_token(
     "/reauth",
     operation_id="reauthenticate",
     response_model=TokenResponse,
-    tags=["Login"],
 )
 async def reauth(
     request: Request,

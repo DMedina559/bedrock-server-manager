@@ -46,6 +46,8 @@ class MonitoringSettings(SettingsRecord):
     max_retries: int = Field(default=3, ge=0)
     process_interval_sec: int = Field(default=10, gt=0)
     player_interval_sec: int = Field(default=10, gt=0)
+    app_metrics_interval_sec: int = Field(default=3, ge=1, le=3600)
+    bedrock_metrics_interval_sec: int = Field(default=3, ge=1, le=3600)
 
 
 class WebSettings(SettingsRecord):
@@ -53,6 +55,15 @@ class WebSettings(SettingsRecord):
     port: int = Field(default=11325, ge=1, le=65535)
     token_expires_weeks: int = Field(default=4, gt=0)
     jwt_secret_key: Optional[str] = None
+
+
+class LifecycleSettings(SettingsRecord):
+    startup_timeout_seconds: float = Field(default=30.0, gt=0, le=600)
+    shutdown_timeout_seconds: float = Field(default=15.0, gt=0, le=600)
+    task_drain_timeout_seconds: float = Field(default=30.0, gt=0, le=600)
+    plugin_timeout_seconds: float = Field(default=10.0, gt=0, le=600)
+    cancellation_grace_seconds: float = Field(default=2.0, gt=0, le=30)
+    request_drain_timeout_seconds: float = Field(default=10.0, gt=0, le=600)
 
 
 class SettingsState(BaseModel):
@@ -68,6 +79,7 @@ class SettingsState(BaseModel):
     retention: RetentionSettings = Field(default_factory=RetentionSettings)
     monitoring: MonitoringSettings = Field(default_factory=MonitoringSettings)
     web: WebSettings = Field(default_factory=WebSettings)
+    lifecycle: LifecycleSettings = Field(default_factory=LifecycleSettings)
     custom: Dict[str, JsonValue] = Field(default_factory=dict)
     plugin_settings: Dict[str, Dict[str, JsonValue]] = Field(default_factory=dict)
 
@@ -230,6 +242,7 @@ class SettingsState(BaseModel):
             "retention": self.retention.model_dump(),
             "monitoring": self.monitoring.model_dump(),
             "web": self.web.model_dump(exclude_none=True),
+            "lifecycle": self.lifecycle.model_dump(),
             "custom": copy.deepcopy(self.custom),
             "plugin_settings": copy.deepcopy(self.plugin_settings),
         }
@@ -292,6 +305,8 @@ class SettingsState(BaseModel):
                 "max_retries",
                 "process_interval_sec",
                 "player_interval_sec",
+                "app_metrics_interval_sec",
+                "bedrock_metrics_interval_sec",
             ),
             "web": ("port", "token_expires_weeks"),
         }

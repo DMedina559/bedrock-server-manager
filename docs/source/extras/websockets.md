@@ -193,3 +193,12 @@ for compatibility with existing producers, but the core paths above supply them.
 The sequence is process-local and does not synchronize independent web workers.
 A shared persistent revision authority would be required for a multi-process
 state service. Arbitrary plugin WebSocket payloads and log streams are unchanged.
+
+
+## Application performance metrics
+
+Authenticated clients can read `GET /api/metrics` (`get_application_metrics`) or subscribe to `application-metrics`. The core application sampler publishes `resource_update` frames with a `MetricsSample` in `data`, including its `epoch` and `revision`. HTTP returns `latest`, `history`, `interval_seconds`, and `history_limit` using the same samples.
+
+Samples are collected approximately every three seconds. The application keeps the latest 180 samples in memory; history resets on restart. Application CPU is process CPU and can exceed 100% across cores. Memory is measured in MiB (displayed as MB in the UI); host memory and host I/O describe the whole machine. Network and disk rates use KiB/s. First-sample rates and inaccessible measurements are null rather than fabricated zeros. Event-loop delay measures how late the sampler resumes after its scheduled sleep, not request latency.
+
+The former bundled benchmark plugin is replaced by this core service. Remove any separately installed copy of `benchmark_plugin.py` to avoid duplicate sampling and its old plugin page.

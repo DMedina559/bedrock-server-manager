@@ -55,16 +55,14 @@ from ..schemas.base import TaskAcceptedResponse
 
 logger = logging.getLogger(__name__)
 
-router = APIRouter(
-    tags=["Server Mannagement"],
-)
+router = APIRouter()
 
 
 @router.get(
     "/api/server/{server_name}/summary",
     operation_id="get_server_summary",
+    tags=["Server Management"],
     response_model=ServerSchemaResponse,
-    tags=["Server Information"],
 )
 async def get_server_summary(
     server_name: str = Depends(validate_server_exists),
@@ -91,9 +89,9 @@ async def get_server_summary(
 @router.post(
     "/api/server/{server_name}/start",
     operation_id="start_server",
+    tags=["Server Processes"],
     response_model=StartServerResponse,
     status_code=status.HTTP_200_OK,
-    tags=["Process Management"],
 )
 async def post_start_server(
     server_name: str = Depends(validate_server_exists),
@@ -115,9 +113,9 @@ async def post_start_server(
 @router.post(
     "/api/server/{server_name}/stop",
     operation_id="stop_server",
+    tags=["Server Processes"],
     response_model=StopServerResponse,
     status_code=status.HTTP_200_OK,
-    tags=["Process Management"],
 )
 async def post_stop_server(
     server_name: str = Depends(validate_server_exists),
@@ -137,9 +135,9 @@ async def post_stop_server(
 @router.post(
     "/api/server/{server_name}/restart",
     operation_id="restart_server",
+    tags=["Server Processes"],
     response_model=RestartServerResponse,
     status_code=status.HTTP_200_OK,
-    tags=["Process Management"],
 )
 async def post_restart_server(
     server_name: str = Depends(validate_server_exists),
@@ -161,8 +159,8 @@ async def post_restart_server(
 @router.post(
     "/api/server/{server_name}/send_command",
     operation_id="send_command",
+    tags=["Server Processes"],
     response_model=ActionResponse,
-    tags=["Send Command"],
 )
 async def post_send_command(
     payload: CommandPayload,
@@ -245,9 +243,9 @@ async def post_send_command(
 @router.post(
     "/api/server/{server_name}/update",
     operation_id="update_server",
+    tags=["Server Management"],
     response_model=TaskAcceptedResponse,
     status_code=status.HTTP_202_ACCEPTED,
-    tags=["Server Installation"],
 )
 async def post_update_server(
     server_name: str = Depends(validate_server_exists),
@@ -279,9 +277,9 @@ async def post_update_server(
 @router.delete(
     "/api/server/{server_name}/delete",
     operation_id="delete_server",
+    tags=["Server Management"],
     response_model=TaskAcceptedResponse,
     status_code=status.HTTP_202_ACCEPTED,
-    tags=["Server Installation"],
 )
 async def delete_server(
     server_name: str = Depends(validate_server_exists),

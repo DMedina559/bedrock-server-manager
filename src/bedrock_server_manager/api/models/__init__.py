@@ -63,11 +63,22 @@ from .ban import (
     RemoveServerBanResponse,
 )
 from .common import APIErrorResponse, APIRequest, APIResponse
+from .health import (
+    GetApplicationHealthRequest,
+    GetApplicationHealthResponse,
+    HealthCheck,
+)
 from .install import (
     InstallNewServerRequest,
     InstallNewServerResponse,
     UpdateServerRequest,
     UpdateServerResponse,
+)
+from .metrics import (
+    GetApplicationMetricsRequest,
+    GetApplicationMetricsResponse,
+    MetricsSample,
+    ServerMetrics,
 )
 from .misc import (
     PruneDownloadCacheRequest,
@@ -366,4 +377,19 @@ __all__ += [
     "GetPluginSettingResponse",
     "SetPluginSettingRequest",
     "SetPluginSettingResponse",
+]
+
+
+__all__ += [
+    "GetApplicationMetricsRequest",
+    "GetApplicationMetricsResponse",
+    "MetricsSample",
+    "ServerMetrics",
+]
+
+
+__all__ += [
+    "GetApplicationHealthRequest",
+    "GetApplicationHealthResponse",
+    "HealthCheck",
 ]

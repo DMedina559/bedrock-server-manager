@@ -65,6 +65,7 @@ class BedrockProcessManager:
     async def start(self):
         """Call this from the main thread to start monitoring."""
         if self.monitoring_task is None or self.monitoring_task.done():
+            self._shutdown_event = asyncio.Event()
             self.monitoring_task = asyncio.create_task(self._monitor_servers())
 
     async def add_server(self, server: "BedrockServer"):

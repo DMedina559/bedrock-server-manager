@@ -24,10 +24,7 @@ from ..schemas.base import RegistrationResponse
 
 logger = logging.getLogger(__name__)
 
-router = APIRouter(
-    prefix="/api/register",
-    tags=["Registration", "User Management"],
-)
+router = APIRouter(prefix="/api/register", tags=["Registration"])
 
 
 @router.post(

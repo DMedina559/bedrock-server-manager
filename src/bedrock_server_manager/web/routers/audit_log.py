@@ -15,10 +15,7 @@ from ..schemas import AuditLogResponse, UserResponse
 
 logger = logging.getLogger(__name__)
 
-router = APIRouter(
-    prefix="/audit-log",
-    tags=["Audit Logs", "Application"],
-)
+router = APIRouter(prefix="/audit-log", tags=["Audit Logs"])
 
 
 async def create_audit_log(
