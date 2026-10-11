@@ -22,6 +22,7 @@ class MetricsSample(StateRevision):
     app_ram_mb: float | None = Field(default=None, ge=0)
     thread_count: int | None = Field(default=None, ge=0)
     asyncio_task_count: int = Field(ge=0)
+    background_task_count: int = Field(ge=0)
     loop_lag_ms: float = Field(ge=0)
     uptime_seconds: float | None = Field(default=None, ge=0)
     sys_cpu_percent: float | None = Field(default=None, ge=0)

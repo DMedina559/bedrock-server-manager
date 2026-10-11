@@ -38,6 +38,11 @@ class TaskManager:
         self._blocked_plugins: set[str] = set()
 
     @property
+    def active_task_count(self) -> int:
+        """Count unfinished managed operations, including plugin-owned tasks."""
+        return sum(not task.done() for task in self.futures.values())
+
+    @property
     def tasks(self) -> Dict[str, TaskRecord]:
         """Independent snapshots; execution records remain owned by this manager."""
         return {

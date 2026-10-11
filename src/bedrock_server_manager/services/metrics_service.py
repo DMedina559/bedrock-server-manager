@@ -150,6 +150,7 @@ class MetricsService:
             sample = MetricsSample(
                 timestamp=time.time(),
                 asyncio_task_count=task_count,
+                background_task_count=self.context.task_manager.active_task_count,
                 loop_lag_ms=max(0.0, lag_ms),
                 servers=servers,
                 **values,

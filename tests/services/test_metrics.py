@@ -143,3 +143,18 @@ async def test_server_metrics_preserve_cpu_above_one_core_and_ignore_uptime(
     assert server.pid == 123
     assert server.cpu_percent == 250.0
     assert server.memory_mb == 64.0
+
+
+async def test_metrics_count_managed_plugin_operations_until_completion(app_context):
+    release = asyncio.Event()
+    manager = app_context.task_manager
+    task_id = await manager.run_task(release.wait, _plugin_owner="test_plugin")
+    try:
+        sample = await app_context.metrics_service.sample()
+        assert sample.background_task_count == 1
+        release.set()
+        await manager.futures[task_id]
+        sample = await app_context.metrics_service.sample()
+        assert sample.background_task_count == 0
+    finally:
+        release.set()
