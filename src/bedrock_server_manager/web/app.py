@@ -37,6 +37,7 @@ def create_web_app(app_context: AppContext) -> FastAPI:  # noqa: C901
             await plugin_manager.load_plugins()
             await app_context.bedrock_process_manager.start()
             app_context.resource_monitor.start()
+            app_context.metrics_service.start()
             await app_context.api.application.update_server_statuses(request={})
 
             await app_context.plugin_manager.trigger_guarded_event("on_manager_startup")

@@ -30,6 +30,7 @@ from ..error import (
 from ..logging import log_operation_error
 from ..plugins.api_bridge import api_method
 from ..state_revision import revision_clock
+from .models.metrics import GetApplicationMetricsRequest, GetApplicationMetricsResponse
 from .models.system import (
     GetBedrockProcessInfoRequest,
     GetBedrockProcessInfoResponse,
@@ -127,3 +128,11 @@ async def get_bedrock_process_info(
             error=e,
         )
         raise
+
+
+@api_method("get_application_metrics")
+async def get_application_metrics(
+    request: GetApplicationMetricsRequest, *, app_context: AppContext
+) -> GetApplicationMetricsResponse:
+    """Return shared, bounded performance history without sampling per request."""
+    return await app_context.metrics_service.snapshot()

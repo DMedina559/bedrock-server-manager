@@ -22,6 +22,7 @@ if TYPE_CHECKING:
     from .db.storage import Storage
     from .plugins.api_bridge import AppAPI
     from .plugins.plugin_manager import PluginManager
+    from .services.metrics_service import MetricsService
     from .services.plugin_service import PluginService
     from .services.server_service import ServerService
     from .services.settings_service import SettingsService
@@ -64,6 +65,7 @@ class AppContext:
         self._plugin_manager: Optional["PluginManager"] = None
         self._task_manager: Optional["TaskManager"] = None
         self._connection_manager: Optional["ConnectionManager"] = None
+        self._metrics_service: Optional["MetricsService"] = None
         self._resource_monitor: Optional["ResourceMonitor"] = None
         self._log_streamer: Optional["LogStreamer"] = None
         self._api: Optional["AppAPI"] = None
@@ -166,6 +168,7 @@ class AppContext:
             self._task_manager,
             self._plugin_manager,
             self._bedrock_process_manager,
+            self._metrics_service,
             self._resource_monitor,
             self._log_streamer,
             self._connection_manager,
@@ -415,6 +418,14 @@ class AppContext:
                 user_provider=self.state.users.get
             )
         return self._connection_manager
+
+    @property
+    def metrics_service(self) -> "MetricsService":
+        if self._metrics_service is None:
+            from .services.metrics_service import MetricsService
+
+            self._metrics_service = MetricsService(self)
+        return self._metrics_service
 
     @property
     def resource_monitor(self) -> "ResourceMonitor":

@@ -69,6 +69,12 @@ from .install import (
     UpdateServerRequest,
     UpdateServerResponse,
 )
+from .metrics import (
+    GetApplicationMetricsRequest,
+    GetApplicationMetricsResponse,
+    MetricsSample,
+    ServerMetrics,
+)
 from .misc import (
     PruneDownloadCacheRequest,
     PruneDownloadCacheResponse,
@@ -366,4 +372,12 @@ __all__ += [
     "GetPluginSettingResponse",
     "SetPluginSettingRequest",
     "SetPluginSettingResponse",
+]
+
+
+__all__ += [
+    "GetApplicationMetricsRequest",
+    "GetApplicationMetricsResponse",
+    "MetricsSample",
+    "ServerMetrics",
 ]

@@ -36,6 +36,10 @@ from ...api import application as app_api
 from ...api import misc as misc_api
 from ...api import player as player_api
 from ...api import system as system_api
+from ...api.models.metrics import (
+    GetApplicationMetricsRequest,
+    GetApplicationMetricsResponse,
+)
 from ...context import AppContext
 from ...error import AppFileNotFoundError, BSMError, UserInputError
 from ...logging import log_operation_error
@@ -613,3 +617,18 @@ async def post_add_players(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail="A critical unexpected server error occurred while adding players.",
         )
+
+
+@router.get(
+    "/api/metrics",
+    operation_id="get_application_metrics",
+    response_model=GetApplicationMetricsResponse,
+)
+async def get_application_metrics(
+    current_user: UserResponse = Depends(get_current_user),
+    app_context: AppContext = Depends(get_app_context),
+) -> GetApplicationMetricsResponse:
+    """Authenticated application and host performance observations."""
+    return await system_api.get_application_metrics(
+        GetApplicationMetricsRequest(), app_context=app_context
+    )
