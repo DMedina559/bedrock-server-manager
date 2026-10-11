@@ -12,6 +12,7 @@ from .common import (
 
 
 class PluginInfo(APIResponse):
+    has_settings: bool = False
     enabled: bool
     description: str = ""
     version: str = "N/A"

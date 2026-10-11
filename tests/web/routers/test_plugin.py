@@ -114,7 +114,8 @@ class TypedPlugin(PluginBase):
     settings_model = Settings
 """
     )
-    assert (await admin_auth_client.get("/api/plugins")).status_code == 200
+    listed = (await admin_auth_client.get("/api/plugins")).json()
+    assert listed["plugins"]["typed_settings"]["has_settings"] is True
     path = "/api/plugins/typed_settings/settings"
     assert (await unauth_client.get(path)).status_code == 401
     response = await admin_auth_client.get(path)
@@ -154,3 +155,66 @@ class TypedPlugin(PluginBase):
             )
         ).scalar_one()
         assert stored.settings == values
+
+
+async def test_settings_availability_for_untyped_plugins(
+    admin_auth_client, plugin_factory, app_context
+):
+    await plugin_factory(
+        "no_settings",
+        "from bedrock_server_manager import PluginBase\nclass Empty(PluginBase):\n    version = '1.0'\n",
+    )
+    response = await admin_auth_client.get("/api/plugins")
+    assert response.json()["plugins"]["no_settings"]["has_settings"] is False
+    await app_context.plugin_service.set_setting("no_settings", "enabled_feature", True)
+    response = await admin_auth_client.get("/api/plugins")
+    assert response.json()["plugins"]["no_settings"]["has_settings"] is True
+
+
+@pytest.mark.parametrize(
+    "filename,values",
+    [
+        (
+            "server_lifecycle_notifications",
+            {
+                "stop_warning_delay": 0,
+                "post_stop_settle_delay": 0,
+                "post_start_settle_delay": 0,
+                "enable_notifications": False,
+            },
+        ),
+        (
+            "world_operation_notifications",
+            {"notify_export": False, "notify_import": False, "notify_reset": False},
+        ),
+    ],
+)
+async def test_bundled_notification_settings(
+    admin_auth_client, plugin_factory, filename, values
+):
+    from pathlib import Path
+    import bedrock_server_manager.plugins.default as bundled
+
+    plugin = await plugin_factory(
+        filename, (Path(bundled.__file__).parent / (filename + ".py")).read_text()
+    )
+    path = f"/api/plugins/{filename}/settings"
+    response = await admin_auth_client.get(path)
+    assert response.status_code == 200
+    assert response.json()["settings_schema"]["additionalProperties"] is False
+    assert (
+        await admin_auth_client.put(path, json={"settings": values})
+    ).status_code == 200
+    for key, value in values.items():
+        assert await plugin.get_plugin_setting(key) == value
+    if filename == "server_lifecycle_notifications":
+        assert (
+            await admin_auth_client.put(
+                path, json={"settings": {"stop_warning_delay": -1}}
+            )
+        ).status_code == 400
+        await plugin._send_ingame_message("missing", "test", "test")
+    else:
+        await plugin.send_export_warning(server_name="missing")
+        await plugin.send_import_warning(server_name="missing")
+        await plugin.send_reset_warning(server_name="missing")

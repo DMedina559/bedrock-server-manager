@@ -5,8 +5,23 @@ Plugin to send in-game notifications before world operations like export, import
 
 from typing import Any
 
+from pydantic import BaseModel, ConfigDict, Field
+
 from bedrock_server_manager import PluginBase, app_event
 from bedrock_server_manager.logging import log_operation_error
+
+
+class PluginSettings(BaseModel):
+    model_config = ConfigDict(extra="forbid", strict=True)
+    notify_export: bool = Field(
+        default=True, description="Warn players before exporting a world."
+    )
+    notify_import: bool = Field(
+        default=True, description="Warn players before importing a world."
+    )
+    notify_reset: bool = Field(
+        default=True, description="Warn players before resetting a world."
+    )
 
 
 class WorldOperationNotificationsPlugin(PluginBase):
@@ -14,6 +29,8 @@ class WorldOperationNotificationsPlugin(PluginBase):
     Notifies in-game players before significant world operations (export, import, reset)
     are performed on a running server, providing a heads-up for potential disruptions.
     """
+
+    settings_model = PluginSettings
 
     version = "1.2.0"
     description = "Notifies in-game players before significant world operations (export, import, reset) are performe..."
@@ -86,6 +103,9 @@ class WorldOperationNotificationsPlugin(PluginBase):
     async def send_export_warning(self, **kwargs: Any):
         """Notifies players before a world export begins."""
 
+        if not await self.get_plugin_setting("notify_export", default=True):
+            return
+
         server_name = str(kwargs.get("server_name"))
         export_dir = kwargs.get("export_dir")
         self.logger.debug(
@@ -108,6 +128,9 @@ class WorldOperationNotificationsPlugin(PluginBase):
     async def send_import_warning(self, **kwargs: Any):
         """Notifies players before a world import begins."""
 
+        if not await self.get_plugin_setting("notify_import", default=True):
+            return
+
         server_name = str(kwargs.get("server_name"))
         file_path = kwargs.get("file_path")
         self.logger.debug(
@@ -129,6 +152,9 @@ class WorldOperationNotificationsPlugin(PluginBase):
     @app_event("before_world_reset")
     async def send_reset_warning(self, **kwargs: Any):
         """Sends a critical warning before a world reset operation."""
+
+        if not await self.get_plugin_setting("notify_reset", default=True):
+            return
 
         server_name = str(kwargs.get("server_name"))
         self.logger.debug("Handling before_world_reset for '%s'.", server_name)

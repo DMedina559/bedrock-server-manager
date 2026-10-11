@@ -64,7 +64,19 @@ async def get_plugin_statuses(
         pm = app_context.plugin_manager
         await pm._synchronize_config_with_disk()
         statuses = {
-            name: {**config, "status": pm.get_plugin_status(name)}
+            name: {
+                **config,
+                "status": pm.get_plugin_status(name),
+                "has_settings": bool(
+                    app_context.plugin_service.get_settings(name)
+                    or (
+                        name in app_context.plugin_service.settings_models
+                        and app_context.plugin_service.settings_models[
+                            name
+                        ].model_fields
+                    )
+                ),
+            }
             for name, config in pm.plugin_config.items()
         }
         logger.debug("Retrieved data for %s plugins.", len(statuses))
