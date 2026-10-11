@@ -199,7 +199,7 @@ async def test_shutdown_drains_tasks_before_final_server_stop(app_context, monke
     monkeypatch.setattr("bedrock_server_manager.api.server.stop_server", stop)
     monkeypatch.setattr("bedrock_server_manager.api.server.start_server", start)
     server = SimpleNamespace(server_name="test", is_running=probe, stop=stop)
-    monkeypatch.setattr(app_context, "get_server", lambda _: server)
+    monkeypatch.setattr(app_context, "get_server", lambda _, **kwargs: server)
     api = MagicMock()
     api.server.stop = AsyncMock(side_effect=stop)
     manager = BedrockProcessManager(app_context.settings, app_context.storage, api=api)

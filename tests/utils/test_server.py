@@ -94,7 +94,7 @@ async def test_get_servers_data_exception_on_server(
 
     from bedrock_server_manager.error import ConfigurationError
 
-    monkeypatch.setattr(app_context, "get_server", mock_get_server)
+    monkeypatch.setattr(app_context, "prepare_server", mock_get_server)
 
     servers_data, error_messages = await get_servers_data(app_context)
 

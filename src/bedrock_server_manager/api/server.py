@@ -50,6 +50,8 @@ from .models import (
     StopServerResponse,
 )
 from .models.server import (
+    GetValidServerNamesRequest,
+    GetValidServerNamesResponse,
     DeleteServerDataRequest,
     DeleteServerDataResponse,
     GetAllServerSettingsRequest,
@@ -323,7 +325,7 @@ async def stop_server(
 ) -> StopServerResponse:
     """Stop a server, or report that it is already stopped; failures raise."""
     server_name = request.server_name
-    server = app_context.get_server(server_name)
+    server = app_context.get_server(server_name, require_installation=False)
     async with server.operation_lock:
         stopped = False
         try:
@@ -475,7 +477,7 @@ async def delete_server_data(
     stop_if_running = request.stop_if_running
     if not server_name:
         raise InvalidServerNameError("Server name cannot be empty.")
-    server = app_context.get_server(server_name)
+    server = app_context.get_server(server_name, require_installation=False)
     try:
         await server.operation_lock.acquire(timeout=300)
     except TimeoutError:
@@ -591,4 +593,14 @@ async def update_server_player_stats(
             "player_count": player_count,
             "players": players,
         }
+    )
+
+
+@api_method("get_valid_server_names")
+async def get_valid_server_names(
+    request: GetValidServerNamesRequest, *, app_context: AppContext
+) -> GetValidServerNamesResponse:
+    """Return current registered server names without sampling processes."""
+    return GetValidServerNamesResponse(
+        server_names=app_context.get_valid_server_names()
     )

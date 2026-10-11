@@ -218,3 +218,45 @@ async def test_bundled_notification_settings(
         await plugin.send_export_warning(server_name="missing")
         await plugin.send_import_warning(server_name="missing")
         await plugin.send_reset_warning(server_name="missing")
+
+
+async def test_backup_settings_use_live_valid_server_choices(
+    admin_auth_client, plugin_factory, real_bedrock_server, app_context
+):
+    from pathlib import Path
+    import bedrock_server_manager.plugins.default as bundled
+
+    plugin = await plugin_factory(
+        "backup_settings",
+        (Path(bundled.__file__).parent / "backup_on_start.py").read_text(),
+    )
+    name = real_bedrock_server.server_name
+    path = "/api/plugins/backup_settings/settings"
+    data = (await admin_auth_client.get(path)).json()
+    assert data["settings"]["servers"] == []
+    assert name in data["settings_schema"]["properties"]["servers"]["items"]["enum"]
+    assert (
+        await admin_auth_client.put(path, json={"settings": {"servers": [name]}})
+    ).status_code == 200
+    assert (
+        await admin_auth_client.put(path, json={"settings": {"servers": ["missing"]}})
+    ).status_code == 400
+    result = await plugin.api.server.get_valid_server_names(request={})
+    assert name in result.server_names
+    Path(real_bedrock_server.paths.server_properties_path).unlink()
+    assert (
+        name
+        not in (await plugin.api.server.get_valid_server_names(request={})).server_names
+    )
+    assert (
+        await admin_auth_client.put(path, json={"settings": {"servers": [name]}})
+    ).status_code == 400
+    assert (
+        name
+        not in (await admin_auth_client.get(path)).json()["settings_schema"][
+            "properties"
+        ]["servers"]["items"]["enum"]
+    )
+    assert (
+        await admin_auth_client.put(path, json={"settings": {"servers": []}})
+    ).status_code == 200

@@ -12,6 +12,7 @@ from pydantic_core import PydanticUndefined, to_jsonable_python
 
 from pydantic import JsonValue
 
+from ..server_validation import valid_server_names
 from ..state.changeset import ChangeSet
 from ..state.models import PluginInfoState
 from ..state.updates import UNSET, PluginUpdate, Unset
@@ -58,6 +59,25 @@ class PluginService:
             values = _json_settings(values)
         return values
 
+    def get_settings_schema(self, name: str) -> dict | None:
+        model = self.settings_models.get(name)
+        if model is None:
+            return None
+        schema = model.model_json_schema()
+
+        def choices(node):
+            if isinstance(node, dict):
+                if node.get("x-bsm-server-name"):
+                    node["enum"] = valid_server_names(self.state)
+                for child in node.values():
+                    choices(child)
+            elif isinstance(node, list):
+                for child in node:
+                    choices(child)
+
+        choices(schema)
+        return schema
+
     def validate_settings(self, name: str, values: dict) -> dict:
         from ..error import UserInputError
 
@@ -68,7 +88,11 @@ class PluginService:
             return cast(
                 dict,
                 _json_settings(
-                    model.model_validate_json(json.dumps(values), strict=True)
+                    model.model_validate_json(
+                        json.dumps(values),
+                        strict=True,
+                        context={"server_names": valid_server_names(self.state)},
+                    )
                 ),
             )
         except ValidationError as error:

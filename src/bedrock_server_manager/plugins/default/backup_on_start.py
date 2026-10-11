@@ -7,12 +7,16 @@ from typing import Any
 
 from pydantic import BaseModel, ConfigDict, Field
 
-from bedrock_server_manager import PluginBase, app_event
+from bedrock_server_manager import ExistingServerName, PluginBase, app_event
 from bedrock_server_manager.logging import log_operation_error
 
 
 class PluginSettings(BaseModel):
     model_config = ConfigDict(extra="forbid", strict=True)
+    servers: list[ExistingServerName] = Field(
+        default_factory=list,
+        description="Servers to back up before starting. Leave empty to include all servers.",
+    )
     enable_backup_on_start: bool = Field(
         default=True, description="Back up this server before starting it."
     )
@@ -50,6 +54,9 @@ class AutoBackupOnStart(PluginBase):
 
         server_name = kwargs.get("server_name")
         if not server_name:
+            return
+        selected = await self.get_plugin_setting("servers", default=[])
+        if selected and server_name not in selected:
             return
 
         self.logger.info("Performing pre-start backup for server '%s'...", server_name)

@@ -40,6 +40,7 @@ from ...api import backup_restore as backup_restore_api
 from ...context import AppContext
 from ...error import AppFileNotFoundError, BSMError, UserInputError
 from ...logging import log_operation_error
+from ..deps.server import validate_server_registered
 from ..deps import get_app_context, get_moderator_user, validate_server_exists
 from ..schemas import (
     BackupActionPayload,
@@ -61,7 +62,7 @@ router = APIRouter(tags=["Backup & Restore"])
     status_code=status.HTTP_202_ACCEPTED,
 )
 async def put_prune_backups(
-    server_name: str = Depends(validate_server_exists),
+    server_name: str = Depends(validate_server_registered),
     current_user: UserResponse = Depends(get_moderator_user),
     app_context: AppContext = Depends(get_app_context),
 ) -> TaskAcceptedResponse:
@@ -95,7 +96,7 @@ async def put_prune_backups(
 )
 async def get_list_server_backups(
     backup_type: str,
-    server_name: str = Depends(validate_server_exists),
+    server_name: str = Depends(validate_server_registered),
     current_user: UserResponse = Depends(get_moderator_user),
     app_context: AppContext = Depends(get_app_context),
 ) -> BackupFilesResponse:
@@ -257,7 +258,7 @@ async def post_backup_action(
 )
 async def post_restore_action(  # noqa: C901
     payload: RestoreActionPayload,
-    server_name: str = Depends(validate_server_exists),
+    server_name: str = Depends(validate_server_registered),
     current_user: UserResponse = Depends(get_moderator_user),
     app_context: AppContext = Depends(get_app_context),
 ) -> TaskAcceptedResponse:

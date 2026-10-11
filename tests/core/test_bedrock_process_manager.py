@@ -126,7 +126,7 @@ async def test_probe_failure_does_not_stop_other_servers(
 ):
     await app_context.settings.set("monitoring.process_interval_sec", 1)
     manager = app_context.bedrock_process_manager
-    other = app_context.get_server("other")
+    other = app_context.prepare_server("other")
     other.process.intentionally_stopped = True
     await manager.add_server(other)
 

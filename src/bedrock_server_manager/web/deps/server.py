@@ -57,3 +57,21 @@ async def validate_server_exists(
             "Dependency: Invalid server name format for '%s': %s", server_name, e
         )
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(e))
+
+
+async def validate_server_registered(
+    server_name: str = Path(..., title="The name of the server", min_length=1),
+    app_context: AppContext = Depends(get_app_context),
+) -> str:
+    """Allow recovery/cleanup of registered servers with missing installation files."""
+    from ...utils.server import core_validate_server_name_format
+
+    try:
+        core_validate_server_name_format(server_name)
+    except InvalidServerNameError as error:
+        raise HTTPException(status_code=400, detail=str(error)) from error
+    try:
+        app_context.get_server(server_name, require_installation=False)
+    except InvalidServerNameError as error:
+        raise HTTPException(status_code=404, detail=str(error)) from error
+    return server_name

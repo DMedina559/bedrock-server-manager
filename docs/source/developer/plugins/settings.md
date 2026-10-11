@@ -82,3 +82,39 @@ Schema changes take effect after plugin discovery/reload. Invalid existing value
 must be corrected before the next write. Plugins decide when to reread settings;
 configuration cached only in `on_load` requires a plugin reload. JSON Schema does
 not replace backend validators, including custom Pydantic validators.
+
+
+### Server references
+
+Use `ExistingServerName` for fields that refer to installed servers:
+
+```python
+from pydantic import BaseModel, ConfigDict, Field
+from bedrock_server_manager import ExistingServerName, PluginBase
+
+class Settings(BaseModel):
+    model_config = ConfigDict(extra="forbid", strict=True)
+    servers: list[ExistingServerName] = Field(default_factory=list)
+
+class MyPlugin(PluginBase):
+    settings_model = Settings
+```
+
+The settings service supplies live validation context when saving settings, and
+adds current server choices to the settings schema returned to the web UI.
+References must name a registered server with an executable and
+`server.properties`. A static enum is unnecessary. Standalone model validation
+checks the name format; pass `context={"server_names": names}` to validate
+existence outside the settings service.
+
+Plugins can request current valid names without sampling server processes:
+
+```python
+result = await self.api.server.get_valid_server_names(request={})
+names = result.server_names
+```
+
+Saved references can become unavailable after server deletion or file damage.
+Recheck existence before performing operations; ordinary app server lookup
+validates the installation again. Auto Backup On Start uses an empty server
+selection to mean all servers, and reads its selection for every start event.

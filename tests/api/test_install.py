@@ -44,7 +44,7 @@ async def test_missing_custom_archive_does_not_install(app_context, tmp_path):
             ),
             app_context=app_context,
         )
-    assert not await app_context.get_server("missing").is_installed()
+    assert not await app_context.prepare_server("missing").is_installed()
 
 
 @pytest.mark.parametrize("name", ["", "../outside", "invalid name"])

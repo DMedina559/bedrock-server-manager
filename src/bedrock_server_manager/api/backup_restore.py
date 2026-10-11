@@ -75,7 +75,7 @@ async def list_backup_files(
     if not server_name:
         raise InvalidServerNameError("Server name cannot be empty.")
     try:
-        server = app_context.get_server(server_name)
+        server = app_context.get_server(server_name, require_installation=False)
         backup_data = await server.backups.list_backups(backup_type)
         return ListBackupFilesResponse.model_validate(
             {"status": "success", "backups": backup_data}
@@ -307,7 +307,7 @@ async def restore_all(
     stop_start_server = request.stop_start_server
     if not server_name:
         raise MissingArgumentError("Server name cannot be empty.")
-    server = app_context.get_server(server_name)
+    server = app_context.get_server(server_name, require_installation=False)
     try:
         await server.operation_lock.acquire(timeout=300)
     except asyncio.TimeoutError:
@@ -389,7 +389,7 @@ async def restore_world(
         raise MissingArgumentError("Server name cannot be empty.")
     if not backup_file_path:
         raise MissingArgumentError("Backup file path cannot be empty.")
-    server = app_context.get_server(server_name)
+    server = app_context.get_server(server_name, require_installation=False)
     try:
         await server.operation_lock.acquire(timeout=300)
     except asyncio.TimeoutError:
@@ -466,7 +466,7 @@ async def restore_config_file(
         raise MissingArgumentError("Server name cannot be empty.")
     if not backup_file_path:
         raise MissingArgumentError("Backup file path cannot be empty.")
-    server = app_context.get_server(server_name)
+    server = app_context.get_server(server_name, require_installation=False)
     try:
         await server.operation_lock.acquire(timeout=300)
     except asyncio.TimeoutError:
@@ -543,7 +543,7 @@ async def prune_old_backups(
     server_name = request.server_name
     if not server_name:
         raise MissingArgumentError("Server name cannot be empty.")
-    server = app_context.get_server(server_name)
+    server = app_context.get_server(server_name, require_installation=False)
     try:
         await server.operation_lock.acquire(timeout=300)
     except asyncio.TimeoutError:

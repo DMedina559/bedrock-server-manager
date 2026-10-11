@@ -62,7 +62,7 @@ async def server_lifecycle_manager(
     from ..api.models import StartServerRequest, StopServerRequest
     from ..api.server import start_server, stop_server
 
-    server = app_context.get_server(server_name)
+    server = app_context.get_server(server_name, require_installation=False)
     was_running = False
     operation_succeeded = True
     operation_cancelled = False

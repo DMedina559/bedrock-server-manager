@@ -2,6 +2,7 @@ from . import api  # noqa: F401
 from . import error as errors
 from .config import get_installed_version
 from .plugins import PluginBase, app_event, task_loop
+from .plugins.settings import ExistingServerName
 from .web.deps.auth import (
     get_admin_user,
     get_current_user,
@@ -15,6 +16,7 @@ __all__ = [
     "errors",
     "__version__",
     "PluginBase",
+    "ExistingServerName",
     "app_event",
     "task_loop",
     "get_current_user_optional",

@@ -268,10 +268,9 @@ async def get_plugin_settings(
     if app_context.plugin_service.get_plugin_state(name) is None:
         raise UserInputError("Unknown plugin.")
     service = app_context.plugin_service
-    model = service.settings_models.get(name)
     return GetPluginSettingsResponse(
         settings=service.get_settings(name),
-        settings_schema=model.model_json_schema() if model is not None else None,
+        settings_schema=service.get_settings_schema(name),
     )
 
 

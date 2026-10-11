@@ -119,6 +119,8 @@ from .properties import (
     ValidatePropertyValueResponse,
 )
 from .server import (
+    GetValidServerNamesRequest,
+    GetValidServerNamesResponse,
     DeleteServerDataRequest,
     DeleteServerDataResponse,
     GetAllServerSettingsRequest,
@@ -204,6 +206,8 @@ from .world import (
 )
 
 __all__ = [
+    "GetValidServerNamesRequest",
+    "GetValidServerNamesResponse",
     "APIErrorResponse",
     "APIRequest",
     "APIResponse",
