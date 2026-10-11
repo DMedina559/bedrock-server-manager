@@ -36,6 +36,10 @@ from ...api import application as app_api
 from ...api import misc as misc_api
 from ...api import player as player_api
 from ...api import system as system_api
+from ...api.models.health import (
+    GetApplicationHealthRequest,
+    GetApplicationHealthResponse,
+)
 from ...api.models.metrics import (
     GetApplicationMetricsRequest,
     GetApplicationMetricsResponse,
@@ -631,4 +635,20 @@ async def get_application_metrics(
     """Authenticated application and host performance observations."""
     return await system_api.get_application_metrics(
         GetApplicationMetricsRequest(), app_context=app_context
+    )
+
+
+@router.get(
+    "/api/health",
+    operation_id="get_application_health",
+    response_model=GetApplicationHealthResponse,
+    tags=["Application"],
+)
+async def get_application_health(
+    current_user: UserResponse = Depends(get_current_user),
+    app_context: AppContext = Depends(get_app_context),
+) -> GetApplicationHealthResponse:
+    """Dependency readiness. A degraded response remains HTTP 200 for UI clients."""
+    return await system_api.get_application_health(
+        GetApplicationHealthRequest(), app_context=app_context
     )

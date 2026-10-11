@@ -197,6 +197,15 @@ class MetricsService:
             deadline = asyncio.get_running_loop().time() + self.interval_seconds
             await asyncio.sleep(self.interval_seconds)
 
+    def check_health(self) -> bool:
+        """Require a live sampler and a recent successful observation."""
+        return bool(
+            self._task is not None
+            and not self._task.done()
+            and self._history
+            and time.time() - self._history[-1].timestamp <= self.interval_seconds * 3
+        )
+
     def start(self) -> None:
         if self._task is None or self._task.done():
             self._task = asyncio.create_task(self._run(), name="application-metrics")

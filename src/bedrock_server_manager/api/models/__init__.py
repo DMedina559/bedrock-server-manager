@@ -63,6 +63,11 @@ from .ban import (
     RemoveServerBanResponse,
 )
 from .common import APIErrorResponse, APIRequest, APIResponse
+from .health import (
+    GetApplicationHealthRequest,
+    GetApplicationHealthResponse,
+    HealthCheck,
+)
 from .install import (
     InstallNewServerRequest,
     InstallNewServerResponse,
@@ -380,4 +385,11 @@ __all__ += [
     "GetApplicationMetricsResponse",
     "MetricsSample",
     "ServerMetrics",
+]
+
+
+__all__ += [
+    "GetApplicationHealthRequest",
+    "GetApplicationHealthResponse",
+    "HealthCheck",
 ]

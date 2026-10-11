@@ -15,7 +15,7 @@ from typing import AsyncGenerator
 
 from alembic import command
 from alembic.config import Config
-from sqlalchemy import event, inspect
+from sqlalchemy import event, inspect, text
 from sqlalchemy.ext.asyncio import (
     AsyncEngine,
     AsyncSession,
@@ -51,6 +51,15 @@ class Database:
         self.engine: AsyncEngine | None = None
         self.SessionLocal: async_sessionmaker[AsyncSession] | None = None
         self._tables_created = False
+
+    async def check_health(self) -> bool:
+        """Verify a database round trip without changing stored data."""
+        if self.engine is None:
+            return False
+        async with asyncio.timeout(2):
+            async with self.engine.connect() as connection:
+                await connection.execute(text("SELECT 1"))
+        return True
 
     def _get_db_url(self) -> str:
         """Converts the standard database URL into an async-compatible URL."""

@@ -350,6 +350,11 @@ class AppContext:
         return self._state
 
     @property
+    def state_loaded(self) -> bool:
+        """Whether the persistent state has been loaded into this context."""
+        return self._state is not None and self._storage is not None
+
+    @property
     def storage(self) -> "Storage":
         """
         Returns the Storage instance.
