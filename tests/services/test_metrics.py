@@ -54,7 +54,7 @@ async def test_metrics_publish_typed_frames_and_stop_with_context(
     assert service._task is None
 
 
-async def test_history_is_bounded_and_stopped_server_values_are_unavailable(
+async def test_history_is_bounded_and_stopped_servers_are_not_sampled(
     app_context, real_bedrock_server, monkeypatch
 ):
     service = MetricsService(app_context)
@@ -64,12 +64,10 @@ async def test_history_is_bounded_and_stopped_server_values_are_unavailable(
     response = await service.snapshot()
     assert len(response.history) == service.history_limit
     assert response.latest == response.history[-1]
-    server = next(
-        item
+    assert all(
+        item.server_name != real_bedrock_server.server_name
         for item in response.latest.servers
-        if item.server_name == real_bedrock_server.server_name
     )
-    assert server.pid is None and server.cpu_percent is None
     assert all(
         a.revision < b.revision for a, b in zip(response.history, response.history[1:])
     )
@@ -132,6 +130,9 @@ async def test_server_metrics_preserve_cpu_above_one_core_and_ignore_uptime(
         return {"pid": 123, "cpu_percent": 250.0, "memory_mb": 64.0, "uptime": "1h"}
 
     monkeypatch.setattr(real_bedrock_server, "get_process_info", process_info)
+    app_context.state.runtime.update_server_runtime(
+        real_bedrock_server.server_name, running=True
+    )
     service = MetricsService(app_context)
     monkeypatch.setattr(service, "_collect", lambda: {})
     snapshot = await service.snapshot()
@@ -158,3 +159,31 @@ async def test_metrics_count_managed_plugin_operations_until_completion(app_cont
         assert sample.background_task_count == 0
     finally:
         release.set()
+
+
+async def test_sampling_follows_running_state_without_probing_stopped_servers(
+    app_context, real_bedrock_server, monkeypatch
+):
+    from unittest.mock import AsyncMock
+
+    probe = AsyncMock(wraps=real_bedrock_server.get_process_info)
+    monkeypatch.setattr(real_bedrock_server, "get_process_info", probe)
+    service = app_context.metrics_service
+    await service.sample()
+    probe.assert_not_awaited()
+    await real_bedrock_server.start()
+    try:
+        sample = await service.sample()
+        probe.assert_awaited_once()
+        assert any(
+            item.server_name == real_bedrock_server.server_name
+            for item in sample.servers
+        )
+    finally:
+        await real_bedrock_server.stop()
+    probe.reset_mock()
+    sample = await service.sample()
+    probe.assert_not_awaited()
+    assert all(
+        item.server_name != real_bedrock_server.server_name for item in sample.servers
+    )

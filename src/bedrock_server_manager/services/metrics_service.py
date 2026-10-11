@@ -126,6 +126,10 @@ class MetricsService:
             values = await asyncio.to_thread(self._collect)
             servers = []
             for name in self.context.state.servers.servers:
+                # Lifecycle/startup monitoring owns process discovery. Sampling
+                # must not repeatedly probe PID files for known stopped servers.
+                if not self.context.state.runtime.get_server_runtime(name).running:
+                    continue
                 try:
                     info = await self.context.get_server(name).get_process_info()
                     servers.append(
