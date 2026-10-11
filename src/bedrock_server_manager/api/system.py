@@ -154,6 +154,11 @@ async def get_application_health(
     except Exception:
         database_healthy = False
     results = {
+        "lifecycle": (
+            app_context.lifecycle_phase == "ready",
+            "Application ready",
+            f"Application {app_context.lifecycle_phase}",
+        ),
         "database": (database_healthy, "Database reachable", "Database unavailable"),
         "state": (
             app_context.state_loaded,
@@ -171,6 +176,7 @@ async def get_application_health(
         for name, (healthy, ok, failed) in results.items()
     }
     return GetApplicationHealthResponse(
+        lifecycle=app_context.lifecycle_phase,
         health=(
             "healthy" if all(check.healthy for check in checks.values()) else "degraded"
         ),

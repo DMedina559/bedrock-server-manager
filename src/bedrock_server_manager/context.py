@@ -11,7 +11,7 @@ from typing import TYPE_CHECKING, Any, Dict, Optional
 
 from sqlalchemy import inspect, select
 
-from .logging import log_operation_error
+from .services.lifecycle import LifecyclePhase, run_stage
 
 if TYPE_CHECKING:
     from asyncio import AbstractEventLoop
@@ -74,6 +74,11 @@ class AppContext:
         self.loop: Optional["AbstractEventLoop"] = None
         self._web_server: Optional[Any] = None
         self._shutdown_task: asyncio.Task[None] | None = None
+        self.lifecycle_phase = LifecyclePhase.STOPPED
+        self._startup_task: asyncio.Task[None] | None = None
+        self._started_components: set[str] | None = None
+        self._startup_failed = False
+        self._lifecycle_tasks: set[asyncio.Task] = set()
 
         self._servers: Dict[str, "BedrockServer"] = {}
         self.splash_txt: Optional[str] = None
@@ -94,6 +99,32 @@ class AppContext:
         from .db.storage import Storage
         from .state.app_state import AppState
 
+        if self.lifecycle_phase in {
+            LifecyclePhase.STARTING,
+            LifecyclePhase.READY,
+            LifecyclePhase.STOPPING,
+        }:
+            raise RuntimeError("Cannot reload context while its runtime is active.")
+        if any(not task.done() for task in self._lifecycle_tasks):
+            raise RuntimeError("Cannot reload while lifecycle work is still running.")
+        if self._shutdown_task is not None:
+            for name in (
+                "_task_manager",
+                "_plugin_manager",
+                "_bedrock_process_manager",
+                "_metrics_service",
+                "_resource_monitor",
+                "_log_streamer",
+                "_connection_manager",
+                "_api",
+            ):
+                setattr(self, name, None)
+            self._servers.clear()
+            self._shutdown_task = None
+            self._startup_task = None
+            self._started_components = None
+            self._startup_failed = False
+            self.lifecycle_phase = LifecyclePhase.STOPPED
         self.db.initialize()
 
         self._storage = Storage(db=self.db, data_dir=self.data_dir)
@@ -153,14 +184,87 @@ class AppContext:
         if self._storage and self._state:
             await self._storage.flush(self._state)
 
+    async def startup(self) -> None:
+        """Start runtime dependencies once; roll back partial startup on failure."""
+        if self.lifecycle_phase == LifecyclePhase.READY:
+            return
+        if (
+            self._shutdown_task is not None
+            or self.lifecycle_phase == LifecyclePhase.FAILED
+        ):
+            raise RuntimeError("Reload the context before restarting its runtime.")
+        if self._startup_task is None:
+            self._startup_task = asyncio.create_task(
+                self._startup_components(), name="application-startup"
+            )
+        await self._startup_task
+
+    async def _startup_components(self) -> None:
+        self.loop = asyncio.get_running_loop()
+        self.lifecycle_phase = LifecyclePhase.STARTING
+        self._started_components = set()
+        timeout = self.settings.get("lifecycle.startup_timeout_seconds", 30.0)
+        grace = self.settings.get("lifecycle.cancellation_grace_seconds", 2.0)
+        steps = (
+            ("plugins", lambda: self.plugin_manager.load_plugins()),
+            ("servers", lambda: self.bedrock_process_manager.start()),
+            (
+                "server discovery",
+                lambda: self.api.application.update_server_statuses(request={}),
+            ),
+            ("resources", lambda: self.resource_monitor.start()),
+            ("metrics", lambda: self.metrics_service.start()),
+            ("metrics readiness", lambda: self.metrics_service.snapshot()),
+            (
+                "startup hooks",
+                lambda: self.plugin_manager.trigger_guarded_event("on_manager_startup"),
+            ),
+            ("plugin tasks", lambda: self.plugin_manager.start_plugin_tasks()),
+            ("logs", lambda: self.log_streamer.start()),
+        )
+        try:
+            for name, action in steps:
+                self._started_components.add(name)
+                await run_stage(
+                    f"start {name}",
+                    action,
+                    timeout,
+                    grace,
+                    owned_tasks=self._lifecycle_tasks,
+                )
+            self.lifecycle_phase = LifecyclePhase.READY
+            getLogger(__name__).info("Application runtime ready.")
+        except BaseException as error:
+            self._startup_failed = True
+            try:
+                await self.shutdown()
+            except BaseException as cleanup_error:
+                error.add_note(f"Startup rollback also failed: {cleanup_error}")
+                getLogger(__name__).error("Startup rollback failed.", exc_info=True)
+            self.lifecycle_phase = LifecyclePhase.FAILED
+            raise
+
     async def shutdown(self) -> None:
         """Finish cleanup before propagating cancellation to the caller."""
+        startup = self._startup_task
+        if (
+            startup is not None
+            and not startup.done()
+            and startup is not asyncio.current_task()
+        ):
+            startup.cancel()
+            await asyncio.wait(
+                {startup},
+                timeout=self.settings.get("lifecycle.shutdown_timeout_seconds", 15.0),
+            )
+            if startup.done() and not startup.cancelled():
+                startup.exception()
         task = self._shutdown_task
         if task is asyncio.current_task():
             raise RuntimeError(
                 "Application cleanup cannot recursively shut down itself."
             )
-        if task is None or task.done():
+        if task is None:
             task = asyncio.create_task(
                 self._shutdown_components(), name="application-shutdown"
             )
@@ -178,47 +282,71 @@ class AppContext:
     async def _shutdown_components(self) -> None:
         """Quiesce producers, drain operations, and persist state before disposal."""
         errors: list[Exception] = []
+        self.lifecycle_phase = LifecyclePhase.STOPPING
+        getLogger(__name__).info("Application runtime stopping.")
+        timeout = self.settings.get("lifecycle.shutdown_timeout_seconds", 15.0)
+        grace = self.settings.get("lifecycle.cancellation_grace_seconds", 2.0)
+        started = self._started_components
+
+        async def stop(name: str, action: Any, deadline: float = timeout) -> None:
+            try:
+                await run_stage(
+                    name, action, deadline, grace, owned_tasks=self._lifecycle_tasks
+                )
+            except (Exception, asyncio.CancelledError) as error:
+                failure = (
+                    error
+                    if isinstance(error, Exception)
+                    else RuntimeError(f"{name} cancelled")
+                )
+                errors.append(failure)
+
         if self._task_manager is not None:
             self._task_manager.begin_shutdown()
-        for producer in (self._bedrock_process_manager, self._plugin_manager):
-            if producer is not None:
-                try:
-                    await producer.quiesce()
-                except Exception as error:
-                    errors.append(error)
-        components = (
-            self._task_manager,
-            self._plugin_manager,
-            self._bedrock_process_manager,
-            self._metrics_service,
-            self._resource_monitor,
-            self._log_streamer,
-            self._connection_manager,
+        # Observers release process and websocket dependencies before teardown.
+        for name, component in (
+            ("metrics", self._metrics_service),
+            ("resources", self._resource_monitor),
+            ("logs", self._log_streamer),
+        ):
+            if component is not None and (started is None or name in started):
+                await stop(f"stop {name}", component.shutdown)
+        if self._bedrock_process_manager is not None and (
+            started is None or "servers" in started
+        ):
+            await stop("quiesce servers", self._bedrock_process_manager.quiesce)
+        if self._plugin_manager is not None and (
+            started is None or "plugins" in started
+        ):
+            await stop("quiesce plugins", self._plugin_manager.quiesce)
+        if self._task_manager is not None:
+            await stop(
+                "drain operations",
+                self._task_manager.shutdown,
+                self.settings.get("lifecycle.task_drain_timeout_seconds", 30.0),
+            )
+        # Server stop hooks still have their plugins and transports available.
+        if self._bedrock_process_manager is not None and (
+            started is None or "servers" in started
+        ):
+            await stop("stop servers", self._bedrock_process_manager.shutdown)
+        if self._plugin_manager is not None and (
+            started is None or "plugins" in started
+        ):
+            await stop("unload plugins", self._plugin_manager.shutdown)
+        if self._connection_manager is not None:
+            await stop("close websockets", self._connection_manager.shutdown)
+        await stop("flush state", self.flush)
+        if self._db is not None:
+            await stop("close database", self._db.shutdown)
+        self.lifecycle_phase = (
+            LifecyclePhase.FAILED
+            if errors or self._startup_failed
+            else LifecyclePhase.STOPPED
         )
-        for component in components:
-            if component is not None:
-                try:
-                    await component.shutdown()
-                except Exception as error:
-                    errors.append(error)
-                    log_operation_error(
-                        getLogger(__name__),
-                        "Component shutdown failed: %s",
-                        type(component).__name__,
-                        error=error,
-                    )
-        try:
-            await self.flush()
-        except Exception as error:
-            errors.append(error)
-        finally:
-            if self._db is not None:
-                try:
-                    await self._db.shutdown()
-                except Exception as error:
-                    errors.append(error)
         if errors:
             raise ExceptionGroup("Application shutdown failed", errors)
+        getLogger(__name__).info("Application runtime stopped.")
 
     @property
     def pre_app_config(self) -> Dict[str, Any]:

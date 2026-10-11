@@ -120,7 +120,9 @@ def run_web_server(  # noqa: C901
             workers=1,  # workers if not reload_enabled and workers > 1 else None,
             forwarded_allow_ips="*",
             proxy_headers=True,
-            timeout_graceful_shutdown=10,
+            timeout_graceful_shutdown=settings.get(
+                "lifecycle.request_drain_timeout_seconds", 10.0
+            ),
             lifespan="on",  # This application requires startup and shutdown hooks.
         )
         configure_web_logging()

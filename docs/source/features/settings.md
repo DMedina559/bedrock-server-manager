@@ -23,6 +23,34 @@ The **Settings** page controls how BSM behaves.
 
 **Note**: You can also add custom settings here that may be used by plugins. Custom keys will automatically be saved under the `custom` tree.
 
+## Runtime lifecycle
+
+The authenticated `/api/health` endpoint reports the runtime phase (`starting`,
+`ready`, `stopping`, `stopped`, or `failed`) alongside database, state, and metrics
+checks. The overview health badge displays these results.
+
+Lifecycle deadlines are configured through **BSM Settings**. Values are seconds;
+request draining applies when the web server next starts.
+
+| Setting | Default | Purpose |
+| --- | ---: | --- |
+| `lifecycle.startup_timeout_seconds` | 30 | Deadline for each startup stage |
+| `lifecycle.shutdown_timeout_seconds` | 15 | Deadline for each shutdown stage |
+| `lifecycle.task_drain_timeout_seconds` | 30 | Time for managed operations to finish before cancellation |
+| `lifecycle.plugin_timeout_seconds` | 10 | Deadline for plugin unload hooks and router cleanup |
+| `lifecycle.cancellation_grace_seconds` | 2 | Additional time for overdue work to handle cancellation |
+| `lifecycle.request_drain_timeout_seconds` | 10 | Uvicorn request draining before application cleanup |
+
+Observers stop before operations drain. Server stop hooks run before plugins
+unload; websockets close before state flush and database disposal. A failed stage
+is logged with its name and elapsed time, and remaining cleanup still runs.
+Startup failure rolls back components that were started and preserves the original
+error. Repeated shutdown calls reuse the same cleanup result.
+
+Plugins must cooperate with cancellation. Python cannot forcibly stop synchronous
+plugin code already running in a worker thread. If overdue lifecycle work remains,
+context reload is blocked until that work finishes.
+
 ## User Management
 
 BSM supports a multi-user environment, allowing you to grant access to other team members.

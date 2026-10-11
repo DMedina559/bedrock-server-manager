@@ -12,7 +12,7 @@ async def test_health_requires_login_and_checks_database_and_state(
     health = GetApplicationHealthResponse.model_validate(response.json())
     assert health.checks["database"].healthy
     assert health.checks["state"].healthy
-    assert set(health.checks) == {"database", "state", "metrics"}
+    assert set(health.checks) == {"lifecycle", "database", "state", "metrics"}
 
 
 async def test_stopped_sampler_is_degraded_then_recovers(auth_client, app_context):

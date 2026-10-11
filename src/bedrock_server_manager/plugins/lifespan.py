@@ -8,7 +8,16 @@ from fastapi import APIRouter, FastAPI
 
 
 class RouterLifespan:
-    def __init__(self, app: FastAPI, routers: list[APIRouter]):
+    def __init__(
+        self,
+        app: FastAPI,
+        routers: list[APIRouter],
+        *,
+        timeout: float = 10.0,
+        grace: float = 2.0,
+    ):
+        self.timeout = timeout
+        self.grace = grace
         self.app = app
         self.routers = routers
         self.ready: asyncio.Future[dict[str, Any]] = (
@@ -54,14 +63,17 @@ class RouterLifespan:
 
     async def close(self) -> None:
         self.stop.set()
-        cancelled = False
-        while not self.task.done():
-            try:
-                await asyncio.shield(self.task)
-            except asyncio.CancelledError:
-                cancelled = True
-            except Exception:
-                break
-        self.task.result()
-        if cancelled:
-            raise asyncio.CancelledError
+        try:
+            done, _ = await asyncio.wait({self.task}, timeout=self.timeout)
+        except asyncio.CancelledError:
+            self.task.cancel()
+            await asyncio.wait({self.task}, timeout=self.grace)
+            raise
+        if not done:
+            self.task.cancel()
+            await asyncio.wait({self.task}, timeout=self.grace)
+            raise TimeoutError(
+                f"Plugin router lifespan exceeded {self.timeout:g}s during shutdown"
+            )
+        if not self.task.cancelled():
+            self.task.result()

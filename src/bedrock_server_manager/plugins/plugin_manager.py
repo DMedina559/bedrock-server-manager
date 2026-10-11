@@ -339,7 +339,7 @@ class PluginManager:
                         else:
                             await run_in_thread(callback, *args, **dispatch_kwargs)
                     except Exception as e:
-                        if event_name == "on_load":
+                        if event_name in ("on_load", "on_unload"):
                             raise
                         log_operation_error(
                             logger,
@@ -365,7 +365,7 @@ class PluginManager:
                     else:
                         await run_in_thread(lifecycle_method, *args, **dispatch_kwargs)
                 except Exception as e:
-                    if event_name == "on_load":
+                    if event_name in ("on_load", "on_unload"):
                         raise
                     log_operation_error(
                         logger,
@@ -769,12 +769,16 @@ class PluginManager:
         async with self._lifecycle_lock:
             logger.debug("--- Unloading all plugins ---")
             tasks_to_await: List[asyncio.Task[Any]] = []
+            errors: list[Exception] = []
             for plugin_instance in reversed(list(self.plugins)):
                 plugin_key = (
                     getattr(getattr(plugin_instance, "api", None), "_plugin_name", None)
                     or plugin_instance.name
                 )
-                await self.unload_plugin_by_name(plugin_key)
+                try:
+                    await self.unload_plugin_by_name(plugin_key)
+                except Exception as error:
+                    errors.append(error)
 
             # Cancel any remaining background tasks across all plugin keys
             for plugin_key, tasks in list(self.plugin_tasks.items()):
@@ -811,6 +815,8 @@ class PluginManager:
             for name in list(sys.modules.keys()):
                 if name.startswith("bsm_plugins."):
                     del sys.modules[name]
+            if errors:
+                raise ExceptionGroup("Plugin cleanup failed", errors)
 
     async def reload(self) -> None:
         """Gracefully reloads all plugins and restarts background tasks."""
@@ -847,7 +853,19 @@ class PluginManager:
                     yield state
             else:
                 yield state
+        except BaseException as error:
+            context = getattr(app.state, "app_context", None)
+            if context is not None and context._shutdown_task is None:
+                context._startup_failed = True
+                try:
+                    await context.shutdown()
+                except BaseException as cleanup_error:
+                    error.add_note(
+                        f"Plugin startup rollback also failed: {cleanup_error}"
+                    )
+            raise
         finally:
+            original_error = sys.exc_info()[1]
             self._check_lifecycle_task()
             async with self._lifecycle_lock:
                 self._web_started = False
@@ -855,12 +873,21 @@ class PluginManager:
                 for name in reversed(list(self._router_lifespans)):
                     try:
                         await self._close_router_lifespan(name)
-                    except Exception as error:
-                        errors.append(error)
+                    except (Exception, asyncio.CancelledError) as error:
+                        errors.append(
+                            error
+                            if isinstance(error, Exception)
+                            else RuntimeError("Plugin router cleanup cancelled")
+                        )
                 if errors:
-                    raise ExceptionGroup(
+                    failure = ExceptionGroup(
                         "Plugin router lifespan cleanup failed", errors
                     )
+                    if original_error is not None:
+                        original_error.add_note(str(failure))
+                        logger.error("Plugin router cleanup also failed: %s", failure)
+                    else:
+                        raise failure
 
     def _check_lifecycle_task(self) -> None:
         if any(
@@ -874,7 +901,22 @@ class PluginManager:
     async def _start_router_lifespans(self, name: str) -> dict[str, Any]:
         if name in self._router_lifespans or self._web_app is None:
             return {}
-        owner = RouterLifespan(self._web_app, self._router_owners.get(name, []))
+        owner = RouterLifespan(
+            self._web_app,
+            self._router_owners.get(name, []),
+            timeout=(
+                self.app_context.settings.get("lifecycle.plugin_timeout_seconds", 10.0)
+                if self.app_context
+                else 10.0
+            ),
+            grace=(
+                self.app_context.settings.get(
+                    "lifecycle.cancellation_grace_seconds", 2.0
+                )
+                if self.app_context
+                else 2.0
+            ),
+        )
         self._router_lifespans[name] = owner
         try:
             return await owner.start()
@@ -1034,9 +1076,19 @@ class PluginManager:
             ):
                 await self.app_context._task_manager.drain_plugin(plugin_key)
 
+            unload_errors: list[Exception] = []
             try:
-                await self.dispatch_event(target_instance, "on_unload")
+                timeout = (
+                    self.app_context.settings.get(
+                        "lifecycle.plugin_timeout_seconds", 10.0
+                    )
+                    if self.app_context
+                    else 10.0
+                )
+                async with asyncio.timeout(timeout):
+                    await self.dispatch_event(target_instance, "on_unload")
             except Exception as e:
+                unload_errors.append(e)
                 log_operation_error(
                     logger,
                     "Error during on_unload for '%s': %s",
@@ -1051,7 +1103,8 @@ class PluginManager:
 
             try:
                 await self._close_router_lifespan(plugin_key)
-            except Exception:
+            except Exception as error:
+                unload_errors.append(error)
                 logger.exception("Router lifespan cleanup failed for %s", plugin_key)
             self._remove_web_routes(plugin_key)
             for router in self._router_owners.pop(plugin_key, []):
@@ -1078,6 +1131,10 @@ class PluginManager:
             if plugin_name in self.plugin_config:
                 self._set_runtime_status(plugin_name, "UNLOADED")
 
+            if unload_errors and self._shutdown_started:
+                raise ExceptionGroup(
+                    f"Plugin '{plugin_key}' cleanup failed", unload_errors
+                )
             logger.info("Plugin '%s' unloaded successfully.", plugin_name)
             return True
 

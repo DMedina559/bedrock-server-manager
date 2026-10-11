@@ -1,5 +1,4 @@
 # bedrock_server_manager/web/app.py
-import asyncio
 import logging
 import mimetypes
 import os
@@ -30,30 +29,12 @@ def create_web_app(app_context: AppContext) -> FastAPI:  # noqa: C901
 
     @asynccontextmanager
     async def lifespan(app: FastAPI):
-        # Startup logic goes here
-        app_context = app.state.app_context
+        context = app.state.app_context
+        await context.startup()
         try:
-            app_context.loop = asyncio.get_running_loop()
-            await plugin_manager.load_plugins()
-            await app_context.bedrock_process_manager.start()
-            app_context.resource_monitor.start()
-            app_context.metrics_service.start()
-            await app_context.api.application.update_server_statuses(request={})
-
-            await app_context.plugin_manager.trigger_guarded_event("on_manager_startup")
-            await app_context.plugin_manager.start_plugin_tasks()
-
-            # Initialize and start LogStreamer
-            log_streamer = app_context.log_streamer
-            log_streamer.start()
-
             yield
         finally:
-            # Shutdown logic goes here
-            logger.debug("Running web app shutdown hooks...")
-
-            await app_context.shutdown()
-            logger.debug("Web app shutdown hooks complete.")
+            await context.shutdown()
 
     version = get_installed_version()
 

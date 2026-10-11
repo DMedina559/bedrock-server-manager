@@ -4,6 +4,7 @@ from typing import Literal
 
 from pydantic import Field
 
+from ...services.lifecycle import LifecyclePhase
 from .common import APIRequest, SuccessResponse
 
 
@@ -17,6 +18,7 @@ class HealthCheck(SuccessResponse):
 
 
 class GetApplicationHealthResponse(SuccessResponse):
+    lifecycle: LifecyclePhase = Field(strict=False)
     health: Literal["healthy", "degraded"]
     checks: dict[str, HealthCheck]
     checked_at: float = Field(gt=0)

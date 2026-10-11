@@ -55,6 +55,15 @@ class WebSettings(SettingsRecord):
     jwt_secret_key: Optional[str] = None
 
 
+class LifecycleSettings(SettingsRecord):
+    startup_timeout_seconds: float = Field(default=30.0, gt=0, le=600)
+    shutdown_timeout_seconds: float = Field(default=15.0, gt=0, le=600)
+    task_drain_timeout_seconds: float = Field(default=30.0, gt=0, le=600)
+    plugin_timeout_seconds: float = Field(default=10.0, gt=0, le=600)
+    cancellation_grace_seconds: float = Field(default=2.0, gt=0, le=30)
+    request_drain_timeout_seconds: float = Field(default=10.0, gt=0, le=600)
+
+
 class SettingsState(BaseModel):
     model_config = ConfigDict(
         extra="forbid",
@@ -68,6 +77,7 @@ class SettingsState(BaseModel):
     retention: RetentionSettings = Field(default_factory=RetentionSettings)
     monitoring: MonitoringSettings = Field(default_factory=MonitoringSettings)
     web: WebSettings = Field(default_factory=WebSettings)
+    lifecycle: LifecycleSettings = Field(default_factory=LifecycleSettings)
     custom: Dict[str, JsonValue] = Field(default_factory=dict)
     plugin_settings: Dict[str, Dict[str, JsonValue]] = Field(default_factory=dict)
 
