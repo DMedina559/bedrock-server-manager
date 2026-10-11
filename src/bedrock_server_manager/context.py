@@ -5,6 +5,7 @@ Defines the central application context.
 
 from __future__ import annotations
 
+import asyncio
 from logging import Logger, getLogger
 from typing import TYPE_CHECKING, Any, Dict, Optional
 
@@ -72,6 +73,7 @@ class AppContext:
 
         self.loop: Optional["AbstractEventLoop"] = None
         self._web_server: Optional[Any] = None
+        self._shutdown_task: asyncio.Task[None] | None = None
 
         self._servers: Dict[str, "BedrockServer"] = {}
         self.splash_txt: Optional[str] = None
@@ -151,10 +153,30 @@ class AppContext:
         if self._storage and self._state:
             await self._storage.flush(self._state)
 
-    async def shutdown(self):
-        """
-        Shuts down application context components and flushes pending state to storage.
-        """
+    async def shutdown(self) -> None:
+        """Finish cleanup before propagating cancellation to the caller."""
+        task = self._shutdown_task
+        if task is asyncio.current_task():
+            raise RuntimeError(
+                "Application cleanup cannot recursively shut down itself."
+            )
+        if task is None or task.done():
+            task = asyncio.create_task(
+                self._shutdown_components(), name="application-shutdown"
+            )
+            self._shutdown_task = task
+        cancelled = False
+        while not task.done():
+            try:
+                await asyncio.shield(task)
+            except asyncio.CancelledError:
+                cancelled = True
+        task.result()
+        if cancelled:
+            raise asyncio.CancelledError
+
+    async def _shutdown_components(self) -> None:
+        """Quiesce producers, drain operations, and persist state before disposal."""
         errors: list[Exception] = []
         if self._task_manager is not None:
             self._task_manager.begin_shutdown()

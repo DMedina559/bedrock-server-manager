@@ -121,6 +121,7 @@ def run_web_server(  # noqa: C901
             forwarded_allow_ips="*",
             proxy_headers=True,
             timeout_graceful_shutdown=10,
+            lifespan="on",  # This application requires startup and shutdown hooks.
         )
         configure_web_logging()
         server = uvicorn.Server(config)

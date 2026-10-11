@@ -1,3 +1,5 @@
+import pytest
+
 from bedrock_server_manager.context import AppContext
 from bedrock_server_manager.core.bedrock_server import BedrockServer
 from bedrock_server_manager.state.app_state import AppState
@@ -73,3 +75,39 @@ async def test_shutdown_drains_monitors_and_persists_state(app_context):
     restored = AppState()
     await app_context.storage.load_state(restored)
     assert restored.settings.get("custom.shutdown") == "saved"
+
+
+async def test_cancelled_shutdown_waits_for_cleanup_and_flushes(
+    app_context, monkeypatch
+):
+    import asyncio
+
+    entered = asyncio.Event()
+    release = asyncio.Event()
+    original_flush = app_context.flush
+
+    async def flush():
+        entered.set()
+        await release.wait()
+        await original_flush()
+
+    await app_context.settings.set("custom.cancelled_shutdown", "saved")
+    monkeypatch.setattr(app_context, "flush", flush)
+    caller = asyncio.create_task(app_context.shutdown())
+    await entered.wait()
+    caller.cancel()
+    await asyncio.sleep(0)
+    assert not caller.done()
+    second = asyncio.create_task(app_context.shutdown())
+    await asyncio.sleep(0)
+    cleanup = app_context._shutdown_task
+    caller.cancel()
+    release.set()
+    with pytest.raises(asyncio.CancelledError):
+        await caller
+    await second
+    assert cleanup.done()
+    assert app_context.db.engine is None
+    restored = AppState()
+    await app_context.storage.load_state(restored)
+    assert restored.settings.get("custom.cancelled_shutdown") == "saved"
