@@ -164,6 +164,16 @@ class Settings:
                     "max_retries": 3,
                     "process_interval_sec": 10,
                     "player_interval_sec": 10,
+                    "app_metrics_interval_sec": 3,
+                    "bedrock_metrics_interval_sec": 3,
+                },
+                "lifecycle": {
+                    "startup_timeout_seconds": 30.0,
+                    "shutdown_timeout_seconds": 15.0,
+                    "task_drain_timeout_seconds": 30.0,
+                    "plugin_timeout_seconds": 10.0,
+                    "cancellation_grace_seconds": 2.0,
+                    "request_drain_timeout_seconds": 10.0,
                 },
                 "custom": {}
             }

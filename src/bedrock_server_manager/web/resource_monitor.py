@@ -23,6 +23,7 @@ class ResourceMonitor:
         self,
         connection_manager: ConnectionManager,
         server_provider: Callable[[str], "BedrockServer"] | None = None,
+        interval_provider: Callable[[], float] | None = None,
     ):
         """
         Initializes the ResourceMonitor with explicit dependencies.
@@ -33,6 +34,7 @@ class ResourceMonitor:
         """
         self.connection_manager = connection_manager
         self.server_provider = server_provider
+        self.interval_provider = interval_provider or (lambda: 3.0)
         self._task: asyncio.Task | None = None
         self._failures = RepeatedFailureReporter(logger)
 
@@ -78,7 +80,7 @@ class ResourceMonitor:
                     e,
                 )
 
-            await asyncio.sleep(3)  # Broadcast every 3 seconds
+            await asyncio.sleep(self.interval_provider())
 
     def start(self):
         """Starts the background monitoring task."""

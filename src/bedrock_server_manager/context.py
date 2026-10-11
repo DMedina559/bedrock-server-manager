@@ -593,6 +593,9 @@ class AppContext:
             self._resource_monitor = ResourceMonitor(
                 connection_manager=self.connection_manager,
                 server_provider=self.get_server,
+                interval_provider=lambda: float(
+                    self.settings.get("monitoring.bedrock_metrics_interval_sec", 3)
+                ),
             )
         return self._resource_monitor
 

@@ -46,6 +46,8 @@ class MonitoringSettings(SettingsRecord):
     max_retries: int = Field(default=3, ge=0)
     process_interval_sec: int = Field(default=10, gt=0)
     player_interval_sec: int = Field(default=10, gt=0)
+    app_metrics_interval_sec: int = Field(default=3, ge=1, le=3600)
+    bedrock_metrics_interval_sec: int = Field(default=3, ge=1, le=3600)
 
 
 class WebSettings(SettingsRecord):
@@ -240,6 +242,7 @@ class SettingsState(BaseModel):
             "retention": self.retention.model_dump(),
             "monitoring": self.monitoring.model_dump(),
             "web": self.web.model_dump(exclude_none=True),
+            "lifecycle": self.lifecycle.model_dump(),
             "custom": copy.deepcopy(self.custom),
             "plugin_settings": copy.deepcopy(self.plugin_settings),
         }
@@ -302,6 +305,8 @@ class SettingsState(BaseModel):
                 "max_retries",
                 "process_interval_sec",
                 "player_interval_sec",
+                "app_metrics_interval_sec",
+                "bedrock_metrics_interval_sec",
             ),
             "web": ("port", "token_expires_weeks"),
         }

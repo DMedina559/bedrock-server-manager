@@ -24,7 +24,6 @@ logger = logging.getLogger(__name__)
 
 
 class MetricsService:
-    interval_seconds = 3.0
     history_limit = 180
 
     def __init__(self, app_context: "AppContext") -> None:
@@ -39,6 +38,12 @@ class MetricsService:
         self._cpu: Any = None
         self._time: float | None = None
         self._failures = RepeatedFailureReporter(logger)
+
+    @property
+    def interval_seconds(self) -> float:
+        return float(
+            self.context.settings.get("monitoring.app_metrics_interval_sec", 3)
+        )
 
     def _collect(self) -> dict[str, Any]:
         """OS reads run outside the event loop; retain CPU and rate baselines."""

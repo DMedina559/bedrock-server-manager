@@ -128,3 +128,11 @@ BSM automatically scans for players when a server starts, but you can also trigg
 
 1.  Navigate to the **Players** page.
 1.  Click the **Scan Logs** button to refresh the list of players who have joined any server at least once (or are currently online).
+
+## Metrics sampling
+
+`monitoring.app_metrics_interval_sec` controls application and system sampling.
+`monitoring.bedrock_metrics_interval_sec` controls server monitor broadcasts.
+Both default to 3 seconds and accept whole seconds from 1 to 3600. Changes take
+effect on the next monitoring cycle; an existing sleep finishes at its previous
+interval. Process discovery and player checks retain their separate intervals.
