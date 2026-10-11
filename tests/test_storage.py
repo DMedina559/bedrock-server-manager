@@ -175,3 +175,111 @@ async def test_alembic_migrations_upgrade_and_downgrade(tmp_path):
     await run_migrations_upgrade(db)
 
     await db.shutdown()
+
+
+async def test_plugin_settings_are_separate_and_preserve_json_types(db, tmp_path):
+    from sqlalchemy import select
+
+    from bedrock_server_manager.db.models import PluginSetting, Setting
+
+    storage = Storage(db, data_dir=str(tmp_path))
+    state = AppState()
+    await storage.load_state(state)
+    values = {"enabled": True, "retries": 1, "nested": {"items": [None, 2, False]}}
+    state.settings.set("plugin_settings.example", values)
+    state.settings.set("plugin_settings.unregistered", {})
+    state.settings.set("retention.backups", 8)
+    await storage.flush(state)
+    async with db.session_manager() as session:
+        records = (await session.execute(select(PluginSetting))).scalars().all()
+        assert {row.plugin_name: row.settings for row in records} == {
+            "example": values,
+            "unregistered": {},
+        }
+        global_rows = (await session.execute(select(Setting))).scalars().all()
+        assert global_rows
+        assert not any(
+            str(row.key).startswith("plugin_settings") for row in global_rows
+        )
+    loaded = AppState()
+    await storage.load_state(loaded)
+    assert loaded.settings.plugin_settings == {"example": values, "unregistered": {}}
+    assert loaded.settings.retention.backups == 8
+    loaded.settings.set("plugin_settings.example.retries", True)
+    await storage.flush(loaded)
+    reloaded = AppState()
+    await storage.load_state(reloaded)
+    assert reloaded.settings.get("plugin_settings.example.retries") is True
+    reloaded.settings.set("plugin_settings", {})
+    await storage.flush(reloaded)
+    async with db.session_manager() as session:
+        assert not (await session.execute(select(PluginSetting))).scalars().all()
+
+
+def test_plugin_settings_migration_round_trip(tmp_path):
+    from importlib.resources import files
+
+    from alembic import command
+    from alembic.config import Config
+    from sqlalchemy import (
+        JSON,
+        Column,
+        Integer,
+        MetaData,
+        String,
+        Table,
+        create_engine,
+        select,
+    )
+
+    config = Config(str(files("bedrock_server_manager").joinpath("db/alembic.ini")))
+    config.set_main_option("skip_logging_config", "true")
+    engine = create_engine(f"sqlite:///{tmp_path / 'plugin-migration.db'}")
+    settings = Table(
+        "settings",
+        MetaData(),
+        Column("id", Integer),
+        Column("key", String),
+        Column("value", JSON),
+    )
+    values = {"enabled": False, "count": 1, "nested": {"items": [None, True, 3]}}
+    try:
+        with engine.begin() as connection:
+            config.attributes["connection"] = connection
+            command.upgrade(config, "7fedd71b1a1a")
+            connection.execute(
+                settings.insert(),
+                [
+                    {
+                        "key": "plugin_settings",
+                        "value": {"example": values, "empty": {}},
+                    },
+                    {"key": "plugin_settings.other.enabled", "value": True},
+                    {"key": "plugin_settings.other.nested.count", "value": 4},
+                    {"key": "custom", "value": {"untouched": [1, False]}},
+                ],
+            )
+            command.upgrade(config, "head")
+            plugins = Table("plugin_settings", MetaData(), autoload_with=connection)
+            expected = {
+                "example": values,
+                "empty": {},
+                "other": {"enabled": True, "nested": {"count": 4}},
+            }
+            assert {
+                row.plugin_name: row.settings
+                for row in connection.execute(select(plugins))
+            } == expected
+            rows = {row.key: row.value for row in connection.execute(select(settings))}
+            assert rows["custom"] == {"untouched": [1, False]}
+            assert not any(key.startswith("plugin_settings") for key in rows)
+            command.downgrade(config, "7fedd71b1a1a")
+            rows = {row.key: row.value for row in connection.execute(select(settings))}
+            assert rows["plugin_settings"] == expected
+            command.upgrade(config, "head")
+            assert {
+                row.plugin_name: row.settings
+                for row in connection.execute(select(plugins))
+            } == expected
+    finally:
+        engine.dispose()

@@ -50,6 +50,7 @@ from ..deps import (
     get_moderator_user,
     validate_server_exists,
 )
+from ..deps.server import validate_server_registered
 from ..schemas import ActionResponse, CommandPayload, ServerSchemaResponse, UserResponse
 from ..schemas.base import TaskAcceptedResponse
 
@@ -118,7 +119,7 @@ async def post_start_server(
     status_code=status.HTTP_200_OK,
 )
 async def post_stop_server(
-    server_name: str = Depends(validate_server_exists),
+    server_name: str = Depends(validate_server_registered),
     current_user: UserResponse = Depends(get_moderator_user),
     app_context: AppContext = Depends(get_app_context),
 ) -> StopServerResponse:

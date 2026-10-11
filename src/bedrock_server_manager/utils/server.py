@@ -48,8 +48,8 @@ def core_validate_server_name_format(server_name: str) -> None:
         :class:`~.error.InvalidServerNameError`: If the server name is empty or
             contains invalid characters.
     """
-    if not server_name:
-        raise InvalidServerNameError("Server name cannot be empty.")
+    if not isinstance(server_name, str) or not server_name:
+        raise InvalidServerNameError("Server name must be a non-empty string.")
     if not re.fullmatch(r"^[a-zA-Z0-9_-]+$", server_name):
         raise InvalidServerNameError(
             "Invalid server name format. Only use letters (a-z, A-Z), "
@@ -108,7 +108,7 @@ async def get_servers_data(
             continue
 
         try:
-            server = app_context.get_server(server_name_candidate)
+            server = app_context.prepare_server(server_name_candidate)
 
             if not await server.is_installed():
                 logger.debug(

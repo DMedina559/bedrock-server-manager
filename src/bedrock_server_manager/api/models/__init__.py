@@ -127,6 +127,8 @@ from .server import (
     GetServerSettingResponse,
     GetServerSummaryRequest,
     GetServerSummaryResponse,
+    GetValidServerNamesRequest,
+    GetValidServerNamesResponse,
     RestartServerRequest,
     RestartServerResponse,
     SendCommandRequest,
@@ -204,6 +206,8 @@ from .world import (
 )
 
 __all__ = [
+    "GetValidServerNamesRequest",
+    "GetValidServerNamesResponse",
     "APIErrorResponse",
     "APIRequest",
     "APIResponse",

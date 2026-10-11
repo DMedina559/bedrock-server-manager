@@ -59,6 +59,8 @@ from bedrock_server_manager.api.models import (
     GetServerSummaryResponse,
     GetSystemAndAppInfoRequest,
     GetSystemAndAppInfoResponse,
+    GetValidServerNamesRequest,
+    GetValidServerNamesResponse,
     GetWorldNameRequest,
     GetWorldNameResponse,
     ImportAddonRequest,
@@ -319,6 +321,10 @@ class ServerAPI(Protocol):
         self, request: GetServerSummaryRequest | Mapping[str, object]
     ) -> GetServerSummaryResponse: ...
 
+    async def get_valid_names(
+        self, request: GetValidServerNamesRequest | Mapping[str, object]
+    ) -> GetValidServerNamesResponse: ...
+
     async def restart(
         self, request: RestartServerRequest | Mapping[str, object]
     ) -> RestartServerResponse: ...
@@ -498,6 +504,7 @@ API_METHODS: dict[str, dict[str, str]] = {
         "get_all_settings": "get_all_server_settings",
         "get_setting": "get_server_setting",
         "get_summary": "get_server_summary",
+        "get_valid_names": "get_valid_server_names",
         "restart": "restart_server",
         "send_command": "send_command",
         "set_custom_value": "set_server_custom_value",

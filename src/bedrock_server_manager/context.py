@@ -625,7 +625,10 @@ class AppContext:
             from .services.settings_service import SettingsService
 
             self._settings_service = SettingsService(
-                state=self.state, storage=self.storage, settings=self.settings
+                state=self.state,
+                storage=self.storage,
+                settings=self.settings,
+                plugin_service=self.plugin_service,
             )
         return self._settings_service
 
@@ -680,11 +683,59 @@ class AppContext:
             )
         return self._bedrock_process_manager
 
-    def get_server(self, server_name: str) -> "BedrockServer":
+    def get_server(
+        self, server_name: str, *, require_installation: bool = True
+    ) -> "BedrockServer":
+        """Retrieve a registered server, rejecting invalid and unknown names."""
+        from .error import InvalidServerNameError
+        from .utils.server import core_validate_server_name_format
+
+        core_validate_server_name_format(server_name)
+        if self.state.servers.get(server_name) is None:
+            raise InvalidServerNameError(f"Unknown server '{server_name}'.")
+        if not require_installation:
+            return self.prepare_server(server_name)
+        # Recheck files even for cached handles, since an installation can disappear.
+        import os
+
+        from .error import AppFileNotFoundError
+
+        server = self._servers.get(server_name)
+        if server is None:
+            import platform
+
+            from .core.server.paths import ServerPaths
+
+            paths = ServerPaths(
+                server_name,
+                self.settings.get("paths.servers"),
+                self.settings.config_dir,
+                platform.system(),
+            )
+        else:
+            paths = server.paths
+        for path, label in (
+            (paths.bedrock_executable_path, "Server executable"),
+            (paths.server_properties_path, "Server properties file"),
+        ):
+            if not os.path.isfile(path):
+                raise AppFileNotFoundError(path, label)
+        return self.prepare_server(server_name)
+
+    def get_valid_server_names(self) -> list[str]:
+        """Registered installations with an executable and server.properties."""
+        from .server_validation import valid_server_names
+
+        return valid_server_names(self.state)
+
+    def prepare_server(self, server_name: str) -> "BedrockServer":
         """
-        Retrieve or create a BedrockServer instance.
+        Create a server handle for installation or disk discovery.
         """
         from .core.bedrock_server import BedrockServer
+        from .utils.server import core_validate_server_name_format
+
+        core_validate_server_name_format(server_name)
 
         if server_name not in self._servers:
             self._servers[server_name] = BedrockServer(

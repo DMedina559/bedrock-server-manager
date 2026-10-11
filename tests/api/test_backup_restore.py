@@ -41,7 +41,8 @@ async def test_config_backup_and_restore_round_trip(app_context, populated_serve
         )
     ).backups
     assert files
-    properties.write_text("server-name=changed\n")
+    properties.unlink()
+    assert name not in app_context.get_valid_server_names()
     backup = Path(files[0])
     assert (
         await restore_config_file(
@@ -50,6 +51,7 @@ async def test_config_backup_and_restore_round_trip(app_context, populated_serve
         )
     ).status == "success"
     assert properties.read_bytes() == original
+    assert name in app_context.get_valid_server_names()
 
 
 async def test_world_backup_and_restore_preserves_world_files(

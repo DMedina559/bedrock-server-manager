@@ -69,7 +69,7 @@ async def discover_and_store_players(  # noqa: C901
 
         logger.debug("Processing potential server '%s'.", server_name_candidate)
         try:
-            server_instance = app_context.get_server(server_name_candidate)
+            server_instance = app_context.prepare_server(server_name_candidate)
             is_installed = await server_instance.is_installed()
 
             if not is_installed:

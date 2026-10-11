@@ -46,7 +46,7 @@ async def install_new_server(
         from ..utils.server import core_validate_server_name_format
 
         core_validate_server_name_format(server_name)
-        server = app_context.get_server(server_name)
+        server = app_context.prepare_server(server_name)
     except BSMError as e:
         log_operation_error(
             logger, "Installation failed for '%s': %s", server_name, e, error=e
@@ -119,7 +119,7 @@ async def update_server(
     try:
         if not server_name:
             raise InvalidServerNameError("Server name cannot be empty.")
-        server = app_context.get_server(server_name)
+        server = app_context.get_server(server_name, require_installation=False)
     except BSMError as e:
         log_operation_error(
             logger, "Update failed for '%s': %s", server_name, e, error=e

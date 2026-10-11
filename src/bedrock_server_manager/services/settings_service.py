@@ -21,10 +21,12 @@ class SettingsService:
         state: "AppState",
         storage: "Storage",
         settings: Optional["Settings"] = None,
+        plugin_service=None,
     ):
         self.state = state
         self.storage = storage
         self.settings = settings
+        self.plugin_service = plugin_service
 
     def get(self, key: str, default: Any = None) -> Any:
         """Retrieves a setting value via AppState."""
@@ -33,6 +35,18 @@ class SettingsService:
     async def update_setting(self, key: str, value: Any) -> None:
         """Updates a setting value in AppState and registers dirty state for persistence."""
         async with self.state.settings.get_lock(key):
+            if (
+                key == "plugin_settings" or key.startswith("plugin_settings.")
+            ) and self.plugin_service is not None:
+                candidate = type(self.state.settings).model_validate(
+                    self.state.settings.model_dump()
+                )
+                candidate.set(key, value)
+                checked = {
+                    name: self.plugin_service.validate_settings(name, values)
+                    for name, values in candidate.plugin_settings.items()
+                }
+                key, value = "plugin_settings", checked
             if not self.state.settings.set(key, value):
                 return
 

@@ -557,6 +557,12 @@ class PluginManager:
                 version = getattr(p_class, "version", None)
                 if version and version != "N/A":
                     self._discovered_classes[p_name] = p_class
+                    if self.app_context:
+                        models = self.app_context.plugin_service.settings_models
+                        if p_class.settings_model is not None:
+                            models[p_name] = p_class.settings_model
+                        else:
+                            models.pop(p_name, None)
                     valid_plugin_names.add(p_name)
                     description = p_class.__doc__.strip() if p_class.__doc__ else ""
                     author = getattr(p_class, "author", "N/A")
@@ -594,6 +600,8 @@ class PluginManager:
         ]
         for plugin_name in plugins_to_remove:
             del self.plugin_config[plugin_name]
+            if self.app_context:
+                self.app_context.plugin_service.settings_models.pop(plugin_name, None)
 
         await self._save_config()
 
@@ -1170,6 +1178,12 @@ class PluginManager:
                     self._set_runtime_status(plugin_name, "ERROR")
                 return False
 
+            if self.app_context:
+                models = self.app_context.plugin_service.settings_models
+                if p_class.settings_model is not None:
+                    models[plugin_name] = p_class.settings_model
+                else:
+                    models.pop(plugin_name, None)
             instance = None
             try:
                 plugin_logger = logging.getLogger(f"plugin.{plugin_name}")

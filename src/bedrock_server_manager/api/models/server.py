@@ -140,3 +140,11 @@ class UpdateServerPlayerStatsResponse(SuccessResponse):
     server_name: ServerName
     player_count: int = Field(ge=0)
     players: list[PlayerInfo]
+
+
+class GetValidServerNamesRequest(APIRequest):
+    pass
+
+
+class GetValidServerNamesResponse(SuccessResponse):
+    server_names: list[ServerName]

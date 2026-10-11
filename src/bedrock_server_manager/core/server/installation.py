@@ -23,7 +23,7 @@ class ServerInstallation:
         )
 
     async def validate_installation(self) -> bool:
-        """Validates that the server installation directory and executable exist asynchronously."""
+        """Validates the installation directory, executable, and server.properties."""
         self.logger.debug(
             "Validating installation for server '%s' in directory: %s",
             self.server.server_name,
@@ -34,6 +34,10 @@ class ServerInstallation:
         if not await aiofiles.ospath.isfile(self.server.paths.bedrock_executable_path):
             raise AppFileNotFoundError(
                 self.server.paths.bedrock_executable_path, "Server executable"
+            )
+        if not await aiofiles.ospath.isfile(self.server.paths.server_properties_path):
+            raise AppFileNotFoundError(
+                self.server.paths.server_properties_path, "Server properties file"
             )
         self.logger.debug(
             "Server '%s' installation validation successful.", self.server.server_name
@@ -46,7 +50,7 @@ class ServerInstallation:
             return await self.validate_installation()
         except AppFileNotFoundError:
             self.logger.debug(
-                "is_installed check: Server '%s' not found or installation invalid (directory or executable missing).",
+                "is_installed check: Server '%s' not found or installation invalid (directory, executable, or properties missing).",
                 self.server.server_name,
             )
             return False

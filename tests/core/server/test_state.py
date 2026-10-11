@@ -123,7 +123,7 @@ async def test_status_read_does_not_reconcile_persisted_state(real_bedrock_serve
 
 
 def test_configuration_reads_do_not_register_servers(app_context):
-    server = app_context.get_server("not_installed")
+    server = app_context.prepare_server("not_installed")
     assert server.configuration.snapshot().installed_version == "UNKNOWN"
     assert app_context.state.servers.get(server.server_name) is None
 

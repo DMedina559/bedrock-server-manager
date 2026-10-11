@@ -92,3 +92,12 @@ async def test_delete_record_without_installation_or_backups(real_bedrock_server
             session, server.server_name
         )
     assert record is None
+
+
+async def test_missing_properties_invalidates_installation(real_bedrock_server):
+    from bedrock_server_manager.error import AppFileNotFoundError
+
+    os.remove(real_bedrock_server.paths.server_properties_path)
+    assert not await real_bedrock_server.is_installed()
+    with pytest.raises(AppFileNotFoundError):
+        await real_bedrock_server.validate_installation()

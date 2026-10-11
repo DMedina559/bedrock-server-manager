@@ -32,10 +32,11 @@ async def test_reload_preserves_persisted_settings_and_restarts_monitors(app_con
     assert app_context.settings.get("custom.integration") == {"saved": True}
 
 
-def test_get_server_creates_and_caches(app_context):
-    first = app_context.get_server("cached_server")
+def test_get_server_creates_and_caches(app_context, real_bedrock_server):
+    name = real_bedrock_server.server_name
+    first = app_context.get_server(name)
     assert isinstance(first, BedrockServer)
-    assert app_context.get_server("cached_server") is first
+    assert app_context.get_server(name) is first
 
 
 async def test_remove_running_server_stops_process_and_removes_cache(
@@ -111,3 +112,25 @@ async def test_cancelled_shutdown_waits_for_cleanup_and_flushes(
     restored = AppState()
     await app_context.storage.load_state(restored)
     assert restored.settings.get("custom.cancelled_shutdown") == "saved"
+
+
+@pytest.mark.parametrize("name", ["missing", "../escape", "", None])
+def test_server_lookup_rejects_unknown_or_invalid_names(app_context, name):
+    from bedrock_server_manager.error import InvalidServerNameError
+
+    with pytest.raises(InvalidServerNameError):
+        app_context.get_server(name)
+    assert name not in app_context._servers
+
+
+def test_server_lookup_rechecks_properties(app_context, real_bedrock_server):
+    from pathlib import Path
+
+    from bedrock_server_manager.error import AppFileNotFoundError
+
+    name = real_bedrock_server.server_name
+    assert app_context.get_server(name)
+    Path(real_bedrock_server.paths.server_properties_path).unlink()
+    with pytest.raises(AppFileNotFoundError):
+        app_context.get_server(name)
+    assert name not in app_context.get_valid_server_names()

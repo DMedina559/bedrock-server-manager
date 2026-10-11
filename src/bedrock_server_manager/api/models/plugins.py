@@ -12,6 +12,7 @@ from .common import (
 
 
 class PluginInfo(APIResponse):
+    has_settings: bool = False
     enabled: bool
     description: str = ""
     version: str = "N/A"
@@ -76,3 +77,21 @@ class SetPluginSettingRequest(APIRequest):
 
 class SetPluginSettingResponse(ActionResponse):
     pass
+
+
+class GetPluginSettingsRequest(APIRequest):
+    target_plugin_name: NonEmptyStr
+
+
+class GetPluginSettingsResponse(SuccessResponse):
+    settings: dict[str, JsonValue]
+    settings_schema: dict[str, JsonValue] | None = None
+
+
+class UpdatePluginSettingsRequest(APIRequest):
+    target_plugin_name: NonEmptyStr
+    settings: dict[str, JsonValue]
+
+
+class PluginSettingsPayload(APIRequest):
+    settings: dict[str, JsonValue]
