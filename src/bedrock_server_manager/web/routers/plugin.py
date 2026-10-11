@@ -45,7 +45,7 @@ from ..schemas import (
 
 logger = logging.getLogger(__name__)
 
-router = APIRouter(tags=["Plugin Management", "Application"])
+router = APIRouter(tags=["Plugin Management"])
 
 
 # --- API Route ---

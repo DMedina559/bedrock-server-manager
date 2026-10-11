@@ -50,9 +50,7 @@ from ..schemas.base import BackupFilesResponse, TaskAcceptedResponse
 
 logger = logging.getLogger(__name__)
 
-router = APIRouter(
-    tags=["Backup & Restore"],
-)
+router = APIRouter(tags=["Backup & Restore"])
 
 
 # --- API Routes ---
@@ -61,7 +59,6 @@ router = APIRouter(
     operation_id="prune_backups",
     response_model=TaskAcceptedResponse,
     status_code=status.HTTP_202_ACCEPTED,
-    tags=["Backup", "Cleanup"],
 )
 async def put_prune_backups(
     server_name: str = Depends(validate_server_exists),
@@ -95,7 +92,6 @@ async def put_prune_backups(
     "/api/server/{server_name}/backup/list/{backup_type}",
     operation_id="list_server_backups",
     response_model=BackupFilesResponse,
-    tags=["Backup"],
 )
 async def get_list_server_backups(
     backup_type: str,
@@ -189,7 +185,6 @@ async def get_list_server_backups(
     operation_id="create_backup",
     response_model=TaskAcceptedResponse,
     status_code=status.HTTP_202_ACCEPTED,
-    tags=["Backup"],
 )
 async def post_backup_action(
     server_name: str = Depends(validate_server_exists),
@@ -259,7 +254,6 @@ async def post_backup_action(
     operation_id="restore_backup",
     response_model=TaskAcceptedResponse,
     status_code=status.HTTP_202_ACCEPTED,
-    tags=["Restore"],
 )
 async def post_restore_action(  # noqa: C901
     payload: RestoreActionPayload,

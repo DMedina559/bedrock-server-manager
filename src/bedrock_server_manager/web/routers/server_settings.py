@@ -28,9 +28,7 @@ from ..schemas import ServerSettingItemPayload, ServerSettingsResponse, UserResp
 
 logger = logging.getLogger(__name__)
 
-router = APIRouter(
-    tags=["Server Settings"],
-)
+router = APIRouter(tags=["Server Settings"])
 
 
 # --- API Route: Get All Settings for a Server ---

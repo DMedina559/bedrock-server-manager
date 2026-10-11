@@ -16,6 +16,7 @@ from ..config import get_installed_version
 from ..context import AppContext
 from ..logging import log_operation_error
 from . import routers
+from .openapi_tags import OPENAPI_TAGS
 
 mimetypes.add_type("application/javascript", ".js")
 
@@ -44,6 +45,7 @@ def create_web_app(app_context: AppContext) -> FastAPI:  # noqa: C901
         version=version,
         redoc_url=None,
         openapi_url="/api/openapi.json",
+        openapi_tags=OPENAPI_TAGS,
         swagger_ui_parameters={
             "defaultModelsExpandDepth": -1,
             "filter": True,

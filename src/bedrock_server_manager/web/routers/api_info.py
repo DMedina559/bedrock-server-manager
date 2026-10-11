@@ -78,8 +78,8 @@ router = APIRouter()
 @router.get(
     "/api/server/{server_name}/status",
     operation_id="get_server_status",
+    tags=["Server Processes"],
     response_model=ServerRunningStatusResponse,
-    tags=["Server Management", "Process Info"],
 )
 async def get_server_running_status(
     server_name: str = Depends(validate_server_exists),
@@ -137,8 +137,8 @@ async def get_server_running_status(
 @router.get(
     "/api/server/{server_name}/validate",
     operation_id="validate_server",
-    response_model=BaseApiResponse,
     tags=["Server Management"],
+    response_model=BaseApiResponse,
 )
 async def get_validate_server(
     server_name: str,
@@ -187,8 +187,8 @@ async def get_validate_server(
 @router.get(
     "/api/server/{server_name}/process_info",
     operation_id="get_server_process_info",
+    tags=["Server Processes"],
     response_model=ServerProcessInfoResponse,
-    tags=["Server Management", "Process Info"],
 )
 async def get_server_process_info(
     server_name: str = Depends(validate_server_exists),
@@ -245,8 +245,8 @@ async def get_server_process_info(
 @router.put(
     "/api/players/scan",
     operation_id="scan_players",
+    tags=["Player Management"],
     response_model=AddPlayersResponse,
-    tags=["Global Players", "Player Management", "Application"],
 )
 async def put_scan_players(
     current_user: UserResponse = Depends(get_moderator_user),
@@ -288,8 +288,8 @@ async def put_scan_players(
 @router.get(
     "/api/players/get",
     operation_id="list_players",
+    tags=["Player Management"],
     response_model=PlayerListResponse,
-    tags=["Global Players", "Player Management", "Application"],
 )
 async def get_all_players(
     current_user: UserResponse = Depends(get_moderator_user),
@@ -342,8 +342,8 @@ async def get_all_players(
 @router.put(
     "/api/downloads/prune",
     operation_id="prune_downloads",
+    tags=["Downloads"],
     response_model=PruneDownloadsResponse,
-    tags=["Cleanup", "Downloads"],
 )
 async def put_prune_downloads(
     payload: PruneDownloadsPayload,
@@ -430,8 +430,8 @@ async def put_prune_downloads(
 @router.get(
     "/api/servers",
     operation_id="list_servers",
+    tags=["Server Management"],
     response_model=ServersListResponse,
-    tags=["Server Management", "Application"],
 )
 async def get_servers_list(
     current_user: UserResponse = Depends(get_current_user),
@@ -467,8 +467,8 @@ async def get_servers_list(
 @router.get(
     "/api/info",
     operation_id="get_system_info",
-    response_model=AppInfoResponse,
     tags=["Application"],
+    response_model=AppInfoResponse,
 )
 async def get_system_info(
     app_context: AppContext = Depends(get_app_context),
@@ -510,8 +510,8 @@ async def get_system_info(
 @router.get(
     "/api/info/themes",
     operation_id="list_themes",
+    tags=["Appearance"],
     response_model=ThemeListResponse,
-    tags=["Themes"],
 )
 async def get_themes(
     app_context: AppContext = Depends(get_app_context),
@@ -566,8 +566,8 @@ async def get_themes(
 @router.post(
     "/api/players/add",
     operation_id="add_players",
+    tags=["Player Management"],
     response_model=AddPlayersResponse,
-    tags=["Global Players", "Application", "Player Management"],
 )
 async def post_add_players(
     payload: AddPlayersPayload,
@@ -626,6 +626,7 @@ async def post_add_players(
 @router.get(
     "/api/metrics",
     operation_id="get_application_metrics",
+    tags=["Application"],
     response_model=GetApplicationMetricsResponse,
 )
 async def get_application_metrics(
@@ -641,8 +642,8 @@ async def get_application_metrics(
 @router.get(
     "/api/health",
     operation_id="get_application_health",
-    response_model=GetApplicationHealthResponse,
     tags=["Application"],
+    response_model=GetApplicationHealthResponse,
 )
 async def get_application_health(
     current_user: UserResponse = Depends(get_current_user),

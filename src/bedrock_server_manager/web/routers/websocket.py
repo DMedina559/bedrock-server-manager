@@ -19,10 +19,7 @@ from ..schemas.websocket import (
     json_payload,
 )
 
-router = APIRouter(
-    prefix="/ws",
-    tags=["WebSocket", "Application"],
-)
+router = APIRouter(prefix="/ws", tags=["WebSocket"])
 logger = logging.getLogger(__name__)
 
 

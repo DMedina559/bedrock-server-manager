@@ -44,9 +44,7 @@ from ..schemas.system import FileNamePayload
 from ..schemas.users import UserResponse
 
 logger = logging.getLogger(__name__)
-router = APIRouter(
-    tags=["Addon Management", "Content Management"],
-)
+router = APIRouter(tags=["Addon Management"])
 STATIC_DIR = bsm_frontend.get_static_dir()
 
 

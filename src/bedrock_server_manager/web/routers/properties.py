@@ -19,7 +19,7 @@ from ..schemas import (
 )
 
 logger = logging.getLogger(__name__)
-router = APIRouter(tags=["Properties Management", "Server Management"])
+router = APIRouter(tags=["Server Properties"])
 
 
 @router.post(

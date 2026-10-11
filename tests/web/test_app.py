@@ -1,7 +1,9 @@
 import asyncio
+import re
 
 import pytest
 from fastapi import Request
+from fastapi.routing import APIRoute
 from pydantic import BaseModel
 
 from bedrock_server_manager.web.app import create_web_app
@@ -105,3 +107,32 @@ async def test_partial_startup_failure_drains_started_components(
     assert task is not None and task.done()
     assert not app_context.task_manager.futures
     assert not app_context.connection_manager.active_connections
+
+
+def test_core_openapi_routes_have_explicit_unique_ids_and_one_documented_group(
+    app_context,
+):
+    app = create_web_app(app_context)
+    schema = app.openapi()
+    groups = {tag["name"] for tag in schema["tags"]}
+    ids = set()
+    for route in app.routes:
+        if not isinstance(route, APIRoute) or not route.include_in_schema:
+            continue
+        assert route.operation_id, route.path
+        assert re.fullmatch(r"[a-z][a-z0-9]*(?:_[a-z0-9]+)*", route.operation_id)
+        assert route.operation_id not in ids, route.operation_id
+        ids.add(route.operation_id)
+        assert len(route.tags) == 1, route.path
+        assert route.tags[0] in groups, route.path
+        for method in route.methods:
+            operation = schema["paths"][route.path][method.lower()]
+            assert operation["operationId"] == route.operation_id
+            assert operation["tags"] == route.tags
+    assert (
+        schema["paths"]["/api/metrics"]["get"]["operationId"]
+        == "get_application_metrics"
+    )
+    assert (
+        schema["paths"]["/api/health"]["get"]["operationId"] == "get_application_health"
+    )

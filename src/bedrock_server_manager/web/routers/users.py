@@ -22,10 +22,7 @@ from ..schemas import UserResponse as UserSchema
 
 logger = logging.getLogger(__name__)
 
-router = APIRouter(
-    prefix="/api/users",
-    tags=["User Management"],
-)
+router = APIRouter(prefix="/api/users", tags=["User Management"])
 
 
 @router.get("/list", operation_id="list_users", response_model=List[UserSchema])

@@ -21,9 +21,7 @@ from ..schemas import (
 )
 
 logger = logging.getLogger(__name__)
-router = APIRouter(
-    tags=["Allowlist Management", "Player Management", "Server Management"],
-)
+router = APIRouter(tags=["Server Access"])
 
 
 @router.post(
