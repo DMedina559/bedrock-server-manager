@@ -14,7 +14,9 @@ of the server manager.
 from abc import ABC
 from logging import Logger
 from pathlib import Path
-from typing import Any, List, cast
+from typing import Any, ClassVar, List, cast
+
+from pydantic import BaseModel
 
 from ..api.models.plugins import SetPluginSettingResponse
 from .api_bridge import AppAPI
@@ -55,6 +57,8 @@ class PluginBase(ABC):
     # If not defined by a subclass, it will default to "N/A" during instantiation,
     # but the PluginManager's synchronization step enforces its presence for a plugin
     # to be considered valid and loadable.
+    settings_model: ClassVar[type[BaseModel] | None] = None
+
     name: str = "N/A"  # Optional class attribute for a friendly display name.
     version: str = "N/A"  # Default placeholder, should be overridden.
     author: str = "N/A"  # Optional class attribute for plugin author information.

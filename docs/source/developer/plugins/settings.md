@@ -49,3 +49,36 @@ You can also store custom settings that apply only to a specific Minecraft serve
 API reads return a response model; read its `.value` attribute. Settings contain
 JSON values. Changing a returned dictionary does not save it; call the setter
 explicitly after editing your copy.
+
+## Typed settings and the web editor
+
+Plugins can opt into validation and a generated settings form by declaring a
+Pydantic model on `settings_model`. Give configurable fields defaults so a newly
+installed plugin can operate before a user edits its settings.
+
+```python
+from pydantic import BaseModel, ConfigDict, Field
+from bedrock_server_manager import PluginBase
+
+class Settings(BaseModel):
+    model_config = ConfigDict(extra="forbid", strict=True)
+    enabled: bool = Field(default=True, description="Enable scheduled work.")
+    interval_seconds: int = Field(default=30, ge=1, le=3600)
+
+class MyPlugin(PluginBase):
+    version = "1.0.0"
+    settings_model = Settings
+```
+
+The **Plugins → Plugin Settings** page uses the model's JSON Schema for field
+labels, help text, booleans, choices, numbers, and nested objects. Complex values
+and plugins without a model use a JSON editor. The backend validates complete
+settings objects before writing to the dedicated `plugin_settings` table.
+Existing `get_plugin_setting` and `set_plugin_setting` methods remain supported;
+reads include declared defaults, and writes also enforce the model. Validation
+applies to administrative edits through global settings as well.
+
+Schema changes take effect after plugin discovery/reload. Invalid existing values
+must be corrected before the next write. Plugins decide when to reread settings;
+configuration cached only in `on_load` requires a plugin reload. JSON Schema does
+not replace backend validators, including custom Pydantic validators.

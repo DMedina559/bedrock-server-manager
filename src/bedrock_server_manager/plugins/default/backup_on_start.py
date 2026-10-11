@@ -5,8 +5,17 @@ Plugin to automatically back up a server before it starts.
 
 from typing import Any
 
+from pydantic import BaseModel, ConfigDict, Field
+
 from bedrock_server_manager import PluginBase, app_event
 from bedrock_server_manager.logging import log_operation_error
+
+
+class PluginSettings(BaseModel):
+    model_config = ConfigDict(extra="forbid", strict=True)
+    enable_backup_on_start: bool = Field(
+        default=True, description="Back up this server before starting it."
+    )
 
 
 class AutoBackupOnStart(PluginBase):
@@ -15,6 +24,8 @@ class AutoBackupOnStart(PluginBase):
     This plugin hooks into the `before_server_start` event to ensure a recent
     backup exists before the server goes online.
     """
+
+    settings_model = PluginSettings
 
     version = "1.2.0"
     description = "Performs a full backup of a server each time a start command is initiated. This plugin hooks into the `before_server_start` event."

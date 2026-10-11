@@ -91,3 +91,66 @@ async def test_unknown_plugin_is_rejected(admin_auth_client):
     assert (
         await admin_auth_client.post("/api/plugins/missing", json={"enabled": True})
     ).status_code == 400
+
+
+async def test_typed_plugin_settings_are_validated_and_persisted(
+    admin_auth_client, unauth_client, app_context, tmp_path
+):
+    from sqlalchemy import select
+    from bedrock_server_manager.db.models import PluginSetting
+    from bedrock_server_manager.error import UserInputError
+    import pytest
+
+    (tmp_path / "plugins" / "typed_settings.py").write_text(
+        """from pydantic import BaseModel, ConfigDict, Field, SecretStr
+from bedrock_server_manager import PluginBase
+class Settings(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    count: int = Field(default=3, ge=1, le=10, description="How many attempts")
+    enabled: bool = True
+    token: SecretStr = SecretStr("initial")
+class TypedPlugin(PluginBase):
+    version = "1.0"
+    settings_model = Settings
+"""
+    )
+    assert (await admin_auth_client.get("/api/plugins")).status_code == 200
+    path = "/api/plugins/typed_settings/settings"
+    assert (await unauth_client.get(path)).status_code == 401
+    response = await admin_auth_client.get(path)
+    assert response.status_code == 200
+    data = response.json()
+    assert data["settings"] == {"count": 3, "enabled": True, "token": "initial"}
+    assert data["settings_schema"]["properties"]["count"]["maximum"] == 10
+    assert (
+        await admin_auth_client.put(
+            path, json={"settings": {"count": "5", "token": "private-value"}}
+        )
+    ).status_code == 400
+    assert (
+        "private-value"
+        not in (
+            await admin_auth_client.put(
+                path, json={"settings": {"count": 0, "token": "private-value"}}
+            )
+        ).text
+    )
+    values = {"count": 5, "enabled": False, "token": "saved-secret"}
+    assert (
+        await admin_auth_client.put(path, json={"settings": values})
+    ).status_code == 200
+    with pytest.raises(UserInputError):
+        await app_context.settings_service.update_setting(
+            "plugin_settings.typed_settings.count", "bad"
+        )
+    await app_context.settings.reload()
+    assert (await admin_auth_client.get(path)).json()["settings"] == values
+    async with app_context.db.session_manager() as session:
+        stored = (
+            await session.execute(
+                select(PluginSetting).where(
+                    PluginSetting.plugin_name == "typed_settings"
+                )
+            )
+        ).scalar_one()
+        assert stored.settings == values

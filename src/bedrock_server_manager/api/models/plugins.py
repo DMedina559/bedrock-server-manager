@@ -76,3 +76,21 @@ class SetPluginSettingRequest(APIRequest):
 
 class SetPluginSettingResponse(ActionResponse):
     pass
+
+
+class GetPluginSettingsRequest(APIRequest):
+    target_plugin_name: NonEmptyStr
+
+
+class GetPluginSettingsResponse(SuccessResponse):
+    settings: dict[str, JsonValue]
+    settings_schema: dict[str, JsonValue] | None = None
+
+
+class UpdatePluginSettingsRequest(APIRequest):
+    target_plugin_name: NonEmptyStr
+    settings: dict[str, JsonValue]
+
+
+class PluginSettingsPayload(APIRequest):
+    settings: dict[str, JsonValue]

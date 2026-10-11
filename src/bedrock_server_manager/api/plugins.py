@@ -28,6 +28,9 @@ from ..plugins.api_bridge import api_method
 from ..plugins.api_contract import validate_contract
 from ..plugins.event_trigger import trigger_event
 from .models.plugins import (
+    GetPluginSettingsRequest,
+    GetPluginSettingsResponse,
+    UpdatePluginSettingsRequest,
     GetPluginSettingRequest,
     GetPluginSettingResponse,
     GetPluginStatusesRequest,
@@ -234,6 +237,7 @@ async def get_plugin_setting(
 
 
 @api_method("set_plugin_setting")
+@trigger_event(after="after_plugin_settings_update")
 async def set_plugin_setting(
     request: SetPluginSettingRequest, *, app_context: AppContext, plugin_name: str
 ) -> SetPluginSettingResponse:
@@ -242,3 +246,31 @@ async def set_plugin_setting(
         plugin_name, request.key, request.value
     )
     return SetPluginSettingResponse(message="Plugin setting saved.")
+
+
+@validate_contract
+async def get_plugin_settings(
+    request: GetPluginSettingsRequest, *, app_context: AppContext
+) -> GetPluginSettingsResponse:
+    name = request.target_plugin_name
+    if app_context.plugin_service.get_plugin_state(name) is None:
+        raise UserInputError("Unknown plugin.")
+    service = app_context.plugin_service
+    model = service.settings_models.get(name)
+    return GetPluginSettingsResponse(
+        settings=service.get_settings(name),
+        settings_schema=model.model_json_schema() if model is not None else None,
+    )
+
+
+@validate_contract
+@trigger_event(after="after_plugin_settings_update")
+async def update_plugin_settings(
+    request: UpdatePluginSettingsRequest, *, app_context: AppContext
+) -> SetPluginSettingResponse:
+    if app_context.plugin_service.get_plugin_state(request.target_plugin_name) is None:
+        raise UserInputError("Unknown plugin.")
+    await app_context.plugin_service.replace_settings(
+        request.target_plugin_name, request.settings
+    )
+    return SetPluginSettingResponse(message="Plugin settings saved.")

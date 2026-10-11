@@ -625,7 +625,10 @@ class AppContext:
             from .services.settings_service import SettingsService
 
             self._settings_service = SettingsService(
-                state=self.state, storage=self.storage, settings=self.settings
+                state=self.state,
+                storage=self.storage,
+                settings=self.settings,
+                plugin_service=self.plugin_service,
             )
         return self._settings_service
 

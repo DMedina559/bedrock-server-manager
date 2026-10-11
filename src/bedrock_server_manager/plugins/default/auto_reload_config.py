@@ -5,6 +5,8 @@ Plugin that automatically reloads server configurations after changes.
 
 from typing import Any
 
+from pydantic import BaseModel, ConfigDict, Field
+
 from bedrock_server_manager import PluginBase, app_event
 from bedrock_server_manager.api.models.allowlist import (
     AddToAllowlistResponse,
@@ -13,12 +15,21 @@ from bedrock_server_manager.api.models.allowlist import (
 from bedrock_server_manager.logging import log_operation_error
 
 
+class PluginSettings(BaseModel):
+    model_config = ConfigDict(extra="forbid", strict=True)
+    enable_auto_reload: bool = Field(
+        default=True, description="Reload configuration when its source changes."
+    )
+
+
 class AutoReloadPlugin(PluginBase):
     """
     Automatically sends a `reload` command to a running server after its
     configuration files (e.g., allowlist.json, permissions.json) are modified,
     ensuring changes take effect immediately without manual intervention.
     """
+
+    settings_model = PluginSettings
 
     version = "1.2.0"
     description = "Automatically sends a `reload` command to a running server after its configuration files (e.g., allowlist.json, permissions.json) are modified."

@@ -29,6 +29,7 @@ from bedrock_server_manager.api.models import (
 )
 
 from ...api import plugins as plugins_api
+from ...api.models.plugins import PluginSettingsPayload
 from ...context import AppContext
 from ...error import AppFileNotFoundError, BSMError, UserInputError
 from ...logging import log_operation_error
@@ -314,3 +315,38 @@ async def put_reload_plugins(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail="An unexpected error occurred while reloading plugins.",
         )
+
+
+@router.get(
+    "/api/plugins/{plugin_name}/settings",
+    operation_id="get_plugin_settings",
+    response_model=plugins_api.GetPluginSettingsResponse,
+)
+async def get_plugin_settings(
+    plugin_name: str,
+    current_user: UserResponse = Depends(get_admin_user),
+    app_context: AppContext = Depends(get_app_context),
+):
+    return await plugins_api.get_plugin_settings(
+        plugins_api.GetPluginSettingsRequest(target_plugin_name=plugin_name),
+        app_context=app_context,
+    )
+
+
+@router.put(
+    "/api/plugins/{plugin_name}/settings",
+    operation_id="update_plugin_settings",
+    response_model=plugins_api.SetPluginSettingResponse,
+)
+async def update_plugin_settings(
+    plugin_name: str,
+    payload: PluginSettingsPayload,
+    current_user: UserResponse = Depends(get_admin_user),
+    app_context: AppContext = Depends(get_app_context),
+):
+    return await plugins_api.update_plugin_settings(
+        plugins_api.UpdatePluginSettingsRequest(
+            target_plugin_name=plugin_name, settings=payload.settings
+        ),
+        app_context=app_context,
+    )
