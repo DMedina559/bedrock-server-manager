@@ -280,6 +280,9 @@ async def put_prune_downloads(
     return PruneDownloadsResponse(
         status=result.status,
         message=result.message,
+        files_deleted=len(result.result.deleted),
+        files_kept=len(result.result.retained),
+        failures=result.result.failures,
     )
 
 
@@ -302,7 +305,9 @@ async def get_servers_list(
         request=GetAllServersDataRequest(), app_context=app_context
     )
     return ServersListResponse(
-        status="success",
+        status=result.status,
+        errors=result.errors,
+        message=result.message,
         servers=result.servers,
         epoch=result.epoch,
         revision=result.revision,
@@ -416,6 +421,9 @@ async def post_add_players(
         status="success",
         message=result.message,
         count=result.count,
+        submitted_count=result.submitted_count,
+        parsed_count=result.parsed_count,
+        unique_count=result.unique_count,
     )
 
 

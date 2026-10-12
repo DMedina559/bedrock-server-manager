@@ -100,4 +100,4 @@ async def test_get_servers_data_exception_on_server(
 
     assert len(servers_data) == 0
     assert len(error_messages) == 1
-    assert "Could not get info for server" in error_messages[0]
+    assert error_messages[0].error.code == "configuration_error"

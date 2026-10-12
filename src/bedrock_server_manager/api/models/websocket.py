@@ -1,7 +1,10 @@
 """Serializable websocket API request and response contracts."""
 
-from pydantic import JsonValue
+from typing import Literal
 
+from pydantic import Field, JsonValue
+
+from ...results import DeliveryResult
 from .common import ActionResponse, APIRequest, NonEmptyStr
 
 
@@ -11,7 +14,7 @@ class BroadcastRequest(APIRequest):
 
 
 class BroadcastResponse(ActionResponse):
-    pass
+    delivery: DeliveryResult = Field(default_factory=DeliveryResult)
 
 
 class SendToUserRequest(APIRequest):
@@ -20,7 +23,7 @@ class SendToUserRequest(APIRequest):
 
 
 class SendToUserResponse(ActionResponse):
-    pass
+    delivery: DeliveryResult = Field(default_factory=DeliveryResult)
 
 
 class SendToClientRequest(APIRequest):
@@ -29,7 +32,7 @@ class SendToClientRequest(APIRequest):
 
 
 class SendToClientResponse(ActionResponse):
-    pass
+    delivery: DeliveryResult = Field(default_factory=DeliveryResult)
 
 
 class UnregisterDataProviderRequest(APIRequest):
@@ -37,7 +40,7 @@ class UnregisterDataProviderRequest(APIRequest):
 
 
 class UnregisterDataProviderResponse(ActionResponse):
-    pass
+    outcome: Literal["removed", "already_absent"]
 
 
 class PublishWsEventRequest(APIRequest):
@@ -46,4 +49,4 @@ class PublishWsEventRequest(APIRequest):
 
 
 class PublishWsEventResponse(ActionResponse):
-    pass
+    delivery: DeliveryResult = Field(default_factory=DeliveryResult)

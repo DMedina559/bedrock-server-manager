@@ -1,10 +1,12 @@
-from typing import Any, Dict, List, Optional
+from typing import Dict, List, Optional
 
 from pydantic import Field, JsonValue
 
 from ...api.models.common import APIRequest, PlayerInfo, ServerSummary, StateRevision
 from ...api.models.player import PlayerScanDetails
 from ...api.models.system import ProcessInfo
+from ...contracts import NonEmptyStr
+from ...results import ResourceFailure
 from .base import BaseApiResponse
 
 
@@ -19,7 +21,7 @@ class CommandPayload(APIRequest):
 class ServerSettingItemPayload(APIRequest):
     """Request model for a single server setting key-value pair."""
 
-    key: str = Field(
+    key: NonEmptyStr = Field(
         ...,
         description="The dot-notation key of the setting (e.g., 'settings.autoupdate').",
     )
@@ -31,7 +33,7 @@ class ServerSettingsResponse(BaseApiResponse):
 
     # status: str = Field(...) -> Inherited
     # message: Optional[str] = None -> Inherited
-    settings: Optional[Dict[str, Any]] = None
+    settings: Optional[Dict[str, JsonValue]] = None
     setting: Optional[ServerSettingItemPayload] = None
 
 
@@ -41,8 +43,9 @@ class AddPlayersPayload(APIRequest):
     Each string in the 'players' list should be in the format "gamertag:xuid".
     """
 
-    players: List[str] = Field(
+    players: List[NonEmptyStr] = Field(
         ...,
+        min_length=1,
         description='List of player strings, e.g., ["PlayerOne:123xuid", "PlayerTwo:456xuid"]',
     )
 
@@ -54,6 +57,7 @@ ServerSchemaResponse = ServerSummary
 
 
 class ServersListResponse(BaseApiResponse, StateRevision):
+    errors: list[ResourceFailure] = Field(default_factory=list)
     """Response model for lists of server data."""
 
     servers: Optional[List[ServerSummary]] = None
@@ -62,7 +66,7 @@ class ServersListResponse(BaseApiResponse, StateRevision):
 class AppInfoResponse(BaseApiResponse):
     """Response model for app/system info."""
 
-    info: Optional[Dict[str, Any]] = None
+    info: Optional[Dict[str, JsonValue]] = None
 
 
 class PlayerListResponse(BaseApiResponse):
@@ -72,6 +76,9 @@ class PlayerListResponse(BaseApiResponse):
 
 
 class AddPlayersResponse(BaseApiResponse):
+    submitted_count: int | None = Field(default=None, ge=0)
+    parsed_count: int | None = Field(default=None, ge=0)
+    unique_count: int | None = Field(default=None, ge=0)
     """Response model for adding players, typically returns just inherited fields or single item data."""
 
     details: Optional[PlayerScanDetails] = None

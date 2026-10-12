@@ -60,7 +60,7 @@ async def get_plugin_pages(
     Retrieves a list of custom native UI pages registered by plugins.
     """
     pages = app_context.plugin_manager.get_native_ui_routes()
-    return PluginPagesResponse(status="success", pages=pages)
+    return PluginPagesResponse.model_validate({"status": "success", "pages": pages})
 
 
 @router.get(

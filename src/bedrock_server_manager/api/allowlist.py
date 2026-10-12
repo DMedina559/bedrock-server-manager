@@ -1,7 +1,7 @@
 import logging
 
 from ..context import AppContext
-from ..error import BSMError, FileOperationError, MissingArgumentError
+from ..error import BSMError, FileOperationError
 from ..logging import log_operation_error
 from ..plugins.api_bridge import api_method
 from ..plugins.event_trigger import trigger_event
@@ -33,8 +33,6 @@ async def add_to_allowlist(
     """
     server_name = request.server_name
     new_players_data = request.model_dump(mode="python")["new_players_data"]
-    if not server_name:
-        raise MissingArgumentError("Server name cannot be empty.")
     if not isinstance(new_players_data, list):
         raise BSMError("Invalid input: new_players_data must be a list.")
     logger.info(
@@ -76,8 +74,6 @@ async def get_allowlist(
     Invalid requests fail validation before side effects; operation failures raise application exceptions.
     """
     server_name = request.server_name
-    if not server_name:
-        raise MissingArgumentError("Server name cannot be empty.")
     try:
         server = app_context.get_server(server_name)
         players = await server.allowlist.get_allowlist()
@@ -116,8 +112,6 @@ async def remove_from_allowlist(
     """
     server_name = request.server_name
     player_names = request.player_names
-    if not server_name:
-        raise MissingArgumentError("Server name cannot be empty.")
     try:
         if not player_names:
             return RemoveFromAllowlistResponse.model_validate(

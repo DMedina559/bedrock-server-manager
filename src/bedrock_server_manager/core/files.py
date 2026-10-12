@@ -5,14 +5,43 @@ import os
 import shutil
 import stat
 import tempfile
+import threading
 from collections.abc import AsyncIterator, Iterable
 from contextlib import asynccontextmanager
 from pathlib import Path, PurePosixPath
+from typing import BinaryIO, Callable
 from zipfile import BadZipFile, ZipFile, ZipInfo
 
 from ..utils.threads import run_in_thread
 
 logger = logging.getLogger(__name__)
+
+
+def atomic_stream_file(
+    source: BinaryIO,
+    target: Path,
+    cancellation_event: threading.Event | None = None,
+    validate: Callable[[Path], None] | None = None,
+) -> None:
+    """Finish a streamed upload before replacing any existing destination."""
+    target.parent.mkdir(parents=True, exist_ok=True)
+    descriptor, name = tempfile.mkstemp(prefix="bsm-upload-", dir=target.parent)
+    temporary = Path(name)
+    try:
+        with os.fdopen(descriptor, "wb") as output:
+            while chunk := source.read(1024 * 1024):
+                if cancellation_event is not None and cancellation_event.is_set():
+                    raise InterruptedError("Upload was cancelled.")
+                output.write(chunk)
+            output.flush()
+            os.fsync(output.fileno())
+        if cancellation_event is not None and cancellation_event.is_set():
+            raise InterruptedError("Upload was cancelled.")
+        if validate is not None:
+            validate(temporary)
+        os.replace(temporary, target)
+    finally:
+        temporary.unlink(missing_ok=True)
 
 
 def validate_archive(archive: ZipFile) -> None:
@@ -58,6 +87,7 @@ def extract_archive(
 @asynccontextmanager
 async def temporary_directory(parent: str | Path | None = None) -> AsyncIterator[Path]:
     directory: Path | None = None
+    original: BaseException | None = None
 
     def create() -> None:
         nonlocal directory
@@ -67,9 +97,19 @@ async def temporary_directory(parent: str | Path | None = None) -> AsyncIterator
         await run_in_thread(create)
         assert directory is not None
         yield directory
+    except BaseException as error:
+        original = error
+        raise
     finally:
         if directory is not None:
-            await run_in_thread(shutil.rmtree, directory)
+            try:
+                await run_in_thread(shutil.rmtree, directory)
+            except BaseException as cleanup_error:
+                if original is None:
+                    raise
+                original.add_note(
+                    f"Temporary directory cleanup also failed: {type(cleanup_error).__name__}"
+                )
 
 
 class FileTransaction:
@@ -142,15 +182,23 @@ async def file_transaction(parent: str | Path) -> AsyncIterator[FileTransaction]
     transaction = FileTransaction(journal)
     try:
         yield transaction
-    except BaseException:
+    except BaseException as original:
         try:
             await run_in_thread(transaction.rollback)
-        except BaseException:
+        except BaseException as rollback_error:
+            original.add_note(
+                f"Rollback also failed ({type(rollback_error).__name__}); recovery journal: {journal}"
+            )
             logger.exception(
                 "Rollback failed; previous content retained at %s", journal
             )
-            raise
-        await run_in_thread(shutil.rmtree, journal)
+            raise original
+        try:
+            await run_in_thread(shutil.rmtree, journal)
+        except BaseException as cleanup_error:
+            original.add_note(
+                f"Rollback cleanup also failed: {type(cleanup_error).__name__}"
+            )
         raise
     else:
         await run_in_thread(shutil.rmtree, journal)

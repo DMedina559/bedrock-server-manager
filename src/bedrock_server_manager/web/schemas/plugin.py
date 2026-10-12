@@ -1,4 +1,4 @@
-from typing import Any, Dict, List, Optional
+from typing import Dict, List, Optional
 
 from pydantic import Field, JsonValue
 
@@ -31,7 +31,7 @@ class TriggerEventPayload(APIRequest):
 class PluginPagesResponse(BaseApiResponse):
     """Response model for plugin native UI pages."""
 
-    pages: Optional[List[Dict[str, Any]]] = None
+    pages: Optional[List[Dict[str, JsonValue]]] = None
 
 
 class PluginStatusesResponse(BaseApiResponse):
@@ -43,4 +43,4 @@ class PluginStatusesResponse(BaseApiResponse):
 class TriggerEventResponse(BaseApiResponse):
     """Response model for triggering a custom plugin event."""
 
-    details: Optional[Dict[str, Any]] = None
+    details: Optional[Dict[str, JsonValue]] = None

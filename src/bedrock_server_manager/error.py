@@ -8,6 +8,8 @@ Key Principles:
       to allow for flexible and standard exception handling.
 """
 
+from pydantic import BaseModel
+
 # --- Base Exception ---
 
 
@@ -78,6 +80,18 @@ class UserExitError(KeyboardInterrupt):
     pass
 
 
+class ResourceNotFoundError(BSMError, LookupError):
+    """A requested domain resource does not exist."""
+
+
+class OperationConflictError(BSMError):
+    """An operation conflicts with the current domain state."""
+
+
+class DependencyUnavailableError(BSMError):
+    """A required dependency could not be reached or inspected."""
+
+
 # --- Specific Exceptions by Category ---
 
 
@@ -116,6 +130,14 @@ class BackupRestoreError(FileOperationError):
     """Raised when a backup or restore operation fails."""
 
     pass
+
+
+class IncompleteOperationError(BSMError):
+    """An aggregate operation failed, preserving validated component results."""
+
+    def __init__(self, message: str, result: BaseModel):
+        super().__init__(message)
+        self.result = result
 
 
 # Server Process and Communication Errors

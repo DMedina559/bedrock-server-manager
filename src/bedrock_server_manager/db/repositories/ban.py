@@ -7,7 +7,9 @@ from typing import Optional
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.future import select
 
-from ...state.models import BanItem, BanResult
+from ...error import ResourceNotFoundError
+from ...results import BanMutation
+from ...state.models import BanItem
 from ..database import Database
 from ..models import Server, ServerBan
 
@@ -25,17 +27,14 @@ class ServerBanRepository:
         player_name: str,
         xuid: str,
         reason: Optional[str] = None,
-    ) -> BanResult:
+    ) -> BanMutation:
         """Adds or updates a server ban record in the given session."""
         result = await session.execute(
             select(Server).filter(Server.server_name == server_name)
         )
         server = result.scalar_one_or_none()
         if not server:
-            return BanResult(
-                success=False,
-                message=f"Server '{server_name}' not found in database.",
-            )
+            raise ResourceNotFoundError(f"Server '{server_name}' not found.")
 
         ban_result = await session.execute(
             select(ServerBan).filter(
@@ -45,9 +44,10 @@ class ServerBanRepository:
         existing_ban = ban_result.scalar_one_or_none()
 
         if existing_ban:
+            existing_ban.player_name = player_name
             existing_ban.reason = reason
-            return BanResult(
-                success=True,
+            return BanMutation(
+                outcome="updated",
                 message=f"Ban updated for player '{player_name}'.",
             )
 
@@ -55,24 +55,21 @@ class ServerBanRepository:
             server_id=server.id, player_name=player_name, xuid=xuid, reason=reason
         )
         session.add(new_ban)
-        return BanResult(
-            success=True,
+        return BanMutation(
+            outcome="added",
             message=f"Player '{player_name}' banned successfully.",
         )
 
     async def remove_ban(
         self, session: AsyncSession, server_name: str, xuid: str
-    ) -> BanResult:
+    ) -> BanMutation:
         """Removes a server ban record by XUID in the given session."""
         result = await session.execute(
             select(Server).filter(Server.server_name == server_name)
         )
         server = result.scalar_one_or_none()
         if not server:
-            return BanResult(
-                success=False,
-                message=f"Server '{server_name}' not found in database.",
-            )
+            raise ResourceNotFoundError(f"Server '{server_name}' not found.")
 
         ban_result = await session.execute(
             select(ServerBan).filter(
@@ -82,25 +79,21 @@ class ServerBanRepository:
         ban = ban_result.scalar_one_or_none()
 
         if not ban:
-            return BanResult(
-                success=False,
-                message=f"Ban not found for XUID '{xuid}' on server '{server_name}'.",
+            raise ResourceNotFoundError(
+                f"Ban for '{xuid}' not found on '{server_name}'."
             )
 
         await session.delete(ban)
-        return BanResult(success=True, message="Ban removed successfully.")
+        return BanMutation(outcome="removed", message="Ban removed successfully.")
 
-    async def get_bans(self, session: AsyncSession, server_name: str) -> BanResult:
+    async def get_bans(self, session: AsyncSession, server_name: str) -> list[BanItem]:
         """Retrieves all bans for a specific server in the given session."""
         result = await session.execute(
             select(Server).filter(Server.server_name == server_name)
         )
         server = result.scalar_one_or_none()
         if not server:
-            return BanResult(
-                success=False,
-                message=f"Server '{server_name}' not found in database.",
-            )
+            raise ResourceNotFoundError(f"Server '{server_name}' not found.")
 
         ban_result = await session.execute(
             select(ServerBan).filter(ServerBan.server_id == server.id)
@@ -116,6 +109,4 @@ class ServerBanRepository:
             for ban in bans
         ]
 
-        return BanResult(
-            success=True, message="Bans retrieved successfully.", bans=ban_list
-        )
+        return ban_list

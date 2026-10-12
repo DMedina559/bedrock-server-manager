@@ -365,18 +365,8 @@ class ServerWorlds:
                     raise FileOperationError(
                         f"Cannot create target directory '{target_parent_dir}': {e}"
                     ) from e
-            is_running = False
-            if hasattr(self.server, "is_running"):
-                try:
-                    is_running = await self.server.is_running()
-                except Exception:
-                    is_running = False
-            active_world_name = None
-            if hasattr(self.server, "get_world_name"):
-                try:
-                    active_world_name = await self.server.get_world_name()
-                except Exception:
-                    active_world_name = None
+            is_running = await self.server.is_running()
+            active_world_name = await self.server.get_world_name()
             if (
                 is_running
                 and active_world_name

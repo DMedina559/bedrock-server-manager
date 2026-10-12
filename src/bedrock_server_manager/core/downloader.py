@@ -53,7 +53,8 @@ from ..error import (
     SystemError,
     UserInputError,
 )
-from ..logging import log_operation_error
+from ..failures import classify_failure
+from ..results import CleanupResult
 from ..utils.threads import run_in_thread
 from .files import (
     extract_archive,
@@ -70,135 +71,36 @@ if TYPE_CHECKING:
 logger = logging.getLogger(__name__)
 
 
-async def prune_old_downloads(download_dir: str, download_keep: int):  # noqa: C901
-    """Asynchronously removes the oldest downloaded server ZIP files from a directory.
-
-    This function keeps a specified number of the most recent downloads and
-    deletes the rest to manage disk space using native async file operations.
-
-    Args:
-        download_dir: The directory containing the downloaded
-            ``bedrock-server-*.zip`` files.
-        download_keep: The number of most recent ZIP files to retain.
-
-    Raises:
-        MissingArgumentError: If `download_dir` is not provided.
-        UserInputError: If `download_keep` is not a non-negative integer.
-        AppFileNotFoundError: If `download_dir` does not exist.
-        FileOperationError: If there's an error accessing or deleting files.
-    """
+async def prune_old_downloads(download_dir: str, download_keep: int) -> CleanupResult:
+    """Report every retention deletion rather than hiding filesystem failures."""
     if not download_dir:
-        raise MissingArgumentError("Download directory cannot be empty for pruning.")
-    if not isinstance(download_keep, int) or download_keep < 0:
-        raise UserInputError(
-            f"Invalid value for downloads to keep: '{download_keep}'. Must be an integer >= 0."
-        )
-
-    logger.debug(
-        "Configured to keep %s downloads in '%s'.", download_keep, download_dir
-    )
-
+        raise MissingArgumentError("Download directory is required.")
+    if (
+        isinstance(download_keep, bool)
+        or not isinstance(download_keep, int)
+        or download_keep < 0
+    ):
+        raise UserInputError("Download retention must be a non-negative integer.")
     if not await aiofiles.ospath.isdir(download_dir):
-        # Log a warning and return if the directory doesn't exist
-        logger.debug(
-            "Download directory '%s' not found. Skipping pruning.", download_dir
-        )
-        return
-
-    logger.debug(
-        "Pruning old Bedrock server downloads in '%s' (keeping %s)...",
-        download_dir,
-        download_keep,
-    )
-
+        return CleanupResult()
     try:
-        # Find all files matching the bedrock server download pattern using thread wrap.
-        download_files_paths = await find_files(
-            download_dir,
-            "bedrock-server-*.zip",
-            sort_by="mtime",
-            reverse=True,
+        files = await find_files(
+            download_dir, "bedrock-server-*.zip", sort_by="mtime", reverse=True
         )
-        download_files = []
-        for p in download_files_paths:
-            if isinstance(p, str):
-                download_files.append(p)
-            elif isinstance(p, dict) and "path" in p:
-                download_files.append(str(p["path"]))
-
-        logger.debug(
-            "Found %s potential download files matching pattern in '%s'.",
-            len(download_files),
-            download_dir,
-        )
-
-        if len(download_files) > download_keep:
-            files_to_delete = download_files[download_keep:]
-            logger.debug(
-                "Found %s downloads in '%s'. Will delete %s oldest file(s) to keep %s.",
-                len(download_files),
-                download_dir,
-                len(files_to_delete),
-                download_keep,
-            )
-
-            deleted_count = 0
-            failed_deletions = []
-            for file_path_str in files_to_delete:
-                try:
-                    await run_in_thread(os.remove, file_path_str)
-                    logger.debug("Deleted old download: %s", file_path_str)
-                    deleted_count += 1
-                except OSError as e_unlink:
-                    log_operation_error(
-                        logger,
-                        "Failed to delete old server download '%s': %s",
-                        file_path_str,
-                        e_unlink,
-                        error=e_unlink,
-                    )
-                    failed_deletions.append(file_path_str)
-
-            if failed_deletions:
-                logger.warning(
-                    "Could not delete %s old downloads in '%s'; check filesystem permissions.",
-                    len(failed_deletions),
-                    download_dir,
-                )
-            if deleted_count > 0:
-                logger.debug(
-                    "Successfully deleted %s old download(s) from '%s'.",
-                    deleted_count,
-                    download_dir,
-                )
-            elif not failed_deletions:
-                logger.debug(
-                    "No files were deleted from '%s' as part of this pruning operation.",
-                    download_dir,
-                )
-        else:
-            logger.debug(
-                "Found %s download(s) in '%s', which is not more than the %s to keep. No files deleted.",
-                len(download_files),
-                download_dir,
-                download_keep,
-            )
-
-    except OSError as e_os:
-        logger.warning(
-            "Error accessing or processing files for pruning in '%s': %s",
-            download_dir,
-            e_os,
-            exc_info=True,
-        )
-    except Exception as e_generic:
-        log_operation_error(
-            logger,
-            "Unexpected error during pruning operation for '%s': %s",
-            download_dir,
-            e_generic,
-            error=e_generic,
-        )
+        paths = [str(path) for path in files if isinstance(path, str)]
+    except OSError as error:
+        raise FileOperationError("Cannot list download cache.") from error
+    deleted = []
+    failures = {}
+    for path in paths[download_keep:]:
+        try:
+            await run_in_thread(os.remove, path)
+            deleted.append(path)
+        except OSError as error:
+            failures[path] = classify_failure(error).error
+    return CleanupResult(
+        deleted=deleted, retained=paths[:download_keep], failures=failures
+    )
 
 
 class BedrockDownloader:
@@ -676,7 +578,14 @@ class BedrockDownloader:
                 self.specific_download_dir,
                 effective_keep,
             )
-            await prune_old_downloads(self.specific_download_dir, effective_keep)
+            result = await prune_old_downloads(
+                self.specific_download_dir, effective_keep
+            )
+            if result.failures:
+                self.logger.warning(
+                    "Download retention failed for %s cached archives.",
+                    len(result.failures),
+                )
         except (
             UserInputError,
             FileOperationError,

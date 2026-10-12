@@ -1,12 +1,10 @@
 from typing import Optional
 
-from pydantic import BaseModel
-
-from ...api.models.common import APIRequest
+from ...api.models.common import APIRequest, APIResponse
 from ...state.types import UserRole
 
 
-class UserResponse(BaseModel):
+class UserResponse(APIResponse):
     """
     Pydantic model representing a user.
 

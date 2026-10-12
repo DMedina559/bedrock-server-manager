@@ -37,7 +37,7 @@ async def setup_check_middleware(request: Request, call_next):
         response = await call_next(request)
         return response
 
-    if request.app.state.app_context.needs_setup and not any(
+    if await request.app.state.app_context.check_setup() and not any(
         req_path.startswith(p) for p in allowed_paths
     ):
 

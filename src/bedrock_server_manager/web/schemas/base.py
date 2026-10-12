@@ -15,7 +15,7 @@ class BackupFilesResponse(SuccessResponse):
 
 
 class BaseApiResponse(APIResponse):
-    status: Literal["success", "skipped"]
+    status: Literal["success", "skipped", "partial"]
     message: str | None = None
 
 

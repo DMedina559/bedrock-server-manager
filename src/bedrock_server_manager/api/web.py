@@ -94,8 +94,8 @@ def start_web_server(
                     "Failed to start web application directly: %s", e, exc_info=True
                 )
                 raise
-            return StartWebServerResponse.model_validate(
-                {"status": "success", "message": "Web server (direct mode) shut down."}
+            return StartWebServerResponse(
+                status="success", message="Web server (direct mode) shut down."
             )
         elif mode == "detached":
             if not PSUTIL_AVAILABLE:
@@ -196,19 +196,13 @@ def stop_web_server(
         pid = asyncio.run(system_process_utils.read_pid_from_file(pid_file_path))
         if pid is None:
             asyncio.run(system_process_utils.remove_pid_file_if_exists(pid_file_path))
-            return StopWebServerResponse.model_validate(
-                {
-                    "status": "success",
-                    "message": "Web server not running (no valid PID file).",
-                }
+            return StopWebServerResponse(
+                status="success", message="Web server not running (no valid PID file)."
             )
         if not asyncio.run(system_process_utils.is_process_running(pid)):
             asyncio.run(system_process_utils.remove_pid_file_if_exists(pid_file_path))
-            return StopWebServerResponse.model_validate(
-                {
-                    "status": "success",
-                    "message": f"Web server not running (stale PID {pid}).",
-                }
+            return StopWebServerResponse(
+                status="success", message=f"Web server not running (stale PID {pid})."
             )
         asyncio.run(
             system_process_utils.verify_process_identity(
@@ -217,8 +211,8 @@ def stop_web_server(
         )
         asyncio.run(system_process_utils.terminate_process_by_pid(pid))
         asyncio.run(system_process_utils.remove_pid_file_if_exists(pid_file_path))
-        return StopWebServerResponse.model_validate(
-            {"status": "success", "message": f"Web server (PID: {pid}) stopped."}
+        return StopWebServerResponse(
+            status="success", message=f"Web server (PID: {pid}) stopped."
         )
     except (FileOperationError, ServerProcessError) as e:
         asyncio.run(
@@ -347,11 +341,9 @@ def create_web_ui_service(
         else:
             service.disable_web_service(system=system)
             action_done = "created and disabled"
-        return CreateWebUiServiceResponse.model_validate(
-            {
-                "status": "success",
-                "message": f"Web UI system service {action_done} successfully.",
-            }
+        return CreateWebUiServiceResponse(
+            status="success",
+            message=f"Web UI system service {action_done} successfully.",
         )
     except BSMError as e:
         log_operation_error(
@@ -381,8 +373,8 @@ def enable_web_ui_service(
                 "System service management tool (systemctl/sc.exe) not found. Cannot manage Web UI service."
             )
         service.enable_web_service(system=system)
-        return EnableWebUiServiceResponse.model_validate(
-            {"status": "success", "message": "Web UI service enabled successfully."}
+        return EnableWebUiServiceResponse(
+            status="success", message="Web UI service enabled successfully."
         )
     except BSMError as e:
         log_operation_error(
@@ -412,8 +404,8 @@ def disable_web_ui_service(
                 "System service management tool (systemctl/sc.exe) not found. Cannot manage Web UI service."
             )
         service.disable_web_service(system=system)
-        return DisableWebUiServiceResponse.model_validate(
-            {"status": "success", "message": "Web UI service disabled successfully."}
+        return DisableWebUiServiceResponse(
+            status="success", message="Web UI service disabled successfully."
         )
     except BSMError as e:
         log_operation_error(
@@ -444,8 +436,8 @@ def remove_web_ui_service(
             )
         removed = service.remove_web_service_file(system=system)
         if removed:
-            return RemoveWebUiServiceResponse.model_validate(
-                {"status": "success", "message": "Web UI service removed successfully."}
+            return RemoveWebUiServiceResponse(
+                status="success", message="Web UI service removed successfully."
             )
         else:
             raise BSMError("Web UI service removal failed or file not found.")

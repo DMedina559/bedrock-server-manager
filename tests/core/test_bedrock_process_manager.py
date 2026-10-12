@@ -68,7 +68,7 @@ async def test_error_status_storage_failure_is_reported(
         raise StorageError("write failed")
 
     with monkeypatch.context() as fault:
-        fault.setattr(app_context.storage, "apply_changeset", fail_write)
+        fault.setattr(app_context.storage, "commit_record", fail_write)
         with pytest.raises(FileOperationError):
             await app_context.bedrock_process_manager.write_error_status(
                 real_bedrock_server.server_name
@@ -94,7 +94,7 @@ async def test_monitor_restarts_actual_crashed_child(app_context, real_bedrock_s
         await manager.quiesce()
 
 
-async def test_monitor_player_failure_resets_coherent_runtime(
+async def test_monitor_player_failure_retains_last_known_runtime(
     app_context, real_bedrock_server, monkeypatch
 ):
     await app_context.settings.set("monitoring.process_interval_sec", 1)
@@ -115,8 +115,11 @@ async def test_monitor_player_failure_resets_coherent_runtime(
         await manager.start()
         try:
             await asyncio.wait_for(scanned.wait(), 5)
-            assert real_bedrock_server.players == []
-            assert real_bedrock_server.player_count == 0
+            assert real_bedrock_server.players == [{"name": "Alex", "xuid": "1"}]
+            assert real_bedrock_server.player_count == 1
+            assert not real_bedrock_server.state.runtime.get_server_runtime(
+                real_bedrock_server.server_name
+            ).players_available
         finally:
             await manager.quiesce()
 

@@ -88,3 +88,31 @@ or error to determine whether the operation completed.
    :caption: Miscellaneous
 
    misc
+
+Result and failure contracts
+----------------------------
+
+Python API requests and responses use strict Pydantic models. Unknown fields
+are rejected. Domain and infrastructure failures propagate to the transport
+boundary, where the shared classifier selects a safe message, stable error
+code, and HTTP status. Missing resources use 404, conflicting operations use
+409, and unavailable dependencies use 503. Unexpected failures retain their
+traceback in logs without exposing exception text to clients.
+
+Batch operations report ``partial`` when some work fails and ``skipped`` when
+there is no work. Backup and restore details contain typed component outcomes
+(``completed``, ``skipped``, or ``failed``); failed components include structured
+error information. Cleanup results distinguish deleted and retained paths from
+failed deletions. A successful backup remains usable if retention cleanup fails.
+
+WebSocket delivery results report targeted, sent, unavailable, and failed
+connections. An absent recipient produces ``skipped`` rather than claiming
+delivery. Player imports distinguish submitted, parsed, unique, and persisted
+counts. Consumers must inspect these result fields before assuming every item
+succeeded. Incomplete-operation errors retain validated partial results in
+error details.
+
+Task snapshots enforce status/result/error relationships. Service mutations
+validate candidate records before persistence and publish in-memory state only
+after the database transaction commits. Plugins that invoke asynchronous API
+methods must await them; the API caller check runs in CI.

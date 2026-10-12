@@ -7,8 +7,6 @@ from ..context import AppContext
 from ..error import (
     BSMError,
     FileOperationError,
-    InvalidServerNameError,
-    MissingArgumentError,
 )
 from ..logging import log_operation_error
 from ..plugins.api_bridge import api_method
@@ -66,8 +64,6 @@ async def get_world_name(
     Invalid requests fail validation before side effects; operation failures raise application exceptions.
     """
     server_name = request.server_name
-    if not server_name:
-        raise InvalidServerNameError("Server name cannot be empty.")
     logger.debug("Attempting to get world name for server '%s'...", server_name)
     try:
         server = app_context.get_server(server_name)
@@ -108,8 +104,6 @@ async def export_world(
     """
     server_name = request.server_name
     export_dir = request.export_dir
-    if not server_name:
-        raise InvalidServerNameError("Server name cannot be empty.")
     server = app_context.get_server(server_name)
     try:
         await server.operation_lock.acquire(timeout=300)
@@ -118,12 +112,10 @@ async def export_world(
             "An operation for '%s' is already in progress. Skipping concurrent export.",
             server_name,
         )
-        return ExportWorldResponse.model_validate(
-            {
-                "server_name": server_name,
-                "status": "skipped",
-                "message": "A world operation is already in progress.",
-            }
+        return ExportWorldResponse(
+            server_name=server_name,
+            status="skipped",
+            message="A world operation is already in progress.",
         )
     try:
         if export_dir:
@@ -193,10 +185,6 @@ async def import_world(
     server_name = request.server_name
     selected_file_path = request.selected_file_path
     stop_start_server = request.stop_start_server
-    if not server_name:
-        raise InvalidServerNameError("Server name cannot be empty.")
-    if not selected_file_path:
-        raise MissingArgumentError(".mcworld file path cannot be empty.")
     server = app_context.get_server(server_name)
     try:
         await server.operation_lock.acquire(timeout=300)
@@ -205,12 +193,10 @@ async def import_world(
             "An operation for '%s' is already in progress. Skipping concurrent import.",
             server_name,
         )
-        return ImportWorldResponse.model_validate(
-            {
-                "server_name": server_name,
-                "status": "skipped",
-                "message": "A world operation is already in progress.",
-            }
+        return ImportWorldResponse(
+            server_name=server_name,
+            status="skipped",
+            message="A world operation is already in progress.",
         )
     try:
         selected_filename = os.path.basename(selected_file_path)
@@ -242,12 +228,10 @@ async def import_world(
                 selected_filename,
                 server_name,
             )
-            return ImportWorldResponse.model_validate(
-                {
-                    "server_name": server_name,
-                    "status": "success",
-                    "message": f"World '{imported_world_name or 'Unknown'}' imported successfully from {selected_filename}.",
-                }
+            return ImportWorldResponse(
+                server_name=server_name,
+                status="success",
+                message=f"World '{imported_world_name or 'Unknown'}' imported successfully from {selected_filename}.",
             )
         except (BSMError, FileNotFoundError) as e:
             log_operation_error(
@@ -282,8 +266,6 @@ async def reset_world(
     Invalid requests fail validation before side effects; operation failures raise application exceptions.
     """
     server_name = request.server_name
-    if not server_name:
-        raise InvalidServerNameError("Server name cannot be empty for API request.")
     server = app_context.get_server(server_name)
     try:
         await server.operation_lock.acquire(timeout=300)
@@ -292,12 +274,10 @@ async def reset_world(
             "An operation for '%s' is already in progress. Skipping concurrent reset.",
             server_name,
         )
-        return ResetWorldResponse.model_validate(
-            {
-                "server_name": server_name,
-                "status": "skipped",
-                "message": "A world operation is already in progress.",
-            }
+        return ResetWorldResponse(
+            server_name=server_name,
+            status="skipped",
+            message="A world operation is already in progress.",
         )
     try:
         logger.debug("Initiating world reset for server '%s'...", server_name)
@@ -320,12 +300,10 @@ async def reset_world(
                 world_name_for_msg,
                 server_name,
             )
-            return ResetWorldResponse.model_validate(
-                {
-                    "server_name": server_name,
-                    "status": "success",
-                    "message": f"World '{world_name_for_msg}' reset successfully.",
-                }
+            return ResetWorldResponse(
+                server_name=server_name,
+                status="success",
+                message=f"World '{world_name_for_msg}' reset successfully.",
             )
         except BSMError as e:
             log_operation_error(

@@ -301,20 +301,10 @@ async def is_server_running(server_name: str, server_dir: str, config_dir: str) 
     if not isinstance(config_dir, str) or not config_dir:
         raise MissingArgumentError("Configuration directory cannot be empty.")
 
-    try:
-        process = await core_process.get_verified_bedrock_process(
-            server_name, server_dir, config_dir
-        )
-        return process is not None
-    except Exception as e:
-        log_operation_error(
-            logger,
-            "Error checking if server '%s' is running: %s",
-            server_name,
-            e,
-            error=e,
-        )
-        return False
+    process = await core_process.get_verified_bedrock_process(
+        server_name, server_dir, config_dir
+    )
+    return process is not None
 
 
 def _handle_remove_readonly_onerror(func, path, exc_info):

@@ -16,6 +16,7 @@ class PlayerRecord(PersistentRecord):
 
 
 class SummaryRecord(PersistentRecord):
+    players_available: bool = True
     name: str
     status: str
     version: str

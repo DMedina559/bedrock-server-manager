@@ -54,62 +54,30 @@ def create_web_app(app_context: AppContext) -> FastAPI:  # noqa: C901
         lifespan=lifespan,
         responses={
             code: {"model": ErrorEnvelope}
-            for code in (400, 401, 403, 404, 409, 422, 500)
+            for code in (400, 401, 403, 404, 409, 422, 500, 503)
         },
     )
     from fastapi.responses import JSONResponse
     from pydantic import ValidationError
 
-    from ..api.errors import error_response, error_status_code
     from ..error import BSMError
+    from ..failures import classify_failure
     from ..plugins.api_contract import APIResponseValidationError
 
     async def api_error_handler(request, error):
         headers = None
-        if isinstance(error, RequestValidationError):
-            status_code = 422
-            payload = APIErrorResponse(
-                code="validation_error",
-                message="Invalid request.",
-                details={
-                    "errors": [
-                        {"location": list(item["loc"]), "code": item["type"]}
-                        for item in error.errors()
-                    ]
-                },
+        classified = classify_failure(error)
+        status_code = classified.status_code
+        payload = APIErrorResponse.model_validate(classified.error.model_dump())
+        headers = getattr(error, "headers", None)
+        if not classified.expected:
+            log_operation_error(
+                logger,
+                "HTTP operation failed: %s %s",
+                request.method,
+                request.url.path,
+                error=error,
             )
-        elif isinstance(error, StarletteHTTPException):
-            status_code = error.status_code
-            headers = error.headers
-            code = {
-                400: "validation_error",
-                401: "unauthorized",
-                403: "forbidden",
-                404: "not_found",
-                409: "conflict",
-                422: "validation_error",
-            }.get(status_code, "http_error")
-            if status_code >= 500:
-                code = "internal_error"
-            message = (
-                error.detail
-                if isinstance(error.detail, str) and status_code < 500
-                else "An unexpected error occurred."
-            )
-            payload = APIErrorResponse.model_validate(
-                {"code": code, "message": message}
-            )
-        else:
-            status_code = error_status_code(error)
-            if status_code == 500:
-                log_operation_error(
-                    logger,
-                    "HTTP operation failed: %s %s",
-                    request.method,
-                    request.url.path,
-                    error=error,
-                )
-            payload = error_response(error)
         return JSONResponse(
             status_code=status_code,
             headers=headers,

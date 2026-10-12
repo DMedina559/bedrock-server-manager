@@ -89,10 +89,31 @@ def check_source(source, package, signatures):
 
     errors = []
     checked = 0
+    parents = {
+        child: parent
+        for parent in ast.walk(tree)
+        for child in ast.iter_child_nodes(parent)
+    }
+    async_names = set()
+    for operation_name in signatures:
+        module_name, function_name = operation_name.removeprefix("bridge:").rsplit(
+            ".", 1
+        )
+        if inspect.iscoroutinefunction(
+            getattr(importlib.import_module(module_name), function_name)
+        ):
+            async_names.add(operation_name)
     for node in ast.walk(tree):
         if not isinstance(node, ast.Call):
             continue
         names = resolve(node.func)
+        if isinstance(parents.get(node), ast.Expr) and (
+            names & async_names
+            or any(name.endswith((".api.send_event", ".run_task")) for name in names)
+        ):
+            errors.append(
+                f"line {node.lineno}: asynchronous operation must be awaited or scheduled"
+            )
         deferred = any(
             name.endswith(".run_task") or name == "functools.partial" for name in names
         )

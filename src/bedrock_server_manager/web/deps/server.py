@@ -3,7 +3,7 @@ import logging
 from fastapi import Depends, HTTPException, Path, status
 
 from ...context import AppContext
-from ...error import InvalidServerNameError
+from ...error import InvalidServerNameError, ResourceNotFoundError
 from .context import get_app_context
 
 logger = logging.getLogger(__name__)
@@ -72,6 +72,6 @@ async def validate_server_registered(
         raise HTTPException(status_code=400, detail=str(error)) from error
     try:
         app_context.get_server(server_name, require_installation=False)
-    except InvalidServerNameError as error:
+    except ResourceNotFoundError as error:
         raise HTTPException(status_code=404, detail=str(error)) from error
     return server_name

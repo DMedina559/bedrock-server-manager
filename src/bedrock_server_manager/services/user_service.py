@@ -12,7 +12,7 @@ from sqlalchemy.exc import IntegrityError
 from ..error import StorageError, UserInputError
 from ..state.changeset import ChangeSet
 from ..state.models import UserInfoState
-from ..state.updates import UNSET, Unset, UserUpdate
+from ..state.updates import UNSET, AccountPatch, Unset, UserUpdate
 
 if TYPE_CHECKING:
     from ..db.storage import Storage
@@ -51,36 +51,44 @@ class UserService:
         user_id: Optional[int] = None,
     ) -> UserInfoState:
         """Registers or updates a user state record and marks dirty state."""
-        async with self.state.users.get_lock(username):
-            existing = self.state.users.get(username)
-            values: dict[str, object] = {"username": username}
-            for name, value in (
-                ("role", role),
-                ("theme", theme),
-                ("is_active", is_active),
-                ("id", user_id),
-            ):
-                if value is not None:
-                    values[name] = value
-            for field_name, nullable_value in (
-                ("full_name", full_name),
-                ("email", email),
-            ):
-                if nullable_value is not UNSET:
-                    values[field_name] = nullable_value
-            update = UserUpdate.model_validate(values)
-            data = existing.model_dump() if existing else {}
-            data.update(update.model_dump(exclude_unset=True))
-            user = UserInfoState.model_validate(data)
+        values: dict[str, object] = {"username": username}
+        for name, value in (
+            ("role", role),
+            ("theme", theme),
+            ("is_active", is_active),
+            ("id", user_id),
+        ):
+            if value is not None:
+                values[name] = value
+        for nullable_name, nullable_value in (
+            ("full_name", full_name),
+            ("email", email),
+        ):
+            if nullable_value is not UNSET:
+                values[nullable_name] = nullable_value
+        return await self.apply_update(UserUpdate.model_validate(values))
 
-            self.state.users.set(user)
+    async def apply_update(self, request: UserUpdate) -> UserInfoState:
+        request = UserUpdate.model_validate(request)
+
+        def build(existing: UserInfoState | None) -> UserInfoState:
+            data = existing.model_dump() if existing else {}
+            data.update(request.model_dump(exclude_unset=True))
+            return UserInfoState.model_validate(data)
 
         changeset = ChangeSet()
-        changeset.add_user(username)
-
-        await self.storage.apply_changeset(self.state, changeset)
-
-        return user
+        changeset.add_user(request.username)
+        return await self.storage.commit_record(
+            self.state,
+            changeset,
+            request.username,
+            get_lock=self.state.users.get_lock,
+            get=self.state.users.get,
+            build=build,
+            save=self.storage.user_repo.save_user,
+            publish=self.state.users.set,
+            acknowledge=self.state.users.remove_dirty_user,
+        )
 
     async def update_account(
         self,
@@ -88,10 +96,27 @@ class UserService:
         action: Literal["delete", "disable", "enable", "role", "theme", "profile"],
         user_id: int | None = None,
         username: str | None = None,
-        values: dict[str, object] | None = None,
+        values: AccountPatch | None = None,
         actor_id: int | None = None,
     ) -> UserInfoState | None:
         """Commit an account mutation and its audit entry before publishing state."""
+        patch_request = (
+            AccountPatch.model_validate(values)
+            if values is not None
+            else AccountPatch()
+        )
+        allowed = {
+            "delete": set(),
+            "disable": set(),
+            "enable": set(),
+            "role": {"role"},
+            "theme": {"theme"},
+            "profile": {"full_name", "email"},
+        }
+        if patch_request.model_fields_set - allowed[action]:
+            raise UserInputError("Patch fields do not match the account action.")
+        if action in {"role", "theme"} and getattr(patch_request, action) is None:
+            raise UserInputError(f"Account {action} is required.")
         async with self.storage.write_lock:
             async with self.storage.db.session_manager() as session:
                 user = (
@@ -114,7 +139,10 @@ class UserService:
                     if user is None:
                         return None
                     update = UserUpdate.model_validate(
-                        {"username": name, **(values or {})}
+                        {
+                            "username": name,
+                            **patch_request.model_dump(exclude_unset=True),
+                        }
                     )
                     patch = update.model_dump(
                         exclude_unset=True, exclude={"username", "id"}

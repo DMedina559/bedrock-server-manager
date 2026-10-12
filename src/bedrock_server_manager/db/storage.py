@@ -107,7 +107,12 @@ class Storage:
                 yield session
                 await session.commit()
             except BaseException as error:
-                await session.rollback()
+                try:
+                    await session.rollback()
+                except BaseException as rollback_error:
+                    error.add_note(
+                        f"Transaction rollback also failed: {type(rollback_error).__name__}"
+                    )
                 if (
                     isinstance(error, (BSMError, asyncio.CancelledError))
                     or error.__class__.__name__ == "HTTPException"
@@ -116,6 +121,50 @@ class Storage:
                 if not isinstance(error, Exception):
                     raise
                 raise StorageError("Database transaction failed.") from error
+
+    async def commit_record(
+        self,
+        state: AppState,
+        changeset: ChangeSet,
+        name: str,
+        *,
+        get_lock: Callable[[str], asyncio.Lock],
+        get: Callable[[str], Record | None],
+        build: Callable[[Record | None], Record],
+        save: Callable[[AsyncSession, Record], Awaitable[None]],
+        publish: Callable[[Record], None],
+        acknowledge: Callable[[str], None],
+    ) -> Record:
+        """Publish a service mutation only after its transaction commits."""
+        async with self._flush_lock:
+            async with get_lock(name):
+                record = build(get(name))
+                async with self.transaction() as session:
+                    await save(session, record)
+                publish(record)
+                acknowledge(name)
+        await self._notify_listeners(state, changeset)
+        return record
+
+    async def commit_settings(
+        self,
+        state: AppState,
+        changeset: ChangeSet,
+        mutate: Callable[[SettingsState], None],
+    ) -> None:
+        async with self._flush_lock:
+            async with state.settings.get_lock("global"):
+                candidate = type(state.settings).model_validate(
+                    state.settings.model_dump()
+                )
+                mutate(candidate)
+                if candidate.model_dump() == state.settings.model_dump():
+                    return
+                async with self.transaction() as session:
+                    await self.settings_repo.save_settings(session, candidate.to_dict())
+                candidate.clear_dirty()
+                state.settings = candidate
+        await self._notify_listeners(state, changeset)
 
     async def apply_changeset(self, state: AppState, changeset: ChangeSet) -> None:
         """Retry the complete unit of work, never a commit after a rollback."""

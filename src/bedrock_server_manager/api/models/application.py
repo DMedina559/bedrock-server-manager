@@ -2,7 +2,14 @@
 
 from pydantic import Field
 
-from .common import APIRequest, ServerSummary, StateRevision, SuccessResponse
+from ...results import ResourceFailure
+from .common import (
+    APIRequest,
+    PartialResponse,
+    ServerSummary,
+    StateRevision,
+    SuccessResponse,
+)
 
 
 class ListAvailableWorldsRequest(APIRequest):
@@ -17,7 +24,8 @@ class GetAllServersDataRequest(APIRequest):
     pass
 
 
-class GetAllServersDataResponse(SuccessResponse, StateRevision):
+class GetAllServersDataResponse(PartialResponse, StateRevision):
+    errors: list[ResourceFailure] = Field(default_factory=list)
     servers: list[ServerSummary]
 
 
@@ -35,6 +43,6 @@ class UpdateServerStatusesRequest(APIRequest):
     pass
 
 
-class UpdateServerStatusesResponse(SuccessResponse):
+class UpdateServerStatusesResponse(PartialResponse):
     updated_servers_count: int = Field(default=0, ge=0)
-    errors: list[str] = Field(default_factory=list)
+    errors: list[ResourceFailure] = Field(default_factory=list)

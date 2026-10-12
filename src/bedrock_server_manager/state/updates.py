@@ -4,6 +4,7 @@ from enum import Enum
 
 from pydantic import JsonValue
 
+from ..contracts import NonEmptyStr, ServerName
 from .models import PersistentRecord
 from .types import UserRole
 
@@ -16,7 +17,7 @@ UNSET = Unset.VALUE
 
 
 class ServerUpdate(PersistentRecord):
-    server_name: str
+    server_name: ServerName
     installed_version: str | None = None
     status: str | None = None
     autoupdate: bool | None = None
@@ -26,7 +27,7 @@ class ServerUpdate(PersistentRecord):
 
 
 class UserUpdate(PersistentRecord):
-    username: str
+    username: NonEmptyStr
     role: UserRole | None = None
     theme: str | None = None
     is_active: bool | None = None
@@ -36,8 +37,15 @@ class UserUpdate(PersistentRecord):
 
 
 class PluginUpdate(PersistentRecord):
-    plugin_name: str
+    plugin_name: NonEmptyStr
     enabled: bool | None = None
     version: str | None = None
     author: str | None = None
     description: str | None = None
+
+
+class AccountPatch(PersistentRecord):
+    role: UserRole | None = None
+    theme: str | None = None
+    full_name: str | None = None
+    email: str | None = None

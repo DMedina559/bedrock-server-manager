@@ -94,7 +94,13 @@ class TaskManager:
         """Helper function to update the status of a task and notify client."""
         if task_id in self._tasks:
             data = dict(self._tasks[task_id])
-            data.update(status=status, message=message, **revision_clock.capture())
+            data.update(
+                status=status,
+                message=message,
+                result=None,
+                error=None,
+                **revision_clock.capture(),
+            )
             if result is not None:
                 data["result"] = (
                     result.model_dump(mode="json")
@@ -205,7 +211,9 @@ class TaskManager:
                 None,
             )
             if oldest_task_id is None:
-                raise RuntimeError("Background task capacity reached.")
+                from ..error import OperationConflictError
+
+                raise OperationConflictError("Background task capacity reached.")
             del self._tasks[oldest_task_id]
             self._plugin_owners.pop(oldest_task_id, None)
             if oldest_task_id in self.futures:

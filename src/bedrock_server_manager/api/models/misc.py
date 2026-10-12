@@ -4,6 +4,7 @@ from typing import Annotated
 
 from pydantic import Field
 
+from ...results import CleanupResult
 from .common import ActionResponse, APIRequest, NonEmptyStr
 
 
@@ -13,4 +14,4 @@ class PruneDownloadCacheRequest(APIRequest):
 
 
 class PruneDownloadCacheResponse(ActionResponse):
-    pass
+    result: CleanupResult = Field(default_factory=CleanupResult)

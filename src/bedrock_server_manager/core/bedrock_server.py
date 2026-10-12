@@ -166,6 +166,7 @@ class BedrockServer(ServerResources):
             name=self.server_name,
             status=status,
             version=await self.get_version(),
+            players_available=runtime.players_available,
             player_count=runtime.players_online,
             players=[
                 PlayerRecord(name=player.name, xuid=player.xuid)

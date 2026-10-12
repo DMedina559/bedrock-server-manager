@@ -21,14 +21,15 @@ on:
 
 jobs:
   build-and-test:
-    runs-on: ubuntu-latest
+    runs-on: ${{ matrix.os }}
     permissions:
       contents: write
       packages: write
 
     strategy:
       matrix:
-        python-version: ['3.11', '3.14']
+        python-version: ['3.11', '3.12', '3.13', '3.14']
+        os: [ubuntu-latest, windows-latest]
     steps:
     - name: Checkout repository
       uses: actions/checkout@v7
@@ -49,6 +50,11 @@ jobs:
     - name: Run pre-commit
       run: |
         pre-commit run --all-files
+
+    - name: Check API contracts and callers
+      run: |
+        python scripts/check_api_callers.py
+        python scripts/generate_plugin_api.py --check
 
     - name: Run Pytest
       run: python -m pytest

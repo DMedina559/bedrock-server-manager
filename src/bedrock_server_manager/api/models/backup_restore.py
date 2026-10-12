@@ -2,6 +2,7 @@
 
 from pydantic import Field
 
+from ...results import CleanupResult, ComponentResults
 from .common import (
     ActionResponse,
     APIRequest,
@@ -44,7 +45,7 @@ class BackupAllRequest(APIRequest):
 
 class BackupAllResponse(ActionResponse):
     server_name: ServerName
-    details: dict[str, str | None] = Field(default_factory=dict)
+    details: ComponentResults = Field(default_factory=ComponentResults)
 
 
 class RestoreAllRequest(APIRequest):
@@ -54,7 +55,7 @@ class RestoreAllRequest(APIRequest):
 
 class RestoreAllResponse(ActionResponse):
     server_name: ServerName
-    details: dict[str, str | None] = Field(default_factory=dict)
+    details: ComponentResults = Field(default_factory=ComponentResults)
 
 
 class RestoreWorldRequest(APIRequest):
@@ -83,3 +84,4 @@ class PruneOldBackupsRequest(APIRequest):
 
 class PruneOldBackupsResponse(ActionResponse):
     server_name: ServerName
+    result: CleanupResult = Field(default_factory=CleanupResult)

@@ -6,6 +6,7 @@ from unittest.mock import AsyncMock
 import pytest
 
 from bedrock_server_manager.error import StorageError, UserInputError
+from bedrock_server_manager.state.updates import AccountPatch
 
 
 async def create_user(app_context, name="alice", role="user"):
@@ -71,7 +72,7 @@ async def test_concurrent_admin_demotion_preserves_one_admin(app_context):
     results = await asyncio.gather(
         *[
             app_context.user_service.update_account(
-                action="role", user_id=user_id, values={"role": "user"}
+                action="role", user_id=user_id, values=AccountPatch(role="user")
             )
             for user_id in (first, second)
         ],

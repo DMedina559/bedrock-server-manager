@@ -4,11 +4,13 @@ Provides API functions for interacting with WebSockets and managing real-time da
 """
 
 import logging
+from typing import Literal
 
 from ..context import AppContext
-from ..error import UserInputError
+from ..error import IncompleteOperationError
 from ..logging import log_operation_error
 from ..plugins.api_bridge import api_method
+from ..results import DeliveryResult
 from .models.websocket import (
     BroadcastRequest,
     BroadcastResponse,
@@ -25,6 +27,16 @@ from .models.websocket import (
 logger = logging.getLogger(__name__)
 
 
+def _delivery_status(
+    result: DeliveryResult,
+) -> Literal["success", "partial", "skipped"]:
+    if result.failed and not result.sent:
+        raise IncompleteOperationError("WebSocket dispatch failed.", result)
+    if not result.sent:
+        return "skipped"
+    return "partial" if result.failed or result.unavailable else "success"
+
+
 @api_method("websocket_broadcast")
 async def broadcast(
     request: BroadcastRequest, *, app_context: AppContext
@@ -36,8 +48,6 @@ async def broadcast(
     """
     topic = request.topic
     data = request.data
-    if not topic:
-        raise UserInputError("Topic name cannot be empty.")
     try:
         if (
             isinstance(data, dict)
@@ -47,9 +57,13 @@ async def broadcast(
             message = data
         else:
             message = {"type": "broadcast", "topic": topic, "data": data}
-        await app_context.connection_manager.broadcast_to_topic(topic, message)
-        return BroadcastResponse.model_validate(
-            {"status": "success", "message": f"Broadcasted to topic '{topic}'"}
+        delivery = await app_context.connection_manager.broadcast_to_topic(
+            topic, message
+        )
+        return BroadcastResponse(
+            status=_delivery_status(delivery),
+            delivery=delivery,
+            message=f"Wrote broadcast to {delivery.sent} client(s).",
         )
     except Exception as e:
         log_operation_error(
@@ -69,12 +83,12 @@ async def send_to_user(
     """
     username = request.username
     data = request.data
-    if not username:
-        raise UserInputError("Username cannot be empty.")
     try:
-        await app_context.connection_manager.send_to_user(username, data)
-        return SendToUserResponse.model_validate(
-            {"status": "success", "message": f"Sent message to user '{username}'"}
+        delivery = await app_context.connection_manager.send_to_user(username, data)
+        return SendToUserResponse(
+            status=_delivery_status(delivery),
+            delivery=delivery,
+            message=f"Wrote message to {delivery.sent} connection(s) for '{username}'.",
         )
     except Exception as e:
         log_operation_error(
@@ -94,12 +108,12 @@ async def send_to_client(
     """
     client_id = request.client_id
     data = request.data
-    if not client_id:
-        raise UserInputError("Client ID cannot be empty.")
     try:
-        await app_context.connection_manager.send_to_client(data, client_id)
-        return SendToClientResponse.model_validate(
-            {"status": "success", "message": f"Sent message to client '{client_id}'"}
+        delivery = await app_context.connection_manager.send_to_client(data, client_id)
+        return SendToClientResponse(
+            status=_delivery_status(delivery),
+            delivery=delivery,
+            message=f"Client dispatch: {delivery.sent} written, {delivery.unavailable} unavailable.",
         )
     except Exception as e:
         log_operation_error(
@@ -118,15 +132,12 @@ async def unregister_data_provider(
     Invalid requests fail validation before side effects; operation failures raise application exceptions.
     """
     topic = request.topic
-    if not topic:
-        raise UserInputError("Topic name cannot be empty.")
     try:
-        app_context.connection_manager.unregister_data_provider(topic)
-        return UnregisterDataProviderResponse.model_validate(
-            {
-                "status": "success",
-                "message": f"Unregistered data provider for topic '{topic}'",
-            }
+        removed = app_context.connection_manager.unregister_data_provider(topic)
+        return UnregisterDataProviderResponse(
+            status="success" if removed else "skipped",
+            outcome="removed" if removed else "already_absent",
+            message=f"Provider '{topic}' {'removed' if removed else 'already absent'}.",
         )
     except Exception as e:
         log_operation_error(
@@ -150,15 +161,14 @@ async def publish_ws_event(
     """
     event_name = request.event_name
     data = request.data
-    if not event_name:
-        raise UserInputError("Event name cannot be empty.")
     try:
-        await app_context.connection_manager.publish_ws_event(event_name, data)
-        return PublishWsEventResponse.model_validate(
-            {
-                "status": "success",
-                "message": f"Published WebSocket event '{event_name}'",
-            }
+        delivery = await app_context.connection_manager.publish_ws_event(
+            event_name, data
+        )
+        return PublishWsEventResponse(
+            status=_delivery_status(delivery),
+            delivery=delivery,
+            message=f"Event written to {delivery.sent} client(s).",
         )
     except Exception as e:
         log_operation_error(

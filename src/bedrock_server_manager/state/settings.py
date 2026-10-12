@@ -58,6 +58,7 @@ class WebSettings(SettingsRecord):
 
 
 class LifecycleSettings(SettingsRecord):
+    server_stop_timeout_seconds: float = Field(default=10.0, gt=0, le=600)
     startup_timeout_seconds: float = Field(default=30.0, gt=0, le=600)
     shutdown_timeout_seconds: float = Field(default=15.0, gt=0, le=600)
     task_drain_timeout_seconds: float = Field(default=30.0, gt=0, le=600)

@@ -12,7 +12,7 @@ import aiofiles
 import aiofiles.ospath
 
 from ...error import (
-    BSMError,
+    DependencyUnavailableError,
     MissingArgumentError,
     SendCommandError,
     ServerNotRunningError,
@@ -263,151 +263,97 @@ class ServerProcess:
         self._publish_running(False)
         await system_process.remove_pid_file_if_exists(self.server.get_pid_file_path())
 
+    async def _wait_for_exit(self, process: Any, timeout: float) -> None:
+        if not hasattr(process, "wait"):
+            raise ServerStopError("Process exit cannot be confirmed.")
+        try:
+            if inspect.iscoroutinefunction(process.wait):
+                await asyncio.wait_for(process.wait(), timeout=timeout)
+            else:
+                await run_in_thread(process.wait, timeout=timeout)
+        except (ProcessLookupError, system_process.psutil.NoSuchProcess):
+            return
+        if hasattr(process, "poll") and process.poll() is None:
+            raise ServerStopError("Process remains running after waiting for exit.")
+        if hasattr(process, "returncode") and process.returncode is None:
+            raise ServerStopError("Process remains running after waiting for exit.")
+
     async def stop(self) -> None:
-        """Stops the Bedrock server process gracefully, with a forceful fallback asynchronously."""
+        """Publish stopped state only after graceful or forced exit is confirmed."""
         async with self.server.operation_lock:
-            self.intentionally_stopped = True
             if not await self.is_running():
-                self.logger.debug(
-                    "Attempted to stop server '%s', but it is not currently running.",
-                    self.server.server_name,
-                )
-                status = await self.server.get_status_from_config()
-                if status != "STOPPED":
-                    try:
-                        await self.server.set_status_in_config("STOPPED")
-                    except Exception as e_stat:
-                        self.logger.warning(
-                            "Failed to reset status to STOPPED for '%s': %s",
-                            self.server.server_name,
-                            e_stat,
-                        )
+                self.intentionally_stopped = True
+                await self.server.set_status_in_config("STOPPED")
                 return
-            if self._process is None:
-                verified_process = await system_process.get_verified_bedrock_process(
-                    self.server.server_name,
-                    self.server.paths.server_dir,
-                    self.server.paths.app_config_dir,
-                )
-                if verified_process:
-                    self._process = verified_process
-                else:
-                    raise ServerStopError(
-                        f"Cannot stop server '{self.server.server_name}': process handle not found and could not be verified."
-                    )
-            try:
-                await self.server.set_status_in_config("STOPPING")
-            except Exception as e_stat:
-                self.logger.warning(
-                    "Failed to set status to STOPPING for '%s': %s",
-                    self.server.server_name,
-                    e_stat,
-                )
-            self.logger.debug(
-                "Attempting to stop server '%s'...", self.server.server_name
+            process = self._process
+            if process is None:
+                raise ServerStopError("Running server has no verified process handle.")
+            previous_intention = self.intentionally_stopped
+            self.intentionally_stopped = True
+            timeout = self.server.settings.get(
+                "lifecycle.server_stop_timeout_seconds", 10.0
             )
             try:
-                self.logger.debug(
-                    "Sending 'stop' command to server '%s'.", self.server.server_name
-                )
-                if hasattr(self._process, "stdin") and self._process.stdin:
-                    if hasattr(self._process.stdin, "drain"):
-                        self._process.stdin.write(b"stop\n")
-                        await self._process.stdin.drain()
+                await self.server.set_status_in_config("STOPPING")
+                try:
+                    channel: Any = getattr(process, "stdin", None)
+                    if channel:
+                        if hasattr(channel, "drain"):
+                            channel.write(b"stop\n")
+                            await channel.drain()
+                        else:
+
+                            def write_stop() -> None:
+                                channel.write(b"stop\n")
+                                channel.flush()
+
+                            await run_in_thread(write_stop)
+                    elif isinstance(process, system_process.psutil.Process):
+                        process.terminate()
                     else:
-
-                        def _write_stop():
-                            self._process.stdin.write(b"stop\n")
-                            self._process.stdin.flush()
-
-                        await run_in_thread(_write_stop)
-                elif isinstance(self._process, system_process.psutil.Process):
-                    self.logger.debug(
-                        "Cannot write to stdin of recovered psutil process '%s'. Sending terminate signal.",
+                        raise ServerStopError(
+                            "Running server has no usable command channel."
+                        )
+                    await self._wait_for_exit(process, timeout)
+                except Exception as graceful_error:
+                    self.logger.warning(
+                        "Graceful stop failed for '%s'; forcing exit.",
                         self.server.server_name,
                     )
-                    self._process.terminate()
-                timeout = int(
-                    self.server.settings.get("monitor.server_stop_timeout", 10)
-                )
-                if hasattr(self._process, "wait") and inspect.iscoroutinefunction(
-                    self._process.wait
-                ):
                     try:
-                        await asyncio.wait_for(self._process.wait(), timeout=timeout)
-                    except asyncio.TimeoutError:
-                        raise subprocess.TimeoutExpired(
-                            getattr(
-                                self._process,
-                                "args",
-                                getattr(self._process, "_args", ["bedrock_server"]),
-                            ),
-                            timeout,
+                        process.kill()
+                        await self._wait_for_exit(process, timeout)
+                    except (ProcessLookupError, system_process.psutil.NoSuchProcess):
+                        pass
+                    except Exception as forced_error:
+                        failure = ServerStopError(
+                            f"Could not confirm exit of '{self.server.server_name}'."
                         )
-                elif hasattr(self._process, "wait"):
-
-                    def _wait() -> None:
-                        if self._process is not None:
-                            cast(Callable[..., None], self._process.wait)(
-                                timeout=timeout
-                            )
-
-                    await run_in_thread(_wait)
-                self.logger.debug(
-                    "Server '%s' stopped gracefully.", self.server.server_name
-                )
-            except (subprocess.TimeoutExpired, OSError, BrokenPipeError) as e:
-                self.logger.warning(
-                    "Server '%s' did not stop gracefully or pipe was already closed. Killing process. Error: %s",
-                    self.server.server_name,
-                    e,
-                )
-                if self._process is not None:
-                    self._process.kill()
-            except system_process.psutil.TimeoutExpired as e:
-                self.logger.warning(
-                    "Server '%s' psutil process did not stop gracefully. Killing process. Error: %s",
-                    self.server.server_name,
-                    e,
-                )
-                if self._process is not None:
-                    self._process.kill()
-            except Exception as e:
-                log_operation_error(
-                    self.logger,
-                    "An error occurred while stopping server '%s': %s",
-                    self.server.server_name,
-                    e,
-                    error=e,
-                )
+                        failure.add_note(
+                            f"Graceful stop failed: {type(graceful_error).__name__}"
+                        )
+                        raise failure from forced_error
+            except BaseException as error:
+                self.intentionally_stopped = previous_intention
                 try:
-                    if self._process is not None:
-                        self._process.kill()
-                except Exception as kill_e:
-                    log_operation_error(
-                        self.logger,
-                        "Failed to kill process after error: %s",
-                        kill_e,
-                        error=kill_e,
+                    await self.server.set_status_in_config("RUNNING")
+                except Exception as status_error:
+                    error.add_note(
+                        f"Could not restore process status: {type(status_error).__name__}"
                     )
-            finally:
-                if (
-                    hasattr(self, "_log_file_handle")
-                    and self._log_file_handle is not None
-                ):
-                    try:
-                        self._log_file_handle.close()
-                    except Exception as close_e:
-                        self.logger.warning(
-                            "Failed to close log file handle: %s", close_e
-                        )
-                    self._log_file_handle = None
+                raise
             self._process = None
             self._publish_running(False)
-            pid_file_path = self.server.get_pid_file_path()
-            await system_process.remove_pid_file_if_exists(pid_file_path)
+            if self._log_file_handle is not None:
+                try:
+                    self._log_file_handle.close()
+                finally:
+                    self._log_file_handle = None
+            await system_process.remove_pid_file_if_exists(
+                self.server.get_pid_file_path()
+            )
             await self.server.set_status_in_config("STOPPED")
-            setattr(self.server, "players", [])
+            self.server.players = []
             self.server.player_tracker.reset()
             self.logger.info("Server '%s' stopped.", self.server.server_name)
 
@@ -426,7 +372,7 @@ class ServerProcess:
             if the server is running, verified, and ``psutil`` is available.
             The dictionary has keys: "pid", "cpu_percent", "memory_mb", "uptime".
             Returns ``None`` if the server is not running, cannot be verified,
-            ``psutil`` is unavailable, or if an error occurs during statistics retrieval.
+            or ``psutil`` is unavailable. Retrieval failures propagate to the caller.
             Example: ``{"pid": 1234, "cpu_percent": 15.2, "memory_mb": 256.5, "uptime": "0:10:30"}``
         """
         try:
@@ -444,7 +390,7 @@ class ServerProcess:
                 return None
             data = await run_in_thread(self._resource_monitor.get_stats, process_obj)
             if data is None:
-                return None
+                raise DependencyUnavailableError("Process statistics are unavailable.")
             record = ProcessRecord.model_validate(data)
             self.server._runtime_state.update_server_runtime(
                 self.server.server_name,
@@ -454,22 +400,15 @@ class ServerProcess:
                 memory_mb=record.memory_mb,
             )
             return record.model_dump(mode="json")
-        except BSMError as e_bsm:
-            self.logger.warning(
-                "Known error while trying to get process info for '%s': %s",
-                self.server.server_name,
-                e_bsm,
-            )
-            return None
-        except Exception as e_unexp:
+        except Exception as error:
             log_operation_error(
                 self.logger,
-                "Unexpected error getting process info for '%s': %s",
+                "Error getting process info for '%s': %s",
                 self.server.server_name,
-                e_unexp,
-                error=e_unexp,
+                error,
+                error=error,
             )
-            return None
+            raise
 
     def _publish_running(self, running: bool) -> bool:
         process = self._process

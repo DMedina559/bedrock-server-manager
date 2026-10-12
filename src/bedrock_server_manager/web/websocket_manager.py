@@ -9,6 +9,7 @@ from typing import Any, Callable, Dict, List, Optional
 from fastapi import WebSocket, WebSocketDisconnect
 
 from ..logging import log_operation_error
+from ..results import DeliveryResult
 from ..state.models import UserInfoState
 from .schemas import UserResponse
 from .schemas.websocket import json_payload
@@ -166,11 +167,13 @@ class ConnectionManager:
             plugin_name or "core",
         )
 
-    def unregister_data_provider(self, topic: str):
+    def unregister_data_provider(self, topic: str) -> bool:
         """Unregisters a data provider for a given topic."""
         if topic in self.data_providers:
             del self.data_providers[topic]
             logger.debug("Unregistered data provider for topic '%s'", topic)
+            return True
+        return False
 
     def unregister_plugin_providers(self, plugin_name: str):
         """Unregisters all data providers associated with a specific plugin."""
@@ -193,7 +196,7 @@ class ConnectionManager:
         provider = self.data_providers.get(topic)
         return provider.handler if provider else None
 
-    async def publish_ws_event(self, event_name: str, data: Any):
+    async def publish_ws_event(self, event_name: str, data: Any) -> DeliveryResult:
         """Publishes a custom WebSocket event to subscribers of 'ws_event:{event_name}'."""
         topic = f"ws_event:{event_name}"
         message = {
@@ -202,13 +205,13 @@ class ConnectionManager:
             "topic": topic,
             "data": data,
         }
-        await self.broadcast_to_topic(topic, message)
+        return await self.broadcast_to_topic(topic, message)
 
-    async def send_to_client(self, data: Any, client_id: str):
+    async def send_to_client(self, data: Any, client_id: str) -> DeliveryResult:
         """Sends a JSON message to a single client."""
         encoded = json.dumps(json_payload(data).value, allow_nan=False)
         if not await self.refresh_authorization(client_id):
-            return
+            return DeliveryResult(targeted=1, unavailable=1)
         if client_id in self.active_connections:
             client = self.active_connections[client_id]
             try:
@@ -223,6 +226,7 @@ class ConnectionManager:
                     e,
                 )
                 await self.disconnect(client_id)
+                return DeliveryResult(targeted=1, unavailable=1)
             except Exception as e:
                 log_operation_error(
                     logger,
@@ -233,8 +237,11 @@ class ConnectionManager:
                 )
                 # Consider the connection lost and disconnect the client
                 await self.disconnect(client_id)
+                return DeliveryResult(targeted=1, failed=1)
+            return DeliveryResult(targeted=1, sent=1)
+        return DeliveryResult(targeted=1, unavailable=1)
 
-    async def broadcast_to_topic(self, topic: str, data: Any):
+    async def broadcast_to_topic(self, topic: str, data: Any) -> DeliveryResult:
         """Broadcasts a JSON message to all clients subscribed to a topic."""
         clients_to_notify = set()
 
@@ -248,10 +255,13 @@ class ConnectionManager:
         client_ids = list(clients_to_notify)
 
         coroutines = [self.send_to_client(data, client_id) for client_id in client_ids]
-        if coroutines:
-            await asyncio.gather(*coroutines)
+        return (
+            DeliveryResult.combine(list(await asyncio.gather(*coroutines)))
+            if coroutines
+            else DeliveryResult()
+        )
 
-    async def send_to_user(self, username: str, data: Any):
+    async def send_to_user(self, username: str, data: Any) -> DeliveryResult:
         """Sends a JSON message to all active connections for a specific user."""
         # Find all client_ids for this username
         client_ids_for_user = [
@@ -263,5 +273,8 @@ class ConnectionManager:
         coroutines = [
             self.send_to_client(data, client_id) for client_id in client_ids_for_user
         ]
-        if coroutines:
-            await asyncio.gather(*coroutines)
+        return (
+            DeliveryResult.combine(list(await asyncio.gather(*coroutines)))
+            if coroutines
+            else DeliveryResult()
+        )

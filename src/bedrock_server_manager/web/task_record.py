@@ -1,19 +1,12 @@
 """Validated task data; execution futures remain owned by TaskManager."""
 
-from typing import Any, Literal
+from typing import Any
 
-from pydantic import JsonValue
+from ..api.models.common import StateRevision
+from ..api.models.tasks import TaskState
 
-from ..api.models.common import APIErrorResponse, StateRevision
 
-
-class TaskRecord(StateRevision):
-    status: Literal[
-        "queued", "running", "completed", "failed", "cancelling", "cancelled"
-    ]
-    message: str
-    result: JsonValue = None
-    error: APIErrorResponse | None = None
+class TaskRecord(TaskState, StateRevision):
     username: str | None = None
 
     def __getitem__(self, key: str) -> Any:

@@ -56,6 +56,8 @@ async def test_running_probe_replaces_stale_process_identity(
     assert await server.is_running()
     assert server.process._process is recovered
     assert server.state.runtime.get_server_runtime(server.server_name).pid == 222
+    monkeypatch.undo()
+    server.process._process = None
 
 
 @pytest.mark.parametrize("failure_type", [OSError, asyncio.CancelledError])

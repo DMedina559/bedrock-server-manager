@@ -12,11 +12,7 @@ from datetime import datetime
 from logging.handlers import RotatingFileHandler
 from typing import Optional
 
-from .error import (
-    APICancelledError,
-    ServerNotRunningError,
-    UserInputError,
-)
+from .failures import classify_failure
 
 DEFAULT_LOG_KEEP = 5
 MAX_LOG_BYTES = 10 * 1024 * 1024
@@ -48,9 +44,7 @@ def log_operation_error(
     Operational failures retain their traceback. Wrapping a reported exception
     preserves its reporting ownership through the exception cause chain.
     """
-    expected = isinstance(
-        error, (UserInputError, ServerNotRunningError, APICancelledError)
-    )
+    expected = classify_failure(error).expected
     level = logging.DEBUG if expected else logging.ERROR
     if not logger.isEnabledFor(level):
         return

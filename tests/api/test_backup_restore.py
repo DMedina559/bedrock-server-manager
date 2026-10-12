@@ -110,7 +110,7 @@ async def test_backup_all_and_restore_all_preserve_configuration(
         await prune_old_backups(
             PruneOldBackupsRequest(server_name=name), app_context=app_context
         )
-    ).status == "success"
+    ).status == "skipped"
 
 
 async def test_api_prunes_existing_properties_backups(app_context, real_bedrock_server):

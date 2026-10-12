@@ -228,7 +228,7 @@ async def post_update_server(
     status_code=status.HTTP_202_ACCEPTED,
 )
 async def delete_server(
-    server_name: str = Depends(validate_server_exists),
+    server_name: str = Depends(validate_server_registered),
     current_user: UserResponse = Depends(get_admin_user),
     app_context: AppContext = Depends(get_app_context),
 ) -> TaskAcceptedResponse:

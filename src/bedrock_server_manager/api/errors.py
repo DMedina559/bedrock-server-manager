@@ -1,89 +1,12 @@
-"""Explicit error mapping at serialized boundaries, with no raw input values."""
+"""Serialized API failures reuse the application-wide classifier."""
 
-from pydantic import ValidationError
-
-from ..error import (
-    APICancelledError,
-    AppFileNotFoundError,
-    BlockedCommandError,
-    BSMError,
-    InvalidServerNameError,
-    ServerError,
-    ServerNotRunningError,
-    ServerRunningError,
-    ServerStartError,
-    ServerStopError,
-    UserInputError,
-)
+from ..failures import classify_failure
 from .models import APIErrorResponse
 
 
 def error_status_code(error: Exception) -> int:
-    """Map domain failures consistently at HTTP and batch boundaries."""
-    if isinstance(error, ValidationError):
-        return 422
-    if isinstance(error, AppFileNotFoundError):
-        return 404
-    if isinstance(error, BlockedCommandError):
-        return 403
-    if isinstance(
-        error, (APICancelledError, ServerNotRunningError, ServerRunningError)
-    ):
-        return 409
-    if isinstance(error, UserInputError):
-        return 400
-    return 500
+    return classify_failure(error).status_code
 
 
 def error_response(error: Exception) -> APIErrorResponse:
-    """Serialize known failures; unexpected exceptions remain private in logs."""
-    if isinstance(error, ValidationError):
-        return APIErrorResponse(
-            code="validation_error",
-            message="API data failed validation.",
-            details={
-                "errors": [
-                    {"location": list(item["loc"]), "code": item["type"]}
-                    for item in error.errors(include_input=False, include_context=False)
-                ]
-            },
-        )
-    if isinstance(error, BlockedCommandError):
-        return APIErrorResponse(code="forbidden", message="Command is blocked.")
-    if isinstance(error, ServerNotRunningError):
-        return APIErrorResponse(code="conflict", message="Server is not running.")
-    if isinstance(error, ServerRunningError):
-        return APIErrorResponse(code="conflict", message="Server is still running.")
-    if isinstance(error, AppFileNotFoundError):
-        return APIErrorResponse(code="not_found", message="Resource not found.")
-    if isinstance(error, UserInputError) and not isinstance(
-        error, InvalidServerNameError
-    ):
-        return APIErrorResponse(code="validation_error", message=str(error))
-    if isinstance(error, APICancelledError):
-        return APIErrorResponse(
-            code="operation_canceled", message="Operation canceled by a plugin."
-        )
-    if isinstance(error, InvalidServerNameError):
-        return APIErrorResponse(
-            code="invalid_server_name", message="Invalid server name."
-        )
-    if isinstance(error, ServerStartError):
-        return APIErrorResponse(
-            code="server_start_failed", message="The server could not be started."
-        )
-    if isinstance(error, ServerStopError):
-        return APIErrorResponse(
-            code="server_stop_failed", message="The server could not be stopped."
-        )
-    if isinstance(error, ServerError):
-        return APIErrorResponse(
-            code="server_error", message="The server operation failed."
-        )
-    if isinstance(error, BSMError):
-        return APIErrorResponse(
-            code="application_error", message="The application operation failed."
-        )
-    return APIErrorResponse(
-        code="internal_error", message="An unexpected error occurred."
-    )
+    return APIErrorResponse.model_validate(classify_failure(error).error.model_dump())

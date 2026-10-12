@@ -15,6 +15,7 @@ from fastapi import APIRouter, Depends, HTTPException, status
 from fastapi.responses import JSONResponse
 
 from ...context import AppContext
+from ...state.updates import AccountPatch
 from ...utils import (
     get_password_hash,
     verify_password,
@@ -55,10 +56,12 @@ async def post_update_theme(
     Updates the current user's preferred theme.
     """
     result = await app_context.user_service.update_account(
-        action="theme", username=user.username, values={"theme": theme_update.theme}
+        action="theme",
+        username=user.username,
+        values=AccountPatch(theme=theme_update.theme),
     )
     if result is None:
-        return JSONResponse(status_code=404, content={"message": "User not found"})
+        raise HTTPException(status_code=404, detail="User not found.")
 
     return BaseApiResponse(status="success", message="Theme updated successfully")
 
@@ -79,10 +82,12 @@ async def post_update_profile(
     result = await app_context.user_service.update_account(
         action="profile",
         username=user.username,
-        values=profile_update.model_dump(),
+        values=AccountPatch.model_validate(
+            profile_update.model_dump(exclude_unset=True)
+        ),
     )
     if result is None:
-        return JSONResponse(status_code=404, content={"message": "User not found"})
+        raise HTTPException(status_code=404, detail="User not found.")
     return BaseApiResponse(status="success", message="Profile updated successfully")
 
 

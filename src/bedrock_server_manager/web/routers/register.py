@@ -105,7 +105,7 @@ async def register_user(
     Creates a new user from a registration token.
     """
     record = await app_context.user_service.create_account(
-        data.username, get_password_hash(data.password), token=token
+        data.username, get_password_hash(data.password.get_secret_value()), token=token
     )
     if record is None:
         raise HTTPException(

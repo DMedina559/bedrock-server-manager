@@ -48,10 +48,8 @@ async def add_server_ban(
     ban_res = await app_context.server_service.add_server_ban(
         server_name=server_name, player_name=player_name, xuid=xuid, reason=reason
     )
-    if not ban_res.success:
-        raise BSMError(ban_res.message)
-    return AddServerBanResponse.model_validate(
-        {"server_name": server_name, "status": "success", "message": ban_res.message}
+    return AddServerBanResponse(
+        server_name=server_name, status="success", message=ban_res.message
     )
 
 
@@ -79,10 +77,8 @@ async def remove_server_ban(
     ban_res = await app_context.server_service.remove_server_ban(
         server_name=server_name, xuid=xuid
     )
-    if not ban_res.success:
-        raise BSMError(ban_res.message)
-    return RemoveServerBanResponse.model_validate(
-        {"server_name": server_name, "status": "success", "message": ban_res.message}
+    return RemoveServerBanResponse(
+        server_name=server_name, status="success", message=ban_res.message
     )
 
 
@@ -96,13 +92,9 @@ async def get_server_bans(
     Invalid requests fail validation before side effects; operation failures raise application exceptions.
     """
     server_name = request.server_name
-    if not server_name:
-        raise UserInputError("server_name is required.")
     if not getattr(app_context, "_storage", None):
         raise BSMError("Database is not initialized.")
     ban_res = await app_context.server_service.get_server_bans(server_name=server_name)
-    if not ban_res.success:
-        raise BSMError(ban_res.message)
     return GetServerBansResponse.model_validate(
-        {"status": "success", "bans": [ban.model_dump() for ban in ban_res.bans or []]}
+        {"status": "success", "bans": [ban.model_dump() for ban in ban_res]}
     )

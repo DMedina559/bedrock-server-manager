@@ -25,8 +25,11 @@ from ..error import (
     FileOperationError,
     InvalidServerNameError,
     MissingArgumentError,
+    ResourceNotFoundError,
 )
+from ..failures import classify_failure
 from ..logging import log_operation_error
+from ..results import ResourceFailure
 
 logger = logging.getLogger(__name__)
 
@@ -78,25 +81,16 @@ async def validate_server(server_name: str, app_context: AppContext) -> bool:
                 server_name,
             )
         return is_valid
-    except (
-        ValueError,
-        MissingArgumentError,
-        ConfigurationError,
-        InvalidServerNameError,
-        Exception,
-    ) as e_val:
-        logger.warning(
-            "Validation failed for server '%s' due to an error: %s", server_name, e_val
-        )
+    except (InvalidServerNameError, ResourceNotFoundError, AppFileNotFoundError):
         return False
 
 
 async def get_servers_data(
     app_context: AppContext,
-) -> Tuple[List[Dict[str, Any]], List[str]]:
+) -> Tuple[List[Dict[str, Any]], List[ResourceFailure]]:
     """Discovers and retrieves status data for all valid server instances."""
     servers_data: List[Dict[str, Any]] = []
-    error_messages: List[str] = []
+    error_messages: List[ResourceFailure] = []
 
     base_dir = app_context.settings.get("paths.servers")
     if not base_dir or not os.path.isdir(base_dir):
@@ -124,11 +118,19 @@ async def get_servers_data(
         except (FileOperationError, ConfigurationError, InvalidServerNameError) as e:
             msg = f"Could not get info for server '{server_name_candidate}': {e}"
             logger.warning(msg)
-            error_messages.append(msg)
+            error_messages.append(
+                ResourceFailure(
+                    resource=server_name_candidate, error=classify_failure(e).error
+                )
+            )
         except Exception as e:
             msg = f"An unexpected error occurred while processing server '{server_name_candidate}': {e}"
             log_operation_error(logger, msg, error=e)
-            error_messages.append(msg)
+            error_messages.append(
+                ResourceFailure(
+                    resource=server_name_candidate, error=classify_failure(e).error
+                )
+            )
 
     servers_data.sort(key=lambda s: s.get("name", "").lower())
     return servers_data, error_messages
