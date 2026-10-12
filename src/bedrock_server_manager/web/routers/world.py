@@ -230,8 +230,6 @@ async def post_world_export(
         raise
     except UserInputError as e:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(e))
-    except HTTPException:
-        raise
     except ValidationError:
         raise
     except Exception as e:
@@ -289,8 +287,6 @@ async def delete_world_reset(
         raise
     except UserInputError as e:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(e))
-    except HTTPException:
-        raise
     except ValidationError:
         raise
     except Exception as e:
@@ -350,18 +346,18 @@ async def get_world_icon(
                 error=e,
             )
 
-        default_icon_path = os.path.join(STATIC_DIR, "image", "icon", "favicon.ico")
+        default_icon_path = os.path.join(STATIC_DIR, "image", "icon", "web-app-manifest-192x192.png")
         if os.path.isfile(default_icon_path):
             logger.debug(
-                "Serving default world icon (favicon.ico) from: %s", default_icon_path
+                "Serving default world icon from: %s", default_icon_path
             )
             return FileResponse(
-                default_icon_path, media_type="image/vnd.microsoft.icon"
+                default_icon_path, media_type="image/png"
             )
         else:
             log_operation_error(
                 logger,
-                "Default world icon (favicon.ico) not found at %s",
+                "Default world icon not found at %s",
                 default_icon_path,
                 error=e,
             )
