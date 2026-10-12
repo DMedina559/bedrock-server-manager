@@ -27,6 +27,6 @@ jobs:
         with:
           python-version: ${{ matrix.python-version }}
       - name: Install contract tooling
-        run: python -m pip install '.[contract]'
+        run: python -m pip install '.'
       - name: Export and validate registered core contract
         run: python scripts/export_openapi.py --output /tmp/backend-openapi.json
