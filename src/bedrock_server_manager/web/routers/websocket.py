@@ -119,7 +119,7 @@ async def websocket_endpoint(  # noqa: C901
         return
     except Exception as e:
         log_operation_error(logger, "WebSocket unexpected auth error: %s", e, error=e)
-        await websocket.close(code=1008, reason="Internal Authentication Error")
+        await websocket.close(code=1011, reason="Authentication unavailable")
         return
 
     connection_manager = app_context.connection_manager

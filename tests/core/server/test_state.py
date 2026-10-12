@@ -61,22 +61,23 @@ async def test_concurrent_initial_writes_preserve_both_values(
     server.state.servers.remove(server.server_name)
     entered = asyncio.Event()
     release = asyncio.Event()
-    original = server.storage.apply_changeset
+    original = server.storage.commit_record
     first = True
 
-    async def delayed(state, changeset):
+    async def delayed(state, changeset, name, **kwargs):
         nonlocal first
         if first:
             first = False
             entered.set()
             await release.wait()
-        await original(state, changeset)
+        await original(state, changeset, name, **kwargs)
 
-    monkeypatch.setattr(server.storage, "apply_changeset", delayed)
+    monkeypatch.setattr(server.storage, "commit_record", delayed)
     initial = asyncio.create_task(
         server.configuration.update("server_info.installed_version", "new")
     )
-    await entered.wait()
+    async with asyncio.timeout(10):
+        await entered.wait()
     await server.configuration.update("settings.autostart", True)
     release.set()
     await initial

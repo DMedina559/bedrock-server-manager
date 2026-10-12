@@ -8,7 +8,9 @@ from ..error import (
     FileOperationError,
     UserInputError,
 )
+from ..failures import classify_failure
 from ..logging import log_operation_error
+from ..results import PlayerScanDetails, PlayerScanError
 
 logger = logging.getLogger(__name__)
 
@@ -47,7 +49,7 @@ async def get_known_players(storage: Any) -> List[Dict[str, str]]:
 
 async def discover_and_store_players(  # noqa: C901
     base_dir: str, app_context: AppContext
-) -> Dict[str, Any]:
+) -> PlayerScanDetails:
     """Scans all server logs for player data and updates the central player database asynchronously."""
     import aiofiles.os
     import aiofiles.ospath
@@ -56,7 +58,7 @@ async def discover_and_store_players(  # noqa: C901
         raise AppFileNotFoundError(str(base_dir), "Server base directory")
 
     all_discovered_from_logs: List[Dict[str, str]] = []
-    scan_errors_details: List[Dict[str, str]] = []
+    scan_errors_details: list[PlayerScanError] = []
 
     logger.debug(
         "Starting discovery of players from all server logs in '%s'.", base_dir
@@ -94,7 +96,9 @@ async def discover_and_store_players(  # noqa: C901
                 "Error scanning log for server '%s': %s", server_name_candidate, e
             )
             scan_errors_details.append(
-                {"server": server_name_candidate, "error": str(e)}
+                PlayerScanError(
+                    server=server_name_candidate, error=classify_failure(e).error
+                )
             )
         except Exception as e_instantiate:
             log_operation_error(
@@ -105,10 +109,10 @@ async def discover_and_store_players(  # noqa: C901
                 error=e_instantiate,
             )
             scan_errors_details.append(
-                {
-                    "server": server_name_candidate,
-                    "error": f"Unexpected error: {str(e_instantiate)}",
-                }
+                PlayerScanError(
+                    server=server_name_candidate,
+                    error=classify_failure(e_instantiate).error,
+                )
             )
 
     saved_count = 0
@@ -128,15 +132,14 @@ async def discover_and_store_players(  # noqa: C901
                 error=e_save,
             )
             scan_errors_details.append(
-                {
-                    "server": "GLOBAL_PLAYER_DB",
-                    "error": f"Save failed: {str(e_save)}",
-                }
+                PlayerScanError(
+                    server="GLOBAL_PLAYER_DB", error=classify_failure(e_save).error
+                )
             )
 
-    return {
-        "total_entries_in_logs": len(all_discovered_from_logs),
-        "unique_players_submitted_for_saving": len(unique_players_to_save_map),
-        "actually_saved_or_updated_in_db": saved_count,
-        "scan_errors": scan_errors_details,
-    }
+    return PlayerScanDetails(
+        total_entries_in_logs=len(all_discovered_from_logs),
+        unique_players_submitted_for_saving=len(unique_players_to_save_map),
+        actually_saved_or_updated_in_db=saved_count,
+        scan_errors=scan_errors_details,
+    )

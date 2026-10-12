@@ -27,7 +27,6 @@ from ..error import (
     AppFileNotFoundError,
     BSMError,
     FileError,
-    MissingArgumentError,
     SendCommandError,
     ServerNotRunningError,
 )
@@ -102,10 +101,6 @@ async def import_addon(
     addon_file_path = request.addon_file_path
     stop_start_server = request.stop_start_server
     restart_only_on_success = request.restart_only_on_success
-    if not server_name:
-        raise MissingArgumentError("Server name cannot be empty.")
-    if not addon_file_path:
-        raise MissingArgumentError("Addon file path cannot be empty.")
     if not os.path.isfile(addon_file_path):
         raise AppFileNotFoundError(addon_file_path, "Addon file")
     server = app_context.get_server(server_name)
@@ -116,11 +111,10 @@ async def import_addon(
             "An operation for '%s' is already in progress. Skipping concurrent import.",
             server_name,
         )
-        return ImportAddonResponse.model_validate(
-            {
-                "status": "skipped",
-                "message": "An addon operation is already in progress.",
-            }
+        return ImportAddonResponse(
+            server_name=server_name,
+            status="skipped",
+            message="An addon operation is already in progress.",
         )
     try:
         addon_filename = os.path.basename(addon_file_path)
@@ -162,8 +156,8 @@ async def import_addon(
             message = f"Addon '{addon_filename}' installed successfully for server '{server_name}'."
             if stop_start_server:
                 message += " Server stop/start cycle handled."
-            return ImportAddonResponse.model_validate(
-                {"status": "success", "message": message}
+            return ImportAddonResponse(
+                server_name=server_name, status="success", message=message
             )
         except BSMError as e:
             log_operation_error(
@@ -225,11 +219,10 @@ async def enable_addon(
     try:
         await server.operation_lock.acquire(timeout=300)
     except asyncio.TimeoutError:
-        return EnableAddonResponse.model_validate(
-            {
-                "status": "skipped",
-                "message": "An addon operation is already in progress.",
-            }
+        return EnableAddonResponse(
+            server_name=server_name,
+            status="skipped",
+            message="An addon operation is already in progress.",
         )
     try:
         async with server_lifecycle_manager(
@@ -240,11 +233,10 @@ async def enable_addon(
             app_context=app_context,
         ):
             await server.addons.enable_addon(pack_uuid=pack_uuid, pack_type=pack_type)
-        return EnableAddonResponse.model_validate(
-            {
-                "status": "success",
-                "message": f"Successfully enabled pack '{pack_uuid}'.",
-            }
+        return EnableAddonResponse(
+            server_name=server_name,
+            status="success",
+            message=f"Successfully enabled pack '{pack_uuid}'.",
         )
     except BSMError as e:
         log_operation_error(
@@ -291,11 +283,10 @@ async def disable_addon(
     try:
         await server.operation_lock.acquire(timeout=300)
     except asyncio.TimeoutError:
-        return DisableAddonResponse.model_validate(
-            {
-                "status": "skipped",
-                "message": "An addon operation is already in progress.",
-            }
+        return DisableAddonResponse(
+            server_name=server_name,
+            status="skipped",
+            message="An addon operation is already in progress.",
         )
     try:
         async with server_lifecycle_manager(
@@ -306,11 +297,10 @@ async def disable_addon(
             app_context=app_context,
         ):
             await server.addons.disable_addon(pack_uuid=pack_uuid, pack_type=pack_type)
-        return DisableAddonResponse.model_validate(
-            {
-                "status": "success",
-                "message": f"Successfully disabled pack '{pack_uuid}'.",
-            }
+        return DisableAddonResponse(
+            server_name=server_name,
+            status="success",
+            message=f"Successfully disabled pack '{pack_uuid}'.",
         )
     except BSMError as e:
         log_operation_error(
@@ -358,11 +348,10 @@ async def update_subpack(
     try:
         await server.operation_lock.acquire(timeout=300)
     except asyncio.TimeoutError:
-        return UpdateSubpackResponse.model_validate(
-            {
-                "status": "skipped",
-                "message": "An addon operation is already in progress.",
-            }
+        return UpdateSubpackResponse(
+            server_name=server_name,
+            status="skipped",
+            message="An addon operation is already in progress.",
         )
     try:
         async with server_lifecycle_manager(
@@ -375,11 +364,10 @@ async def update_subpack(
             await server.addons.update_subpack(
                 pack_uuid=pack_uuid, pack_type=pack_type, subpack_name=subpack_name
             )
-        return UpdateSubpackResponse.model_validate(
-            {
-                "status": "success",
-                "message": f"Successfully updated subpack for pack '{pack_uuid}'.",
-            }
+        return UpdateSubpackResponse(
+            server_name=server_name,
+            status="success",
+            message=f"Successfully updated subpack for pack '{pack_uuid}'.",
         )
     except BSMError as e:
         log_operation_error(
@@ -426,11 +414,10 @@ async def uninstall_addon(
     try:
         await server.operation_lock.acquire(timeout=300)
     except asyncio.TimeoutError:
-        return UninstallAddonResponse.model_validate(
-            {
-                "status": "skipped",
-                "message": "An addon operation is already in progress.",
-            }
+        return UninstallAddonResponse(
+            server_name=server_name,
+            status="skipped",
+            message="An addon operation is already in progress.",
         )
     try:
         async with server_lifecycle_manager(
@@ -441,11 +428,10 @@ async def uninstall_addon(
             app_context=app_context,
         ):
             await server.addons.remove_addon(pack_uuid=pack_uuid, pack_type=pack_type)
-        return UninstallAddonResponse.model_validate(
-            {
-                "status": "success",
-                "message": f"Successfully uninstalled pack '{pack_uuid}'.",
-            }
+        return UninstallAddonResponse(
+            server_name=server_name,
+            status="success",
+            message=f"Successfully uninstalled pack '{pack_uuid}'.",
         )
     except BSMError as e:
         log_operation_error(
@@ -492,11 +478,10 @@ async def reorder_addons(
     try:
         await server.operation_lock.acquire(timeout=300)
     except asyncio.TimeoutError:
-        return ReorderAddonsResponse.model_validate(
-            {
-                "status": "skipped",
-                "message": "An addon operation is already in progress.",
-            }
+        return ReorderAddonsResponse(
+            server_name=server_name,
+            status="skipped",
+            message="An addon operation is already in progress.",
         )
     try:
         async with server_lifecycle_manager(
@@ -507,11 +492,10 @@ async def reorder_addons(
             app_context=app_context,
         ):
             await server.addons.reorder_addons(uuids=uuids, pack_type=pack_type)
-        return ReorderAddonsResponse.model_validate(
-            {
-                "status": "success",
-                "message": f"Successfully reordered {pack_type} packs.",
-            }
+        return ReorderAddonsResponse(
+            server_name=server_name,
+            status="success",
+            message=f"Successfully reordered {pack_type} packs.",
         )
     except BSMError as e:
         log_operation_error(

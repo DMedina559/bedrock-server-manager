@@ -56,27 +56,24 @@ async def add_players_manually(
     storage = app_context.storage
     if storage is None:
         raise BSMError("Storage is not initialized.")
-    if (
-        not player_strings
-        or not isinstance(player_strings, list)
-        or (not all((isinstance(s, str) for s in player_strings)))
-    ):
-        raise BSMError("Input must be a non-empty list of player strings.")
     try:
         combined_input = ",".join(player_strings)
         players_data = parse_player_string(combined_input)
-        if players_data:
-            await save_player_data(storage, players_data)
+        unique = {player["xuid"]: player for player in players_data}
+        saved_count = (
+            await save_player_data(storage, list(unique.values())) if unique else 0
+        )
         return AddPlayersManuallyResponse.model_validate(
             {
                 "status": "success",
-                "message": f"{len(player_strings)} player entries processed and saved/updated.",
-                "count": len(player_strings),
+                "message": f"{saved_count} player records saved/updated ({len(unique)} unique players submitted).",
+                "count": saved_count,
+                "submitted_count": len(player_strings),
+                "parsed_count": len(players_data),
+                "unique_count": len(unique),
             }
         )
     except UserInputError:
-        raise
-    except BSMError:
         raise
     except Exception as e:
         log_operation_error(logger, "Unexpected error adding players: %s", e, error=e)
@@ -125,14 +122,11 @@ async def scan_and_update_player_db(
     try:
         base_dir = app_context.settings.get("paths.servers", "")
         scan_result = await discover_and_store_players(base_dir, app_context)
-        message = f"Player DB update complete. Entries found in logs: {scan_result['total_entries_in_logs']}. Unique players submitted: {scan_result['unique_players_submitted_for_saving']}. Actually saved/updated: {scan_result['actually_saved_or_updated_in_db']}."
-        if scan_result["scan_errors"]:
-            message += f" Scan errors encountered for: {scan_result['scan_errors']}"
-        return ScanAndUpdatePlayerDbResponse.model_validate(
-            {"status": "success", "message": message, "details": scan_result}
+        return ScanAndUpdatePlayerDbResponse(
+            status="partial" if scan_result.scan_errors else "success",
+            message=f"Player discovery found {scan_result.unique_players_submitted_for_saving} unique players; {scan_result.actually_saved_or_updated_in_db} saved/updated.",
+            details=scan_result,
         )
-    except BSMError:
-        raise
     except Exception as e:
         log_operation_error(
             logger, "Unexpected error scanning for players: %s", e, error=e

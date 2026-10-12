@@ -143,7 +143,8 @@ async def reauth(
                 val = form_data.get("remember_me")
                 if val is not None:
                     remember_me = str(val).lower() in ("true", "1", "yes", "on")
-        except Exception:
+        except ValueError:
+            # Optional remember-me data may be absent or malformed.
             pass
 
     if remember_me is None:

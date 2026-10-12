@@ -1,13 +1,14 @@
 from datetime import datetime
-from typing import Any, Dict, List, Optional
+from typing import Dict, List, Optional
 
-from pydantic import BaseModel, ConfigDict, Field, JsonValue
+from pydantic import ConfigDict, Field, JsonValue
 
-from ...api.models.common import APIRequest
+from ...api.models.common import APIRequest, APIResponse
+from ...contracts import FailureInfo, NonEmptyStr
 from .base import BaseApiResponse
 
 
-class SetupStatusResponse(BaseModel):
+class SetupStatusResponse(APIResponse):
     """Response model for setup status."""
 
     needs_setup: bool
@@ -21,13 +22,13 @@ class FileNamePayload(APIRequest):
         filename (str): The name of the file to operate on.
     """
 
-    filename: str
+    filename: NonEmptyStr
 
 
 class SettingItemResponse(APIRequest):
     """Request model for a single setting key-value pair."""
 
-    key: str = Field(
+    key: NonEmptyStr = Field(
         ..., description="The dot-notation key of the setting (e.g., 'web.port')."
     )
     value: JsonValue = Field(..., description="The new value for the setting.")
@@ -38,7 +39,7 @@ class SettingsResponse(BaseApiResponse):
 
     # status: str = Field(...) -> Inherited
     # message: Optional[str] = None -> Inherited
-    settings: Optional[Dict[str, Any]] = None
+    settings: Optional[Dict[str, JsonValue]] = None
     setting: Optional[SettingItemResponse] = None
 
 
@@ -57,11 +58,11 @@ class PruneDownloadsPayload(APIRequest):
     )
 
 
-class AuditLogResponse(BaseModel):
+class AuditLogResponse(APIResponse):
     id: int
     user_id: int
     action: str
-    details: Optional[Dict[str, Any]] = None
+    details: Optional[Dict[str, JsonValue]] = None
     timestamp: datetime
 
     model_config = ConfigDict(from_attributes=True)
@@ -70,6 +71,7 @@ class AuditLogResponse(BaseModel):
 class PruneDownloadsResponse(BaseApiResponse):
     """Response model for pruning downloads."""
 
+    failures: dict[str, FailureInfo] = Field(default_factory=dict)
     files_deleted: Optional[int] = None
     files_kept: Optional[int] = None
 

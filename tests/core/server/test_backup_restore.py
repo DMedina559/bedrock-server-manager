@@ -32,18 +32,18 @@ async def test_backup_all_data(real_bedrock_server):
     result = await server.backups.backup_all_data()
 
     assert result is not None
-    assert "world" in result
-    assert "server.properties" in result
-    assert "allowlist.json" in result
-    assert "permissions.json" in result
-    assert result["world"] is not None
-    assert result["server.properties"] is not None
+    assert "world" in result.components
+    assert "server.properties" in result.components
+    assert "allowlist.json" in result.components
+    assert "permissions.json" in result.components
+    assert result.components["world"].path is not None
+    assert result.components["server.properties"].path is not None
 
-    assert os.path.exists(result["world"])
-    assert os.path.exists(result["server.properties"])
+    assert os.path.exists(result.components["world"].path)
+    assert os.path.exists(result.components["server.properties"].path)
 
     # Verify zip content
-    with zipfile.ZipFile(result["world"], "r") as zf:
+    with zipfile.ZipFile(result.components["world"].path, "r") as zf:
         names = zf.namelist()
         # the zip structure depends on how shutil.make_archive creates it, typically rooted at dir
         assert any(n.endswith("level.dat") for n in names)
@@ -131,8 +131,8 @@ async def test_restore_all_data_from_latest(real_bedrock_server):
     result = await server.backups.restore_all_data_from_latest()
 
     assert result is not None
-    assert "world" in result
-    assert "server.properties" in result
+    assert "world" in result.components
+    assert "server.properties" in result.components
 
     # Verify original state restored
     with open(os.path.join(world_dir, "level.dat"), "r") as f:

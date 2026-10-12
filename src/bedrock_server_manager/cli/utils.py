@@ -46,5 +46,8 @@ def handle_api_response(
     message = response.message or success_msg
     if response.status == "skipped":
         click.secho(f"Skipped: {message}", fg="yellow")
+    elif response.status == "partial":
+        click.secho(f"Partial: {message}", fg="yellow")
+        raise click.ClickException("Operation completed with failures.")
     else:
         click.secho(f"Success: {message}", fg="green")

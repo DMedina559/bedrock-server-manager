@@ -202,6 +202,7 @@ class ServerWorlds:
         file_list_with_sizes: List[Tuple[str, int]] = []
         query_success = False
         start_time = time.time()
+        original_error: BaseException | None = None
         try:
             while time.time() - start_time < timeout:
                 await asyncio.sleep(poll_interval)
@@ -283,10 +284,13 @@ class ServerWorlds:
 
             await run_in_thread(_copy_and_truncate_world)
             self.logger.info(
-                "Server '%s': Live world export successful. Created: %s",
+                "Server '%s': Live world archive created: %s",
                 self.server.server_name,
                 target_mcworld_file_path,
             )
+        except BaseException as error:
+            original_error = error
+            raise
         finally:
             self.logger.debug(
                 "Server '%s': Sending 'save resume'...", self.server.server_name
@@ -299,6 +303,14 @@ class ServerWorlds:
                     self.server.server_name,
                     e_res,
                 )
+                if original_error is not None:
+                    original_error.add_note(
+                        f"Resuming server saves also failed: {type(e_res).__name__}"
+                    )
+                else:
+                    raise BackupRestoreError(
+                        "World export completed, but server saves could not be resumed."
+                    ) from e_res
 
     async def export_world(
         self, world_dir_name: str, target_mcworld_file_path: str
@@ -365,18 +377,8 @@ class ServerWorlds:
                     raise FileOperationError(
                         f"Cannot create target directory '{target_parent_dir}': {e}"
                     ) from e
-            is_running = False
-            if hasattr(self.server, "is_running"):
-                try:
-                    is_running = await self.server.is_running()
-                except Exception:
-                    is_running = False
-            active_world_name = None
-            if hasattr(self.server, "get_world_name"):
-                try:
-                    active_world_name = await self.server.get_world_name()
-                except Exception:
-                    active_world_name = None
+            is_running = await self.server.is_running()
+            active_world_name = await self.server.get_world_name()
             if (
                 is_running
                 and active_world_name

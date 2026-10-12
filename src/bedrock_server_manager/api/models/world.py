@@ -17,6 +17,7 @@ class ExportWorldRequest(APIRequest):
 
 
 class ExportWorldResponse(ActionResponse):
+    server_name: ServerName
     export_file: str | None = None
     required_on_success = ("export_file",)
 
@@ -28,7 +29,7 @@ class ImportWorldRequest(APIRequest):
 
 
 class ImportWorldResponse(ActionResponse):
-    pass
+    server_name: ServerName
 
 
 class ResetWorldRequest(APIRequest):
@@ -36,4 +37,4 @@ class ResetWorldRequest(APIRequest):
 
 
 class ResetWorldResponse(ActionResponse):
-    pass
+    server_name: ServerName

@@ -247,3 +247,98 @@ def test_get_web_ui_service_status_success(app_context: AppContext):
                     assert result["service_exists"] is True
                     assert result["is_active"] is True
                     assert result["is_enabled"] is False
+
+
+def test_detached_start_rejects_verified_existing_process(app_context, monkeypatch):
+    from unittest.mock import AsyncMock
+
+    from bedrock_server_manager.api import web
+    from bedrock_server_manager.error import OperationConflictError
+
+    launch = AsyncMock()
+    remove = AsyncMock()
+    for name, value in {
+        "read_pid_from_file": AsyncMock(return_value=1234),
+        "is_process_running": AsyncMock(return_value=True),
+        "verify_process_identity": AsyncMock(return_value=None),
+        "launch_detached_process": launch,
+        "remove_pid_file_if_exists": remove,
+    }.items():
+        monkeypatch.setattr(web.system_process_utils, name, value)
+    with pytest.raises(OperationConflictError):
+        start_web_server(
+            StartWebServerRequest(mode="detached"), app_context=app_context
+        )
+    launch.assert_not_awaited()
+    remove.assert_not_awaited()
+
+
+@pytest.mark.parametrize("enabled", [False, True])
+def test_service_query_failures_are_unavailable(systemd, enabled):
+    from bedrock_server_manager.core import service
+    from bedrock_server_manager.error import DependencyUnavailableError
+
+    query = service.is_web_service_enabled if enabled else service.is_web_service_active
+    assert query() is False
+    systemd.failure = "is-enabled" if enabled else "is-active"
+    with pytest.raises(DependencyUnavailableError):
+        query()
+
+
+@pytest.mark.parametrize("enabled", [False, True])
+@pytest.mark.parametrize("code", [1060, 5])
+def test_windows_service_query_only_treats_missing_service_as_negative(
+    monkeypatch, enabled, code
+):
+    import subprocess
+
+    from bedrock_server_manager.core import service
+    from bedrock_server_manager.error import DependencyUnavailableError
+
+    monkeypatch.setattr(service.platform, "system", lambda: "Windows")
+    monkeypatch.setattr(service.shutil, "which", lambda command: "sc.exe")
+
+    def failed(*args, **kwargs):
+        raise subprocess.CalledProcessError(code, "sc.exe")
+
+    monkeypatch.setattr(service.subprocess, "check_output", failed)
+    query = service.is_web_service_enabled if enabled else service.is_web_service_active
+    if code == 1060:
+        assert query() is False
+    else:
+        with pytest.raises(DependencyUnavailableError):
+            query()
+
+
+@pytest.mark.parametrize(
+    "enabled,output,expected",
+    [
+        (False, "STATE : 4 RUNNING", True),
+        (False, "STATE : 1 STOPPED", False),
+        (True, "START_TYPE : 2 AUTO_START", True),
+        (True, "START_TYPE : 3 DEMAND_START", False),
+    ],
+)
+def test_windows_service_states_are_parsed(monkeypatch, enabled, output, expected):
+    from bedrock_server_manager.core import service
+
+    monkeypatch.setattr(service.platform, "system", lambda: "Windows")
+    monkeypatch.setattr(service.shutil, "which", lambda command: "sc.exe")
+    monkeypatch.setattr(
+        service.subprocess, "check_output", lambda *args, **kwargs: output
+    )
+    query = service.is_web_service_enabled if enabled else service.is_web_service_active
+    assert query() is expected
+
+
+def test_unavailable_service_manager_is_not_reported_as_success(
+    app_context, monkeypatch
+):
+    from bedrock_server_manager.api import web
+    from bedrock_server_manager.error import DependencyUnavailableError
+
+    monkeypatch.setattr(web, "can_manage_services", lambda: False)
+    with pytest.raises(DependencyUnavailableError):
+        get_web_ui_service_status(
+            GetWebUiServiceStatusRequest(), app_context=app_context
+        )

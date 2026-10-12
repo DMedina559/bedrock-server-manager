@@ -7,7 +7,7 @@ import logging
 from contextlib import asynccontextmanager
 from typing import TYPE_CHECKING, Any, Callable, Optional
 
-from ..error import BSMError, UserInputError
+from ..error import UserInputError
 from ..logging import log_operation_error
 
 if TYPE_CHECKING:
@@ -66,6 +66,7 @@ async def server_lifecycle_manager(
     was_running = False
     operation_succeeded = True
     operation_cancelled = False
+    original_error: BaseException | None = None
 
     # If the operation doesn't require a server stop, just yield and exit.
     if not stop_before:
@@ -90,11 +91,13 @@ async def server_lifecycle_manager(
         yield
 
     except asyncio.CancelledError:
+        original_error = asyncio.CancelledError()
         operation_cancelled = True
         operation_succeeded = False
         raise
     except Exception as error:
         # Retain the original failure's reporting ownership when re-raising.
+        original_error = error
         operation_succeeded = False
         log_operation_error(
             logger,
@@ -125,7 +128,7 @@ async def server_lifecycle_manager(
                         app_context=app_context,
                     )
                     logger.debug("Server '%s' restart initiated.", server_name)
-                except BSMError as e:
+                except Exception as e:
                     log_operation_error(
                         logger, "FAILED to restart '%s': %s", server_name, e, error=e
                     )
@@ -133,6 +136,10 @@ async def server_lifecycle_manager(
                     # becomes the primary error to report.
                     if operation_succeeded:
                         raise
+                    if original_error is not None:
+                        original_error.add_note(
+                            f"Server restart also failed: {type(e).__name__}"
+                        )
 
 
 async def register_data_provider(

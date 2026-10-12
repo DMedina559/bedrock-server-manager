@@ -5,7 +5,6 @@ import aiofiles.ospath
 import bsm_frontend
 from fastapi import APIRouter, Depends, HTTPException, status
 from fastapi.responses import FileResponse
-from pydantic import ValidationError
 
 from bedrock_server_manager.api.models import (
     ExportWorldRequest,
@@ -19,9 +18,6 @@ from ...api import world as world_api
 from ...context import AppContext
 from ...error import (
     AppFileNotFoundError,
-    BSMError,
-    InvalidServerNameError,
-    UserInputError,
 )
 from ...logging import log_operation_error
 from ..deps import (
@@ -54,27 +50,14 @@ async def get_worlds_list(
     """
     identity = current_user.username
     logger.debug("List available worlds request by user '%s'.", identity)
-    try:
-        api_result = await app_api.list_available_worlds(
-            request=ListAvailableWorldsRequest(), app_context=app_context
-        )
-        full_paths = api_result.files
-        basenames = [os.path.basename(p) for p in full_paths]
-        return ContentListResponse(
-            status="success", files=basenames, message=api_result.message
-        )
-    except HTTPException:
-        raise
-    except ValidationError:
-        raise
-    except Exception as e:
-        log_operation_error(
-            logger, "Unexpected critical error listing worlds: %s", e, error=e
-        )
-        raise HTTPException(
-            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail="A critical server error occurred while listing worlds.",
-        )
+    api_result = await app_api.list_available_worlds(
+        request=ListAvailableWorldsRequest(), app_context=app_context
+    )
+    full_paths = api_result.files
+    basenames = [os.path.basename(p) for p in full_paths]
+    return ContentListResponse(
+        status="success", files=basenames, message=api_result.message
+    )
 
 
 @router.post(
@@ -102,91 +85,56 @@ async def post_world_install(
     )
     from ...utils.server import validate_server
 
-    try:
-        if not await validate_server(server_name=server_name, app_context=app_context):
-            raise HTTPException(
-                status_code=status.HTTP_404_NOT_FOUND,
-                detail=f"Server '{server_name}' not found.",
-            )
-
-        content_base_dir = os.path.join(
-            app_context.settings.get("paths.content"), "worlds"
-        )
-        full_world_file_path = os.path.normpath(
-            os.path.join(content_base_dir, selected_filename)
+    if not await validate_server(server_name=server_name, app_context=app_context):
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail=f"Server '{server_name}' not found.",
         )
 
-        if not os.path.abspath(full_world_file_path).startswith(
-            os.path.abspath(content_base_dir) + os.sep
-        ):
-            logger.error(
-                "API Install World '%s': Security violation - Invalid path '%s'.",
-                server_name,
-                selected_filename,
-            )
-            raise HTTPException(
-                status_code=status.HTTP_400_BAD_REQUEST,
-                detail="Invalid file path (security check failed).",
-            )
+    content_base_dir = os.path.join(app_context.settings.get("paths.content"), "worlds")
+    full_world_file_path = os.path.normpath(
+        os.path.join(content_base_dir, selected_filename)
+    )
 
-        if not await aiofiles.ospath.isfile(full_world_file_path):
-            logger.warning(
-                "API Install World '%s': World file '%s' not found at '%s'.",
-                server_name,
-                selected_filename,
-                full_world_file_path,
-            )
-            raise HTTPException(
-                status_code=status.HTTP_404_NOT_FOUND,
-                detail=f"World file '{selected_filename}' not found for import.",
-            )
-
-        task_id = await app_context.task_manager.run_task(
-            world_api.import_world,
-            username=current_user.username,
-            app_context=app_context,
-            request=ImportWorldRequest(
-                server_name=server_name, selected_file_path=full_world_file_path
-            ),
-        )
-
-        return TaskAcceptedResponse(
-            status="accepted",
-            message=f"World install from '{selected_filename}' for server '{server_name}' initiated in background.",
-            task_id=task_id,
-        )
-    except HTTPException:
-        raise
-    except UserInputError as e:
-        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(e))
-    except AppFileNotFoundError:
-        raise
-    except BSMError as e:
-        logger.debug(
-            "API Install World '%s': Pre-check BSMError: %s",
+    if not os.path.abspath(full_world_file_path).startswith(
+        os.path.abspath(content_base_dir) + os.sep
+    ):
+        logger.error(
+            "API Install World '%s': Security violation - Invalid path '%s'.",
             server_name,
-            e,
-            exc_info=False,
+            selected_filename,
         )
         raise HTTPException(
-            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail=str(e)
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Invalid file path (security check failed).",
         )
-    except HTTPException:
-        raise
-    except ValidationError:
-        raise
-    except Exception as e:
-        log_operation_error(
-            logger,
-            "API Install World '%s': Pre-check error: %s",
+
+    if not await aiofiles.ospath.isfile(full_world_file_path):
+        logger.warning(
+            "API Install World '%s': World file '%s' not found at '%s'.",
             server_name,
-            e,
-            error=e,
+            selected_filename,
+            full_world_file_path,
         )
         raise HTTPException(
-            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail=f"Server error during pre-check: {str(e)}",
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail=f"World file '{selected_filename}' not found for import.",
         )
+
+    task_id = await app_context.task_manager.run_task(
+        world_api.import_world,
+        username=current_user.username,
+        app_context=app_context,
+        request=ImportWorldRequest(
+            server_name=server_name, selected_file_path=full_world_file_path
+        ),
+    )
+
+    return TaskAcceptedResponse(
+        status="accepted",
+        message=f"World install from '{selected_filename}' for server '{server_name}' initiated in background.",
+        task_id=task_id,
+    )
 
 
 @router.post(
@@ -207,43 +155,24 @@ async def post_world_export(
     logger.info("World export requested for '%s' by user '%s'.", server_name, identity)
     from ...utils.server import validate_server
 
-    try:
-        if not await validate_server(server_name=server_name, app_context=app_context):
-            raise HTTPException(
-                status_code=status.HTTP_404_NOT_FOUND,
-                detail=f"Server '{server_name}' not found.",
-            )
-
-        task_id = await app_context.task_manager.run_task(
-            world_api.export_world,
-            username=current_user.username,
-            app_context=app_context,
-            request=ExportWorldRequest(server_name=server_name),
-        )
-
-        return TaskAcceptedResponse(
-            status="accepted",
-            message=f"World export for server '{server_name}' initiated in background.",
-            task_id=task_id,
-        )
-    except HTTPException:
-        raise
-    except UserInputError as e:
-        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(e))
-    except ValidationError:
-        raise
-    except Exception as e:
-        log_operation_error(
-            logger,
-            "API Export World '%s': Pre-check error: %s",
-            server_name,
-            e,
-            error=e,
-        )
+    if not await validate_server(server_name=server_name, app_context=app_context):
         raise HTTPException(
-            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail=f"Server error during pre-check: {str(e)}",
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail=f"Server '{server_name}' not found.",
         )
+
+    task_id = await app_context.task_manager.run_task(
+        world_api.export_world,
+        username=current_user.username,
+        app_context=app_context,
+        request=ExportWorldRequest(server_name=server_name),
+    )
+
+    return TaskAcceptedResponse(
+        status="accepted",
+        message=f"World export for server '{server_name}' initiated in background.",
+        task_id=task_id,
+    )
 
 
 @router.delete(
@@ -264,39 +193,24 @@ async def delete_world_reset(
     logger.info("World reset requested for '%s' by user '%s'.", server_name, identity)
     from ...utils.server import validate_server
 
-    try:
-        if not await validate_server(server_name=server_name, app_context=app_context):
-            raise HTTPException(
-                status_code=status.HTTP_404_NOT_FOUND,
-                detail=f"Server '{server_name}' not found.",
-            )
-
-        task_id = await app_context.task_manager.run_task(
-            world_api.reset_world,
-            username=current_user.username,
-            app_context=app_context,
-            request=ResetWorldRequest(server_name=server_name),
-        )
-
-        return TaskAcceptedResponse(
-            status="accepted",
-            message=f"World reset for server '{server_name}' initiated in background.",
-            task_id=task_id,
-        )
-    except HTTPException:
-        raise
-    except UserInputError as e:
-        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(e))
-    except ValidationError:
-        raise
-    except Exception as e:
-        log_operation_error(
-            logger, "API Reset World '%s': Pre-check error: %s", server_name, e, error=e
-        )
+    if not await validate_server(server_name=server_name, app_context=app_context):
         raise HTTPException(
-            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail=f"Server error during pre-check: {str(e)}",
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail=f"Server '{server_name}' not found.",
         )
+
+    task_id = await app_context.task_manager.run_task(
+        world_api.reset_world,
+        username=current_user.username,
+        app_context=app_context,
+        request=ResetWorldRequest(server_name=server_name),
+    )
+
+    return TaskAcceptedResponse(
+        status="accepted",
+        message=f"World reset for server '{server_name}' initiated in background.",
+        task_id=task_id,
+    )
 
 
 @router.get(
@@ -332,20 +246,7 @@ async def get_world_icon(
             )
             raise AppFileNotFoundError(str(icon_path), "World icon")
 
-    except (
-        AppFileNotFoundError,
-        InvalidServerNameError,
-        BSMError,
-    ) as e:
-        if not isinstance(e, AppFileNotFoundError):
-            log_operation_error(
-                logger,
-                "Error preparing to serve world icon for '%s': %s",
-                server_name,
-                e,
-                error=e,
-            )
-
+    except AppFileNotFoundError as e:
         default_icon_path = os.path.join(
             STATIC_DIR, "image", "icon", "web-app-manifest-192x192.png"
         )
@@ -363,20 +264,3 @@ async def get_world_icon(
                 status_code=status.HTTP_404_NOT_FOUND,
                 detail="Default world icon not found.",
             )
-
-    except HTTPException:
-        raise
-    except ValidationError:
-        raise
-    except Exception as e:
-        log_operation_error(
-            logger,
-            "Unexpected error serving world icon for '%s': %s",
-            server_name,
-            e,
-            error=e,
-        )
-        raise HTTPException(
-            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail="Error serving icon.",
-        )

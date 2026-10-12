@@ -20,7 +20,7 @@ def cache_root(tmp_path, monkeypatch):
     script.parent.mkdir(parents=True)
     script.write_text("# isolated package location\n")
     monkeypatch.setattr(module, "__file__", str(script))
-    return tmp_path
+    return tmp_path / "bedrock_server_manager"
 
 
 def test_cleanup_no_options(runner, app_context):
@@ -95,4 +95,7 @@ def test_internal_cleanup_pycache_error(cache_root, monkeypatch):
         raise OSError("Injected directory scan failure")
 
     monkeypatch.setattr(Path, "rglob", fail_scan)
-    assert _cleanup_pycache() == 0
+    from bedrock_server_manager.error import FileOperationError
+
+    with pytest.raises(FileOperationError):
+        _cleanup_pycache()

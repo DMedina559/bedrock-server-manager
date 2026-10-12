@@ -8,6 +8,7 @@ manager (systemd, Windows Services) to control the Bedrock Server Manager Web UI
 import logging
 import os
 import platform
+import re
 import shutil
 import subprocess
 import sys
@@ -22,6 +23,7 @@ from ..config.const import (
 from ..error import (
     AppFileNotFoundError,
     CommandNotFoundError,
+    DependencyUnavailableError,
     FileOperationError,
     MissingArgumentError,
     PermissionsError,
@@ -123,6 +125,7 @@ def create_web_service_file(  # noqa: C901
             MissingArgumentError,
             SystemError,
             CommandNotFoundError,
+            DependencyUnavailableError,
             AppFileNotFoundError,
             FileOperationError,
         ) as e:
@@ -175,6 +178,7 @@ def create_web_service_file(  # noqa: C901
             SystemError,
             PermissionsError,
             CommandNotFoundError,
+            DependencyUnavailableError,
             AppFileNotFoundError,
             FileOperationError,
         ) as e:
@@ -309,159 +313,111 @@ def remove_web_service_file(system: bool = False) -> bool:
         raise SystemError(f"Web UI service removal is not supported on OS: {os_type}")
 
 
-def is_web_service_active(system: bool = False) -> bool:  # noqa: C901
-    """Checks if the Web UI system service is currently active (running)."""
+def _query_web_service_state(*, enabled: bool, system: bool) -> bool:
+    """Distinguish known negative service states from failed status queries."""
     os_type = platform.system()
     if os_type == "Linux":
-        _ensure_linux_for_web_service("is_web_service_active")
-        systemctl_cmd = shutil.which("systemctl")
-        if not systemctl_cmd:
-            logger.warning(
-                "systemctl command not found, cannot check Web UI service active state."
-            )
-            return False
+        executable = shutil.which("systemctl")
+        if not executable:
+            raise DependencyUnavailableError("systemctl is unavailable.")
+        command = [executable]
+        if not system:
+            command.append("--user")
+        command.extend(
+            ["is-enabled" if enabled else "is-active", WEB_SERVICE_SYSTEMD_NAME]
+        )
         try:
-            command = [systemctl_cmd]
-            if not system:
-                command.append("--user")
-            command.extend(["is-active", WEB_SERVICE_SYSTEMD_NAME])
             process = subprocess.run(
-                command,
-                capture_output=True,
-                text=True,
-                check=False,
+                command, capture_output=True, text=True, check=False, timeout=10
             )
-            is_active = process.returncode == 0 and process.stdout.strip() == "active"
-            logger.debug(
-                "Web UI service '%s' active status: %s -> %s",
-                WEB_SERVICE_SYSTEMD_NAME,
-                process.stdout.strip(),
-                is_active,
+        except (OSError, subprocess.SubprocessError) as error:
+            raise DependencyUnavailableError("Service status query failed.") from error
+        state = process.stdout.strip()
+        states = (
+            {
+                "enabled",
+                "enabled-runtime",
+                "linked",
+                "linked-runtime",
+                "alias",
+                "static",
+                "indirect",
+                "generated",
+                "transient",
+                "disabled",
+                "masked",
+                "masked-runtime",
+                "not-found",
+            }
+            if enabled
+            else {
+                "active",
+                "inactive",
+                "failed",
+                "activating",
+                "deactivating",
+                "reloading",
+                "refreshing",
+                "maintenance",
+                "not-found",
+            }
+        )
+        if state not in states or process.returncode not in {0, 1, 3, 4}:
+            raise DependencyUnavailableError("Service status could not be determined.")
+        positive = "enabled" if enabled else "active"
+        if state == positive and process.returncode != 0:
+            raise DependencyUnavailableError(
+                "Service status query returned conflicting results."
             )
-            return is_active
-        except Exception as e:
-            log_operation_error(
-                logger, "Error checking Web UI systemd active status: %s", e, error=e
-            )
-            return False
-    elif os_type == "Windows":
-        _ensure_windows_for_web_service("is_web_service_active")
-        sc_cmd = shutil.which("sc.exe")
-        if not sc_cmd:
-            logger.warning(
-                "sc.exe command not found, cannot check Web UI service active state."
-            )
-            return False
+        return process.returncode == 0 and state == positive
+    if os_type == "Windows":
+        executable = shutil.which("sc.exe")
+        if not executable:
+            raise DependencyUnavailableError("sc.exe is unavailable.")
         try:
             result = subprocess.check_output(
-                [sc_cmd, "query", WEB_SERVICE_WINDOWS_NAME_INTERNAL],
+                [
+                    executable,
+                    "qc" if enabled else "query",
+                    WEB_SERVICE_WINDOWS_NAME_INTERNAL,
+                ],
                 text=True,
-                stderr=subprocess.DEVNULL,
+                stderr=subprocess.PIPE,
                 creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0),
+                timeout=10,
             )
-            is_running = "STATE" in result and "RUNNING" in result
-            logger.debug(
-                "Web UI service '%s' running state from query: %s",
-                WEB_SERVICE_WINDOWS_NAME_INTERNAL,
-                is_running,
-            )
-            return is_running
-        except subprocess.CalledProcessError:
-            logger.debug(
-                "Web UI service '%s' not found or error during query.",
-                WEB_SERVICE_WINDOWS_NAME_INTERNAL,
-            )
-            return False
-        except FileNotFoundError:
-            logger.warning("`sc.exe` command not found unexpectedly.")
-            return False
-        except Exception as e:
-            log_operation_error(
-                logger,
-                "Error checking Web UI Windows service active status: %s",
-                e,
-                error=e,
-            )
-            return False
-    else:
-        logger.debug("Web UI service active check not supported on OS: %s", os_type)
-        return False
+        except subprocess.CalledProcessError as error:
+            if error.returncode == 1060:
+                return False
+            raise DependencyUnavailableError("Service status query failed.") from error
+        except (OSError, subprocess.SubprocessError) as error:
+            raise DependencyUnavailableError("Service status query failed.") from error
+        field = "START_TYPE" if enabled else "STATE"
+        match = re.search(rf"{field}\s*:\s*\d+\s+(\w+)", result)
+        states = (
+            {"BOOT_START", "SYSTEM_START", "AUTO_START", "DEMAND_START", "DISABLED"}
+            if enabled
+            else {
+                "STOPPED",
+                "START_PENDING",
+                "STOP_PENDING",
+                "RUNNING",
+                "CONTINUE_PENDING",
+                "PAUSE_PENDING",
+                "PAUSED",
+            }
+        )
+        if match is None or match.group(1) not in states:
+            raise DependencyUnavailableError("Service status could not be determined.")
+        return match.group(1) == ("AUTO_START" if enabled else "RUNNING")
+    raise DependencyUnavailableError(f"Service status is unsupported on {os_type}.")
 
 
-def is_web_service_enabled(system: bool = False) -> bool:  # noqa: C901
-    """Checks if the Web UI system service is enabled for automatic startup."""
-    os_type = platform.system()
-    if os_type == "Linux":
-        _ensure_linux_for_web_service("is_web_service_enabled")
-        systemctl_cmd = shutil.which("systemctl")
-        if not systemctl_cmd:
-            logger.warning(
-                "systemctl command not found, cannot check Web UI service enabled state."
-            )
-            return False
-        try:
-            command = [systemctl_cmd]
-            if not system:
-                command.append("--user")
-            command.extend(["is-enabled", WEB_SERVICE_SYSTEMD_NAME])
-            process = subprocess.run(
-                command,
-                capture_output=True,
-                text=True,
-                check=False,
-            )
-            is_enabled = process.returncode == 0 and process.stdout.strip() == "enabled"
-            logger.debug(
-                "Web UI service '%s' enabled status: %s -> %s",
-                WEB_SERVICE_SYSTEMD_NAME,
-                process.stdout.strip(),
-                is_enabled,
-            )
-            return is_enabled
-        except Exception as e:
-            log_operation_error(
-                logger, "Error checking Web UI systemd enabled status: %s", e, error=e
-            )
-            return False
-    elif os_type == "Windows":
-        _ensure_windows_for_web_service("is_web_service_enabled")
-        sc_cmd = shutil.which("sc.exe")
-        if not sc_cmd:
-            logger.warning(
-                "sc.exe command not found, cannot check Web UI service enabled state."
-            )
-            return False
-        try:
-            result = subprocess.check_output(
-                [sc_cmd, "qc", WEB_SERVICE_WINDOWS_NAME_INTERNAL],
-                text=True,
-                stderr=subprocess.DEVNULL,
-                creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0),
-            )
-            is_auto_start = "START_TYPE" in result and "AUTO_START" in result
-            logger.debug(
-                "Web UI service '%s' auto_start state from qc: %s",
-                WEB_SERVICE_WINDOWS_NAME_INTERNAL,
-                is_auto_start,
-            )
-            return is_auto_start
-        except subprocess.CalledProcessError:
-            logger.debug(
-                "Web UI service '%s' not found or error during qc.",
-                WEB_SERVICE_WINDOWS_NAME_INTERNAL,
-            )
-            return False
-        except FileNotFoundError:
-            logger.warning("`sc.exe` command not found unexpectedly.")
-            return False
-        except Exception as e:
-            log_operation_error(
-                logger,
-                "Error checking Web UI Windows service enabled status: %s",
-                e,
-                error=e,
-            )
-            return False
-    else:
-        logger.debug("Web UI service enabled check not supported on OS: %s", os_type)
-        return False
+def is_web_service_active(system: bool = False) -> bool:
+    """Return a verified active state, or raise if the service manager is unavailable."""
+    return _query_web_service_state(enabled=False, system=system)
+
+
+def is_web_service_enabled(system: bool = False) -> bool:
+    """Return a verified enabled state, or raise if the service manager is unavailable."""
+    return _query_web_service_state(enabled=True, system=system)

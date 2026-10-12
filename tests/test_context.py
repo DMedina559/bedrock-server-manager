@@ -116,9 +116,14 @@ async def test_cancelled_shutdown_waits_for_cleanup_and_flushes(
 
 @pytest.mark.parametrize("name", ["missing", "../escape", "", None])
 def test_server_lookup_rejects_unknown_or_invalid_names(app_context, name):
-    from bedrock_server_manager.error import InvalidServerNameError
+    from bedrock_server_manager.error import (
+        InvalidServerNameError,
+        ResourceNotFoundError,
+    )
 
-    with pytest.raises(InvalidServerNameError):
+    with pytest.raises(
+        ResourceNotFoundError if name == "missing" else InvalidServerNameError
+    ):
         app_context.get_server(name)
     assert name not in app_context._servers
 

@@ -2,7 +2,7 @@ import logging
 from typing import Any, Dict, List
 
 from ..context import AppContext
-from ..error import AppFileNotFoundError, BSMError, InvalidServerNameError
+from ..error import AppFileNotFoundError, BSMError
 from ..logging import log_operation_error
 from ..plugins.api_bridge import api_method
 from ..plugins.event_trigger import trigger_event
@@ -36,16 +36,13 @@ async def set_permissions(
     xuid = request.xuid
     player_name = request.player_name
     permission = request.permission
-    if not server_name:
-        raise InvalidServerNameError("Server name cannot be empty.")
     try:
         server = app_context.get_server(server_name)
         await server.permissions.set_player_permission(xuid, permission, player_name)
-        return SetPermissionsResponse.model_validate(
-            {
-                "status": "success",
-                "message": f"Permission for XUID '{xuid}' set to '{permission.lower()}'.",
-            }
+        return SetPermissionsResponse(
+            server_name=server_name,
+            status="success",
+            message=f"Permission for XUID '{xuid}' set to '{permission.lower()}'.",
         )
     except BSMError as e:
         log_operation_error(
@@ -77,8 +74,6 @@ async def get_permissions(
     Invalid requests fail validation before side effects; operation failures raise application exceptions.
     """
     server_name = request.server_name
-    if not server_name:
-        raise BSMError("Server name cannot be empty.")
     try:
         server = app_context.get_server(server_name)
         players_response = await player_api.get_all_known_players(

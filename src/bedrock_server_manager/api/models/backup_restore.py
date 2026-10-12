@@ -2,6 +2,7 @@
 
 from pydantic import Field
 
+from ...results import CleanupResult, ComponentResults
 from .common import (
     ActionResponse,
     APIRequest,
@@ -26,7 +27,7 @@ class BackupWorldRequest(APIRequest):
 
 
 class BackupWorldResponse(ActionResponse):
-    pass
+    server_name: ServerName
 
 
 class BackupConfigFileRequest(APIRequest):
@@ -35,7 +36,7 @@ class BackupConfigFileRequest(APIRequest):
 
 
 class BackupConfigFileResponse(ActionResponse):
-    pass
+    server_name: ServerName
 
 
 class BackupAllRequest(APIRequest):
@@ -43,7 +44,8 @@ class BackupAllRequest(APIRequest):
 
 
 class BackupAllResponse(ActionResponse):
-    details: dict[str, str | None] = Field(default_factory=dict)
+    server_name: ServerName
+    details: ComponentResults = Field(default_factory=ComponentResults)
 
 
 class RestoreAllRequest(APIRequest):
@@ -52,7 +54,8 @@ class RestoreAllRequest(APIRequest):
 
 
 class RestoreAllResponse(ActionResponse):
-    details: dict[str, str | None] = Field(default_factory=dict)
+    server_name: ServerName
+    details: ComponentResults = Field(default_factory=ComponentResults)
 
 
 class RestoreWorldRequest(APIRequest):
@@ -62,7 +65,7 @@ class RestoreWorldRequest(APIRequest):
 
 
 class RestoreWorldResponse(ActionResponse):
-    pass
+    server_name: ServerName
 
 
 class RestoreConfigFileRequest(APIRequest):
@@ -72,7 +75,7 @@ class RestoreConfigFileRequest(APIRequest):
 
 
 class RestoreConfigFileResponse(ActionResponse):
-    pass
+    server_name: ServerName
 
 
 class PruneOldBackupsRequest(APIRequest):
@@ -80,4 +83,5 @@ class PruneOldBackupsRequest(APIRequest):
 
 
 class PruneOldBackupsResponse(ActionResponse):
-    pass
+    server_name: ServerName
+    result: CleanupResult = Field(default_factory=CleanupResult)

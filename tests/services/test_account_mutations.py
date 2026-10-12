@@ -6,6 +6,7 @@ from unittest.mock import AsyncMock
 import pytest
 
 from bedrock_server_manager.error import StorageError, UserInputError
+from bedrock_server_manager.state.updates import AccountPatch
 
 
 async def create_user(app_context, name="alice", role="user"):
@@ -71,7 +72,7 @@ async def test_concurrent_admin_demotion_preserves_one_admin(app_context):
     results = await asyncio.gather(
         *[
             app_context.user_service.update_account(
-                action="role", user_id=user_id, values={"role": "user"}
+                action="role", user_id=user_id, values=AccountPatch(role="user")
             )
             for user_id in (first, second)
         ],
@@ -140,3 +141,25 @@ async def test_failed_creation_does_not_publish_state_or_consume_token(
             await app_context.storage.user_repo.get_registration_token(session, "token")
             is not None
         )
+
+
+async def test_revocation_failure_preserves_committed_account_result(
+    app_context, monkeypatch
+):
+    from bedrock_server_manager.error import IncompleteOperationError
+
+    user_id = await create_user(app_context)
+
+    async def fail_revoke(name):
+        assert not app_context.storage.write_lock.locked()
+        raise RuntimeError("revocation failed")
+
+    monkeypatch.setattr(app_context.user_service, "revoke_connections", fail_revoke)
+    with pytest.raises(IncompleteOperationError) as failure:
+        await app_context.user_service.update_account(action="disable", user_id=user_id)
+    assert failure.value.result.committed
+    assert failure.value.result.resource == "alice"
+    assert not app_context.state.users.get("alice").is_active
+    async with app_context.storage.transaction() as session:
+        user = await app_context.storage.user_repo.get_user_by_id(session, user_id)
+        assert not user.is_active

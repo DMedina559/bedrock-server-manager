@@ -119,7 +119,7 @@ def define_routes(router: APIRouter, plugin_instance):
                     content={"error": "kwargs_json must be a JSON object"},
                 )
 
-            plugin_instance.api.send_event(payload.event_name, *args, **kwargs)
+            await plugin_instance.api.send_event(payload.event_name, *args, **kwargs)
             return JSONResponse(
                 content={
                     "message": f"Successfully triggered event '{payload.event_name}'"

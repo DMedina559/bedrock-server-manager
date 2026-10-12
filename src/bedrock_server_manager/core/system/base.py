@@ -257,6 +257,7 @@ async def set_server_folder_permissions(server_dir: str) -> None:  # noqa: C901
 
             elif os_name == "Windows":
                 logger.debug("Ensuring write permissions (S_IWRITE) on Windows...")
+                failures: list[OSError] = []
                 for root, dirs, files in os.walk(server_dir):
                     for name in dirs + files:
                         path = os.path.join(root, name)
@@ -264,11 +265,16 @@ async def set_server_folder_permissions(server_dir: str) -> None:  # noqa: C901
                             current_mode = os.stat(path).st_mode
                             os.chmod(path, current_mode | stat.S_IWRITE | stat.S_IWUSR)
                         except OSError as e_chmod:
+                            failures.append(e_chmod)
                             logger.warning(
                                 "Could not set write permission on '%s': %s",
                                 path,
                                 e_chmod,
                             )
+                if failures:
+                    raise PermissionsError(
+                        f"Failed to set write permissions on {len(failures)} paths."
+                    ) from failures[0]
                 logger.debug(
                     "Successfully ensured write permissions for: %s on Windows",
                     server_dir,
@@ -276,6 +282,8 @@ async def set_server_folder_permissions(server_dir: str) -> None:  # noqa: C901
             else:
                 logger.warning("Permission setting not implemented for OS: %s", os_name)
 
+        except PermissionsError:
+            raise
         except OSError as e:
             raise PermissionsError(
                 f"Failed to set permissions for '{server_dir}': {e}"
@@ -301,20 +309,10 @@ async def is_server_running(server_name: str, server_dir: str, config_dir: str) 
     if not isinstance(config_dir, str) or not config_dir:
         raise MissingArgumentError("Configuration directory cannot be empty.")
 
-    try:
-        process = await core_process.get_verified_bedrock_process(
-            server_name, server_dir, config_dir
-        )
-        return process is not None
-    except Exception as e:
-        log_operation_error(
-            logger,
-            "Error checking if server '%s' is running: %s",
-            server_name,
-            e,
-            error=e,
-        )
-        return False
+    process = await core_process.get_verified_bedrock_process(
+        server_name, server_dir, config_dir
+    )
+    return process is not None
 
 
 def _handle_remove_readonly_onerror(func, path, exc_info):

@@ -8,8 +8,9 @@ from typing import TYPE_CHECKING, Dict, Optional
 from pydantic import JsonValue
 
 from ..error import ConfigParseError
+from ..results import BanMutation
 from ..state.changeset import ChangeSet
-from ..state.models import BanResult, ServerConfigState
+from ..state.models import BanItem, ServerConfigState
 from ..state.updates import ServerUpdate
 
 if TYPE_CHECKING:
@@ -47,32 +48,40 @@ class ServerService:
         custom: Optional[Dict[str, JsonValue]] = None,
     ) -> ServerConfigState:
         """Registers or updates server state model while maintaining dirty tracking."""
-        async with self.state.servers.get_lock(server_name):
-            existing = self.state.servers.get(server_name)
-            values: dict[str, object] = {"server_name": server_name}
-            for name, value in (
-                ("installed_version", installed_version),
-                ("status", status),
-                ("autoupdate", autoupdate),
-                ("autostart", autostart),
-                ("target_version", target_version),
-                ("custom", custom),
-            ):
-                if value is not None:
-                    values[name] = value
-            update = ServerUpdate.model_validate(values)
-            data = existing.model_dump() if existing else {}
-            data.update(update.model_dump(exclude_unset=True))
-            config = ServerConfigState.model_validate(data)
+        values: dict[str, object] = {"server_name": server_name}
+        for name, value in (
+            ("installed_version", installed_version),
+            ("status", status),
+            ("autoupdate", autoupdate),
+            ("autostart", autostart),
+            ("target_version", target_version),
+            ("custom", custom),
+        ):
+            if value is not None:
+                values[name] = value
+        return await self.apply_update(ServerUpdate.model_validate(values))
 
-            self.state.servers.set(config)
+    async def apply_update(self, request: ServerUpdate) -> ServerConfigState:
+        request = ServerUpdate.model_validate(request)
+
+        def build(existing: ServerConfigState | None) -> ServerConfigState:
+            data = existing.model_dump() if existing else {}
+            data.update(request.model_dump(exclude_unset=True))
+            return ServerConfigState.model_validate(data)
 
         changeset = ChangeSet()
-        changeset.add_server(server_name)
-
-        await self.storage.apply_changeset(self.state, changeset)
-
-        return config
+        changeset.add_server(request.server_name)
+        return await self.storage.commit_record(
+            self.state,
+            changeset,
+            request.server_name,
+            get_lock=self.state.servers.get_lock,
+            get=self.state.servers.get,
+            build=build,
+            save=self.storage.server_repo.save_server,
+            publish=self.state.servers.set,
+            acknowledge=self.state.servers.remove_dirty_server,
+        )
 
     async def update_setting(
         self, server_name: str, key: str, value: JsonValue
@@ -83,10 +92,9 @@ class ServerService:
             "server_info": {"installed_version", "status"},
             "settings": {"autoupdate", "autostart", "target_version"},
         }
-        async with self.state.servers.get_lock(server_name):
-            record = self.state.servers.get(server_name) or ServerConfigState(
-                server_name=server_name
-            )
+
+        def build(existing: ServerConfigState | None) -> ServerConfigState:
+            record = existing or ServerConfigState(server_name=server_name)
             data = record.model_dump()
             if parts[0] == "custom":
                 current = data
@@ -103,10 +111,21 @@ class ServerService:
                 raise ConfigParseError(
                     "Unknown server configuration path. Use custom for extension settings."
                 )
-            self.state.servers.set(ServerConfigState.model_validate(data))
+            return ServerConfigState.model_validate(data)
+
         changeset = ChangeSet()
         changeset.add_server(server_name)
-        await self.storage.apply_changeset(self.state, changeset)
+        await self.storage.commit_record(
+            self.state,
+            changeset,
+            server_name,
+            get_lock=self.state.servers.get_lock,
+            get=self.state.servers.get,
+            build=build,
+            save=self.storage.server_repo.save_server,
+            publish=self.state.servers.set,
+            acknowledge=self.state.servers.remove_dirty_server,
+        )
 
     async def set_autostart(self, server_name: str, enabled: bool) -> None:
         """Sets server autostart flag."""
@@ -122,19 +141,19 @@ class ServerService:
         player_name: str,
         xuid: str,
         reason: Optional[str] = None,
-    ) -> BanResult:
+    ) -> BanMutation:
         """Adds or updates a server ban record."""
         async with self.storage.transaction() as session:
             return await self.storage.ban_repo.add_or_update_ban(
                 session, server_name, player_name, xuid, reason
             )
 
-    async def remove_server_ban(self, server_name: str, xuid: str) -> BanResult:
+    async def remove_server_ban(self, server_name: str, xuid: str) -> BanMutation:
         """Removes a server ban record by XUID."""
         async with self.storage.transaction() as session:
             return await self.storage.ban_repo.remove_ban(session, server_name, xuid)
 
-    async def get_server_bans(self, server_name: str) -> BanResult:
+    async def get_server_bans(self, server_name: str) -> list[BanItem]:
         """Retrieves all bans for a specific server."""
         async with self.storage.transaction() as session:
             return await self.storage.ban_repo.get_bans(session, server_name)

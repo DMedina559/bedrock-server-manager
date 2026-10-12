@@ -1,5 +1,3 @@
-from ..core.server.removal import delete_all_data
-
 # bedrock_server_manager/api/server.py
 """Provides API functions for managing Bedrock server instances.
 
@@ -26,14 +24,15 @@ from pydantic import ValidationError
 
 from ..config import API_COMMAND_BLACKLIST
 from ..context import AppContext
+from ..core.server.removal import delete_all_data
 from ..core.system import remove_pid_file_if_exists
 from ..error import (
     BlockedCommandError,
     BSMError,
     ConfigParseError,
-    InvalidServerNameError,
     MissingArgumentError,
     ServerError,
+    ServerRunningError,
     UserInputError,
 )
 from ..logging import log_operation_error
@@ -86,10 +85,6 @@ async def get_server_setting(
     """
     server_name = request.server_name
     key = request.key
-    if not server_name:
-        raise InvalidServerNameError("Server name cannot be empty.")
-    if not key:
-        raise MissingArgumentError("A 'key' must be provided.")
     logger.debug("Reading server setting for '%s': Key='%s'", server_name, key)
     try:
         server = app_context.get_server(server_name)
@@ -134,19 +129,17 @@ async def set_server_setting(
     server_name = request.server_name
     key = request.key
     value = request.value
-    if not server_name:
-        raise InvalidServerNameError("Server name cannot be empty.")
-    if not key:
-        raise MissingArgumentError("A 'key' must be provided.")
     logger.debug("Updating setting '%s' for server '%s'.", key, server_name)
     try:
         server = app_context.get_server(server_name)
-        await server.configuration.update(key, value)
+        try:
+            await server.configuration.update(key, value)
+        except (ValidationError, ConfigParseError) as error:
+            raise UserInputError("Invalid server setting key or value.") from error
         return SetServerSettingResponse(
-            message=f"Setting '{key}' updated for server '{server_name}'."
+            server_name=server_name,
+            message=f"Setting '{key}' updated for server '{server_name}'.",
         )
-    except (ValidationError, ConfigParseError) as error:
-        raise UserInputError("Invalid server setting key or value.") from error
     except BSMError as e:
         log_operation_error(
             logger,
@@ -180,16 +173,13 @@ async def set_server_custom_value(
     server_name = request.server_name
     key = request.key
     value = request.value
-    if not server_name:
-        raise InvalidServerNameError("Server name cannot be empty.")
-    if not key:
-        raise MissingArgumentError("A 'key' must be provided.")
     logger.debug("Writing custom value for '%s': Key='%s'", server_name, key)
     try:
         server = app_context.get_server(server_name)
         await server.set_custom_config_value(key, value)
         return SetServerCustomValueResponse(
-            message=f"Custom value '{key}' updated for server '{server_name}'."
+            server_name=server_name,
+            message=f"Custom value '{key}' updated for server '{server_name}'.",
         )
     except BSMError as e:
         log_operation_error(
@@ -217,8 +207,6 @@ async def get_all_server_settings(
     Invalid requests fail validation before side effects; operation failures raise application exceptions.
     """
     server_name = request.server_name
-    if not server_name:
-        raise InvalidServerNameError("Server name cannot be empty.")
     logger.debug("Reading all settings for server '%s'.", server_name)
     try:
         server = app_context.get_server(server_name)
@@ -259,8 +247,6 @@ async def get_server_summary(
     """
     server_name = request.server_name
     logger.debug("Requesting summary info for server '%s'.", server_name)
-    if not server_name:
-        raise InvalidServerNameError("Server name cannot be empty.")
     try:
         server = app_context.get_server(server_name)
         if not await server.is_installed():
@@ -416,8 +402,6 @@ async def send_command(
     """
     server_name = request.server_name
     command = request.command
-    if not server_name:
-        raise InvalidServerNameError("Server name cannot be empty.")
     if not command or not command.strip():
         raise MissingArgumentError("Command cannot be empty.")
     command_clean = command.strip()
@@ -434,11 +418,10 @@ async def send_command(
         server = app_context.get_server(server_name)
         await server.send_command(command_clean)
         logger.debug("Command delivered to server '%s'.", server_name)
-        return SendCommandResponse.model_validate(
-            {
-                "status": "success",
-                "message": f"Command '{command_clean}' sent successfully.",
-            }
+        return SendCommandResponse(
+            server_name=server_name,
+            status="success",
+            message=f"Command '{command_clean}' sent successfully.",
         )
     except BlockedCommandError:
         logger.warning("Blocked command attempt for server '%s'.", server_name)
@@ -475,8 +458,6 @@ async def delete_server_data(
     """
     server_name = request.server_name
     stop_if_running = request.stop_if_running
-    if not server_name:
-        raise InvalidServerNameError("Server name cannot be empty.")
     server = app_context.get_server(server_name, require_installation=False)
     try:
         await server.operation_lock.acquire(timeout=300)
@@ -485,11 +466,10 @@ async def delete_server_data(
             "An operation for '%s' is already in progress. Skipping server deletion.",
             server_name,
         )
-        return DeleteServerDataResponse.model_validate(
-            {
-                "status": "skipped",
-                "message": "A server operation is already in progress.",
-            }
+        return DeleteServerDataResponse(
+            status="skipped",
+            server_name=server_name,
+            message="A server operation is already in progress.",
         )
     try:
         logger.debug(
@@ -497,6 +477,10 @@ async def delete_server_data(
             server_name,
             stop_if_running,
         )
+        if not stop_if_running and await server.is_running():
+            raise ServerRunningError(
+                f"Server '{server_name}' must be stopped before deletion."
+            )
         if stop_if_running and await server.is_running():
             logger.debug(
                 "Server '%s' is running. Stopping before deletion...", server_name
@@ -509,11 +493,10 @@ async def delete_server_data(
         await delete_all_data(server)
         await app_context.remove_server(server_name)
         logger.debug("Successfully deleted all data for server '%s'.", server_name)
-        return DeleteServerDataResponse.model_validate(
-            {
-                "status": "success",
-                "message": f"All data for server '{server_name}' deleted successfully.",
-            }
+        return DeleteServerDataResponse(
+            status="success",
+            server_name=server_name,
+            message=f"All data for server '{server_name}' deleted successfully.",
         )
     except BSMError as e:
         log_operation_error(

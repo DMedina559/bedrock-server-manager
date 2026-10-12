@@ -17,6 +17,9 @@ class PluginSettings(BaseModel):
         default_factory=list,
         description="Servers to back up before starting. Leave empty to include all servers.",
     )
+    require_complete_backup: bool = Field(
+        default=False, description="Cancel server start if the backup cannot complete."
+    )
     enable_backup_on_start: bool = Field(
         default=True, description="Back up this server before starting it."
     )
@@ -74,14 +77,24 @@ class AutoBackupOnStart(PluginBase):
                     "Pre-start backup for '%s' completed successfully.", server_name
                 )
             else:
-                # The backup operation itself reported an error (e.g., file permissions).
+                event = kwargs.get("event")
+                if event is not None and await self.get_plugin_setting(
+                    "require_complete_backup", default=False
+                ):
+                    event.cancel("Pre-start backup did not complete.")
+                # Partial and skipped work are explicit operation outcomes.
                 error_message = result.message
                 self.logger.warning(
                     "Pre-start backup for '%s' failed: %s", server_name, error_message
                 )
 
         except Exception as e:
-            # A more serious error where the API call itself failed.
+            event = kwargs.get("event")
+            if event is not None and await self.get_plugin_setting(
+                "require_complete_backup", default=False
+            ):
+                event.cancel("Pre-start backup failed.")
+            # Keep optional backup failures isolated from server startup.
             # This ensures the plugin does not crash the main application.
             log_operation_error(
                 self.logger,

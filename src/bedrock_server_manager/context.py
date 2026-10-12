@@ -420,8 +420,7 @@ class AppContext:
             self._log_dir = os.path.join(self.config_dir, "logs")
         return self._log_dir
 
-    @property
-    def needs_setup(self) -> bool:
+    async def check_setup(self) -> bool:
         """
         bool: Indicates whether the application requires initial setup.
 
@@ -435,7 +434,6 @@ class AppContext:
             return True
 
         from .db.models import User
-        from .utils.general import run_async
 
         async def _check():
             if not self.db.engine:
@@ -457,12 +455,25 @@ class AppContext:
                 return await conn.run_sync(_sync_inspect_and_query)
 
         try:
-            needs = bool(run_async(_check()))
+            needs = bool(await _check())
             if not needs:
                 self._needs_setup = False
             return needs
-        except Exception:
-            return True
+        except Exception as error:
+            from .error import DependencyUnavailableError
+
+            raise DependencyUnavailableError(
+                "Setup status could not be determined."
+            ) from error
+
+    @property
+    def needs_setup(self) -> bool:
+        """Synchronous CLI adapter; async consumers use check_setup()."""
+        if self._needs_setup is False:
+            return False
+        from .utils.general import run_async
+
+        return bool(run_async(self.check_setup()))
 
     @property
     def api(self) -> "AppAPI":
@@ -687,12 +698,12 @@ class AppContext:
         self, server_name: str, *, require_installation: bool = True
     ) -> "BedrockServer":
         """Retrieve a registered server, rejecting invalid and unknown names."""
-        from .error import InvalidServerNameError
+        from .error import ResourceNotFoundError
         from .utils.server import core_validate_server_name_format
 
         core_validate_server_name_format(server_name)
         if self.state.servers.get(server_name) is None:
-            raise InvalidServerNameError(f"Unknown server '{server_name}'.")
+            raise ResourceNotFoundError(f"Unknown server '{server_name}'.")
         if not require_installation:
             return self.prepare_server(server_name)
         # Recheck files even for cached handles, since an installation can disappear.

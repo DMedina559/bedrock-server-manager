@@ -153,3 +153,30 @@ async def test_api_login_insecure_cookie(
     assert response.status_code == 200
     set_cookie_header = response.headers.get("set-cookie", "")
     assert "Secure" not in set_cookie_header
+
+
+async def test_account_authentication_storage_outage_is_not_invalid_token(
+    running_app, app_context, monkeypatch
+):
+    from httpx2 import ASGITransport, AsyncClient
+
+    from bedrock_server_manager.error import StorageError
+    from bedrock_server_manager.utils.auth import create_access_token
+
+    token = await create_access_token(app_context, {"sub": "uncached_account"})
+
+    def unavailable():
+        raise StorageError("private database diagnostic")
+
+    async with AsyncClient(
+        transport=ASGITransport(app=running_app, raise_app_exceptions=False),
+        base_url="http://testserver",
+    ) as client:
+        with monkeypatch.context() as fault:
+            fault.setattr(app_context.storage, "transaction", unavailable)
+            response = await client.get(
+                "/api/account", headers={"Authorization": f"Bearer {token}"}
+            )
+    assert response.status_code == 503
+    assert response.json()["error"]["code"] == "unavailable"
+    assert "private database diagnostic" not in response.text

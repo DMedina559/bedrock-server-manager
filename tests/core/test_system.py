@@ -301,3 +301,19 @@ def test_resource_monitor_dead_process():
     mock_proc.cpu_percent.side_effect = psutil.NoSuchProcess(mock_proc.pid)
 
     assert monitor.get_stats(mock_proc) is None
+
+
+async def test_windows_permission_failures_propagate(real_bedrock_server, monkeypatch):
+    from bedrock_server_manager.core.system import base
+    from bedrock_server_manager.error import PermissionsError
+
+    def failed(*args, **kwargs):
+        raise PermissionError("write permission refused")
+
+    with monkeypatch.context() as fault:
+        fault.setattr(base.platform, "system", lambda: "Windows")
+        fault.setattr(base.os, "chmod", failed)
+        with pytest.raises(PermissionsError):
+            await base.set_server_folder_permissions(
+                real_bedrock_server.paths.server_dir
+            )

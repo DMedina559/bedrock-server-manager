@@ -15,10 +15,19 @@ from ...error import (
     BackupRestoreError,
     ConfigurationError,
     FileOperationError,
+    IncompleteOperationError,
     MissingArgumentError,
     UserInputError,
 )
-from ...logging import log_operation_error
+from ...failures import classify_failure
+from ...results import (
+    CleanupResult,
+    CompletedItem,
+    ComponentResults,
+    FailedItem,
+    ItemResult,
+    SkippedItem,
+)
 from ...utils.threads import run_in_thread
 from ..files import atomic_copy_file
 from ..system import find_files
@@ -105,7 +114,7 @@ class ServerBackups:
 
     async def prune_server_backups(
         self, component_prefix: str, file_extension: str
-    ) -> None:
+    ) -> CleanupResult:
         if not isinstance(component_prefix, str) or not component_prefix.strip():
             raise MissingArgumentError("Backup prefix must be a non-empty string.")
         if (
@@ -129,23 +138,20 @@ class ServerBackups:
                 "Backup retention must be a non-negative integer."
             ) from error
         async with self.server.operation_lock:
-            failures = []
-            try:
-                for path in (
-                    await self._find(
-                        f"{escape(component_prefix)}*.{escape(file_extension.lstrip('.').strip())}"
-                    )
-                )[keep:]:
-                    try:
-                        await run_in_thread(os.remove, path)
-                    except OSError:
-                        failures.append(path)
-            except OSError as error:
-                raise FileOperationError(f"Cannot prune backups: {error}") from error
-            if failures:
-                raise FileOperationError(
-                    f"Cannot delete old backups: {', '.join(failures)}"
-                )
+            files = await self._find(
+                f"{escape(component_prefix)}*.{escape(file_extension.lstrip('.').strip())}"
+            )
+            deleted = []
+            failures = {}
+            for path in files[keep:]:
+                try:
+                    await run_in_thread(os.remove, path)
+                    deleted.append(path)
+                except OSError as error:
+                    failures[path] = classify_failure(error).error
+            return CleanupResult(
+                deleted=deleted, retained=files[:keep], failures=failures
+            )
 
     @staticmethod
     def _copy_backup(source: str, destination: str) -> None:
@@ -162,7 +168,14 @@ class ServerBackups:
                 directory, self._world_prefix(world) + self._token() + ".mcworld"
             )
             await self.server.worlds.export_world(world, destination)
-            await self.prune_server_backups(self._world_prefix(world), "mcworld")
+            retention = await self.prune_server_backups(
+                self._world_prefix(world), "mcworld"
+            )
+            if retention.failures:
+                self.logger.warning(
+                    "World backup was created; retention failed for %s older archives.",
+                    len(retention.failures),
+                )
             return destination
 
     async def backup_config(self, filename: str) -> str | None:
@@ -184,51 +197,48 @@ class ServerBackups:
                     raise FileOperationError(
                         f"Cannot back up '{filename}': {error}"
                     ) from error
-            await self.prune_server_backups(stem + "_backup_", extension)
+            retention = await self.prune_server_backups(stem + "_backup_", extension)
+            if retention.failures:
+                self.logger.warning(
+                    "Configuration backup was created; retention failed for %s older files.",
+                    len(retention.failures),
+                )
             self.logger.debug("Configuration backup created: '%s'.", destination)
             return destination
 
-    async def backup_all_data(self) -> dict[str, str | None]:
+    async def backup_all_data(self) -> ComponentResults:
         async with self.server.operation_lock:
-            results: dict[str, str | None] = {}
+            components: dict[str, ItemResult] = {}
             world_error = None
             try:
-                results["world"] = await self.backup_world()
+                components["world"] = CompletedItem(
+                    outcome="completed", path=await self.backup_world()
+                )
             except Exception as error:
                 world_error = error
-                results["world"] = None
-                log_operation_error(
-                    self.logger,
-                    "World backup failed for '%s'.",
-                    self.server.server_name,
-                    error=error,
+                components["world"] = FailedItem(
+                    outcome="failed", error=classify_failure(error).error
                 )
             for filename in CONFIG_FILES:
                 try:
-                    results[filename] = await self.backup_config(filename)
-                except Exception as error:
-                    log_operation_error(
-                        self.logger,
-                        "Configuration backup failed for '%s'.",
-                        filename,
-                        error=error,
+                    path = await self.backup_config(filename)
+                    components[filename] = (
+                        CompletedItem(outcome="completed", path=path)
+                        if path
+                        else SkippedItem(
+                            outcome="skipped", reason="Source file is missing."
+                        )
                     )
-                    results[filename] = None
-            if world_error:
-                raise BackupRestoreError(
-                    f"World backup failed for '{self.server.server_name}'. Configuration backups were attempted."
+                except Exception as error:
+                    components[filename] = FailedItem(
+                        outcome="failed", error=classify_failure(error).error
+                    )
+            result = ComponentResults(components=components)
+            if world_error is not None:
+                raise IncompleteOperationError(
+                    "World backup failed; configuration backups were attempted.", result
                 ) from world_error
-            missing = [name for name, path in results.items() if path is None]
-            if missing:
-                self.logger.warning(
-                    "Backup incomplete; configuration files missing or failed: %s.",
-                    ", ".join(missing),
-                )
-            else:
-                self.logger.info(
-                    "Full backup completed for server '%s'.", self.server.server_name
-                )
-            return results
+            return result
 
     @staticmethod
     def _validate_filename(filename: str) -> None:
@@ -275,15 +285,12 @@ class ServerBackups:
             self.logger.debug("Configuration restored from '%s'.", path)
             return destination
 
-    async def restore_all_data_from_latest(self) -> dict[str, str | None]:
+    async def restore_all_data_from_latest(self) -> ComponentResults:
         async with self.server.operation_lock:
-            directory = self._directory()
-            if not await aiofiles.ospath.isdir(directory):
-                return {}
             if await self.server.is_running():
                 raise BackupRestoreError("Stop the server before restoring its data.")
-            # Resolve all candidates before mutating files. Properties must restore
-            # first so the selected world follows the restored level-name.
+            if not await aiofiles.ospath.isdir(self._directory()):
+                return ComponentResults()
             candidates = {
                 filename: await self._find(BACKUP_PATTERNS[kind])
                 for filename, kind in zip(
@@ -291,21 +298,27 @@ class ServerBackups:
                 )
             }
             worlds = await self._find(BACKUP_PATTERNS["world"])
-            results: dict[str, str | None] = {}
-            failures = []
+            components: dict[str, ItemResult] = {}
+            failures: list[Exception] = []
             for filename, files in candidates.items():
                 try:
-                    results[filename] = (
-                        await self.restore_config(files[0]) if files else None
+                    components[filename] = (
+                        CompletedItem(
+                            outcome="completed",
+                            path=await self.restore_config(files[0]),
+                        )
+                        if files
+                        else SkippedItem(
+                            outcome="skipped", reason="No backup is available."
+                        )
                     )
                 except Exception as error:
-                    log_operation_error(
-                        self.logger, "Restore failed for '%s'.", filename, error=error
+                    failures.append(error)
+                    components[filename] = FailedItem(
+                        outcome="failed", error=classify_failure(error).error
                     )
-                    results[filename] = None
-                    failures.append(filename)
             try:
-                if "server.properties" in failures:
+                if components["server.properties"].outcome == "failed":
                     raise BackupRestoreError(
                         "Cannot select a world after properties restore failed."
                     )
@@ -313,27 +326,27 @@ class ServerBackups:
                 matching = [
                     path for path in worlds if os.path.basename(path).startswith(prefix)
                 ]
-                world = (
-                    await self.server.worlds.import_world(matching[0])
-                    if matching
-                    else None
+                if matching:
+                    world = await self.server.worlds.import_world(matching[0])
+                    components["world"] = CompletedItem(
+                        outcome="completed",
+                        path=os.path.join(
+                            self.server.paths.server_dir, "worlds", world
+                        ),
+                    )
+                else:
+                    components["world"] = SkippedItem(
+                        outcome="skipped",
+                        reason="No matching world backup is available.",
+                    )
+            except Exception as error:
+                failures.append(error)
+                components["world"] = FailedItem(
+                    outcome="failed", error=classify_failure(error).error
                 )
-                results["world"] = (
-                    os.path.join(self.server.paths.server_dir, "worlds", world)
-                    if world
-                    else None
-                )
-            except Exception:
-                self.logger.exception(
-                    "World restore failed for '%s'.", self.server.server_name
-                )
-                results["world"] = None
-                failures.append("world")
+            result = ComponentResults(components=components)
             if failures:
-                raise BackupRestoreError(f"Restore failed for: {', '.join(failures)}")
-            self.logger.info(
-                "Latest-backup restore completed for server '%s' (%s components restored).",
-                self.server.server_name,
-                sum(path is not None for path in results.values()),
-            )
-            return results
+                raise IncompleteOperationError(
+                    "Restore did not complete.", result
+                ) from failures[0]
+            return result

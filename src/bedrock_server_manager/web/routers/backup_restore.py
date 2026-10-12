@@ -22,7 +22,6 @@ from typing import Any, Callable
 
 import aiofiles.ospath
 from fastapi import APIRouter, Body, Depends, HTTPException, status
-from pydantic import ValidationError
 
 from bedrock_server_manager.api.models import (
     APIRequest,
@@ -38,8 +37,6 @@ from bedrock_server_manager.api.models import (
 
 from ...api import backup_restore as backup_restore_api
 from ...context import AppContext
-from ...error import AppFileNotFoundError, BSMError, UserInputError
-from ...logging import log_operation_error
 from ..deps import get_app_context, get_moderator_user, validate_server_exists
 from ..deps.server import validate_server_registered
 from ..schemas import (
@@ -110,74 +107,41 @@ async def get_list_server_backups(
         server_name,
         identity,
     )
-    try:
-        api_result = await backup_restore_api.list_backup_files(
-            request=ListBackupFilesRequest.model_validate(
-                {"server_name": server_name, "backup_type": backup_type}
-            ),
-            app_context=app_context,
-        )
-        backup_data = api_result.backups
+    api_result = await backup_restore_api.list_backup_files(
+        request=ListBackupFilesRequest.model_validate(
+            {"server_name": server_name, "backup_type": backup_type}
+        ),
+        app_context=app_context,
+    )
+    backup_data = api_result.backups
 
-        if backup_type.lower() == "all" and isinstance(backup_data, dict):
-            # For 'all', backup_data is Dict[str, List[str (full paths)]]
-            # We need to convert full paths to basenames for each list in the dict
-            processed_all_backups = {
-                key: [os.path.basename(p) for p in path_list]
-                for key, path_list in backup_data.items()
-            }
-            return BackupFilesResponse(
-                status="success",
-                message="All backup types listed successfully.",
-                backups=processed_all_backups,
-            )
-        elif isinstance(backup_data, list):
-            basenames = [os.path.basename(p) for p in backup_data]
-            return BackupFilesResponse(
-                status="success",
-                message="Backups listed successfully.",
-                backups=basenames,
-            )
-        else:
-            logger.error(
-                "Invalid backup listing format for type '%s'.",
-                backup_type,
-            )
-            raise HTTPException(
-                status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-                detail="Unexpected backup data format.",
-            )
-    except UserInputError as e:
-        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(e))
-    except AppFileNotFoundError:
-        raise
-    except BSMError as e:
-        logger.debug(
-            "API List Backups '%s/%s': BSMError. %s",
-            server_name,
-            backup_type,
-            e,
-            exc_info=False,
+    if backup_type.lower() == "all" and isinstance(backup_data, dict):
+        # For 'all', backup_data is Dict[str, List[str (full paths)]]
+        # We need to convert full paths to basenames for each list in the dict
+        processed_all_backups = {
+            key: [os.path.basename(p) for p in path_list]
+            for key, path_list in backup_data.items()
+        }
+        return BackupFilesResponse(
+            status="success",
+            message="All backup types listed successfully.",
+            backups=processed_all_backups,
         )
-        raise HTTPException(
-            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail=str(e)
+    elif isinstance(backup_data, list):
+        basenames = [os.path.basename(p) for p in backup_data]
+        return BackupFilesResponse(
+            status="success",
+            message="Backups listed successfully.",
+            backups=basenames,
         )
-    except HTTPException:
-        raise
-    except ValidationError:
-        raise
-    except Exception as e:
-        log_operation_error(
-            logger,
-            "API List Backups '%s/%s': Unexpected error. %s",
-            server_name,
+    else:
+        logger.error(
+            "Invalid backup listing format for type '%s'.",
             backup_type,
-            e,
-            error=e,
         )
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail="A critical server error occurred while listing backups.",
+            detail="Unexpected backup data format.",
         )
 
 

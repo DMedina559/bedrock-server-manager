@@ -186,3 +186,49 @@ async def test_import_world_invalid(real_bedrock_server, tmp_path):
 
     with pytest.raises(BackupRestoreError):
         await server.worlds.import_world(str(invalid_path))
+
+
+@pytest.mark.parametrize("query_succeeds", [False, True])
+async def test_live_export_resume_failure_preserves_primary_error(
+    real_bedrock_server, tmp_path, monkeypatch, query_succeeds
+):
+    from pathlib import Path
+
+    from bedrock_server_manager.error import BackupRestoreError, SendCommandError
+
+    server = real_bedrock_server
+    world = Path(server.paths.server_dir) / "worlds" / "resume_world"
+    world.mkdir(parents=True)
+    (world / "level.dat").write_bytes(b"level-data")
+    log = Path(server.paths.server_log_path)
+    log.parent.mkdir(parents=True, exist_ok=True)
+    log.write_text("", encoding="utf-8")
+    target = tmp_path / "resume.mcworld"
+    commands = []
+
+    async def send_command(command):
+        commands.append(command)
+        if command == "save resume":
+            raise SendCommandError("command channel unavailable")
+        if command == "save query" and query_succeeds:
+            with log.open("a", encoding="utf-8") as output:
+                output.write(
+                    "Data saved. Files are now ready to be copied.\n"
+                    "resume_world/level.dat:5\n"
+                )
+
+    with monkeypatch.context() as fault:
+        fault.setattr(server, "send_command", send_command)
+        with pytest.raises(BackupRestoreError) as failure:
+            await server.worlds._live_export_world(
+                "resume_world", str(target), poll_interval=0.01, timeout=0.05
+            )
+    assert "save resume" in commands
+    if query_succeeds:
+        assert target.is_file()
+        assert "could not be resumed" in str(failure.value)
+        assert isinstance(failure.value.__cause__, SendCommandError)
+    else:
+        assert not target.exists()
+        assert "Timed out" in str(failure.value)
+        assert "Resuming server saves also failed" in failure.value.__notes__[0]

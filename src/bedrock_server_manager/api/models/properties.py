@@ -36,4 +36,4 @@ class SetPropertiesRequest(APIRequest):
 
 
 class SetPropertiesResponse(ActionResponse):
-    pass
+    server_name: ServerName

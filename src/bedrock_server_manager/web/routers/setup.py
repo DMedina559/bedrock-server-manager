@@ -36,7 +36,7 @@ async def get_setup_status(
     """
     Returns whether the application needs initial setup.
     """
-    return SetupStatusResponse(needs_setup=app_context.needs_setup)
+    return SetupStatusResponse(needs_setup=await app_context.check_setup())
 
 
 @router.post(
@@ -51,7 +51,7 @@ async def create_first_user(
     """
     Creates the first user (admin) in the database.
     """
-    if not app_context.needs_setup:
+    if not await app_context.check_setup():
         # If an admin user already exists, prevent creating another first user
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
@@ -59,7 +59,9 @@ async def create_first_user(
         )
 
     record = await app_context.user_service.create_account(
-        data.username, get_password_hash(data.password), first_admin=True
+        data.username,
+        get_password_hash(data.password.get_secret_value()),
+        first_admin=True,
     )
     if record is None:
         raise HTTPException(

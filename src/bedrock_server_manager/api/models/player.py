@@ -4,19 +4,15 @@ from typing import Annotated
 
 from pydantic import Field
 
-from .common import APIRequest, APIResponse, NonEmptyStr, PlayerInfo, SuccessResponse
-
-
-class PlayerScanError(APIResponse):
-    server: str
-    error: str
-
-
-class PlayerScanDetails(APIResponse):
-    total_entries_in_logs: int = Field(ge=0)
-    unique_players_submitted_for_saving: int = Field(ge=0)
-    actually_saved_or_updated_in_db: int = Field(ge=0)
-    scan_errors: list[PlayerScanError]
+from ...results import PlayerScanDetails as PlayerScanDetails
+from ...results import PlayerScanError as PlayerScanError
+from .common import (
+    APIRequest,
+    NonEmptyStr,
+    PartialResponse,
+    PlayerInfo,
+    SuccessResponse,
+)
 
 
 class AddPlayersManuallyRequest(APIRequest):
@@ -25,6 +21,9 @@ class AddPlayersManuallyRequest(APIRequest):
 
 class AddPlayersManuallyResponse(SuccessResponse):
     count: int = Field(ge=0)
+    submitted_count: int = Field(ge=0)
+    parsed_count: int = Field(ge=0)
+    unique_count: int = Field(ge=0)
 
 
 class GetAllKnownPlayersRequest(APIRequest):
@@ -39,5 +38,17 @@ class ScanAndUpdatePlayerDbRequest(APIRequest):
     pass
 
 
-class ScanAndUpdatePlayerDbResponse(SuccessResponse):
+class ScanAndUpdatePlayerDbResponse(PartialResponse):
     details: PlayerScanDetails
+
+
+__all__ = [
+    "PlayerScanDetails",
+    "PlayerScanError",
+    "AddPlayersManuallyRequest",
+    "AddPlayersManuallyResponse",
+    "GetAllKnownPlayersRequest",
+    "GetAllKnownPlayersResponse",
+    "ScanAndUpdatePlayerDbRequest",
+    "ScanAndUpdatePlayerDbResponse",
+]

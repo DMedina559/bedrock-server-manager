@@ -104,8 +104,6 @@ async def set_plugin_status(
     """
     plugin_name = request.target_plugin_name
     enabled = request.enabled
-    if not plugin_name:
-        raise UserInputError("Plugin name cannot be empty.")
     logger.debug("Setting status for plugin '%s' to %s.", plugin_name, enabled)
     try:
         pm = app_context.plugin_manager
@@ -128,11 +126,8 @@ async def set_plugin_status(
             )
         action = "enabled" if enabled else "disabled"
         logger.info("Plugin '%s' successfully %s.", plugin_name, action)
-        return SetPluginStatusResponse.model_validate(
-            {
-                "status": "success",
-                "message": f"Plugin '{plugin_name}' has been {action}.",
-            }
+        return SetPluginStatusResponse(
+            status="success", message=f"Plugin '{plugin_name}' has been {action}."
         )
     except UserInputError:
         raise
@@ -153,19 +148,15 @@ async def reload_single_plugin(
     Invalid requests fail validation before side effects; operation failures raise application exceptions.
     """
     plugin_name = request.target_plugin_name
-    if not plugin_name:
-        raise UserInputError("Plugin name cannot be empty.")
     logger.debug("Attempting to reload plugin '%s'.", plugin_name)
     try:
         pm = app_context.plugin_manager
         success = await pm.reload_plugin(plugin_name)
         if success:
             logger.info("Plugin '%s' reloaded successfully.", plugin_name)
-            return ReloadSinglePluginResponse.model_validate(
-                {
-                    "status": "success",
-                    "message": f"Plugin '{plugin_name}' reloaded successfully.",
-                }
+            return ReloadSinglePluginResponse(
+                status="success",
+                message=f"Plugin '{plugin_name}' reloaded successfully.",
             )
         else:
             raise BSMError(f"Failed to reload plugin '{plugin_name}'.")
@@ -190,8 +181,8 @@ async def reload_plugins(
         pm = app_context.plugin_manager
         await pm.reload()
         logger.info("Plugins reloaded successfully.")
-        return ReloadPluginsResponse.model_validate(
-            {"status": "success", "message": "Plugins have been reloaded successfully."}
+        return ReloadPluginsResponse(
+            status="success", message="Plugins have been reloaded successfully."
         )
     except Exception as e:
         log_operation_error(logger, "Failed to reload plugins: %s", e, error=e)
@@ -209,8 +200,6 @@ async def trigger_external_app_event(
     """
     event_name = request.event_name
     payload = request.payload
-    if not event_name:
-        raise UserInputError("Event name is required to trigger a custom plugin event.")
     logger.debug(
         "Attempting to trigger custom plugin event '%s' externally.", event_name
     )
@@ -224,8 +213,8 @@ async def trigger_external_app_event(
             "Custom plugin event '%s' triggered successfully via external API.",
             event_name,
         )
-        return TriggerExternalAppEventResponse.model_validate(
-            {"status": "success", "message": f"Event '{event_name}' triggered."}
+        return TriggerExternalAppEventResponse(
+            status="success", message=f"Event '{event_name}' triggered."
         )
     except Exception as e:
         log_operation_error(

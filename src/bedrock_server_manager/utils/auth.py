@@ -8,9 +8,11 @@ from typing import Any, Optional
 import bcrypt
 from fastapi import WebSocketException, status
 from jose import JWTError, jwt
+from pydantic import TypeAdapter
 
 from ..config import Settings
 from ..context import AppContext
+from ..contracts import Password
 from ..state.models import UserInfoState
 from ..web.schemas import UserResponse
 
@@ -108,13 +110,15 @@ async def _get_and_update_user_from_db(
     if last_seen_dt is None or (now - last_seen_dt) > datetime.timedelta(minutes=5):
         user.last_seen = now
 
-    return UserResponse(
-        id=int(user.id),
-        username=str(user.username),
-        identity_type="jwt",
-        role=str(user.role),
-        is_active=bool(user.is_active),
-        theme=str(user.theme),
+    return UserResponse.model_validate(
+        {
+            "id": int(user.id),
+            "username": str(user.username),
+            "identity_type": "jwt",
+            "role": user.role,
+            "is_active": bool(user.is_active),
+            "theme": str(user.theme),
+        }
     )
 
 
@@ -184,13 +188,22 @@ async def _get_user_from_token(
             logger.warning(
                 "Failed DB fallback lookup for user '%s': %s", username, db_err
             )
-            return None
+            from ..error import DependencyUnavailableError
+
+            raise DependencyUnavailableError(
+                "Authentication storage is unavailable."
+            ) from db_err
 
     except JWTError:
         return None
     except Exception as e:
-        logger.warning("Error during user token authentication: %s", e)
-        return None
+        from ..error import DependencyUnavailableError
+
+        if isinstance(e, DependencyUnavailableError):
+            raise
+        raise DependencyUnavailableError(
+            "Authentication infrastructure is unavailable."
+        ) from e
 
 
 async def authenticate_websocket_token(
@@ -232,6 +245,9 @@ async def authenticate_user(
     app_context: AppContext, username_form: str, password_form: str
 ) -> Optional[str]:
     """Authenticates a user against the database using UserRepository."""
+    password_form = (
+        TypeAdapter(Password).validate_python(password_form).get_secret_value()
+    )
     async with app_context.storage.transaction() as session:
         user = await app_context.storage.user_repo.get_user_by_username(
             session, username_form

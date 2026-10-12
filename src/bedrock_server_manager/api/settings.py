@@ -17,7 +17,7 @@ import logging
 from pydantic import ValidationError
 
 from ..context import AppContext
-from ..error import BSMError, MissingArgumentError, UserInputError
+from ..error import BSMError, UserInputError
 from ..logging import log_operation_error
 from ..plugins.api_bridge import api_method
 from ..plugins.api_contract import validate_contract
@@ -48,8 +48,6 @@ async def get_global_setting(
     Invalid requests fail validation before side effects; operation failures raise application exceptions.
     """
     key = request.key
-    if not key:
-        raise MissingArgumentError("A 'key' must be provided to get a setting.")
     logger.debug("Reading global setting '%s'.", key)
     try:
         settings = app_context.settings
@@ -103,8 +101,6 @@ async def set_global_setting(
     """
     key = request.key
     value = request.value
-    if not key:
-        raise MissingArgumentError("A 'key' must be provided to set a setting.")
     logger.debug("Updating global setting '%s'.", key)
     try:
         settings = app_context.settings
@@ -138,8 +134,6 @@ async def set_custom_global_setting(
     """
     key = request.key
     value = request.value
-    if not key:
-        raise MissingArgumentError("A 'key' must be provided to set a setting.")
     key = "custom." + key.strip()
     logger.debug("Updating global setting '%s'.", key)
     try:

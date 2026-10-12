@@ -16,6 +16,7 @@ from typing import List
 from fastapi import APIRouter, Depends, HTTPException
 
 from ...context import AppContext
+from ...state.updates import AccountPatch
 from ..deps import get_admin_user, get_app_context, get_moderator_user
 from ..schemas import BaseApiResponse, UpdateUserRolePayload
 from ..schemas import UserResponse as UserSchema
@@ -107,7 +108,7 @@ async def update_user_role(
     result = await app_context.user_service.update_account(
         action="role",
         user_id=user_id,
-        values={"role": data.role},
+        values=AccountPatch(role=data.role),
         actor_id=current_user.id,
     )
     if result is None:

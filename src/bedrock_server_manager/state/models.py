@@ -250,12 +250,6 @@ class BanItem(PersistentRecord):
     banned_at: Optional[str] = None
 
 
-class BanResult(PersistentRecord):
-    success: bool
-    message: str
-    bans: Optional[List[BanItem]] = None
-
-
 class RuntimePlayer(PersistentRecord):
     name: str
     xuid: str
@@ -264,6 +258,7 @@ class RuntimePlayer(PersistentRecord):
 class ServerRuntimeInfo(PersistentRecord):
     running: bool = False
     pid: Optional[int] = Field(default=None, gt=0)
+    players_available: bool = True
     players_online: int = Field(default=0, ge=0)
     players: List[RuntimePlayer] = Field(default_factory=list)
     cpu_percent: float = Field(default=0.0, ge=0)
@@ -304,7 +299,12 @@ class RuntimeState:
         data.update(values)
         if values.get("running") is False:
             data.update(
-                pid=None, players_online=0, players=[], cpu_percent=0.0, memory_mb=0.0
+                pid=None,
+                players_available=True,
+                players_online=0,
+                players=[],
+                cpu_percent=0.0,
+                memory_mb=0.0,
             )
         record = ServerRuntimeInfo.model_validate(data)
         self.set_server_runtime(server_name, record)

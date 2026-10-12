@@ -26,7 +26,6 @@ import time
 from ..context import AppContext
 from ..error import (
     BSMError,
-    InvalidServerNameError,
 )
 from ..logging import log_operation_error
 from ..plugins.api_bridge import api_method
@@ -57,8 +56,6 @@ async def get_server_running_status(
     Invalid requests fail validation before side effects; operation failures raise application exceptions.
     """
     server_name = request.server_name
-    if not server_name:
-        raise InvalidServerNameError("Server name cannot be empty.")
     logger.debug("Checking running status for server '%s'...", server_name)
     try:
         server = app_context.get_server(server_name)
@@ -100,8 +97,6 @@ async def get_bedrock_process_info(
     Invalid requests fail validation before side effects; operation failures raise application exceptions.
     """
     server_name = request.server_name
-    if not server_name:
-        raise InvalidServerNameError("Server name cannot be empty.")
     logger.debug("Getting process info for server '%s'...", server_name)
     try:
         server = app_context.get_server(server_name)

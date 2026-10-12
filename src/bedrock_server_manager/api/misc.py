@@ -12,7 +12,11 @@ from typing import Optional
 
 from ..context import AppContext
 from ..core import prune_old_downloads
-from ..error import BSMError, MissingArgumentError, UserInputError
+from ..error import (
+    BSMError,
+    IncompleteOperationError,
+    UserInputError,
+)
 from ..logging import log_operation_error
 from ..plugins.api_bridge import api_method
 from ..plugins.event_trigger import trigger_event
@@ -50,12 +54,10 @@ async def prune_download_cache(
         logger.warning(
             "A miscellaneous file operation is already in progress. Skipping concurrent prune."
         )
-        return PruneDownloadCacheResponse.model_validate(
-            {"status": "skipped", "message": "A file operation is already in progress."}
+        return PruneDownloadCacheResponse(
+            status="skipped", message="A file operation is already in progress."
         )
     try:
-        if not download_dir:
-            raise MissingArgumentError("Download directory cannot be empty.")
         effective_keep: int
         try:
             if keep_count is None:
@@ -79,15 +81,19 @@ async def prune_download_cache(
             effective_keep,
         )
         try:
-            await prune_old_downloads(
+            result = await prune_old_downloads(
                 download_dir=download_dir, download_keep=effective_keep
             )
-            logger.info("Pruning successful for directory '%s'.", download_dir)
-            return PruneDownloadCacheResponse.model_validate(
-                {
-                    "status": "success",
-                    "message": f"Download cache pruned successfully for '{download_dir}'.",
-                }
+            if result.outcome == "failed":
+                raise IncompleteOperationError("Download retention failed.", result)
+            return PruneDownloadCacheResponse(
+                status=(
+                    "partial"
+                    if result.failures
+                    else "skipped" if result.outcome == "noop" else "success"
+                ),
+                message=f"Download retention {result.outcome}: {len(result.deleted)} deleted, {len(result.failures)} failed.",
+                result=result,
             )
         except BSMError as e:
             log_operation_error(

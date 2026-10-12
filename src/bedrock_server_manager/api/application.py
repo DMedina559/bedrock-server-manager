@@ -38,6 +38,7 @@ from .models.application import (
     UpdateServerStatusesRequest,
     UpdateServerStatusesResponse,
 )
+from .models.common import ServerSummary
 
 logger = logging.getLogger(__name__)
 
@@ -83,21 +84,16 @@ async def get_all_servers_data(
             app_context=app_context
         )
         servers_data = [dict(server, **revision) for server in servers_data]
-        if bsm_error_messages:
-            for err_msg in bsm_error_messages:
-                logger.error(
-                    "Individual server error during get_all_servers_data: %s", err_msg
-                )
-            return GetAllServersDataResponse.model_validate(
-                {
-                    "status": "success",
-                    "servers": servers_data,
-                    **revision,
-                    "message": f"Completed with errors: {'; '.join(bsm_error_messages)}",
-                }
-            )
-        return GetAllServersDataResponse.model_validate(
-            {"status": "success", "servers": servers_data, **revision}
+        return GetAllServersDataResponse(
+            status="partial" if bsm_error_messages else "success",
+            servers=[ServerSummary.model_validate(item) for item in servers_data],
+            errors=bsm_error_messages,
+            **revision,
+            message=(
+                "Server discovery completed with failures."
+                if bsm_error_messages
+                else None
+            ),
         )
     except BSMError as e:
         log_operation_error(
@@ -150,51 +146,10 @@ async def update_server_statuses(
     """
     from ..utils import server as server_utils
 
-    updated_servers_count = 0
-    error_messages = []
-    logger.debug("Updating all server statuses...")
-    try:
-        all_servers_data, discovery_errors = await server_utils.get_servers_data(
-            app_context=app_context
-        )
-        if discovery_errors:
-            error_messages.extend(discovery_errors)
-        for server_data in all_servers_data:
-            server_name = server_data.get("name")
-            if not server_name:
-                continue
-            try:
-                logger.debug(
-                    "Status for '%s' was reconciled by get_servers_data.", server_name
-                )
-                updated_servers_count += 1
-            except Exception as e:
-                msg = f"Could not update status for server '{server_name}': {e}"
-                log_operation_error(
-                    logger, "API.update_server_statuses: %s", msg, error=e
-                )
-                error_messages.append(msg)
-        if error_messages:
-            return UpdateServerStatusesResponse.model_validate(
-                {
-                    "status": "success",
-                    "message": "Status scan completed with partial failures.",
-                    "updated_servers_count": updated_servers_count,
-                    "errors": error_messages,
-                }
-            )
-        return UpdateServerStatusesResponse.model_validate(
-            {
-                "status": "success",
-                "message": f"Status check completed for {updated_servers_count} servers.",
-                "updated_servers_count": updated_servers_count,
-            }
-        )
-    except BSMError as e:
-        log_operation_error(logger, "Setup error during status update: %s", e, error=e)
-        raise
-    except Exception as e:
-        log_operation_error(
-            logger, "Unexpected error during status update: %s", e, error=e
-        )
-        raise
+    servers_data, errors = await server_utils.get_servers_data(app_context=app_context)
+    return UpdateServerStatusesResponse(
+        status="partial" if errors else "success",
+        message=f"Status scan reconciled {len(servers_data)} server(s).",
+        updated_servers_count=len(servers_data),
+        errors=errors,
+    )

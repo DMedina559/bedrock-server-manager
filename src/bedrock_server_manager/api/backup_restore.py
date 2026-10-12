@@ -28,17 +28,20 @@ import asyncio
 import logging
 import os
 
+import aiofiles.ospath
+
 from ..context import AppContext
 from ..error import (
     AppFileNotFoundError,
     BSMError,
-    InvalidServerNameError,
-    MissingArgumentError,
+    IncompleteOperationError,
 )
+from ..failures import classify_failure
 from ..logging import log_operation_error
 from ..plugins.api_bridge import api_method
 from ..plugins.event_trigger import trigger_event
 from ..plugins.runtime_capabilities import server_lifecycle_manager
+from ..results import CleanupResult
 from .models.backup_restore import (
     BackupAllRequest,
     BackupAllResponse,
@@ -72,8 +75,6 @@ async def list_backup_files(
     """
     server_name = request.server_name
     backup_type = request.backup_type
-    if not server_name:
-        raise InvalidServerNameError("Server name cannot be empty.")
     try:
         server = app_context.get_server(server_name, require_installation=False)
         backup_data = await server.backups.list_backups(backup_type)
@@ -111,8 +112,6 @@ async def backup_world(
     Invalid requests fail validation before side effects; operation failures raise application exceptions.
     """
     server_name = request.server_name
-    if not server_name:
-        raise MissingArgumentError("Server name cannot be empty.")
     server = app_context.get_server(server_name)
     try:
         await server.operation_lock.acquire(timeout=300)
@@ -121,21 +120,19 @@ async def backup_world(
             "An operation for '%s' is already in progress. Skipping concurrent world backup.",
             server_name,
         )
-        return BackupWorldResponse.model_validate(
-            {
-                "status": "skipped",
-                "message": "Backup/restore operation already in progress.",
-            }
+        return BackupWorldResponse(
+            server_name=server_name,
+            status="skipped",
+            message="Backup/restore operation already in progress.",
         )
     try:
         logger.debug("Initiating world backup for server '%s'.", server_name)
         try:
             backup_file = await server.backups.backup_world()
-            return BackupWorldResponse.model_validate(
-                {
-                    "status": "success",
-                    "message": f"World backup '{os.path.basename(str(backup_file))}' created successfully for server '{server_name}'.",
-                }
+            return BackupWorldResponse(
+                server_name=server_name,
+                status="success",
+                message=f"World backup '{os.path.basename(str(backup_file))}' created successfully for server '{server_name}'.",
             )
         except BSMError as e:
             log_operation_error(
@@ -171,10 +168,6 @@ async def backup_config_file(
     """
     server_name = request.server_name
     file_to_backup = request.file_to_backup
-    if not server_name:
-        raise MissingArgumentError("Server name cannot be empty.")
-    if not file_to_backup:
-        raise MissingArgumentError("File to backup cannot be empty.")
     server = app_context.get_server(server_name)
     try:
         await server.operation_lock.acquire(timeout=300)
@@ -183,11 +176,10 @@ async def backup_config_file(
             "An operation for '%s' is already in progress. Skipping concurrent config backup.",
             server_name,
         )
-        return BackupConfigFileResponse.model_validate(
-            {
-                "status": "skipped",
-                "message": "Backup/restore operation already in progress.",
-            }
+        return BackupConfigFileResponse(
+            server_name=server_name,
+            status="skipped",
+            message="Backup/restore operation already in progress.",
         )
     try:
         filename_base = os.path.basename(file_to_backup)
@@ -200,11 +192,10 @@ async def backup_config_file(
             backup_file = await server.backups.backup_config(filename_base)
             if backup_file is None:
                 raise AppFileNotFoundError(filename_base, "Server configuration file")
-            return BackupConfigFileResponse.model_validate(
-                {
-                    "status": "success",
-                    "message": f"Config file '{filename_base}' backed up as '{os.path.basename(str(backup_file))}' successfully.",
-                }
+            return BackupConfigFileResponse(
+                server_name=server_name,
+                status="success",
+                message=f"Config file '{filename_base}' backed up as '{os.path.basename(str(backup_file))}' successfully.",
             )
         except (BSMError, FileNotFoundError) as e:
             log_operation_error(
@@ -244,8 +235,6 @@ async def backup_all(
     Invalid requests fail validation before side effects; operation failures raise application exceptions.
     """
     server_name = request.server_name
-    if not server_name:
-        raise MissingArgumentError("Server name cannot be empty.")
     server = app_context.get_server(server_name)
     try:
         await server.operation_lock.acquire(timeout=300)
@@ -254,22 +243,20 @@ async def backup_all(
             "An operation for '%s' is already in progress. Skipping concurrent full backup.",
             server_name,
         )
-        return BackupAllResponse.model_validate(
-            {
-                "status": "skipped",
-                "message": "Backup/restore operation already in progress.",
-            }
+        return BackupAllResponse(
+            server_name=server_name,
+            status="skipped",
+            message="Backup/restore operation already in progress.",
         )
     try:
         logger.debug("Initiating full backup for server '%s'.", server_name)
         try:
             backup_results = await server.backups.backup_all_data()
-            return BackupAllResponse.model_validate(
-                {
-                    "status": "success",
-                    "message": f"Full backup completed successfully for server '{server_name}'.",
-                    "details": backup_results,
-                }
+            return BackupAllResponse(
+                server_name=server_name,
+                status="partial" if backup_results.outcome == "partial" else "success",
+                message=f"Backup for '{server_name}' {backup_results.outcome}.",
+                details=backup_results,
             )
         except BSMError as e:
             log_operation_error(
@@ -305,8 +292,6 @@ async def restore_all(
     """
     server_name = request.server_name
     stop_start_server = request.stop_start_server
-    if not server_name:
-        raise MissingArgumentError("Server name cannot be empty.")
     server = app_context.get_server(server_name, require_installation=False)
     try:
         await server.operation_lock.acquire(timeout=300)
@@ -315,11 +300,10 @@ async def restore_all(
             "An operation for '%s' is already in progress. Skipping concurrent restore.",
             server_name,
         )
-        return RestoreAllResponse.model_validate(
-            {
-                "status": "skipped",
-                "message": "Backup/restore operation already in progress.",
-            }
+        return RestoreAllResponse(
+            server_name=server_name,
+            status="skipped",
+            message="Backup/restore operation already in progress.",
         )
     try:
         logger.debug(
@@ -335,21 +319,12 @@ async def restore_all(
                 app_context=app_context,
             ):
                 restore_results = await server.backups.restore_all_data_from_latest()
-            if not restore_results:
-                return RestoreAllResponse.model_validate(
-                    {
-                        "status": "success",
-                        "message": f"No backups found for server '{server_name}'. Nothing restored.",
-                    }
-                )
-            else:
-                return RestoreAllResponse.model_validate(
-                    {
-                        "status": "success",
-                        "message": f"Restore_all completed successfully for server '{server_name}'.",
-                        "details": restore_results,
-                    }
-                )
+            return RestoreAllResponse(
+                server_name=server_name,
+                status="skipped" if restore_results.outcome == "noop" else "success",
+                message=f"Restore for '{server_name}' {restore_results.outcome}.",
+                details=restore_results,
+            )
         except BSMError as e:
             log_operation_error(
                 logger, "Restore_all failed for '%s': %s", server_name, e, error=e
@@ -385,10 +360,6 @@ async def restore_world(
     server_name = request.server_name
     backup_file_path = request.backup_file_path
     stop_start_server = request.stop_start_server
-    if not server_name:
-        raise MissingArgumentError("Server name cannot be empty.")
-    if not backup_file_path:
-        raise MissingArgumentError("Backup file path cannot be empty.")
     server = app_context.get_server(server_name, require_installation=False)
     try:
         await server.operation_lock.acquire(timeout=300)
@@ -397,11 +368,10 @@ async def restore_world(
             "An operation for '%s' is already in progress. Skipping concurrent world restore.",
             server_name,
         )
-        return RestoreWorldResponse.model_validate(
-            {
-                "status": "skipped",
-                "message": "Backup/restore operation already in progress.",
-            }
+        return RestoreWorldResponse(
+            server_name=server_name,
+            status="skipped",
+            message="Backup/restore operation already in progress.",
         )
     try:
         backup_filename = os.path.basename(backup_file_path)
@@ -421,11 +391,10 @@ async def restore_world(
                 app_context=app_context,
             ):
                 await server.worlds.import_world(backup_file_path)
-            return RestoreWorldResponse.model_validate(
-                {
-                    "status": "success",
-                    "message": f"World restore from '{backup_filename}' completed successfully for server '{server_name}'.",
-                }
+            return RestoreWorldResponse(
+                server_name=server_name,
+                status="success",
+                message=f"World restore from '{backup_filename}' completed successfully for server '{server_name}'.",
             )
         except (BSMError, FileNotFoundError) as e:
             log_operation_error(
@@ -462,10 +431,6 @@ async def restore_config_file(
     server_name = request.server_name
     backup_file_path = request.backup_file_path
     stop_start_server = request.stop_start_server
-    if not server_name:
-        raise MissingArgumentError("Server name cannot be empty.")
-    if not backup_file_path:
-        raise MissingArgumentError("Backup file path cannot be empty.")
     server = app_context.get_server(server_name, require_installation=False)
     try:
         await server.operation_lock.acquire(timeout=300)
@@ -474,11 +439,10 @@ async def restore_config_file(
             "An operation for '%s' is already in progress. Skipping concurrent config restore.",
             server_name,
         )
-        return RestoreConfigFileResponse.model_validate(
-            {
-                "status": "skipped",
-                "message": "Backup/restore operation already in progress.",
-            }
+        return RestoreConfigFileResponse(
+            server_name=server_name,
+            status="skipped",
+            message="Backup/restore operation already in progress.",
         )
     try:
         backup_filename = os.path.basename(backup_file_path)
@@ -498,11 +462,10 @@ async def restore_config_file(
                 app_context=app_context,
             ):
                 restored_file = await server.backups.restore_config(backup_file_path)
-            return RestoreConfigFileResponse.model_validate(
-                {
-                    "status": "success",
-                    "message": f"Config file '{os.path.basename(str(restored_file))}' restored successfully from '{backup_filename}'.",
-                }
+            return RestoreConfigFileResponse(
+                server_name=server_name,
+                status="success",
+                message=f"Config file '{os.path.basename(str(restored_file))}' restored successfully from '{backup_filename}'.",
             )
         except (BSMError, FileNotFoundError) as e:
             log_operation_error(
@@ -541,8 +504,6 @@ async def prune_old_backups(
     Invalid requests fail validation before side effects; operation failures raise application exceptions.
     """
     server_name = request.server_name
-    if not server_name:
-        raise MissingArgumentError("Server name cannot be empty.")
     server = app_context.get_server(server_name, require_installation=False)
     try:
         await server.operation_lock.acquire(timeout=300)
@@ -551,83 +512,56 @@ async def prune_old_backups(
             "An operation for '%s' is already in progress. Skipping concurrent prune.",
             server_name,
         )
-        return PruneOldBackupsResponse.model_validate(
-            {
-                "status": "skipped",
-                "message": "Backup/restore operation already in progress.",
-            }
+        return PruneOldBackupsResponse(
+            server_name=server_name,
+            status="skipped",
+            message="Backup/restore operation already in progress.",
         )
     try:
-        logger.debug("Initiating pruning of old backups for server '%s'.", server_name)
-        try:
-            if not server.backups.server_backup_directory or not os.path.isdir(
-                server.backups.server_backup_directory
-            ):
-                return PruneOldBackupsResponse.model_validate(
-                    {
-                        "status": "success",
-                        "message": "No backup directory found, nothing to prune.",
-                    }
-                )
-            pruning_errors = []
+        if (
+            not server.backups.server_backup_directory
+            or not await aiofiles.ospath.isdir(server.backups.server_backup_directory)
+        ):
+            return PruneOldBackupsResponse(
+                server_name=server_name,
+                status="skipped",
+                message="No backup directory is available.",
+            )
+        results = []
+        world = await server.get_world_name()
+        selections = [
+            (server.backups._world_prefix(world), "mcworld"),
+            ("server_backup_", "properties"),
+            ("allowlist_backup_", "json"),
+            ("permissions_backup_", "json"),
+        ]
+        for prefix, extension in selections:
             try:
-                world_name = await server.get_world_name()
-                world_name_prefix = server.backups._world_prefix(world_name)
-                await server.backups.prune_server_backups(world_name_prefix, "mcworld")
-            except Exception as e:
-                err_msg = f"world backups ({type(e).__name__})"
-                pruning_errors.append(err_msg)
-                log_operation_error(
-                    logger,
-                    "Error pruning world backups for '%s': %s",
-                    server_name,
-                    e,
-                    error=e,
+                results.append(
+                    await server.backups.prune_server_backups(prefix, extension)
                 )
-            config_file_types = {
-                "server_backup_": "properties",
-                "allowlist_backup_": "json",
-                "permissions_backup_": "json",
-            }
-            for prefix, ext in config_file_types.items():
-                try:
-                    await server.backups.prune_server_backups(prefix, ext)
-                except Exception as e:
-                    err_msg = f"config backups ({prefix}*.{ext}) ({type(e).__name__})"
-                    pruning_errors.append(err_msg)
-                    log_operation_error(
-                        logger,
-                        "Error pruning %s*.%s for '%s': %s",
-                        prefix,
-                        ext,
-                        server_name,
-                        e,
-                        error=e,
-                    )
-            if pruning_errors:
-                raise BSMError(
-                    f"Pruning completed with errors: {'; '.join(pruning_errors)}"
+            except Exception as error:
+                results.append(
+                    CleanupResult(failures={prefix: classify_failure(error).error})
                 )
-            else:
-                return PruneOldBackupsResponse.model_validate(
-                    {
-                        "status": "success",
-                        "message": f"Backup pruning completed for server '{server_name}'.",
-                    }
-                )
-        except (BSMError, ValueError) as e:
-            log_operation_error(
-                logger, "Cannot prune backups for '%s': %s", server_name, e, error=e
-            )
-            raise
-        except Exception as e:
-            log_operation_error(
-                logger,
-                "Unexpected error during backup pruning for '%s': %s",
-                server_name,
-                e,
-                error=e,
-            )
-            raise
+        result = CleanupResult(
+            deleted=[path for item in results for path in item.deleted],
+            retained=[path for item in results for path in item.retained],
+            failures={
+                path: error for item in results for path, error in item.failures.items()
+            },
+        )
+        if result.outcome == "failed":
+            raise IncompleteOperationError("Backup retention failed.", result)
+        return PruneOldBackupsResponse(
+            server_name=server_name,
+            status=(
+                "partial"
+                if result.failures
+                else "skipped" if result.outcome == "noop" else "success"
+            ),
+            message=f"Backup retention {result.outcome}: {len(result.deleted)} deleted, {len(result.failures)} failed.",
+            result=result,
+        )
     finally:
         server.operation_lock.release()

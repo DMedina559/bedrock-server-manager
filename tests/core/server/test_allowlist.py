@@ -54,8 +54,8 @@ async def test_get_allowlist_json_object(real_bedrock_server):
     with open(allowlist_path, "w") as f:
         json.dump({"key": "value"}, f)
 
-    allowlist = await server.allowlist.get_allowlist()
-    assert allowlist == []  # Fallbacks to empty list based on legacy tests
+    with pytest.raises(ConfigParseError):
+        await server.allowlist.get_allowlist()
 
 
 async def test_add_to_allowlist(real_bedrock_server):
@@ -193,3 +193,20 @@ async def test_remove_from_allowlist_unwritable_file(real_bedrock_server):
     finally:
         os.chmod(os.path.dirname(allowlist_path), 0o755)
         os.chmod(allowlist_path, 0o644)
+
+
+@pytest.mark.parametrize(
+    "content", ["{}", "null", "false", "{broken", '[{"unexpected": "value"}]']
+)
+async def test_malformed_configuration_is_preserved(real_bedrock_server, content):
+    from pathlib import Path
+
+    from bedrock_server_manager.error import ConfigParseError
+
+    server = real_bedrock_server
+    path = Path(server.paths.allowlist_json_path)
+    path.write_text(content, encoding="utf-8")
+    before = path.read_bytes()
+    with pytest.raises(ConfigParseError):
+        await server.allowlist.add_to_allowlist([{"name": "Alex"}])
+    assert path.read_bytes() == before

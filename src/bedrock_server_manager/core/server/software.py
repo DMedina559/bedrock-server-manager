@@ -37,26 +37,17 @@ async def is_update_needed(
         not current or current.upper() == "UNKNOWN"
     ):
         return True
-    try:
-        downloader = BedrockDownloader(
-            settings_obj=server.settings,
-            server_dir=server.paths.server_dir,
-            target_version=target,
-        )
-        available = (
-            await downloader.get_version_for_target_spec()
-            if target in ("LATEST", "PREVIEW")
-            else downloader._custom_version_number
-        )
-        return not available or current != available
-    except Exception:
-        logger.warning(
-            "Could not resolve Bedrock release %r for %s; assuming an update is needed.",
-            target,
-            server.server_name,
-            exc_info=True,
-        )
-        return True
+    downloader = BedrockDownloader(
+        settings_obj=server.settings,
+        server_dir=server.paths.server_dir,
+        target_version=target,
+    )
+    available = (
+        await downloader.get_version_for_target_spec()
+        if target in ("LATEST", "PREVIEW")
+        else downloader._custom_version_number
+    )
+    return not available or current != available
 
 
 async def _install_or_update(

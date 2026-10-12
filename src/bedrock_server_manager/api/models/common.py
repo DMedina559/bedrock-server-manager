@@ -7,65 +7,27 @@ from pydantic import (
     BeforeValidator,
     ConfigDict,
     Field,
-    JsonValue,
     model_validator,
 )
 from pydantic.json_schema import JsonSchemaValue
 
-
-class APIRequest(BaseModel):
-    """Reject misspelled fields and revalidate even constructed model instances."""
-
-    model_config = ConfigDict(
-        extra="forbid",
-        strict=True,
-        frozen=True,
-        revalidate_instances="always",
-        validate_default=True,
-        allow_inf_nan=False,
-    )
+from ...contracts import DataContract, FailureInfo
+from ...contracts import NonEmptyStr as NonEmptyStr
+from ...contracts import ServerName as ServerName
 
 
-class APIResponse(BaseModel):
-    """Validated output data. Nested containers are not deeply immutable."""
-
-    model_config = ConfigDict(
-        extra="forbid",
-        strict=True,
-        frozen=True,
-        revalidate_instances="always",
-        validate_default=True,
-        allow_inf_nan=False,
-    )
+class APIRequest(DataContract):
+    """Strict input validation before side effects."""
 
 
-class APIErrorResponse(APIResponse):
-    """Safe transport representation; Python API callers receive exceptions."""
-
-    code: Literal[
-        "validation_error",
-        "not_found",
-        "conflict",
-        "forbidden",
-        "unauthorized",
-        "http_error",
-        "operation_canceled",
-        "invalid_server_name",
-        "server_start_failed",
-        "server_stop_failed",
-        "server_error",
-        "application_error",
-        "internal_error",
-    ]
-    message: str
-    details: dict[str, JsonValue] = Field(default_factory=dict)
+class APIResponse(DataContract):
+    """Validated transport output."""
 
 
-NonEmptyStr = Annotated[str, Field(strict=True, min_length=1, pattern=r".*\S.*")]
-ServerName = Annotated[
-    str,
-    Field(strict=True, min_length=1, pattern=r"^[a-zA-Z0-9_-]+$", examples=["example"]),
-]
+class APIErrorResponse(FailureInfo, APIResponse):
+    """Safe serialized failure; Python callers receive exceptions."""
+
+
 PermissionLevel = Annotated[
     Literal["visitor", "member", "operator"],
     BeforeValidator(lambda value: value.lower() if isinstance(value, str) else value),
@@ -82,6 +44,11 @@ BackupType = Annotated[
 
 class SuccessResponse(APIResponse):
     status: Literal["success"] = "success"
+    message: str | None = None
+
+
+class PartialResponse(APIResponse):
+    status: Literal["success", "partial"] = "success"
     message: str | None = None
 
 
@@ -105,7 +72,7 @@ def action_response_schema(schema: JsonSchemaValue, model: type[BaseModel]) -> N
 class ActionResponse(APIResponse):
     model_config = ConfigDict(json_schema_extra=action_response_schema)
 
-    status: Literal["success", "skipped"] = "success"
+    status: Literal["success", "skipped", "partial"] = "success"
     message: str
     required_on_success: ClassVar[tuple[str, ...]] = ()
 
@@ -139,12 +106,38 @@ class StateRevision(APIResponse):
 
 
 class ServerSummary(StateRevision):
+    players_available: bool = True
     name: str
     status: str
     version: str
     player_count: int = Field(default=0, ge=0)
     players: list[PlayerInfo] = Field(default_factory=list)
 
+    @model_validator(mode="after")
+    def coherent_player_count(self) -> Self:
+        if self.player_count != len(self.players):
+            raise ValueError("player_count must match the player list")
+        return self
+
 
 class ErrorEnvelope(APIResponse):
     error: APIErrorResponse
+
+
+__all__ = [
+    "APIRequest",
+    "APIResponse",
+    "APIErrorResponse",
+    "NonEmptyStr",
+    "ServerName",
+    "PermissionLevel",
+    "PackType",
+    "BackupType",
+    "SuccessResponse",
+    "ActionResponse",
+    "PlayerInfo",
+    "StateRevision",
+    "ServerSummary",
+    "ErrorEnvelope",
+    "PartialResponse",
+]

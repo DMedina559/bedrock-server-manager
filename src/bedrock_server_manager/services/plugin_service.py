@@ -99,13 +99,14 @@ class PluginService:
             ) from error
 
     async def replace_settings(self, name: str, settings: dict) -> None:
-        async with self.state.settings.get_lock("global"):
-            values = self.state.settings.plugin_settings
+        def mutate(candidate):
+            values = candidate.plugin_settings
             values[name] = self.validate_settings(name, settings)
-            self.state.settings.set("plugin_settings", values)
+            candidate.set("plugin_settings", values)
+
         changeset = ChangeSet()
         changeset.add_setting("plugin_settings")
-        await self.storage.apply_changeset(self.state, changeset)
+        await self.storage.commit_settings(self.state, changeset, mutate)
 
     def get_plugin_state(self, plugin_name: str) -> Optional[PluginInfoState]:
         """Retrieves a plugin state model snapshot."""
@@ -125,42 +126,55 @@ class PluginService:
         settings: Optional[Dict[str, JsonValue]] = None,
     ) -> PluginInfoState:
         """Registers or updates a plugin state record and marks dirty state."""
-        async with self.state.plugins.get_lock(plugin_name):
-            existing = self.state.plugins.get(plugin_name)
-            values: dict[str, object] = {"plugin_name": plugin_name}
-            if enabled is not None:
-                values["enabled"] = enabled
-            elif existing is None:
-                values["enabled"] = True
-            for name, value in (
-                ("version", version),
-                ("author", author),
-                ("description", description),
-            ):
-                if value is not UNSET:
-                    values[name] = value
-            update = PluginUpdate.model_validate(values)
-            data = existing.model_dump() if existing else {}
-            data.update(update.model_dump(exclude_unset=True))
-            plugin = PluginInfoState.model_validate(data)
+        values: dict[str, object] = {"plugin_name": plugin_name}
+        if enabled is not None:
+            values["enabled"] = enabled
+        for name, value in (
+            ("version", version),
+            ("author", author),
+            ("description", description),
+        ):
+            if value is not UNSET:
+                values[name] = value
+        return await self.apply_update(
+            PluginUpdate.model_validate(values), settings=settings
+        )
 
-            changeset = ChangeSet()
-            changeset.add_plugin(plugin_name)
-            if settings is not None:
+    async def apply_update(
+        self, request: PluginUpdate, *, settings: dict[str, JsonValue] | None = None
+    ) -> PluginInfoState:
+        request = PluginUpdate.model_validate(request)
+        name = request.plugin_name
+        changeset = ChangeSet()
+        changeset.add_plugin(name)
+        async with self.storage.write_lock:
+            async with self.state.plugins.get_lock(name):
                 async with self.state.settings.get_lock("global"):
-                    values = self.state.settings.get("plugin_settings", {})
-                    values[plugin_name] = self.validate_settings(plugin_name, settings)
-                    candidate = self.state.settings.model_dump()
-                    candidate["plugin_settings"] = values
-                    type(self.state.settings).model_validate(candidate)
-                    self.state.settings.set("plugin_settings", values)
+                    existing = self.state.plugins.get(name)
+                    data = existing.model_dump() if existing else {"enabled": True}
+                    data.update(request.model_dump(exclude_unset=True))
+                    plugin = PluginInfoState.model_validate(data)
+                    candidate = None
+                    if settings is not None:
+                        candidate = type(self.state.settings).model_validate(
+                            self.state.settings.model_dump()
+                        )
+                        values = candidate.plugin_settings
+                        values[name] = self.validate_settings(name, settings)
+                        candidate.set("plugin_settings", values)
+                        changeset.add_setting("plugin_settings")
+                    async with self.storage.transaction() as session:
+                        await self.storage.plugin_repo.save_plugin(session, plugin)
+                        if candidate is not None:
+                            await self.storage.settings_repo.save_settings(
+                                session, candidate.to_dict()
+                            )
                     self.state.plugins.set(plugin)
-                changeset.add_setting("plugin_settings")
-            else:
-                self.state.plugins.set(plugin)
-
-        await self.storage.apply_changeset(self.state, changeset)
-
+                    self.state.plugins.remove_dirty_plugin(name)
+                    if candidate is not None:
+                        candidate.clear_dirty()
+                        self.state.settings = candidate
+        await self.storage._notify_listeners(self.state, changeset)
         return plugin
 
     async def set_enabled(self, plugin_name: str, enabled: bool) -> None:
@@ -182,8 +196,9 @@ class PluginService:
         parts = key.split(".")
         if any(not part or part.startswith("_") or "__" in part for part in parts):
             raise UserInputError("Invalid plugin setting key.")
-        async with self.state.settings.get_lock("global"):
-            values = self.state.settings.get("plugin_settings", {})
+
+        def mutate(candidate):
+            values = candidate.get("plugin_settings", {})
             values[plugin_name] = self.get_settings(plugin_name)
             current = values[plugin_name]
             for part in parts[:-1]:
@@ -195,7 +210,8 @@ class PluginService:
             values[plugin_name] = self.validate_settings(
                 plugin_name, values[plugin_name]
             )
-            self.state.settings.set("plugin_settings", values)
+            candidate.set("plugin_settings", values)
+
         changeset = ChangeSet()
         changeset.add_setting("plugin_settings")
-        await self.storage.apply_changeset(self.state, changeset)
+        await self.storage.commit_settings(self.state, changeset, mutate)

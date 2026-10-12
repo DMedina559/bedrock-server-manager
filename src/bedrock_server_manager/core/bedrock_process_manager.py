@@ -55,6 +55,7 @@ class BedrockProcessManager:
         self.api = api
         self.servers: Dict[str, "BedrockServer"] = {}
         self.restart_attempts: dict[str, int] = {}
+        self._pending_player_events: set[str] = set()
         self.logger = logging.getLogger(__name__)
         self._failures = RepeatedFailureReporter(self.logger)
         self._shutdown_event = asyncio.Event()
@@ -305,6 +306,7 @@ class BedrockProcessManager:
                         )
                         await self.remove_server(server_name)
                 elif self.player_scan_counter >= player_log_monitoring_interval_sec:
+                    observed = False
                     try:
                         previous_player_count = server.player_count
                         previous_players = server.players
@@ -312,10 +314,15 @@ class BedrockProcessManager:
                         server.players = (
                             await server.player_tracker.update_online_players()
                         )
+                        observed = True
+                        server._runtime_state.update_server_runtime(
+                            server_name, players_available=True
+                        )
 
                         if (
                             server.player_count != previous_player_count
                             or server.players != previous_players
+                            or server_name in self._pending_player_events
                         ):
                             self.logger.debug(
                                 "Player list/count changed for server '%s': count %s -> %s",
@@ -336,9 +343,12 @@ class BedrockProcessManager:
                                         "players": server.players,
                                     }
                                 )
+                                self._pending_player_events.discard(server_name)
                             except Exception as e:
+                                self._pending_player_events.add(server_name)
                                 self.logger.warning(
-                                    "Could not trigger player stats update API: %s", e
+                                    "Could not publish player stats update: %s",
+                                    type(e).__name__,
                                 )
 
                         # Enforce bans
@@ -380,10 +390,14 @@ class BedrockProcessManager:
                                                     kick_err,
                                                     error=kick_err,
                                                 )
-                            except AttributeError as e:
-                                self.logger.warning(
-                                    "Could not trigger get_server_bans: %s", e
+                            except Exception as e:
+                                self._failures.report(
+                                    f"bans:{server_name}",
+                                    "Ban enforcement unavailable (%s): %s; retrying.",
+                                    e,
                                 )
+                            else:
+                                self._failures.recover(f"bans:{server_name}")
 
                         if server.players:
                             self.logger.debug(
@@ -402,7 +416,10 @@ class BedrockProcessManager:
                                 )
                         self._failures.recover(f"players:{server_name}")
                     except Exception as e:
-                        server.players = []
+                        if not observed:
+                            server._runtime_state.update_server_runtime(
+                                server_name, players_available=False
+                            )
                         self._failures.report(
                             f"players:{server_name}",
                             "Player monitoring unavailable (%s): %s; retrying.",

@@ -38,11 +38,50 @@ stop returns `outcome="already_stopped"`. These are successful results. Operatio
 that return `status="skipped"` also return normally; inspect the response to decide
 whether your plugin should continue.
 
+`status="partial"` also returns normally: some work completed and some failed.
+Inspect the typed details instead of treating every returned response as complete
+success. Backup/restore components have `completed`, `skipped`, or `failed`
+outcomes. Failed components include a structured error; completed components can
+include their archive path. Cleanup results distinguish deleted and retained paths
+from failed deletions. WebSocket delivery results count sent, unavailable, and
+failed recipients, so an absent connection does not imply delivery.
+
+```python
+from bedrock_server_manager.api.models import BackupAllRequest
+from bedrock_server_manager.error import IncompleteOperationError
+
+try:
+    result = await self.api.backup_restore.backup_all(
+        BackupAllRequest(server_name="example")
+    )
+except IncompleteOperationError as error:
+    # Validated results may describe work completed before the failure.
+    self.logger.warning("Backup incomplete: %s", error.result.model_dump(mode="json"))
+    raise
+else:
+    for component, item in result.details.components.items():
+        self.logger.info("%s: %s", component, item.outcome)
+```
+
+Do not convert infrastructure failures into missing resources or negative states.
+Release lookup, service-manager, filesystem permission, and migration failures
+propagate. Malformed existing allowlist and permission files are preserved for
+repair. Recovery failures retain the primary exception when the main operation
+also failed. Python exceptions are classified into stable codes and safe messages
+at HTTP, WebSocket, and background-task boundaries.
+
+Player summaries require `player_count == len(players)`. Player scan counts obey
+`saved <= unique <= discovered`. Contradictory API output fails validation rather
+than reaching a plugin as a successful result.
+
 ## Events
 
 API before-events include a typed `request`. After-events also include a typed
 `result`. Existing top-level request fields, such as `server_name`, remain
-available. Use attributes on the models rather than dictionary methods.
+available. Use attributes on the models rather than dictionary methods. Event
+request and result models are copies; mutating them does not change the original
+operation. After-events can include partial or skipped results, so inspect the
+result status before assuming work completed.
 
 ```python
 from bedrock_server_manager import app_event

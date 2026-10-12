@@ -66,7 +66,7 @@ class SetServerSettingRequest(APIRequest):
 
 
 class SetServerSettingResponse(ActionResponse):
-    pass
+    server_name: ServerName
 
 
 class SetServerCustomValueRequest(APIRequest):
@@ -76,7 +76,7 @@ class SetServerCustomValueRequest(APIRequest):
 
 
 class SetServerCustomValueResponse(ActionResponse):
-    pass
+    server_name: ServerName
 
 
 class GetAllServerSettingsRequest(APIRequest):
@@ -101,7 +101,7 @@ class SendCommandRequest(APIRequest):
 
 
 class SendCommandResponse(ActionResponse):
-    pass
+    server_name: ServerName
 
 
 class DeleteServerDataRequest(APIRequest):
@@ -110,7 +110,7 @@ class DeleteServerDataRequest(APIRequest):
 
 
 class DeleteServerDataResponse(ActionResponse):
-    pass
+    server_name: ServerName
 
 
 class SetServerStatusRequest(APIRequest):

@@ -6,6 +6,7 @@ from ...api.models.allowlist import GetAllowlistResponse
 from ...api.models.common import APIRequest, APIResponse, PermissionLevel, ServerName
 from ...api.models.permissions import GetPermissionsResponse
 from ...api.models.properties import GetPropertiesResponse
+from ...results import ItemResult
 from .base import BaseApiResponse, TaskAcceptedResponse
 
 
@@ -41,6 +42,8 @@ PermissionsGetResponse = GetPermissionsResponse
 
 
 class PermissionsUpdateResponse(BaseApiResponse):
+    updated: int = Field(default=0, ge=0)
+    outcomes: dict[str, ItemResult] = Field(default_factory=dict)
     """Response model for permissions update."""
 
     errors: Optional[Dict[str, str]] = None

@@ -34,26 +34,25 @@ class SettingsService:
 
     async def update_setting(self, key: str, value: Any) -> None:
         """Updates a setting value in AppState and registers dirty state for persistence."""
-        async with self.state.settings.get_lock(key):
+
+        def mutate(candidate):
+            local_key, local_value = key, value
             if (
                 key == "plugin_settings" or key.startswith("plugin_settings.")
             ) and self.plugin_service is not None:
-                candidate = type(self.state.settings).model_validate(
-                    self.state.settings.model_dump()
-                )
-                candidate.set(key, value)
+                candidate.set(local_key, local_value)
                 checked = {
                     name: self.plugin_service.validate_settings(name, values)
                     for name, values in candidate.plugin_settings.items()
                 }
-                key, value = "plugin_settings", checked
-            if not self.state.settings.set(key, value):
+                local_key, local_value = "plugin_settings", checked
+            if not candidate.set(local_key, local_value):
                 return
 
         changeset = ChangeSet()
         changeset.add_setting(key)
 
-        await self.storage.apply_changeset(self.state, changeset)
+        await self.storage.commit_settings(self.state, changeset, mutate)
 
     async def get_all_settings(self) -> Dict[str, Any]:
         """Returns all configuration settings as a dictionary snapshot."""

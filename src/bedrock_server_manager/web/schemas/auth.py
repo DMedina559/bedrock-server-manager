@@ -1,8 +1,9 @@
 from typing import Literal, Optional
 
-from pydantic import BaseModel, Field
+from pydantic import Field
 
-from ...api.models.common import APIRequest
+from ...api.models.common import APIRequest, APIResponse
+from ...contracts import Password
 from ...state.types import UserRole
 
 
@@ -17,11 +18,11 @@ class GenerateTokenPayload(APIRequest):
     role: UserRole
 
 
-class TokenResponse(BaseModel):
+class TokenResponse(APIResponse):
     """Response model for successful authentication, providing an access token."""
 
     access_token: str
-    token_type: str
+    token_type: Literal["bearer"] = "bearer"
     message: Optional[str] = None
 
 
@@ -29,7 +30,7 @@ class UserLoginPayload(APIRequest):
     """Request model for user login credentials."""
 
     username: str = Field(..., min_length=1, max_length=80)
-    password: str = Field(..., min_length=1)
+    password: Password
     remember_me: bool = Field(default=False)
 
 

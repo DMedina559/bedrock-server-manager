@@ -98,7 +98,7 @@ async def get_current_user(
 
 class CustomAuthBackend(AuthenticationBackend):
     async def authenticate(self, conn):
-        if conn.app.state.app_context.needs_setup:
+        if await conn.app.state.app_context.check_setup():
             return AuthCredentials(["unauthenticated"]), SimpleUser("guest")
 
         user = await get_current_user_optional(conn)
