@@ -49,6 +49,8 @@ from bedrock_server_manager.api.models import (
     GetPluginStatusesResponse,
     GetPropertiesRequest,
     GetPropertiesResponse,
+    GetRawPropertiesRequest,
+    GetRawPropertiesResponse,
     GetServerBansRequest,
     GetServerBansResponse,
     GetServerRunningStatusRequest,
@@ -299,6 +301,10 @@ class PropertiesAPI(Protocol):
         self, request: GetPropertiesRequest | Mapping[str, object]
     ) -> GetPropertiesResponse: ...
 
+    async def get_raw_properties(
+        self, request: GetRawPropertiesRequest | Mapping[str, object]
+    ) -> GetRawPropertiesResponse: ...
+
     async def set_properties(
         self, request: SetPropertiesRequest | Mapping[str, object]
     ) -> SetPropertiesResponse: ...
@@ -497,6 +503,7 @@ API_METHODS: dict[str, dict[str, str]] = {
     },
     "properties": {
         "get_properties": "get_properties",
+        "get_raw_properties": "get_raw_properties",
         "set_properties": "set_properties",
         "validate_property_value": "validate_property_value",
     },

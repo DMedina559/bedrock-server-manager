@@ -16,6 +16,8 @@ from ..plugins.runtime_capabilities import server_lifecycle_manager
 from .models.properties import (
     GetPropertiesRequest,
     GetPropertiesResponse,
+    GetRawPropertiesRequest,
+    GetRawPropertiesResponse,
     SetPropertiesRequest,
     SetPropertiesResponse,
     ValidatePropertyValueRequest,
@@ -66,6 +68,21 @@ async def get_properties(
             error=e,
         )
         raise
+
+
+@api_method("get_raw_properties")
+async def get_raw_properties(
+    request: GetRawPropertiesRequest, *, app_context: AppContext
+) -> GetRawPropertiesResponse:
+    """Read the complete properties document without parsing its keys or comments."""
+    import aiofiles
+
+    server = app_context.get_server(request.server_name)
+    async with aiofiles.open(
+        server.paths.server_properties_path, "r", encoding="utf-8"
+    ) as source:
+        content = await source.read()
+    return GetRawPropertiesResponse(raw_content=content)
 
 
 @api_method("validate_property_value")

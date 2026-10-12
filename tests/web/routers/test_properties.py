@@ -59,3 +59,30 @@ async def test_missing_properties_returns_not_found(
         f"/api/server/{real_bedrock_server.server_name}/properties/get"
     )
     assert response.status_code == 404
+
+
+async def test_raw_properties_get_preserves_document_and_is_read_only(
+    admin_auth_client, real_bedrock_server
+):
+    path = Path(real_bedrock_server.paths.server_dir) / "server.properties"
+    original = path.read_text()
+    document = "# Keep this comment\n" + original + "\n# End of file\n"
+    path.write_text(document)
+    url = f"/api/server/{real_bedrock_server.server_name}/properties/raw"
+    response = await admin_auth_client.get(url)
+    assert response.status_code == 200
+    assert response.json()["raw_content"] == document
+    assert "properties" not in response.json()
+    assert (await admin_auth_client.post(url, json={})).status_code == 405
+    assert path.read_text() == document
+
+
+@pytest.mark.parametrize("authenticated,expected", [(False, 401), (True, 403)])
+async def test_raw_properties_reuses_properties_access_policy(
+    unauth_client, auth_client, real_bedrock_server, authenticated, expected
+):
+    client = auth_client if authenticated else unauth_client
+    response = await client.get(
+        f"/api/server/{real_bedrock_server.server_name}/properties/raw"
+    )
+    assert response.status_code == expected

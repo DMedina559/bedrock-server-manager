@@ -12,6 +12,14 @@ class GetPropertiesResponse(SuccessResponse):
     raw_content: str
 
 
+class GetRawPropertiesRequest(APIRequest):
+    server_name: ServerName
+
+
+class GetRawPropertiesResponse(SuccessResponse):
+    raw_content: str
+
+
 class ValidatePropertyValueRequest(APIRequest):
     property_name: NonEmptyStr
     value: str

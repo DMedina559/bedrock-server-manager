@@ -16,6 +16,7 @@ from .main import router as main_router
 from .permissions import router as permissions_router
 from .plugin import router as plugin_router
 from .properties import router as properties_router
+from .raw_properties import router as raw_properties_router
 from .register import router as register_router
 from .server_actions import router as server_actions_router
 from .server_settings import router as server_settings_router
@@ -37,6 +38,7 @@ all_routers = [
     allowlist_router,
     permissions_router,
     properties_router,
+    raw_properties_router,
     install_router,
     backup_restore_router,
     addon_router,
@@ -70,6 +72,7 @@ __all__ = [
     "allowlist_router",
     "permissions_router",
     "properties_router",
+    "raw_properties_router",
     "install_router",
     "server_settings_router",
     "settings_router",

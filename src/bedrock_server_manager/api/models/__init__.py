@@ -113,6 +113,8 @@ from .plugins import (
 from .properties import (
     GetPropertiesRequest,
     GetPropertiesResponse,
+    GetRawPropertiesRequest,
+    GetRawPropertiesResponse,
     SetPropertiesRequest,
     SetPropertiesResponse,
     ValidatePropertyValueRequest,
