@@ -52,4 +52,4 @@ Quick links:
 
 ## OpenAPI contract
 
-Install `.[contract]`, then run `python -m bedrock_server_manager.web.contract --output contracts/openapi.json` after changing HTTP routes or models. Use `--check contracts/openapi.json` to verify the snapshot. The exporter registers core routers without starting services or loading plugins.
+Install `.[contract]`, then run `python scripts/export_openapi.py --output /tmp/backend-openapi.json` to export the current core routes and models without starting services or loading plugins. No backend snapshot is stored. Clients keep the reviewed schema used to generate their released contracts and compare it directly against backend `dev` in CI.
