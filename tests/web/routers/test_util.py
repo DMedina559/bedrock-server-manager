@@ -14,7 +14,7 @@ async def test_panorama_falls_back_to_configured_assets(
     unauth_client, tmp_path, monkeypatch
 ):
     assets = tmp_path / "assets"
-    image = assets / "image" / "panorama.jpeg"
+    image = assets / "image" / "panorama.png"
     image.parent.mkdir(parents=True)
     image.write_bytes(b"default image")
     monkeypatch.setattr(
@@ -23,6 +23,7 @@ async def test_panorama_falls_back_to_configured_assets(
     response = await unauth_client.get("/api/panorama")
     assert response.status_code == 200
     assert response.content == image.read_bytes()
+    assert response.headers["content-type"] == "image/png"
     image.unlink()
     response = await unauth_client.get("/api/panorama")
     assert response.status_code == 404
