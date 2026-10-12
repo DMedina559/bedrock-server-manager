@@ -4,6 +4,9 @@ from pathlib import Path
 
 import pytest
 
+from bedrock_server_manager.utils.io import _replace_file
+from bedrock_server_manager.utils.threads import run_in_thread
+
 
 async def receive_log(socket, topic):
     async with asyncio.timeout(5):
@@ -75,7 +78,7 @@ async def test_both_application_aliases_receive_updates(app_context, subscribed_
         assert messages == {"app_log": "initial\n", "app_logs": "initial\n"}
         replacement = path.with_suffix(".replacement")
         replacement.write_text("replacement with more content\n", newline="")
-        replacement.replace(path)
+        await run_in_thread(_replace_file, str(replacement), str(path))
         messages = {}
         async with asyncio.timeout(5):
             while len(messages) < 2:
@@ -114,7 +117,7 @@ async def test_history_pages_reconstruct_entire_utf8_file(
     assert not app_context.log_streamer.file_positions
     replacement = path.with_suffix(".replacement")
     replacement.write_text("new file\n")
-    replacement.replace(path)
+    await run_in_thread(_replace_file, str(replacement), str(path))
     response = await admin_auth_client.get("/api/logs/history", params=params)
     assert response.status_code == 409
 

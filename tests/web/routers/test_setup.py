@@ -2,7 +2,7 @@
 Integration tests for the setup router endpoints.
 """
 
-from httpx2 import AsyncClient
+from httpx2 import ASGITransport, AsyncClient
 from sqlalchemy import delete
 
 from bedrock_server_manager.db.models import User
@@ -76,3 +76,25 @@ def test_setup_operations_are_in_openapi(test_app):
     }
     fields = schema["components"]["schemas"]["SetupAccountResponse"]["properties"]
     assert {"access_token", "token_type", "status", "message"} <= fields.keys()
+
+
+async def test_setup_storage_outage_returns_unavailable(
+    running_app, app_context, monkeypatch
+):
+    from bedrock_server_manager.error import StorageError
+
+    def unavailable(*args, **kwargs):
+        raise StorageError("private database diagnostic")
+
+    app_context._needs_setup = None
+    async with AsyncClient(
+        transport=ASGITransport(app=running_app, raise_app_exceptions=False),
+        base_url="http://testserver",
+    ) as client:
+        with monkeypatch.context() as fault:
+            fault.setattr(type(app_context.db.engine), "connect", unavailable)
+            response = await client.get("/api/setup/status")
+    assert response.status_code == 503
+    assert response.json()["error"]["code"] == "unavailable"
+    assert "private database diagnostic" not in response.text
+    assert app_context._needs_setup is None
