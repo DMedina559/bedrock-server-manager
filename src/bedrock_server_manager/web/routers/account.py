@@ -114,13 +114,17 @@ async def post_change_password(
                 detail="UserResponse not found.",
             )
 
-        if not verify_password(data.current_password, str(db_user.hashed_password)):
+        if not verify_password(
+            data.current_password.get_secret_value(), str(db_user.hashed_password)
+        ):
             raise HTTPException(
                 status_code=status.HTTP_400_BAD_REQUEST,
                 detail="Incorrect current password.",
             )
 
-        db_user.hashed_password = get_password_hash(data.new_password)
+        db_user.hashed_password = get_password_hash(
+            data.new_password.get_secret_value()
+        )
 
         return BaseApiResponse(
             status="success", message="Password updated successfully"

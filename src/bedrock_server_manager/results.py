@@ -158,3 +158,20 @@ class PlayerScanDetails(DataContract):
     unique_players_submitted_for_saving: int = Field(ge=0)
     actually_saved_or_updated_in_db: int = Field(ge=0)
     scan_errors: list[PlayerScanError] = Field(default_factory=list)
+
+    @model_validator(mode="after")
+    def coherent_counts(self) -> Self:
+        if not (
+            self.actually_saved_or_updated_in_db
+            <= self.unique_players_submitted_for_saving
+            <= self.total_entries_in_logs
+        ):
+            raise ValueError("Saved, unique, and discovered counts must be coherent.")
+        return self
+
+
+class CommittedMutationResult(DataContract):
+    committed: Literal[True] = True
+    action: str
+    resource: str
+    recovery_error: FailureInfo

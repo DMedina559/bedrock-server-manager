@@ -1,6 +1,7 @@
 from typing import Optional
 
 from ...api.models.common import APIRequest, APIResponse
+from ...contracts import Password
 from ...state.types import UserRole
 
 
@@ -69,5 +70,5 @@ class ChangePasswordPayload(APIRequest):
         new_password (str): The new password.
     """
 
-    current_password: str
-    new_password: str
+    current_password: Password
+    new_password: Password

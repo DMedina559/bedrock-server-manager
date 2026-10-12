@@ -33,8 +33,6 @@ async def add_to_allowlist(
     """
     server_name = request.server_name
     new_players_data = request.model_dump(mode="python")["new_players_data"]
-    if not isinstance(new_players_data, list):
-        raise BSMError("Invalid input: new_players_data must be a list.")
     logger.info(
         "Adding %s player(s) to allowlist for '%s'.", len(new_players_data), server_name
     )

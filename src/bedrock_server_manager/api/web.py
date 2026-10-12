@@ -26,7 +26,9 @@ from ..core.system import process as system_process_utils
 from ..core.system.base import can_manage_services
 from ..error import (
     BSMError,
+    DependencyUnavailableError,
     FileOperationError,
+    OperationConflictError,
     ServerProcessError,
     SystemError,
     UserInputError,
@@ -126,12 +128,13 @@ def start_web_server(
                             pid=existing_pid, expected_command_args=["web", "start"]
                         )
                     )
-                    raise ServerProcessError(
-                        f"Web server already running (PID: {existing_pid})."
-                    )
                 except ServerProcessError:
                     asyncio.run(
                         system_process_utils.remove_pid_file_if_exists(pid_file_path)
+                    )
+                else:
+                    raise OperationConflictError(
+                        f"Web server already running (PID: {existing_pid})."
                     )
             else:
                 asyncio.run(
@@ -226,8 +229,6 @@ def stop_web_server(
             else "Process verification failed"
         )
         raise
-    except BSMError:
-        raise
     except Exception as e:
         log_operation_error(
             logger, "Unexpected error stopping web server: %s", e, error=e
@@ -300,8 +301,6 @@ def get_web_server_status(
             return GetWebServerStatusResponse.model_validate(
                 {"status": "MISMATCHED_PROCESS", "pid": pid, "message": str(e)}
             )
-    except BSMError:
-        raise
     except Exception as e:
         log_operation_error(
             logger, "Unexpected error getting web server status: %s", e, error=e
@@ -470,12 +469,8 @@ def get_web_ui_service_status(
     }
     try:
         if not can_manage_services():
-            return GetWebUiServiceStatusResponse.model_validate(
-                {
-                    "status": "success",
-                    "message": "System service management tool (systemctl/sc.exe) not found. Cannot determine Web UI service status.",
-                    **response_data,
-                }
+            raise DependencyUnavailableError(
+                "System service management is unavailable."
             )
         response_data["service_exists"] = service.check_web_service_exists(
             system=system

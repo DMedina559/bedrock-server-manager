@@ -2,12 +2,23 @@
 
 from typing import Annotated, Literal
 
-from pydantic import BaseModel, ConfigDict, Field, JsonValue
+from pydantic import AfterValidator, BaseModel, ConfigDict, Field, JsonValue, SecretStr
 
 NonEmptyStr = Annotated[str, Field(strict=True, min_length=1, pattern=r".*\S.*")]
 ServerName = Annotated[
     str,
     Field(strict=True, min_length=1, pattern=r"^[a-zA-Z0-9_-]+$", examples=["example"]),
+]
+
+
+def validate_password_size(value: SecretStr) -> SecretStr:
+    if len(value.get_secret_value().encode("utf-8")) > 72:
+        raise ValueError("Password must be at most 72 UTF-8 bytes.")
+    return value
+
+
+Password = Annotated[
+    SecretStr, Field(min_length=1), AfterValidator(validate_password_size)
 ]
 
 

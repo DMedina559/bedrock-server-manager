@@ -75,8 +75,6 @@ async def add_players_manually(
         )
     except UserInputError:
         raise
-    except BSMError:
-        raise
     except Exception as e:
         log_operation_error(logger, "Unexpected error adding players: %s", e, error=e)
         raise
@@ -129,8 +127,6 @@ async def scan_and_update_player_db(
             message=f"Player discovery found {scan_result.unique_players_submitted_for_saving} unique players; {scan_result.actually_saved_or_updated_in_db} saved/updated.",
             details=scan_result,
         )
-    except BSMError:
-        raise
     except Exception as e:
         log_operation_error(
             logger, "Unexpected error scanning for players: %s", e, error=e

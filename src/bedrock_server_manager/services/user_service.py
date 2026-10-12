@@ -9,7 +9,9 @@ from typing import TYPE_CHECKING, Awaitable, Callable, Literal, Optional
 from pydantic import JsonValue
 from sqlalchemy.exc import IntegrityError
 
-from ..error import StorageError, UserInputError
+from ..error import IncompleteOperationError, StorageError, UserInputError
+from ..failures import classify_failure
+from ..results import CommittedMutationResult
 from ..state.changeset import ChangeSet
 from ..state.models import UserInfoState
 from ..state.updates import UNSET, AccountPatch, Unset, UserUpdate
@@ -203,12 +205,22 @@ class UserService:
                     self.state.users.set(record)
                     if not dirty:
                         self.state.users.remove_dirty_user(name)
-                if (
-                    action in {"delete", "disable", "role"}
-                    and self.revoke_connections is not None
-                ):
-                    await self.revoke_connections(name)
-                return record
+        if (
+            action in {"delete", "disable", "role"}
+            and self.revoke_connections is not None
+        ):
+            try:
+                await self.revoke_connections(name)
+            except Exception as error:
+                raise IncompleteOperationError(
+                    "Account mutation committed, but connection revocation failed.",
+                    CommittedMutationResult(
+                        action=action,
+                        resource=name,
+                        recovery_error=classify_failure(error).error,
+                    ),
+                ) from error
+        return record
 
     async def create_account(
         self,

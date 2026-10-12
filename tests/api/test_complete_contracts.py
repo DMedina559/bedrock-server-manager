@@ -221,3 +221,29 @@ async def test_plugin_target_event_retains_listener_fields_and_identity(
     assert received[0]["enabled"] is False
     assert "target_plugin_name" not in received[0]
     assert _event_registry["before_set_plugin_status"] == ("plugin_name", "enabled")
+
+
+@pytest.mark.parametrize("count", [0, 2])
+def test_server_summary_rejects_inconsistent_players(count):
+    from bedrock_server_manager.api.models.common import ServerSummary
+
+    with pytest.raises(ValidationError):
+        ServerSummary(
+            name="example",
+            status="RUNNING",
+            version="1",
+            player_count=count,
+            players=[{"name": "Alex", "xuid": "1"}],
+        )
+
+
+@pytest.mark.parametrize("counts", [(0, 1, 0), (1, 1, 2)])
+def test_player_scan_rejects_inconsistent_counts(counts):
+    from bedrock_server_manager.results import PlayerScanDetails
+
+    with pytest.raises(ValidationError):
+        PlayerScanDetails(
+            total_entries_in_logs=counts[0],
+            unique_players_submitted_for_saving=counts[1],
+            actually_saved_or_updated_in_db=counts[2],
+        )

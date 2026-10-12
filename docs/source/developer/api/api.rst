@@ -116,3 +116,20 @@ Task snapshots enforce status/result/error relationships. Service mutations
 validate candidate records before persistence and publish in-memory state only
 after the database transaction commits. Plugins that invoke asynchronous API
 methods must await them; the API caller check runs in CI.
+
+Configuration and recovery failures
+-----------------------------------
+
+Allowlist and permission mutations reject invalid existing JSON or invalid
+records before writing. They preserve the original configuration for repair.
+Release lookup failures propagate before update lifecycle changes, and service
+status queries raise when a negative state cannot be verified.
+
+Account mutations that commit before connection revocation fails raise an
+incomplete-operation error. Its validated result identifies the account and
+action, includes ``committed: true``, and describes the recovery failure. The
+committed mutation must not be treated as rolled back.
+
+Password request fields are masked secrets and accept nonempty values of at most
+72 UTF-8 bytes, matching the password hashing limit. Player summaries and scan
+results validate their counters against the corresponding lists or input counts.

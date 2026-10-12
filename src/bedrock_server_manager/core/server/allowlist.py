@@ -45,16 +45,10 @@ class ServerAllowlist:
                 return []
             try:
                 loaded_data = await load_json(self.server.paths.allowlist_json_path)
-                if isinstance(loaded_data, list):
-                    allowlist_entries = [
-                        entry.model_dump(mode="json", exclude_unset=True)
-                        for entry in ALLOWLIST.validate_python(loaded_data)
-                    ]
-                elif loaded_data:
-                    self.logger.warning(
-                        "Allowlist file '%s' is not a JSON list. Treating as empty.",
-                        self.server.paths.allowlist_json_path,
-                    )
+                allowlist_entries = [
+                    entry.model_dump(mode="json", exclude_unset=True)
+                    for entry in ALLOWLIST.validate_python(loaded_data)
+                ]
             except ValueError as e:
                 raise ConfigParseError(
                     f"Invalid JSON in allowlist '{self.server.paths.allowlist_json_path}': {e}"

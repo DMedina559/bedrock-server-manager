@@ -1,8 +1,9 @@
 from typing import Literal, Optional
 
-from pydantic import Field, SecretStr
+from pydantic import Field
 
 from ...api.models.common import APIRequest, APIResponse
+from ...contracts import Password
 from ...state.types import UserRole
 
 
@@ -29,7 +30,7 @@ class UserLoginPayload(APIRequest):
     """Request model for user login credentials."""
 
     username: str = Field(..., min_length=1, max_length=80)
-    password: SecretStr = Field(..., min_length=1)
+    password: Password
     remember_me: bool = Field(default=False)
 
 

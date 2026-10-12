@@ -8,9 +8,11 @@ from typing import Any, Optional
 import bcrypt
 from fastapi import WebSocketException, status
 from jose import JWTError, jwt
+from pydantic import TypeAdapter
 
 from ..config import Settings
 from ..context import AppContext
+from ..contracts import Password
 from ..state.models import UserInfoState
 from ..web.schemas import UserResponse
 
@@ -243,6 +245,9 @@ async def authenticate_user(
     app_context: AppContext, username_form: str, password_form: str
 ) -> Optional[str]:
     """Authenticates a user against the database using UserRepository."""
+    password_form = (
+        TypeAdapter(Password).validate_python(password_form).get_secret_value()
+    )
     async with app_context.storage.transaction() as session:
         user = await app_context.storage.user_repo.get_user_by_username(
             session, username_form

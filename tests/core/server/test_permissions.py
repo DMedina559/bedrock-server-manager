@@ -93,3 +93,20 @@ async def test_set_player_permission_unwritable_file(real_bedrock_server):
     finally:
         os.chmod(os.path.dirname(permissions_path), 0o755)
         os.chmod(permissions_path, 0o644)
+
+
+@pytest.mark.parametrize(
+    "content", ["{}", "null", "false", "{broken", '[{"unexpected": "value"}]']
+)
+async def test_malformed_configuration_is_preserved(real_bedrock_server, content):
+    from pathlib import Path
+
+    from bedrock_server_manager.error import ConfigParseError
+
+    server = real_bedrock_server
+    path = Path(server.paths.permissions_json_path)
+    path.write_text(content, encoding="utf-8")
+    before = path.read_bytes()
+    with pytest.raises(ConfigParseError):
+        await server.permissions.set_player_permission("123", "operator", "Alex")
+    assert path.read_bytes() == before

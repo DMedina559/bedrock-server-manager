@@ -47,3 +47,34 @@ async def test_real_migrations_are_idempotent_and_persist_on_reopen(tmp_path):
         finally:
             await database.shutdown()
     assert versions[0] == versions[1]
+
+
+async def test_unreadable_migration_head_does_not_mark_schema_ready(
+    tmp_path, monkeypatch
+):
+    import pytest
+    from alembic.script import ScriptDirectory
+
+    from bedrock_server_manager.error import ConfigurationError
+
+    database = Database(f"sqlite+aiosqlite:///{tmp_path / 'head.db'}")
+    database.initialize()
+    try:
+        async with database.session_manager():
+            pass
+        database._tables_created = False
+
+        def missing(*args, **kwargs):
+            raise FileNotFoundError("migration resources missing")
+
+        with monkeypatch.context() as fault:
+            fault.setattr(ScriptDirectory, "from_config", missing)
+            with pytest.raises(ConfigurationError):
+                async with database.session_manager():
+                    pass
+            assert not database._tables_created
+        async with database.session_manager():
+            pass
+        assert database._tables_created
+    finally:
+        await database.shutdown()

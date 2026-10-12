@@ -113,6 +113,12 @@ class ServerSummary(StateRevision):
     player_count: int = Field(default=0, ge=0)
     players: list[PlayerInfo] = Field(default_factory=list)
 
+    @model_validator(mode="after")
+    def coherent_player_count(self) -> Self:
+        if self.player_count != len(self.players):
+            raise ValueError("player_count must match the player list")
+        return self
+
 
 class ErrorEnvelope(APIResponse):
     error: APIErrorResponse

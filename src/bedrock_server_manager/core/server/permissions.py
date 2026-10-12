@@ -61,22 +61,14 @@ class ServerPermissions:
                     loaded_data = await load_json(
                         self.server.paths.permissions_json_path
                     )
-                    if isinstance(loaded_data, list):
-                        permissions_list = [
-                            entry.model_dump(mode="json", exclude_unset=True)
-                            for entry in PERMISSIONS.validate_python(loaded_data)
-                        ]
-                    elif loaded_data:
-                        self.logger.warning(
-                            "Permissions file '%s' is not a list. Overwriting.",
-                            self.server.paths.permissions_json_path,
-                        )
-                except ValueError as e:
-                    self.logger.warning(
-                        "Invalid JSON in permissions '%s'. Overwriting. Error: %s",
-                        self.server.paths.permissions_json_path,
-                        e,
-                    )
+                    permissions_list = [
+                        entry.model_dump(mode="json", exclude_unset=True)
+                        for entry in PERMISSIONS.validate_python(loaded_data)
+                    ]
+                except ValueError as error:
+                    raise ConfigParseError(
+                        "Invalid permissions configuration."
+                    ) from error
                 except OSError as e:
                     raise FileOperationError(
                         f"Failed to read permissions '{self.server.paths.permissions_json_path}': {e}"
@@ -146,13 +138,10 @@ class ServerPermissions:
         raw_permissions: List[Dict[str, Any]] = []
         try:
             loaded_data = await load_json(self.server.paths.permissions_json_path)
-            if isinstance(loaded_data, list):
-                raw_permissions = [
-                    entry.model_dump(mode="json", exclude_unset=True)
-                    for entry in PERMISSIONS.validate_python(loaded_data)
-                ]
-            elif loaded_data:
-                raise ConfigParseError("Permissions file content is not a list.")
+            raw_permissions = [
+                entry.model_dump(mode="json", exclude_unset=True)
+                for entry in PERMISSIONS.validate_python(loaded_data)
+            ]
         except ValueError as e:
             raise ConfigParseError(f"Invalid JSON in permissions file: {e}") from e
         except OSError as e:

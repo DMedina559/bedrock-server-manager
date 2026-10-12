@@ -24,6 +24,8 @@ from sqlalchemy.ext.asyncio import (
 )
 from sqlalchemy.orm import DeclarativeBase
 
+from ..error import ConfigurationError
+
 
 class Base(DeclarativeBase):
     pass
@@ -149,10 +151,13 @@ class Database:
 
             script = ScriptDirectory.from_config(alembic_cfg)
             head = script.get_current_head()
-            return str(head) if head is not None else None
+            if head is None:
+                raise ConfigurationError("No database migration head is configured.")
+            return str(head)
         except Exception as e:
-            logging.warning("Failed to resolve Alembic head revision: %s", e)
-            return None
+            raise ConfigurationError(
+                "Database migration head could not be resolved."
+            ) from e
 
     def _run_alembic_downgrade(self, revision: str = "-1") -> None:
         """Runs synchronous Alembic downgrade command."""
