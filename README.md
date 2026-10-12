@@ -49,3 +49,7 @@ Quick links:
 <div style="text-align: center;">
     <img src="https://raw.githubusercontent.com/dmedina559/bedrock-server-manager/main/docs/images/web_install_addons.png" alt="ICON" width="400" height="200">
 </div>
+
+## OpenAPI contract
+
+Install `.[contract]`, then run `python -m bedrock_server_manager.web.contract --output contracts/openapi.json` after changing HTTP routes or models. Use `--check contracts/openapi.json` to verify the snapshot. The exporter registers core routers without starting services or loading plugins.

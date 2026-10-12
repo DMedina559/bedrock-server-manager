@@ -53,6 +53,11 @@ Repository = "https://github.com/dmedina559/bedrock-server-manager.git"
 Changelog = "https://bedrock-server-manager.readthedocs.io/en/latest/changelog.html"
 
 [project.optional-dependencies]
+contract = [
+    "fastapi ==0.142.4",
+    "pydantic ==2.14.1",
+]
+
 dev = [
     "bsm-test-utils >=0.1.0b2,<1.1",
     "pytest >=8.4.0,<9.2",

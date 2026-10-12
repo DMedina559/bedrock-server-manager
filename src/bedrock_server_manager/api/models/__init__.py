@@ -261,6 +261,8 @@ __all__ = [
     "GetPluginStatusesResponse",
     "GetPropertiesRequest",
     "GetPropertiesResponse",
+    "GetRawPropertiesRequest",
+    "GetRawPropertiesResponse",
     "GetServerBansRequest",
     "GetServerBansResponse",
     "GetServerRunningStatusRequest",
