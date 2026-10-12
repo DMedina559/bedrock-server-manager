@@ -1,9 +1,22 @@
 import json
 import os
+import time
 import uuid
 from typing import Any, List
 
 from .threads import run_in_thread
+
+
+def _replace_file(source: str, target: str) -> None:
+    """Retry brief Windows sharing conflicts without weakening atomic replacement."""
+    for attempt in range(8):
+        try:
+            os.replace(source, target)
+            return
+        except PermissionError as error:
+            if getattr(error, "winerror", None) not in {5, 32, 33} or attempt == 7:
+                raise
+            time.sleep(min(0.005 * 2**attempt, 0.1))
 
 
 def _sync_atomic_json_dump(data: Any, filepath: str, indent: int = 4) -> None:
@@ -22,7 +35,7 @@ def _sync_atomic_json_dump(data: Any, filepath: str, indent: int = 4) -> None:
             f.flush()
             os.fsync(f.fileno())  # Force OS buffer write to physical media
 
-        os.replace(temp_filepath, filepath)
+        _replace_file(temp_filepath, filepath)
     except Exception as e:
         if os.path.exists(temp_filepath):
             try:
@@ -64,7 +77,7 @@ def _sync_atomic_lines_dump(lines: List[str], filepath: str) -> None:
             f.flush()
             os.fsync(f.fileno())
 
-        os.replace(temp_filepath, filepath)
+        _replace_file(temp_filepath, filepath)
     except Exception as e:
         if os.path.exists(temp_filepath):
             try:

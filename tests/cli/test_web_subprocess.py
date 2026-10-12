@@ -4,6 +4,7 @@ import os
 import signal
 import socket
 import sys
+import tempfile
 from pathlib import Path
 
 import psutil
@@ -66,21 +67,25 @@ async def wait_for_http(port, process=None):
 
 
 async def run_cli(command, environment, *arguments):
-    process = await asyncio.create_subprocess_exec(
-        *command,
-        *arguments,
-        env=environment,
-        stdout=asyncio.subprocess.PIPE,
-        stderr=asyncio.subprocess.STDOUT,
-    )
-    try:
-        output, _ = await asyncio.wait_for(process.communicate(), 20)
-        assert process.returncode == 0, output.decode(errors="replace")
-        return output.decode()
-    finally:
-        if process.returncode is None:
-            process.kill()
-            await process.wait()
+    # A real file avoids proactor pipe transports surviving a failed CLI run.
+    with tempfile.TemporaryFile() as output_file:
+        process = await asyncio.create_subprocess_exec(
+            *command,
+            *arguments,
+            env=environment,
+            stdout=output_file,
+            stderr=asyncio.subprocess.STDOUT,
+        )
+        try:
+            await asyncio.wait_for(process.wait(), 20)
+            output_file.seek(0)
+            output = output_file.read().decode(errors="replace")
+            assert process.returncode == 0, output
+            return output
+        finally:
+            if process.returncode is None:
+                process.kill()
+                await process.wait()
 
 
 @pytest.mark.skipif(os.name == "nt", reason="Foreground interruption uses POSIX SIGINT")
@@ -149,6 +154,8 @@ async def test_detached_web_cli_serves_requested_port_and_cleans_pid(
                     break
                 await asyncio.sleep(0.05)
     finally:
+        if pid is None and pid_file.exists():
+            pid = int(pid_file.read_text())
         if pid is not None:
             try:
                 child = psutil.Process(pid)

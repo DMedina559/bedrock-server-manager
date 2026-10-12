@@ -75,3 +75,61 @@ async def test_atomic_save_failure_preserves_original_and_removes_temporary_file
     assert not list(tmp_path.glob("*.tmp"))
     await save(replacement, str(path))
     assert await load(str(path)) == replacement
+
+
+@pytest.mark.parametrize("kind", ["json", "lines"])
+@pytest.mark.parametrize("winerror", [5, 32, 33])
+async def test_atomic_save_retries_windows_sharing_conflicts(
+    tmp_path, monkeypatch, kind, winerror
+):
+    from bedrock_server_manager.utils import io
+
+    path = tmp_path / f"sharing.{kind}"
+    save, load = (save_json, load_json) if kind == "json" else (save_lines, load_lines)
+    original = {"state": "original"} if kind == "json" else ["original\n"]
+    replacement = {"state": "replacement"} if kind == "json" else ["replacement\n"]
+    await save(original, str(path))
+    replace = io.os.replace
+    attempts = []
+
+    def sharing_conflict(source, target):
+        attempts.append(source)
+        if len(attempts) < 3:
+            error = PermissionError("Windows sharing conflict")
+            error.winerror = winerror
+            raise error
+        replace(source, target)
+
+    with monkeypatch.context() as fault:
+        fault.setattr(io.os, "replace", sharing_conflict)
+        fault.setattr(io.time, "sleep", lambda delay: None)
+        await save(replacement, str(path))
+    assert len(attempts) == 3
+    assert await load(str(path)) == replacement
+    assert not list(tmp_path.glob("*.tmp"))
+
+
+async def test_atomic_save_exhausted_sharing_retry_preserves_original(
+    tmp_path, monkeypatch
+):
+    from bedrock_server_manager.utils import io
+
+    path = tmp_path / "locked.json"
+    await save_json({"state": "original"}, str(path))
+    original = path.read_bytes()
+    attempts = []
+
+    def still_locked(source, target):
+        attempts.append(source)
+        error = PermissionError("Windows sharing conflict")
+        error.winerror = 32
+        raise error
+
+    with monkeypatch.context() as fault:
+        fault.setattr(io.os, "replace", still_locked)
+        fault.setattr(io.time, "sleep", lambda delay: None)
+        with pytest.raises(PermissionError):
+            await save_json({"state": "replacement"}, str(path))
+    assert len(attempts) == 8
+    assert path.read_bytes() == original
+    assert not list(tmp_path.glob("*.tmp"))

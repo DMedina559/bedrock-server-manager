@@ -38,10 +38,10 @@ async def test_log_streamer_delivers_real_file_updates(
         topic = "app_log"
         path = Path(app_context.log_dir) / "bedrock_server_manager.log"
     path.parent.mkdir(parents=True, exist_ok=True)
-    path.write_text("initial line\n")
+    path.write_text("initial line\n", newline="")
     async with subscribed_socket(topic) as socket:
         assert await receive_log(socket, topic) == "initial line\n"
-        with path.open("a") as output:
+        with path.open("a", encoding="utf-8", newline="") as output:
             output.write("appended line\n")
         assert await receive_log(socket, topic) == "appended line\n"
         assert streamer.file_positions[(topic, str(path))] == path.stat().st_size
@@ -50,10 +50,10 @@ async def test_log_streamer_delivers_real_file_updates(
 async def test_log_streamer_delivers_truncated_file(app_context, subscribed_socket):
     path = Path(app_context.log_dir) / "bedrock_server_manager.log"
     path.parent.mkdir(parents=True, exist_ok=True)
-    path.write_text("old data\n" * 100)
+    path.write_text("old data\n" * 100, newline="")
     async with subscribed_socket("app_log") as socket:
         assert await receive_log(socket, "app_log") == path.read_text()
-        path.write_text("new start\n")
+        path.write_text("new start\n", newline="")
         assert await receive_log(socket, "app_log") == "new start\n"
         assert (
             app_context.log_streamer.file_positions[("app_log", str(path))]
@@ -64,7 +64,7 @@ async def test_log_streamer_delivers_truncated_file(app_context, subscribed_sock
 async def test_both_application_aliases_receive_updates(app_context, subscribed_socket):
     path = Path(app_context.log_dir) / "bedrock_server_manager.log"
     path.parent.mkdir(parents=True, exist_ok=True)
-    path.write_text("initial\n")
+    path.write_text("initial\n", newline="")
     async with subscribed_socket("app_log", "app_logs") as socket:
         messages = {}
         async with asyncio.timeout(5):
@@ -74,7 +74,7 @@ async def test_both_application_aliases_receive_updates(app_context, subscribed_
                     messages[message["topic"]] = message["data"]
         assert messages == {"app_log": "initial\n", "app_logs": "initial\n"}
         replacement = path.with_suffix(".replacement")
-        replacement.write_text("replacement with more content\n")
+        replacement.write_text("replacement with more content\n", newline="")
         replacement.replace(path)
         messages = {}
         async with asyncio.timeout(5):
@@ -86,8 +86,9 @@ async def test_both_application_aliases_receive_updates(app_context, subscribed_
 
 
 @pytest.mark.parametrize("server_log", [False, True])
+@pytest.mark.parametrize("newline", ["\n", "\r\n"])
 async def test_history_pages_reconstruct_entire_utf8_file(
-    app_context, admin_auth_client, real_bedrock_server, server_log
+    app_context, admin_auth_client, real_bedrock_server, server_log, newline
 ):
     if server_log:
         path = Path(real_bedrock_server.paths.server_log_path)
@@ -96,8 +97,8 @@ async def test_history_pages_reconstruct_entire_utf8_file(
         path = Path(app_context.log_dir) / "bedrock_server_manager.log"
         topic = "app_log"
     path.parent.mkdir(parents=True, exist_ok=True)
-    original = "世界 🌍 log entry\n\n" * 12000 + "partial final line"
-    path.write_text(original, encoding="utf-8")
+    original = (f"世界 🌍 log entry{newline}{newline}" * 12000) + "partial final line"
+    path.write_text(original, encoding="utf-8", newline="")
     pages = []
     params = {"topic": topic}
     while True:
@@ -146,7 +147,7 @@ async def test_history_and_live_stream_join_without_gaps(
     path = Path(app_context.log_dir) / "bedrock_server_manager.log"
     path.parent.mkdir(parents=True, exist_ok=True)
     original = "世界 entry\n" * 2000
-    path.write_text(original, encoding="utf-8")
+    path.write_text(original, encoding="utf-8", newline="")
     async with subscribed_socket("app_log") as socket:
         async with asyncio.timeout(5):
             while True:

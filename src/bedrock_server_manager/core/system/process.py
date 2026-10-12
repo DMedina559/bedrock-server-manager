@@ -487,7 +487,7 @@ async def launch_detached_process(
             stderr=subprocess.DEVNULL,
             creationflags=creation_flags,
             start_new_session=start_new_session,
-            close_fds=(platform.system() != "Windows"),
+            close_fds=True,
         )
     except FileNotFoundError:
         raise AppFileNotFoundError(command[0], "Command executable") from None
