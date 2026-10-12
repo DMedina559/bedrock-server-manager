@@ -30,7 +30,7 @@ from bedrock_server_manager.api.server import (
     stop_server,
     update_server_player_stats,
 )
-from bedrock_server_manager.error import BlockedCommandError
+from bedrock_server_manager.error import BlockedCommandError, ServerRunningError
 from bedrock_server_manager.plugins.runtime_capabilities import server_lifecycle_manager
 
 
@@ -146,6 +146,7 @@ async def test_delete_api_removes_actual_installation(app_context, real_bedrock_
         app_context=app_context,
     )
     assert result.status == "success"
+    assert result.server_name == real_bedrock_server.server_name
     assert not path.exists()
     assert real_bedrock_server.server_name not in app_context._servers
 
@@ -176,3 +177,20 @@ def test_runtime_player_request_rejects_mismatched_count():
         UpdateServerPlayerStatsRequest(
             server_name="test_server", player_count=2, players=[]
         )
+
+
+async def test_delete_without_stop_preserves_running_server(
+    app_context, real_bedrock_server
+):
+    await real_bedrock_server.start()
+    path = Path(real_bedrock_server.paths.server_dir)
+    with pytest.raises(ServerRunningError):
+        await delete_server_data(
+            DeleteServerDataRequest(
+                server_name=real_bedrock_server.server_name, stop_if_running=False
+            ),
+            app_context=app_context,
+        )
+    assert path.exists()
+    assert await real_bedrock_server.is_running()
+    assert real_bedrock_server.server_name in app_context._servers

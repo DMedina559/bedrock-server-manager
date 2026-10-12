@@ -118,6 +118,7 @@ async def import_addon(
         )
         return ImportAddonResponse.model_validate(
             {
+                "server_name": server_name,
                 "status": "skipped",
                 "message": "An addon operation is already in progress.",
             }
@@ -163,7 +164,7 @@ async def import_addon(
             if stop_start_server:
                 message += " Server stop/start cycle handled."
             return ImportAddonResponse.model_validate(
-                {"status": "success", "message": message}
+                {"server_name": server_name, "status": "success", "message": message}
             )
         except BSMError as e:
             log_operation_error(
@@ -227,6 +228,7 @@ async def enable_addon(
     except asyncio.TimeoutError:
         return EnableAddonResponse.model_validate(
             {
+                "server_name": server_name,
                 "status": "skipped",
                 "message": "An addon operation is already in progress.",
             }
@@ -242,6 +244,7 @@ async def enable_addon(
             await server.addons.enable_addon(pack_uuid=pack_uuid, pack_type=pack_type)
         return EnableAddonResponse.model_validate(
             {
+                "server_name": server_name,
                 "status": "success",
                 "message": f"Successfully enabled pack '{pack_uuid}'.",
             }
@@ -293,6 +296,7 @@ async def disable_addon(
     except asyncio.TimeoutError:
         return DisableAddonResponse.model_validate(
             {
+                "server_name": server_name,
                 "status": "skipped",
                 "message": "An addon operation is already in progress.",
             }
@@ -308,6 +312,7 @@ async def disable_addon(
             await server.addons.disable_addon(pack_uuid=pack_uuid, pack_type=pack_type)
         return DisableAddonResponse.model_validate(
             {
+                "server_name": server_name,
                 "status": "success",
                 "message": f"Successfully disabled pack '{pack_uuid}'.",
             }
@@ -360,6 +365,7 @@ async def update_subpack(
     except asyncio.TimeoutError:
         return UpdateSubpackResponse.model_validate(
             {
+                "server_name": server_name,
                 "status": "skipped",
                 "message": "An addon operation is already in progress.",
             }
@@ -377,6 +383,7 @@ async def update_subpack(
             )
         return UpdateSubpackResponse.model_validate(
             {
+                "server_name": server_name,
                 "status": "success",
                 "message": f"Successfully updated subpack for pack '{pack_uuid}'.",
             }
@@ -428,6 +435,7 @@ async def uninstall_addon(
     except asyncio.TimeoutError:
         return UninstallAddonResponse.model_validate(
             {
+                "server_name": server_name,
                 "status": "skipped",
                 "message": "An addon operation is already in progress.",
             }
@@ -443,6 +451,7 @@ async def uninstall_addon(
             await server.addons.remove_addon(pack_uuid=pack_uuid, pack_type=pack_type)
         return UninstallAddonResponse.model_validate(
             {
+                "server_name": server_name,
                 "status": "success",
                 "message": f"Successfully uninstalled pack '{pack_uuid}'.",
             }
@@ -494,6 +503,7 @@ async def reorder_addons(
     except asyncio.TimeoutError:
         return ReorderAddonsResponse.model_validate(
             {
+                "server_name": server_name,
                 "status": "skipped",
                 "message": "An addon operation is already in progress.",
             }
@@ -509,6 +519,7 @@ async def reorder_addons(
             await server.addons.reorder_addons(uuids=uuids, pack_type=pack_type)
         return ReorderAddonsResponse.model_validate(
             {
+                "server_name": server_name,
                 "status": "success",
                 "message": f"Successfully reordered {pack_type} packs.",
             }

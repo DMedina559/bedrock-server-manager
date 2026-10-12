@@ -43,6 +43,7 @@ async def set_permissions(
         await server.permissions.set_player_permission(xuid, permission, player_name)
         return SetPermissionsResponse.model_validate(
             {
+                "server_name": server_name,
                 "status": "success",
                 "message": f"Permission for XUID '{xuid}' set to '{permission.lower()}'.",
             }

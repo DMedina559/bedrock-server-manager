@@ -123,6 +123,7 @@ async def backup_world(
         )
         return BackupWorldResponse.model_validate(
             {
+                "server_name": server_name,
                 "status": "skipped",
                 "message": "Backup/restore operation already in progress.",
             }
@@ -133,6 +134,7 @@ async def backup_world(
             backup_file = await server.backups.backup_world()
             return BackupWorldResponse.model_validate(
                 {
+                    "server_name": server_name,
                     "status": "success",
                     "message": f"World backup '{os.path.basename(str(backup_file))}' created successfully for server '{server_name}'.",
                 }
@@ -185,6 +187,7 @@ async def backup_config_file(
         )
         return BackupConfigFileResponse.model_validate(
             {
+                "server_name": server_name,
                 "status": "skipped",
                 "message": "Backup/restore operation already in progress.",
             }
@@ -202,6 +205,7 @@ async def backup_config_file(
                 raise AppFileNotFoundError(filename_base, "Server configuration file")
             return BackupConfigFileResponse.model_validate(
                 {
+                    "server_name": server_name,
                     "status": "success",
                     "message": f"Config file '{filename_base}' backed up as '{os.path.basename(str(backup_file))}' successfully.",
                 }
@@ -256,6 +260,7 @@ async def backup_all(
         )
         return BackupAllResponse.model_validate(
             {
+                "server_name": server_name,
                 "status": "skipped",
                 "message": "Backup/restore operation already in progress.",
             }
@@ -266,6 +271,7 @@ async def backup_all(
             backup_results = await server.backups.backup_all_data()
             return BackupAllResponse.model_validate(
                 {
+                    "server_name": server_name,
                     "status": "success",
                     "message": f"Full backup completed successfully for server '{server_name}'.",
                     "details": backup_results,
@@ -317,6 +323,7 @@ async def restore_all(
         )
         return RestoreAllResponse.model_validate(
             {
+                "server_name": server_name,
                 "status": "skipped",
                 "message": "Backup/restore operation already in progress.",
             }
@@ -338,6 +345,7 @@ async def restore_all(
             if not restore_results:
                 return RestoreAllResponse.model_validate(
                     {
+                        "server_name": server_name,
                         "status": "success",
                         "message": f"No backups found for server '{server_name}'. Nothing restored.",
                     }
@@ -345,6 +353,7 @@ async def restore_all(
             else:
                 return RestoreAllResponse.model_validate(
                     {
+                        "server_name": server_name,
                         "status": "success",
                         "message": f"Restore_all completed successfully for server '{server_name}'.",
                         "details": restore_results,
@@ -399,6 +408,7 @@ async def restore_world(
         )
         return RestoreWorldResponse.model_validate(
             {
+                "server_name": server_name,
                 "status": "skipped",
                 "message": "Backup/restore operation already in progress.",
             }
@@ -423,6 +433,7 @@ async def restore_world(
                 await server.worlds.import_world(backup_file_path)
             return RestoreWorldResponse.model_validate(
                 {
+                    "server_name": server_name,
                     "status": "success",
                     "message": f"World restore from '{backup_filename}' completed successfully for server '{server_name}'.",
                 }
@@ -476,6 +487,7 @@ async def restore_config_file(
         )
         return RestoreConfigFileResponse.model_validate(
             {
+                "server_name": server_name,
                 "status": "skipped",
                 "message": "Backup/restore operation already in progress.",
             }
@@ -500,6 +512,7 @@ async def restore_config_file(
                 restored_file = await server.backups.restore_config(backup_file_path)
             return RestoreConfigFileResponse.model_validate(
                 {
+                    "server_name": server_name,
                     "status": "success",
                     "message": f"Config file '{os.path.basename(str(restored_file))}' restored successfully from '{backup_filename}'.",
                 }
@@ -553,6 +566,7 @@ async def prune_old_backups(
         )
         return PruneOldBackupsResponse.model_validate(
             {
+                "server_name": server_name,
                 "status": "skipped",
                 "message": "Backup/restore operation already in progress.",
             }
@@ -565,6 +579,7 @@ async def prune_old_backups(
             ):
                 return PruneOldBackupsResponse.model_validate(
                     {
+                        "server_name": server_name,
                         "status": "success",
                         "message": "No backup directory found, nothing to prune.",
                     }
@@ -611,6 +626,7 @@ async def prune_old_backups(
             else:
                 return PruneOldBackupsResponse.model_validate(
                     {
+                        "server_name": server_name,
                         "status": "success",
                         "message": f"Backup pruning completed for server '{server_name}'.",
                     }

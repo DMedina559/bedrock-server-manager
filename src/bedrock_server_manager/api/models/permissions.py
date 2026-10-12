@@ -25,7 +25,7 @@ class SetPermissionsRequest(APIRequest):
 
 
 class SetPermissionsResponse(ActionResponse):
-    pass
+    server_name: ServerName
 
 
 class GetPermissionsRequest(APIRequest):

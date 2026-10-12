@@ -25,7 +25,7 @@ class AddServerBanRequest(APIRequest):
 
 
 class AddServerBanResponse(ActionResponse):
-    pass
+    server_name: ServerName
 
 
 class RemoveServerBanRequest(APIRequest):
@@ -34,7 +34,7 @@ class RemoveServerBanRequest(APIRequest):
 
 
 class RemoveServerBanResponse(ActionResponse):
-    pass
+    server_name: ServerName
 
 
 class GetServerBansRequest(APIRequest):

@@ -17,8 +17,7 @@ These routes interface with the underlying plugin management logic in
 
 import logging
 
-from fastapi import APIRouter, Depends, HTTPException, status
-from pydantic import ValidationError
+from fastapi import APIRouter, Depends
 
 from bedrock_server_manager.api.models import (
     GetPluginStatusesRequest,
@@ -31,8 +30,6 @@ from bedrock_server_manager.api.models import (
 from ...api import plugins as plugins_api
 from ...api.models.plugins import PluginSettingsPayload
 from ...context import AppContext
-from ...error import AppFileNotFoundError, BSMError, UserInputError
-from ...logging import log_operation_error
 from ..deps import get_admin_user, get_app_context, get_current_user
 from ..schemas import (
     ActionResponse,
@@ -62,18 +59,8 @@ async def get_plugin_pages(
     """
     Retrieves a list of custom native UI pages registered by plugins.
     """
-    try:
-        pages = app_context.plugin_manager.get_native_ui_routes()
-        return PluginPagesResponse(status="success", pages=pages)
-    except ValidationError:
-        raise
-    except Exception as e:
-        log_operation_error(
-            logger, "API Get Plugin Pages: Unexpected error: %s", e, error=e
-        )
-        raise HTTPException(
-            status_code=500, detail="Failed to retrieve plugin pages."
-        ) from e
+    pages = app_context.plugin_manager.get_native_ui_routes()
+    return PluginPagesResponse(status="success", pages=pages)
 
 
 @router.get(
@@ -90,23 +77,10 @@ async def get_plugins_status(
     """
     identity = current_user.username
     logger.debug("Get plugin statuses request by '%s'.", identity)
-    try:
-        result = await plugins_api.get_plugin_statuses(
-            request=GetPluginStatusesRequest(), app_context=app_context
-        )
-        return PluginStatusesResponse(status="success", plugins=result.plugins)
-    except HTTPException:
-        raise
-    except ValidationError:
-        raise
-    except Exception as e:
-        log_operation_error(
-            logger, "API Get Plugin Statuses: Unexpected error: %s", e, error=e
-        )
-        raise HTTPException(
-            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail="An unexpected error occurred while getting plugin statuses.",
-        )
+    result = await plugins_api.get_plugin_statuses(
+        request=GetPluginStatusesRequest(), app_context=app_context
+    )
+    return PluginStatusesResponse(status="success", plugins=result.plugins)
 
 
 @router.post(
@@ -129,47 +103,16 @@ async def post_trigger_event(
         identity,
     )
 
-    try:
-        result = await plugins_api.trigger_external_app_event(
-            request=TriggerExternalAppEventRequest(
-                event_name=payload.event_name, payload=payload.payload
-            ),
-            app_context=app_context,
-        )
-        return TriggerEventResponse(
-            status=result.status,
-            message=result.message,
-        )
-    except UserInputError as e:
-        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(e))
-    except HTTPException:
-        raise
-    except AppFileNotFoundError:
-        raise
-    except BSMError as e:
-        logger.debug(
-            "API Trigger Event '%s': BSMError: %s",
-            payload.event_name,
-            e,
-            exc_info=False,
-        )
-        raise HTTPException(
-            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail=str(e)
-        )
-    except ValidationError:
-        raise
-    except Exception as e:
-        log_operation_error(
-            logger,
-            "API Trigger Event '%s': Unexpected error: %s",
-            payload.event_name,
-            e,
-            error=e,
-        )
-        raise HTTPException(
-            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail="An unexpected error occurred while triggering the event.",
-        )
+    result = await plugins_api.trigger_external_app_event(
+        request=TriggerExternalAppEventRequest(
+            event_name=payload.event_name, payload=payload.payload
+        ),
+        app_context=app_context,
+    )
+    return TriggerEventResponse(
+        status=result.status,
+        message=result.message,
+    )
 
 
 @router.post(
@@ -192,38 +135,13 @@ async def post_set_plugin_status(
         "Request to %s plugin '%s' by user '%s'.", action, plugin_name, identity
     )
 
-    try:
-        result = await plugins_api.set_plugin_status(
-            request=SetPluginStatusRequest(
-                target_plugin_name=plugin_name, enabled=payload.enabled
-            ),
-            app_context=app_context,
-        )
-        return ActionResponse(status=result.status, message=str(result.message))
-
-    except UserInputError as e:
-        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(e))
-    except HTTPException:
-        raise
-    except AppFileNotFoundError:
-        raise
-    except BSMError as e:
-        logger.debug(
-            "API Set Plugin '%s': BSMError: %s", plugin_name, e, exc_info=False
-        )
-        raise HTTPException(
-            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail=str(e)
-        )
-    except ValidationError:
-        raise
-    except Exception as e:
-        log_operation_error(
-            logger, "API Set Plugin '%s': Unexpected error: %s", plugin_name, e, error=e
-        )
-        raise HTTPException(
-            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail=f"An unexpected error occurred while trying to {action} the plugin.",
-        )
+    result = await plugins_api.set_plugin_status(
+        request=SetPluginStatusRequest(
+            target_plugin_name=plugin_name, enabled=payload.enabled
+        ),
+        app_context=app_context,
+    )
+    return ActionResponse(status=result.status, message=str(result.message))
 
 
 @router.post(
@@ -242,40 +160,11 @@ async def post_reload_single_plugin(
     identity = current_user.username
     logger.info("Request to reload plugin '%s' by user '%s'.", plugin_name, identity)
 
-    try:
-        result = await plugins_api.reload_single_plugin(
-            request=ReloadSinglePluginRequest(target_plugin_name=plugin_name),
-            app_context=app_context,
-        )
-        return ActionResponse(status=result.status, message=str(result.message))
-
-    except UserInputError as e:
-        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(e))
-    except HTTPException:
-        raise
-    except AppFileNotFoundError:
-        raise
-    except BSMError as e:
-        logger.debug(
-            "API Reload Plugin '%s': BSMError: %s", plugin_name, e, exc_info=False
-        )
-        raise HTTPException(
-            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail=str(e)
-        )
-    except ValidationError:
-        raise
-    except Exception as e:
-        log_operation_error(
-            logger,
-            "API Reload Plugin '%s': Unexpected error: %s",
-            plugin_name,
-            e,
-            error=e,
-        )
-        raise HTTPException(
-            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail=f"An unexpected error occurred while reloading plugin '{plugin_name}'.",
-        )
+    result = await plugins_api.reload_single_plugin(
+        request=ReloadSinglePluginRequest(target_plugin_name=plugin_name),
+        app_context=app_context,
+    )
+    return ActionResponse(status=result.status, message=str(result.message))
 
 
 @router.put(
@@ -291,30 +180,10 @@ async def put_reload_plugins(
     identity = current_user.username
     logger.info("Reload plugins request by '%s'.", identity)
 
-    try:
-        result = await plugins_api.reload_plugins(
-            request=ReloadPluginsRequest(), app_context=app_context
-        )
-        return ActionResponse(status=result.status, message=str(result.message))
-    except HTTPException:
-        raise
-    except AppFileNotFoundError:
-        raise
-    except BSMError as e:
-        logger.debug("API Reload Plugins: BSMError: %s", e, exc_info=False)
-        raise HTTPException(
-            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail=str(e)
-        )
-    except ValidationError:
-        raise
-    except Exception as e:
-        log_operation_error(
-            logger, "API Reload Plugins: Unexpected error: %s", e, error=e
-        )
-        raise HTTPException(
-            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail="An unexpected error occurred while reloading plugins.",
-        )
+    result = await plugins_api.reload_plugins(
+        request=ReloadPluginsRequest(), app_context=app_context
+    )
+    return ActionResponse(status=result.status, message=str(result.message))
 
 
 @router.get(

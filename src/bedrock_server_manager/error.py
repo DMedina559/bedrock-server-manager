@@ -143,6 +143,10 @@ class ServerNotRunningError(ServerProcessError):
     pass
 
 
+class ServerRunningError(ServerProcessError):
+    """Raised when an operation requires the server to be stopped."""
+
+
 class SendCommandError(ServerError):
     """Raised when sending a command to the server console fails."""
 

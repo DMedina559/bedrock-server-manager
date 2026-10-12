@@ -5,14 +5,34 @@ from pydantic import ValidationError
 from ..error import (
     APICancelledError,
     AppFileNotFoundError,
+    BlockedCommandError,
     BSMError,
     InvalidServerNameError,
     ServerError,
+    ServerNotRunningError,
+    ServerRunningError,
     ServerStartError,
     ServerStopError,
     UserInputError,
 )
 from .models import APIErrorResponse
+
+
+def error_status_code(error: Exception) -> int:
+    """Map domain failures consistently at HTTP and batch boundaries."""
+    if isinstance(error, ValidationError):
+        return 422
+    if isinstance(error, AppFileNotFoundError):
+        return 404
+    if isinstance(error, BlockedCommandError):
+        return 403
+    if isinstance(
+        error, (APICancelledError, ServerNotRunningError, ServerRunningError)
+    ):
+        return 409
+    if isinstance(error, UserInputError):
+        return 400
+    return 500
 
 
 def error_response(error: Exception) -> APIErrorResponse:
@@ -28,6 +48,12 @@ def error_response(error: Exception) -> APIErrorResponse:
                 ]
             },
         )
+    if isinstance(error, BlockedCommandError):
+        return APIErrorResponse(code="forbidden", message="Command is blocked.")
+    if isinstance(error, ServerNotRunningError):
+        return APIErrorResponse(code="conflict", message="Server is not running.")
+    if isinstance(error, ServerRunningError):
+        return APIErrorResponse(code="conflict", message="Server is still running.")
     if isinstance(error, AppFileNotFoundError):
         return APIErrorResponse(code="not_found", message="Resource not found.")
     if isinstance(error, UserInputError) and not isinstance(

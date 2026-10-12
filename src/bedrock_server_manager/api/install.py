@@ -66,6 +66,7 @@ async def install_new_server(
         )
         return InstallNewServerResponse.model_validate(
             {
+                "server_name": server_name,
                 "status": "skipped",
                 "message": "An operation is already in progress for this server.",
             }
@@ -81,6 +82,7 @@ async def install_new_server(
         await install_or_update(server, target_version, server_zip_path=server_zip_path)
         return InstallNewServerResponse.model_validate(
             {
+                "server_name": server_name,
                 "status": "success",
                 "version": await server.get_version(),
                 "message": f"Server '{server_name}' installed successfully to version {await server.get_version()}.",
@@ -139,6 +141,7 @@ async def update_server(
         )
         return UpdateServerResponse.model_validate(
             {
+                "server_name": server_name,
                 "status": "skipped",
                 "message": "An install/update operation is already in progress.",
             }
@@ -151,6 +154,7 @@ async def update_server(
         if not await is_update_needed(server, target_version):
             return UpdateServerResponse.model_validate(
                 {
+                    "server_name": server_name,
                     "status": "success",
                     "updated": False,
                     "message": "Server is already up-to-date.",
@@ -173,6 +177,7 @@ async def update_server(
             await install_or_update(server, target_version)
         return UpdateServerResponse.model_validate(
             {
+                "server_name": server_name,
                 "status": "success",
                 "updated": True,
                 "new_version": await server.get_version(),

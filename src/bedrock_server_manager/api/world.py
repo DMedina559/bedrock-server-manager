@@ -120,6 +120,7 @@ async def export_world(
         )
         return ExportWorldResponse.model_validate(
             {
+                "server_name": server_name,
                 "status": "skipped",
                 "message": "A world operation is already in progress.",
             }
@@ -151,6 +152,7 @@ async def export_world(
             )
             return ExportWorldResponse.model_validate(
                 {
+                    "server_name": server_name,
                     "status": "success",
                     "export_file": export_file_path,
                     "message": f"World '{world_name_str}' exported successfully to {export_filename}.",
@@ -205,6 +207,7 @@ async def import_world(
         )
         return ImportWorldResponse.model_validate(
             {
+                "server_name": server_name,
                 "status": "skipped",
                 "message": "A world operation is already in progress.",
             }
@@ -241,6 +244,7 @@ async def import_world(
             )
             return ImportWorldResponse.model_validate(
                 {
+                    "server_name": server_name,
                     "status": "success",
                     "message": f"World '{imported_world_name or 'Unknown'}' imported successfully from {selected_filename}.",
                 }
@@ -290,6 +294,7 @@ async def reset_world(
         )
         return ResetWorldResponse.model_validate(
             {
+                "server_name": server_name,
                 "status": "skipped",
                 "message": "A world operation is already in progress.",
             }
@@ -317,6 +322,7 @@ async def reset_world(
             )
             return ResetWorldResponse.model_validate(
                 {
+                    "server_name": server_name,
                     "status": "success",
                     "message": f"World '{world_name_for_msg}' reset successfully.",
                 }

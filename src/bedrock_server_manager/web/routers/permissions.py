@@ -3,7 +3,6 @@ from typing import Dict
 
 from fastapi import APIRouter, Depends, status
 from fastapi.responses import JSONResponse
-from pydantic import ValidationError
 
 from bedrock_server_manager.api.models import (
     GetPermissionsRequest,
@@ -11,10 +10,9 @@ from bedrock_server_manager.api.models import (
 )
 
 from ...api import permissions as permissions_api
-from ...api.errors import error_response
+from ...api.errors import error_response, error_status_code
 from ...api.models.common import APIErrorResponse, ErrorEnvelope
 from ...context import AppContext
-from ...error import AppFileNotFoundError, UserInputError
 from ...logging import log_operation_error
 from ..deps import get_app_context, get_moderator_user, validate_server_exists
 from ..schemas import (
@@ -64,13 +62,7 @@ async def post_permissions_set(
                 errors[item.xuid] = result.message
         except Exception as error:
             errors[item.xuid] = error_response(error).message
-            error_statuses.append(
-                404
-                if isinstance(error, AppFileNotFoundError)
-                else (
-                    400 if isinstance(error, (ValidationError, UserInputError)) else 500
-                )
-            )
+            error_statuses.append(error_status_code(error))
             if error_statuses[-1] == 500:
                 log_operation_error(
                     logger, "Permission update failed for %s", item.xuid, error=error
@@ -82,8 +74,9 @@ async def post_permissions_set(
             message=f"Permissions updated for {success_count} player(s).",
         )
 
-    final_status_code = (
-        500 if 500 in error_statuses else 404 if 404 in error_statuses else 400
+    final_status_code = next(
+        (code for code in (500, 409, 404, 403, 422, 400) if code in error_statuses),
+        400,
     )
 
     return JSONResponse(
@@ -93,7 +86,19 @@ async def post_permissions_set(
                 code=(
                     "internal_error"
                     if final_status_code == 500
-                    else "not_found" if final_status_code == 404 else "validation_error"
+                    else (
+                        "conflict"
+                        if final_status_code == 409
+                        else (
+                            "not_found"
+                            if final_status_code == 404
+                            else (
+                                "forbidden"
+                                if final_status_code == 403
+                                else "validation_error"
+                            )
+                        )
+                    )
                 ),
                 message="Errors occurred setting permissions.",
                 details={

@@ -184,9 +184,14 @@ def test_numeric_request_fields_do_not_coerce_invalid_values(bad_count):
 def test_success_data_requirements_are_reflected_in_schema():
     from bedrock_server_manager.api.models import ExportWorldResponse
 
-    assert ExportWorldResponse(status="skipped", message="Busy").export_file is None
+    assert (
+        ExportWorldResponse(
+            server_name="example", status="skipped", message="Busy"
+        ).export_file
+        is None
+    )
     with pytest.raises(ValidationError):
-        ExportWorldResponse(status="success", message="Exported")
+        ExportWorldResponse(server_name="example", status="success", message="Exported")
     schema = ExportWorldResponse.model_json_schema(mode="serialization")
     assert schema["allOf"][0]["then"]["required"] == ["export_file"]
 

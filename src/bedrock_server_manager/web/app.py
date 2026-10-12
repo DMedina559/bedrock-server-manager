@@ -60,13 +60,8 @@ def create_web_app(app_context: AppContext) -> FastAPI:  # noqa: C901
     from fastapi.responses import JSONResponse
     from pydantic import ValidationError
 
-    from ..api.errors import error_response
-    from ..error import (
-        APICancelledError,
-        AppFileNotFoundError,
-        BSMError,
-        UserInputError,
-    )
+    from ..api.errors import error_response, error_status_code
+    from ..error import BSMError
     from ..plugins.api_contract import APIResponseValidationError
 
     async def api_error_handler(request, error):
@@ -105,16 +100,8 @@ def create_web_app(app_context: AppContext) -> FastAPI:  # noqa: C901
                 {"code": code, "message": message}
             )
         else:
-            if isinstance(error, ValidationError):
-                status_code = 422
-            elif isinstance(error, AppFileNotFoundError):
-                status_code = 404
-            elif isinstance(error, APICancelledError):
-                status_code = 409
-            elif isinstance(error, UserInputError):
-                status_code = 400
-            else:
-                status_code = 500
+            status_code = error_status_code(error)
+            if status_code == 500:
                 log_operation_error(
                     logger,
                     "HTTP operation failed: %s %s",
@@ -136,6 +123,7 @@ def create_web_app(app_context: AppContext) -> FastAPI:  # noqa: C901
         RequestValidationError,
         ResponseValidationError,
         StarletteHTTPException,
+        Exception,
     ):
         app.add_exception_handler(exception_type, api_error_handler)
 

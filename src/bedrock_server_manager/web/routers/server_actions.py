@@ -16,12 +16,12 @@ FastAPI dependencies.
 import logging
 
 from fastapi import APIRouter, Depends, HTTPException, status
-from pydantic import ValidationError
 
 from bedrock_server_manager.api.models import (
     DeleteServerDataRequest,
     GetServerSummaryRequest,
     SendCommandRequest,
+    SendCommandResponse,
     UpdateServerRequest,
 )
 
@@ -36,14 +36,6 @@ from ...api.models import (
     StopServerResponse,
 )
 from ...context import AppContext
-from ...error import (
-    AppFileNotFoundError,
-    BlockedCommandError,
-    BSMError,
-    ServerNotRunningError,
-    UserInputError,
-)
-from ...logging import log_operation_error
 from ..deps import (
     get_admin_user,
     get_app_context,
@@ -51,7 +43,7 @@ from ..deps import (
     validate_server_exists,
 )
 from ..deps.server import validate_server_registered
-from ..schemas import ActionResponse, CommandPayload, ServerSchemaResponse, UserResponse
+from ..schemas import CommandPayload, ServerSchemaResponse, UserResponse
 from ..schemas.base import TaskAcceptedResponse
 
 logger = logging.getLogger(__name__)
@@ -161,14 +153,14 @@ async def post_restart_server(
     "/api/server/{server_name}/send_command",
     operation_id="send_command",
     tags=["Server Processes"],
-    response_model=ActionResponse,
+    response_model=SendCommandResponse,
 )
 async def post_send_command(
     payload: CommandPayload,
     server_name: str = Depends(validate_server_exists),
     current_user: UserResponse = Depends(get_moderator_user),
     app_context: AppContext = Depends(get_app_context),
-) -> ActionResponse:
+) -> SendCommandResponse:
     """
     Sends a command to a specific running Bedrock server instance.
     """
@@ -183,62 +175,15 @@ async def post_send_command(
             detail="Request must contain a non-empty 'command'.",
         )
 
-    try:
-        command_result = await server_api.send_command(
-            request=SendCommandRequest(
-                server_name=server_name, command=payload.command.strip()
-            ),
-            app_context=app_context,
-        )
+    command_result = await server_api.send_command(
+        request=SendCommandRequest(
+            server_name=server_name, command=payload.command.strip()
+        ),
+        app_context=app_context,
+    )
 
-        logger.debug("API Send Command '%s': Succeeded.", server_name)
-        return ActionResponse(
-            status=command_result.status,
-            message=command_result.message,
-        )
-
-    except BlockedCommandError as e:
-        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail=str(e))
-    except ServerNotRunningError as e:
-        logger.debug("API Send Command '%s': Server not running. %s", server_name, e)
-        raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail=str(e))
-    except (
-        UserInputError
-    ) as e:  # Covers InvalidServerNameError, AppFileNotFoundError from original
-        logger.debug("API Send Command '%s': Input error. %s", server_name, e)
-        # Determine if it's a 404 or 400 based on error type if possible
-        if "not found" in str(e).lower():
-            raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=str(e))
-        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(e))
-    except HTTPException:
-        raise
-    except AppFileNotFoundError:
-        raise
-    except BSMError as e:  # Catch other BSM specific errors
-        log_operation_error(
-            logger,
-            "API Send Command '%s': Application error. %s",
-            server_name,
-            e,
-            error=e,
-        )
-        raise HTTPException(
-            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail=str(e)
-        )
-    except ValidationError:
-        raise
-    except Exception as e:
-        log_operation_error(
-            logger,
-            "API Send Command '%s': Unexpected error. %s",
-            server_name,
-            e,
-            error=e,
-        )
-        raise HTTPException(
-            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail="An unexpected error occurred while sending the command.",
-        )
+    logger.debug("API Send Command '%s': Succeeded.", server_name)
+    return command_result
 
 
 @router.post(

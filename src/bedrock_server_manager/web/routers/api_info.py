@@ -19,7 +19,6 @@ import os
 
 import aiofiles.ospath
 from fastapi import APIRouter, Depends, HTTPException, status
-from pydantic import ValidationError
 
 from bedrock_server_manager.api.models import (
     AddPlayersManuallyRequest,
@@ -45,8 +44,7 @@ from ...api.models.metrics import (
     GetApplicationMetricsResponse,
 )
 from ...context import AppContext
-from ...error import AppFileNotFoundError, BSMError, UserInputError
-from ...logging import log_operation_error
+from ...error import BSMError
 from ..deps import (
     get_admin_user,
     get_app_context,
@@ -95,43 +93,17 @@ async def get_server_running_status(
         server_name,
         identity,
     )
-    try:
-        result = await system_api.get_server_running_status(
-            request=GetServerRunningStatusRequest(server_name=server_name),
-            app_context=app_context,
-        )
-        return ServerRunningStatusResponse(
-            status="success",
-            running=bool(result.is_running),
-            epoch=result.epoch,
-            revision=result.revision,
-            message=result.message,
-        )
-    except UserInputError as e:
-        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(e))
-    except AppFileNotFoundError:
-        raise
-    except BSMError as e:
-        logger.debug(
-            "API Running Status '%s': BSMError: %s", server_name, e, exc_info=False
-        )
-        raise HTTPException(
-            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail=str(e)
-        )
-    except ValidationError:
-        raise
-    except Exception as e:
-        log_operation_error(
-            logger,
-            "API Running Status '%s': Unexpected error: %s",
-            server_name,
-            e,
-            error=e,
-        )
-        raise HTTPException(
-            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail="Unexpected error checking running status.",
-        )
+    result = await system_api.get_server_running_status(
+        request=GetServerRunningStatusRequest(server_name=server_name),
+        app_context=app_context,
+    )
+    return ServerRunningStatusResponse(
+        status="success",
+        running=bool(result.is_running),
+        epoch=result.epoch,
+        revision=result.revision,
+        message=result.message,
+    )
 
 
 @router.get(
@@ -152,35 +124,16 @@ async def get_validate_server(
     logger.debug("Request to validate server '%s' by user '%s'.", server_name, identity)
     from ...utils.server import validate_server
 
-    try:
-        if await validate_server(server_name=server_name, app_context=app_context):
-            return BaseApiResponse(
-                status="success", message=f"Server '{server_name}' exists and is valid."
-            )
-        else:
-            # This case handles when the underlying API returns an error status
-            # without raising an exception itself.
-            raise HTTPException(
-                status_code=status.HTTP_404_NOT_FOUND,
-                detail=f"Server '{server_name}' is not installed or the installation is invalid.",
-            )
-    except UserInputError as e:
-        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(e))
-    except HTTPException:
-        raise
-    except ValidationError:
-        raise
-    except Exception as e:
-        log_operation_error(
-            logger,
-            "API Validate Server '%s': Unexpected error in route: %s",
-            server_name,
-            e,
-            error=e,
+    if await validate_server(server_name=server_name, app_context=app_context):
+        return BaseApiResponse(
+            status="success", message=f"Server '{server_name}' exists and is valid."
         )
+    else:
+        # This case handles when the underlying API returns an error status
+        # without raising an exception itself.
         raise HTTPException(
-            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail="An unexpected error occurred while validating the server.",
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail=f"Server '{server_name}' is not installed or the installation is invalid.",
         )
 
 
@@ -200,46 +153,18 @@ async def get_server_process_info(
     """
     identity = current_user.username
     logger.debug("Process info request for '%s' by user '%s'.", server_name, identity)
-    try:
-        result = await system_api.get_bedrock_process_info(
-            request=GetBedrockProcessInfoRequest(server_name=server_name),
-            app_context=app_context,
-        )
+    result = await system_api.get_bedrock_process_info(
+        request=GetBedrockProcessInfoRequest(server_name=server_name),
+        app_context=app_context,
+    )
 
-        return ServerProcessInfoResponse(
-            status="success",
-            process_info=result.process_info,
-            epoch=result.epoch,
-            revision=result.revision,
-            message=result.message,
-        )
-
-    except UserInputError as e:
-        logger.debug("API Process Info '%s': Input error. %s", server_name, e)
-        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(e))
-    except AppFileNotFoundError:
-        raise
-    except BSMError as e:
-        logger.debug(
-            "API Process Info '%s': BSMError: %s", server_name, e, exc_info=False
-        )
-        raise HTTPException(
-            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail=str(e)
-        )
-    except ValidationError:
-        raise
-    except Exception as e:
-        log_operation_error(
-            logger,
-            "API Process Info '%s': Unexpected error: %s",
-            server_name,
-            e,
-            error=e,
-        )
-        raise HTTPException(
-            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail="Unexpected error getting process info.",
-        )
+    return ServerProcessInfoResponse(
+        status="success",
+        process_info=result.process_info,
+        epoch=result.epoch,
+        revision=result.revision,
+        message=result.message,
+    )
 
 
 @router.put(
@@ -257,32 +182,14 @@ async def put_scan_players(
     """
     identity = current_user.username
     logger.info("Request to scan logs for players by user '%s'.", identity)
-    try:
-        result = await player_api.scan_and_update_player_db(
-            request=ScanAndUpdatePlayerDbRequest(), app_context=app_context
-        )
-        return AddPlayersResponse(
-            status="success",
-            message=result.message,
-            details=result.details,
-        )
-    except AppFileNotFoundError:
-        raise
-    except BSMError as e:
-        logger.debug("API Scan Players: BSMError: %s", e, exc_info=False)
-        raise HTTPException(
-            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail=str(e)
-        )
-    except ValidationError:
-        raise
-    except Exception as e:
-        log_operation_error(
-            logger, "API Scan Players: Unexpected error: %s", e, error=e
-        )
-        raise HTTPException(
-            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail="Unexpected error scanning player logs.",
-        )
+    result = await player_api.scan_and_update_player_db(
+        request=ScanAndUpdatePlayerDbRequest(), app_context=app_context
+    )
+    return AddPlayersResponse(
+        status="success",
+        message=result.message,
+        details=result.details,
+    )
 
 
 @router.get(
@@ -300,43 +207,20 @@ async def get_all_players(
     """
     identity = current_user.username
     logger.debug("Request to retrieve all players by user '%s'.", identity)
-    try:
-        result_dict = await player_api.get_all_known_players(
-            request=GetAllKnownPlayersRequest(), app_context=app_context
-        )
+    result_dict = await player_api.get_all_known_players(
+        request=GetAllKnownPlayersRequest(), app_context=app_context
+    )
 
-        logger.debug(
-            "API Get All Players: Successfully retrieved %s players. Message: %s",
-            len(result_dict.players),
-            result_dict.message,
-        )
-        return PlayerListResponse(
-            status="success",
-            players=result_dict.players,
-            message=result_dict.message,
-        )
-
-    except AppFileNotFoundError:
-        raise
-    except BSMError as e:  # Catch specific application errors if needed
-        logger.debug("API Get All Players: BSMError occurred: %s", e, exc_info=False)
-        raise HTTPException(
-            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail=f"A server error occurred while fetching players: {str(e)}",
-        )
-    except ValidationError:
-        raise
-    except Exception as e:
-        log_operation_error(
-            logger,
-            "API Get All Players: Unexpected critical error in route: %s",
-            e,
-            error=e,
-        )
-        raise HTTPException(
-            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail="A critical unexpected server error occurred while fetching players.",
-        )
+    logger.debug(
+        "API Get All Players: Successfully retrieved %s players. Message: %s",
+        len(result_dict.players),
+        result_dict.message,
+    )
+    return PlayerListResponse(
+        status="success",
+        players=result_dict.players,
+        message=result_dict.message,
+    )
 
 
 @router.put(
@@ -355,76 +239,48 @@ async def put_prune_downloads(
     """
     identity = current_user.username
     logger.info("Download cache cleanup requested by user '%s'.", identity)
-    try:
-        download_cache_base_dir = app_context.settings.get("paths.downloads")
-        if not download_cache_base_dir:
-            raise BSMError("DOWNLOAD_DIR setting is missing or empty in configuration.")
+    download_cache_base_dir = app_context.settings.get("paths.downloads")
+    if not download_cache_base_dir:
+        raise BSMError("DOWNLOAD_DIR setting is missing or empty in configuration.")
 
-        full_download_dir_path = os.path.normpath(
-            os.path.join(download_cache_base_dir, payload.directory)
-        )
+    full_download_dir_path = os.path.normpath(
+        os.path.join(download_cache_base_dir, payload.directory)
+    )
 
-        if not os.path.abspath(full_download_dir_path).startswith(
-            os.path.abspath(download_cache_base_dir) + os.sep
-        ):
-            logger.error(
-                "API Prune Downloads: Security violation - Invalid directory path '%s'.",
-                payload.directory,
-            )
-            raise HTTPException(
-                status_code=status.HTTP_400_BAD_REQUEST,
-                detail="Invalid directory path: Path is outside the allowed download cache base directory.",
-            )
-
-        if not await aiofiles.ospath.isdir(full_download_dir_path):
-            logger.warning(
-                "API Prune Downloads: Target cache directory not found: %s (from relative: '%s')",
-                full_download_dir_path,
-                payload.directory,
-            )
-            raise HTTPException(
-                status_code=status.HTTP_404_NOT_FOUND,
-                detail="Target cache directory not found.",
-            )
-
-        result = await misc_api.prune_download_cache(
-            request=PruneDownloadCacheRequest(
-                download_dir=full_download_dir_path, keep_count=payload.keep
-            ),
-            app_context=app_context,
-        )
-
-        return PruneDownloadsResponse(
-            status=result.status,
-            message=result.message,
-        )
-
-    except UserInputError as e:
-        logger.debug("API Prune Downloads: UserInputError: %s", e)
-        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(e))
-    except AppFileNotFoundError:
-        raise
-    except BSMError as e:
-        logger.warning("API Prune Downloads: Application error: %s", e, exc_info=True)
-        raise HTTPException(
-            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail=str(e)
-        )
-    except HTTPException:
-        raise
-    except ValidationError:
-        raise
-    except Exception as e:
-        log_operation_error(
-            logger,
-            "API Prune Downloads: Unexpected error for relative_dir '%s': %s",
+    if not os.path.abspath(full_download_dir_path).startswith(
+        os.path.abspath(download_cache_base_dir) + os.sep
+    ):
+        logger.error(
+            "API Prune Downloads: Security violation - Invalid directory path '%s'.",
             payload.directory,
-            e,
-            error=e,
         )
         raise HTTPException(
-            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail="An unexpected error occurred during the pruning process.",
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Invalid directory path: Path is outside the allowed download cache base directory.",
         )
+
+    if not await aiofiles.ospath.isdir(full_download_dir_path):
+        logger.warning(
+            "API Prune Downloads: Target cache directory not found: %s (from relative: '%s')",
+            full_download_dir_path,
+            payload.directory,
+        )
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Target cache directory not found.",
+        )
+
+    result = await misc_api.prune_download_cache(
+        request=PruneDownloadCacheRequest(
+            download_dir=full_download_dir_path, keep_count=payload.keep
+        ),
+        app_context=app_context,
+    )
+
+    return PruneDownloadsResponse(
+        status=result.status,
+        message=result.message,
+    )
 
 
 @router.get(
@@ -442,26 +298,15 @@ async def get_servers_list(
     """
     identity = current_user.username
     logger.debug("Request for all servers list by user '%s'.", identity)
-    try:
-        result = await app_api.get_all_servers_data(
-            request=GetAllServersDataRequest(), app_context=app_context
-        )
-        return ServersListResponse(
-            status="success",
-            servers=result.servers,
-            epoch=result.epoch,
-            revision=result.revision,
-        )
-    except ValidationError:
-        raise
-    except Exception as e:
-        log_operation_error(
-            logger, "API Get Servers List: Unexpected error: %s", e, error=e
-        )
-        raise HTTPException(
-            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail="An unexpected error occurred retrieving the server list.",
-        )
+    result = await app_api.get_all_servers_data(
+        request=GetAllServersDataRequest(), app_context=app_context
+    )
+    return ServersListResponse(
+        status="success",
+        servers=result.servers,
+        epoch=result.epoch,
+        revision=result.revision,
+    )
 
 
 @router.get(
@@ -479,31 +324,20 @@ async def get_system_info(
     logger.debug("Request for system and app info.")
     from ...api.application import get_system_and_app_info
 
-    try:
-        result = get_system_and_app_info(
-            request=GetSystemAndAppInfoRequest(), app_context=app_context
-        ).model_dump(mode="python")
-        if result.get("status") == "success":
-            # the dictionary is already flattened, pass the entire result minus the status
-            return AppInfoResponse(
-                status="success",
-                info={k: v for k, v in result.items() if k != "status"},
-            )
-        else:
-
-            raise HTTPException(
-                status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-                detail=result.get("message", "Failed to retrieve system info."),
-            )
-    except ValidationError:
-        raise
-    except Exception as e:
-        log_operation_error(
-            logger, "API Get System Info: Unexpected error: %s", e, error=e
+    result = get_system_and_app_info(
+        request=GetSystemAndAppInfoRequest(), app_context=app_context
+    ).model_dump(mode="python")
+    if result.get("status") == "success":
+        # the dictionary is already flattened, pass the entire result minus the status
+        return AppInfoResponse(
+            status="success",
+            info={k: v for k, v in result.items() if k != "status"},
         )
+    else:
+
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail="An unexpected error occurred retrieving system info.",
+            detail=result.get("message", "Failed to retrieve system info."),
         )
 
 
@@ -531,36 +365,26 @@ async def get_themes(
         "yellow",
         "pink",
     ]
-    try:
+    themes = set(STANDARD_THEMES)
+    themes_path = app_context.settings.get("paths.themes")
 
-        themes = set(STANDARD_THEMES)
-        themes_path = app_context.settings.get("paths.themes")
+    if themes_path and await aiofiles.ospath.isdir(themes_path):
 
-        if themes_path and await aiofiles.ospath.isdir(themes_path):
+        def list_themes():
+            return os.listdir(themes_path)
 
-            def list_themes():
-                return os.listdir(themes_path)
+        filenames = await asyncio.to_thread(list_themes)
+        for filename in filenames:
+            if filename.endswith(".css"):
+                themes.add(filename[:-4])  # Remove .css extension
 
-            filenames = await asyncio.to_thread(list_themes)
-            for filename in filenames:
-                if filename.endswith(".css"):
-                    themes.add(filename[:-4])  # Remove .css extension
+    # Sort the themes: default first, then alphabetically
+    sorted_themes = sorted(list(themes))
+    if "default" in sorted_themes:
+        sorted_themes.remove("default")
+        sorted_themes.insert(0, "default")
 
-        # Sort the themes: default first, then alphabetically
-        sorted_themes = sorted(list(themes))
-        if "default" in sorted_themes:
-            sorted_themes.remove("default")
-            sorted_themes.insert(0, "default")
-
-        return ThemeListResponse(status="success", themes=sorted_themes)
-    except ValidationError:
-        raise
-    except Exception as e:
-        log_operation_error(logger, "API Get Themes: Unexpected error: %s", e, error=e)
-        raise HTTPException(
-            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail="An unexpected error occurred retrieving themes.",
-        )
+    return ThemeListResponse(status="success", themes=sorted_themes)
 
 
 @router.post(
@@ -583,44 +407,16 @@ async def post_add_players(
         identity,
         len(payload.players),
     )
-    try:
+    result = await player_api.add_players_manually(
+        request=AddPlayersManuallyRequest(player_strings=payload.players),
+        app_context=app_context,
+    )
 
-        result = await player_api.add_players_manually(
-            request=AddPlayersManuallyRequest(player_strings=payload.players),
-            app_context=app_context,
-        )
-
-        return AddPlayersResponse(
-            status="success",
-            message=result.message,
-            count=result.count,
-        )
-
-    except (
-        TypeError,
-        UserInputError,
-        BSMError,
-    ) as e:
-        logger.debug("API Add Players: Client or application error: %s", e)
-        status_code = (
-            status.HTTP_400_BAD_REQUEST
-            if isinstance(e, (TypeError, UserInputError))
-            else status.HTTP_500_INTERNAL_SERVER_ERROR
-        )
-        raise HTTPException(status_code=status_code, detail=str(e))
-    except ValidationError:
-        raise
-    except Exception as e:
-        log_operation_error(
-            logger,
-            "API Add Players: Unexpected critical error in route: %s",
-            e,
-            error=e,
-        )
-        raise HTTPException(
-            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail="A critical unexpected server error occurred while adding players.",
-        )
+    return AddPlayersResponse(
+        status="success",
+        message=result.message,
+        count=result.count,
+    )
 
 
 @router.get(

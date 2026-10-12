@@ -10,6 +10,7 @@ class InstallNewServerRequest(APIRequest):
 
 
 class InstallNewServerResponse(ActionResponse):
+    server_name: ServerName
     version: str | None = None
     required_on_success = ("version",)
 
@@ -20,6 +21,7 @@ class UpdateServerRequest(APIRequest):
 
 
 class UpdateServerResponse(ActionResponse):
+    server_name: ServerName
     updated: bool | None = None
     new_version: str | None = None
     required_on_success = ("updated",)

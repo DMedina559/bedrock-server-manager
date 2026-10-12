@@ -105,3 +105,16 @@ async def test_dummy_player_events_reach_runtime_and_websocket(
                 assert server.player_count == expected_count
     finally:
         await manager.quiesce()
+
+
+async def test_delete_task_retains_server_identity(
+    admin_auth_client, app_context, real_bedrock_server, wait_for_task
+):
+    name = real_bedrock_server.server_name
+    response = await admin_auth_client.delete(f"/api/server/{name}/delete")
+    assert response.status_code == 202
+    task = await wait_for_task(app_context, response.json()["task_id"])
+    assert task.status == "completed"
+    assert task.result["server_name"] == name
+    assert task.result["status"] == "success"
+    assert name not in app_context._servers

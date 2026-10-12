@@ -5,19 +5,11 @@ FastAPI router for managing server-specific settings.
 
 import logging
 
-from fastapi import APIRouter, Depends, HTTPException, status
-from pydantic import ValidationError
+from fastapi import APIRouter, Depends
 
 from ...api import server as server_api
 from ...api.models import GetAllServerSettingsRequest, SetServerSettingRequest
 from ...context import AppContext
-from ...error import (
-    BSMError,
-    InvalidServerNameError,
-    MissingArgumentError,
-    UserInputError,
-)
-from ...logging import log_operation_error
 from ..deps import (
     get_admin_user,
     get_app_context,
@@ -47,31 +39,15 @@ async def get_server_settings(
     """
     identity = current_user.username
     logger.debug("Get settings for server '%s' request by '%s'.", server_name, identity)
-    try:
-        result = await server_api.get_all_server_settings(
-            request=GetAllServerSettingsRequest(server_name=server_name),
-            app_context=app_context,
-        )
-        return ServerSettingsResponse(
-            status="success",
-            settings=result.settings,
-            message=f"Successfully retrieved settings for server '{server_name}'.",
-        )
-    except HTTPException:
-        raise
-    except InvalidServerNameError:
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND,
-            detail=f"Server '{server_name}' not found.",
-        )
-    except Exception as e:
-        log_operation_error(
-            logger, "API Get Server Settings: Unexpected error. %s", e, error=e
-        )
-        raise HTTPException(
-            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail="An unexpected error occurred while retrieving server settings.",
-        )
+    result = await server_api.get_all_server_settings(
+        request=GetAllServerSettingsRequest(server_name=server_name),
+        app_context=app_context,
+    )
+    return ServerSettingsResponse(
+        status="success",
+        settings=result.settings,
+        message=f"Successfully retrieved settings for server '{server_name}'.",
+    )
 
 
 # --- API Route: Set a Setting for a Server ---
@@ -96,40 +72,14 @@ async def post_set_server_setting(
         payload.key,
         identity,
     )
-    try:
-        result = await server_api.set_server_setting(
-            request=SetServerSettingRequest(
-                server_name=server_name, key=payload.key, value=payload.value
-            ),
-            app_context=app_context,
-        )
-        return ServerSettingsResponse(
-            status=result.status,
-            message=f"Setting '{payload.key}' updated successfully for server '{server_name}'.",
-            setting=payload,
-        )
-    except HTTPException:
-        raise
-    except InvalidServerNameError:
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND,
-            detail=f"Server '{server_name}' not found.",
-        )
-    except ValidationError as error:
-        raise HTTPException(
-            status_code=422, detail="Invalid server setting value."
-        ) from error
-    except (UserInputError, MissingArgumentError) as e:
-        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(e))
-    except BSMError as e:
-        raise HTTPException(
-            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail=str(e)
-        )
-    except Exception as e:
-        log_operation_error(
-            logger, "API Set Server Setting: Unexpected error. %s", e, error=e
-        )
-        raise HTTPException(
-            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail="An unexpected error occurred while setting the server value.",
-        )
+    result = await server_api.set_server_setting(
+        request=SetServerSettingRequest(
+            server_name=server_name, key=payload.key, value=payload.value
+        ),
+        app_context=app_context,
+    )
+    return ServerSettingsResponse(
+        status=result.status,
+        message=f"Setting '{payload.key}' updated successfully for server '{server_name}'.",
+        setting=payload,
+    )

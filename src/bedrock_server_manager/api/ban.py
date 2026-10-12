@@ -51,7 +51,7 @@ async def add_server_ban(
     if not ban_res.success:
         raise BSMError(ban_res.message)
     return AddServerBanResponse.model_validate(
-        {"status": "success", "message": ban_res.message}
+        {"server_name": server_name, "status": "success", "message": ban_res.message}
     )
 
 
@@ -82,7 +82,7 @@ async def remove_server_ban(
     if not ban_res.success:
         raise BSMError(ban_res.message)
     return RemoveServerBanResponse.model_validate(
-        {"status": "success", "message": ban_res.message}
+        {"server_name": server_name, "status": "success", "message": ban_res.message}
     )
 
 

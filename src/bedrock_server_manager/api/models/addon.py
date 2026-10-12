@@ -53,7 +53,7 @@ class ImportAddonRequest(APIRequest):
 
 
 class ImportAddonResponse(ActionResponse):
-    pass
+    server_name: ServerName
 
 
 class ListInstalledAddonsRequest(APIRequest):
@@ -71,7 +71,7 @@ class EnableAddonRequest(APIRequest):
 
 
 class EnableAddonResponse(ActionResponse):
-    pass
+    server_name: ServerName
 
 
 class DisableAddonRequest(APIRequest):
@@ -81,7 +81,7 @@ class DisableAddonRequest(APIRequest):
 
 
 class DisableAddonResponse(ActionResponse):
-    pass
+    server_name: ServerName
 
 
 class UpdateSubpackRequest(APIRequest):
@@ -92,7 +92,7 @@ class UpdateSubpackRequest(APIRequest):
 
 
 class UpdateSubpackResponse(ActionResponse):
-    pass
+    server_name: ServerName
 
 
 class UninstallAddonRequest(APIRequest):
@@ -102,7 +102,7 @@ class UninstallAddonRequest(APIRequest):
 
 
 class UninstallAddonResponse(ActionResponse):
-    pass
+    server_name: ServerName
 
 
 class ReorderAddonsRequest(APIRequest):
@@ -112,4 +112,4 @@ class ReorderAddonsRequest(APIRequest):
 
 
 class ReorderAddonsResponse(ActionResponse):
-    pass
+    server_name: ServerName

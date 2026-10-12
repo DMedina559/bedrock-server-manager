@@ -1,5 +1,3 @@
-from ..core.server.removal import delete_all_data
-
 # bedrock_server_manager/api/server.py
 """Provides API functions for managing Bedrock server instances.
 
@@ -26,6 +24,7 @@ from pydantic import ValidationError
 
 from ..config import API_COMMAND_BLACKLIST
 from ..context import AppContext
+from ..core.server.removal import delete_all_data
 from ..core.system import remove_pid_file_if_exists
 from ..error import (
     BlockedCommandError,
@@ -34,6 +33,7 @@ from ..error import (
     InvalidServerNameError,
     MissingArgumentError,
     ServerError,
+    ServerRunningError,
     UserInputError,
 )
 from ..logging import log_operation_error
@@ -143,7 +143,8 @@ async def set_server_setting(
         server = app_context.get_server(server_name)
         await server.configuration.update(key, value)
         return SetServerSettingResponse(
-            message=f"Setting '{key}' updated for server '{server_name}'."
+            server_name=server_name,
+            message=f"Setting '{key}' updated for server '{server_name}'.",
         )
     except (ValidationError, ConfigParseError) as error:
         raise UserInputError("Invalid server setting key or value.") from error
@@ -189,7 +190,8 @@ async def set_server_custom_value(
         server = app_context.get_server(server_name)
         await server.set_custom_config_value(key, value)
         return SetServerCustomValueResponse(
-            message=f"Custom value '{key}' updated for server '{server_name}'."
+            server_name=server_name,
+            message=f"Custom value '{key}' updated for server '{server_name}'.",
         )
     except BSMError as e:
         log_operation_error(
@@ -436,6 +438,7 @@ async def send_command(
         logger.debug("Command delivered to server '%s'.", server_name)
         return SendCommandResponse.model_validate(
             {
+                "server_name": server_name,
                 "status": "success",
                 "message": f"Command '{command_clean}' sent successfully.",
             }
@@ -488,6 +491,7 @@ async def delete_server_data(
         return DeleteServerDataResponse.model_validate(
             {
                 "status": "skipped",
+                "server_name": server_name,
                 "message": "A server operation is already in progress.",
             }
         )
@@ -497,6 +501,10 @@ async def delete_server_data(
             server_name,
             stop_if_running,
         )
+        if not stop_if_running and await server.is_running():
+            raise ServerRunningError(
+                f"Server '{server_name}' must be stopped before deletion."
+            )
         if stop_if_running and await server.is_running():
             logger.debug(
                 "Server '%s' is running. Stopping before deletion...", server_name
@@ -512,6 +520,7 @@ async def delete_server_data(
         return DeleteServerDataResponse.model_validate(
             {
                 "status": "success",
+                "server_name": server_name,
                 "message": f"All data for server '{server_name}' deleted successfully.",
             }
         )

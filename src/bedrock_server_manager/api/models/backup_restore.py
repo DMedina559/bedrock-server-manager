@@ -26,7 +26,7 @@ class BackupWorldRequest(APIRequest):
 
 
 class BackupWorldResponse(ActionResponse):
-    pass
+    server_name: ServerName
 
 
 class BackupConfigFileRequest(APIRequest):
@@ -35,7 +35,7 @@ class BackupConfigFileRequest(APIRequest):
 
 
 class BackupConfigFileResponse(ActionResponse):
-    pass
+    server_name: ServerName
 
 
 class BackupAllRequest(APIRequest):
@@ -43,6 +43,7 @@ class BackupAllRequest(APIRequest):
 
 
 class BackupAllResponse(ActionResponse):
+    server_name: ServerName
     details: dict[str, str | None] = Field(default_factory=dict)
 
 
@@ -52,6 +53,7 @@ class RestoreAllRequest(APIRequest):
 
 
 class RestoreAllResponse(ActionResponse):
+    server_name: ServerName
     details: dict[str, str | None] = Field(default_factory=dict)
 
 
@@ -62,7 +64,7 @@ class RestoreWorldRequest(APIRequest):
 
 
 class RestoreWorldResponse(ActionResponse):
-    pass
+    server_name: ServerName
 
 
 class RestoreConfigFileRequest(APIRequest):
@@ -72,7 +74,7 @@ class RestoreConfigFileRequest(APIRequest):
 
 
 class RestoreConfigFileResponse(ActionResponse):
-    pass
+    server_name: ServerName
 
 
 class PruneOldBackupsRequest(APIRequest):
@@ -80,4 +82,4 @@ class PruneOldBackupsRequest(APIRequest):
 
 
 class PruneOldBackupsResponse(ActionResponse):
-    pass
+    server_name: ServerName

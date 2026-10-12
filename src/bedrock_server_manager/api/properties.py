@@ -396,7 +396,11 @@ async def set_properties(
             for prop_name, prop_value in properties_to_update.items():
                 await server.properties.set_server_property(prop_name, prop_value)
         return SetPropertiesResponse.model_validate(
-            {"status": "success", "message": "Server properties updated successfully."}
+            {
+                "server_name": server_name,
+                "status": "success",
+                "message": "Server properties updated successfully.",
+            }
         )
     except (BSMError, FileNotFoundError, UserInputError) as e:
         log_operation_error(
