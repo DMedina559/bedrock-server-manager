@@ -133,3 +133,41 @@ async def test_atomic_save_exhausted_sharing_retry_preserves_original(
     assert len(attempts) == 8
     assert path.read_bytes() == original
     assert not list(tmp_path.glob("*.tmp"))
+
+
+@pytest.mark.parametrize("kind", ["json", "lines"])
+async def test_atomic_save_serializes_competing_replacements(
+    tmp_path, monkeypatch, kind
+):
+    import threading
+    import time
+
+    from bedrock_server_manager.utils import io
+
+    path = tmp_path / f"serialized.{kind}"
+    save, load = (save_json, load_json) if kind == "json" else (save_lines, load_lines)
+    candidates = [
+        {"writer": index} if kind == "json" else [f"{index}\n"] for index in range(50)
+    ]
+    replacing = threading.Lock()
+    overlaps = []
+    replace = io.os.replace
+
+    def exclusive_replace(source, target):
+        if not replacing.acquire(blocking=False):
+            overlaps.append(source)
+            error = PermissionError("Concurrent replacement")
+            error.winerror = 5
+            raise error
+        try:
+            time.sleep(0.005)
+            replace(source, target)
+        finally:
+            replacing.release()
+
+    with monkeypatch.context() as fault:
+        fault.setattr(io.os, "replace", exclusive_replace)
+        await asyncio.gather(*(save(data, str(path)) for data in candidates))
+    assert not overlaps
+    assert await load(str(path)) in candidates
+    assert not list(tmp_path.glob("*.tmp"))
