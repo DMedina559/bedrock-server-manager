@@ -346,14 +346,12 @@ async def get_world_icon(
                 error=e,
             )
 
-        default_icon_path = os.path.join(STATIC_DIR, "image", "icon", "web-app-manifest-192x192.png")
+        default_icon_path = os.path.join(
+            STATIC_DIR, "image", "icon", "web-app-manifest-192x192.png"
+        )
         if os.path.isfile(default_icon_path):
-            logger.debug(
-                "Serving default world icon from: %s", default_icon_path
-            )
-            return FileResponse(
-                default_icon_path, media_type="image/png"
-            )
+            logger.debug("Serving default world icon from: %s", default_icon_path)
+            return FileResponse(default_icon_path, media_type="image/png")
         else:
             log_operation_error(
                 logger,

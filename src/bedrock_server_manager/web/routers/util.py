@@ -18,7 +18,6 @@ from fastapi import APIRouter, Depends, HTTPException, status
 from fastapi.responses import FileResponse
 
 from ...context import AppContext
-from ...error import AppFileNotFoundError
 from ...logging import log_operation_error
 from ..deps import get_app_context
 
