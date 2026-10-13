@@ -53,6 +53,7 @@ class MonitoringSettings(SettingsRecord):
 
 
 class WebSettings(SettingsRecord):
+    outbound_queue_limit: int = Field(default=64, ge=1, le=10000)
     forwarded_allow_ips: str = "127.0.0.1"
     host: str = "127.0.0.1"
     port: int = Field(default=11325, ge=1, le=65535)

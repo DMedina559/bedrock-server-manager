@@ -1,21 +1,55 @@
 """Independent bounded database history; domain transactions never await recording."""
 
 import asyncio
+import base64
 import time
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Literal
 
-from sqlalchemy import delete, select
+from pydantic import BaseModel, ConfigDict, Field
+from sqlalchemy import case, delete, func, or_, select
 
 from ..db.models import DiagnosticHistoryRow
+from ..error import UserInputError
 from .models import (
     DiagnosticHistory,
     DiagnosticOptions,
     DiagnosticRecord,
+    DiagnosticRun,
+    DiagnosticRuns,
     PersistenceDiagnostics,
 )
 
 if TYPE_CHECKING:
     from ..db.database import Database
+
+
+class HistoryCursor(BaseModel):
+    model_config = ConfigDict(extra="forbid", allow_inf_nan=False)
+    timestamp: float = Field(ge=0)
+    id: str = Field(pattern=r"^[0-9a-f]{32}$")
+
+
+def _decode_cursor(cursor: str) -> HistoryCursor:
+    try:
+        if len(cursor) > 512:
+            raise ValueError("Cursor exceeds size limit")
+        return HistoryCursor.model_validate_json(
+            base64.urlsafe_b64decode(cursor + "=" * (-len(cursor) % 4))
+        )
+    except Exception as error:
+        raise UserInputError("Invalid diagnostic history cursor") from error
+
+
+def _encode_cursor(record: DiagnosticRecord) -> str:
+    return (
+        base64.urlsafe_b64encode(
+            HistoryCursor(id=record.id, timestamp=record.timestamp)
+            .model_dump_json()
+            .encode()
+        )
+        .decode()
+        .rstrip("=")
+    )
 
 
 class DiagnosticHistoryStore:
@@ -65,6 +99,10 @@ class DiagnosticHistoryStore:
                     timestamp=record.timestamp,
                     subsystem=record.subsystem,
                     correlation_id=record.correlation_id,
+                    owner=record.owner,
+                    code=record.code,
+                    outcome=record.outcome,
+                    operation_id=record.operation_id,
                     record=record.model_dump(mode="json"),
                 )
             )
@@ -98,7 +136,15 @@ class DiagnosticHistoryStore:
         subsystem: str | None = None,
         instance_id: str | None = None,
         correlation_id: str | None = None,
+        owner: str | None = None,
+        code: str | None = None,
+        outcome: Literal["completed", "failed", "cancelled"] | None = None,
+        operation_id: str | None = None,
+        cursor: str | None = None,
     ) -> DiagnosticHistory:
+        if not 1 <= limit <= 200:
+            raise UserInputError("Diagnostic history limit must be between 1 and 200")
+        position = _decode_cursor(cursor) if cursor is not None else None
         try:
             async with asyncio.timeout(2):
                 async with self.database.session_manager() as session:
@@ -116,6 +162,22 @@ class DiagnosticHistoryStore:
                         query = query.where(
                             DiagnosticHistoryRow.correlation_id == correlation_id
                         )
+                    for column, value in (
+                        (DiagnosticHistoryRow.owner, owner),
+                        (DiagnosticHistoryRow.code, code),
+                        (DiagnosticHistoryRow.outcome, outcome),
+                        (DiagnosticHistoryRow.operation_id, operation_id),
+                    ):
+                        if value is not None:
+                            query = query.where(column == value)
+                    if position is not None:
+                        query = query.where(
+                            or_(
+                                DiagnosticHistoryRow.timestamp < position.timestamp,
+                                (DiagnosticHistoryRow.timestamp == position.timestamp)
+                                & (DiagnosticHistoryRow.id < position.id),
+                            )
+                        )
                     rows = (
                         await session.scalars(
                             query.order_by(
@@ -131,9 +193,92 @@ class DiagnosticHistoryStore:
                         records=records[:limit],
                         available=True,
                         truncated=len(records) > limit,
+                        next_cursor=(
+                            _encode_cursor(records[limit - 1])
+                            if len(records) > limit
+                            else None
+                        ),
                     )
         except Exception:
             return DiagnosticHistory(records=[], available=False, truncated=False)
+
+    async def runs(self, *, current_instance: str, limit: int = 20) -> DiagnosticRuns:
+        if not 1 <= limit <= 50:
+            raise UserInputError("Diagnostic run limit must be between 1 and 50")
+        try:
+            async with asyncio.timeout(2):
+                async with self.database.session_manager() as session:
+                    query = (
+                        select(
+                            DiagnosticHistoryRow.instance_id,
+                            func.min(DiagnosticHistoryRow.timestamp).label("first"),
+                            func.max(DiagnosticHistoryRow.timestamp).label("last"),
+                            func.count().label("total"),
+                            func.sum(
+                                case(
+                                    (DiagnosticHistoryRow.outcome == "failed", 1),
+                                    else_=0,
+                                )
+                            ).label("failed"),
+                            func.sum(
+                                case(
+                                    (DiagnosticHistoryRow.outcome == "cancelled", 1),
+                                    else_=0,
+                                )
+                            ).label("cancelled"),
+                        )
+                        .where(
+                            DiagnosticHistoryRow.timestamp
+                            >= time.time() - self.options.retention_days * 86400
+                        )
+                        .group_by(DiagnosticHistoryRow.instance_id)
+                        .order_by(
+                            func.max(DiagnosticHistoryRow.timestamp).desc(),
+                            DiagnosticHistoryRow.instance_id.desc(),
+                        )
+                        .limit(limit + 1)
+                    )
+                    groups = (await session.execute(query)).all()
+                    runs = []
+                    for group in groups[:limit]:
+                        latest = (
+                            await session.scalars(
+                                select(DiagnosticHistoryRow)
+                                .where(
+                                    DiagnosticHistoryRow.instance_id
+                                    == group.instance_id
+                                )
+                                .order_by(
+                                    DiagnosticHistoryRow.timestamp.desc(),
+                                    DiagnosticHistoryRow.id.desc(),
+                                )
+                                .limit(1)
+                            )
+                        ).one()
+                        record = DiagnosticRecord.model_validate(latest.record)
+                        runs.append(
+                            DiagnosticRun(
+                                instance_id=group.instance_id,
+                                first_record_at=group.first,
+                                last_record_at=group.last,
+                                retained_records=group.total,
+                                failed_records=group.failed,
+                                cancelled_records=group.cancelled,
+                                current_instance=group.instance_id == current_instance,
+                                last_observed_phase=record.phase,
+                                backend_version=record.backend_version,
+                                recording_closed=(
+                                    True
+                                    if record.operation == "diagnostics_closed"
+                                    else None
+                                ),
+                            )
+                        )
+                    return DiagnosticRuns(
+                        runs=runs, available=True, truncated=len(groups) > limit
+                    )
+        except Exception:
+            return DiagnosticRuns(runs=[], available=False, truncated=False)
 
     def snapshot(self) -> PersistenceDiagnostics:
         return PersistenceDiagnostics(

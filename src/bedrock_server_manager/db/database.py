@@ -49,6 +49,7 @@ class Database:
         :param db_url: The database connection URL.
         """
         self.db_url = db_url
+        self.schema_revision: str | None = None
         self.engine: AsyncEngine | None = None
         self.SessionLocal: async_sessionmaker[AsyncSession] | None = None
         self._tables_created = False
@@ -204,12 +205,15 @@ class Database:
 
             head_rev = self._get_head_revision()
 
+            upgraded = False
             if not has_users or (
                 has_version and current_rev and head_rev and current_rev != head_rev
             ):
                 logging.info("Auto-upgrading database schema to head...")
                 await asyncio.to_thread(self._run_alembic_upgrade)
+                upgraded = True
 
+            self.schema_revision = head_rev if upgraded else current_rev
             self._tables_created = True
 
     @asynccontextmanager

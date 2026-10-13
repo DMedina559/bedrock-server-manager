@@ -2,8 +2,10 @@
 import asyncio
 import inspect
 import logging
+import math
 import time
 import uuid
+from contextvars import ContextVar
 from typing import TYPE_CHECKING, Any, Callable, Dict, Optional
 
 if TYPE_CHECKING:
@@ -12,7 +14,9 @@ if TYPE_CHECKING:
 from pydantic import BaseModel, ValidationError
 
 from ..api.models.tasks import TaskSnapshot
-from ..error import APICancelledError
+from ..diagnostics.models import TaskDiagnostic, TasksDiagnostics
+from ..error import APICancelledError, OperationConflictError, UserInputError
+from ..events.bus import correlation_scope, current_correlation_id
 from ..logging import log_operation_error
 from ..plugins.api_contract import APIResponseValidationError
 from ..state_revision import revision_clock
@@ -21,6 +25,7 @@ from .task_record import TaskRecord
 from .websocket_manager import ConnectionManager
 
 logger = logging.getLogger(__name__)
+_current_task_id: ContextVar[str | None] = ContextVar("managed_task_id", default=None)
 
 
 class TaskManager:
@@ -35,6 +40,7 @@ class TaskManager:
     ):
         """Initialize the TaskManager with explicit dependencies."""
         self.diagnostics = diagnostics
+        self._metadata: dict[str, dict[str, Any]] = {}
         self._timing: dict[str, tuple[float, float | None]] = {}
         self.connection_manager = connection_manager
         self._tasks: Dict[str, TaskRecord] = {}
@@ -125,6 +131,11 @@ class TaskManager:
                 ) from validation_error
             self._tasks[task_id] = record
             if (
+                status == "completed"
+                and self._metadata.get(task_id, {}).get("progress_percent") is not None
+            ):
+                self._metadata[task_id]["progress_percent"] = 100.0
+            if (
                 status in {"completed", "failed", "cancelled"}
                 and task_id in self._timing
             ):
@@ -137,6 +148,12 @@ class TaskManager:
                             record,
                             started=started,
                             owner=self._plugin_owners.get(task_id),
+                            name=self._metadata.get(task_id, {}).get(
+                                "name", "background_task"
+                            ),
+                            correlation_id=self._metadata.get(task_id, {}).get(
+                                "correlation_id"
+                            ),
                         )
             notification = asyncio.create_task(self._notify_client_of_update(task_id))
             self._background_tasks.add(notification)
@@ -226,11 +243,19 @@ class TaskManager:
             del self._tasks[oldest_task_id]
             self._plugin_owners.pop(oldest_task_id, None)
             self._timing.pop(oldest_task_id, None)
+            self._metadata.pop(oldest_task_id, None)
             if oldest_task_id in self.futures:
                 del self.futures[oldest_task_id]
 
         self._tasks[task_id] = candidate
         self._timing[task_id] = time.monotonic(), None
+        actual = getattr(target_function, "func", target_function)
+        self._metadata[task_id] = {
+            "name": getattr(actual, "__name__", type(actual).__name__)[:160],
+            "correlation_id": current_correlation_id() or uuid.uuid4().hex,
+            "progress_percent": None,
+            "cancellation_requested": False,
+        }
         if _plugin_owner is not None:
             self._plugin_owners[task_id] = _plugin_owner
 
@@ -248,18 +273,87 @@ class TaskManager:
                 pass
 
         async def _runner():
-            await self._update_task(task_id, "running", "Task is running.")
-            if inspect.iscoroutinefunction(target_function):
-                return await target_function(*args, **call_kwargs)
-            else:
-
-                return await run_in_thread(target_function, *args, **call_kwargs)
+            token = _current_task_id.set(task_id)
+            try:
+                with correlation_scope(self._metadata[task_id]["correlation_id"]):
+                    await self._update_task(task_id, "running", "Task is running.")
+                    if inspect.iscoroutinefunction(target_function):
+                        return await target_function(*args, **call_kwargs)
+                    return await run_in_thread(target_function, *args, **call_kwargs)
+            finally:
+                _current_task_id.reset(token)
 
         task = asyncio.create_task(_runner())
         self.futures[task_id] = task
         task.add_done_callback(lambda f: self._task_done_callback(task_id, f))
 
         return task_id
+
+    def report_progress(
+        self, percent: float, *, plugin_owner: str | None = None
+    ) -> None:
+        """Update only the current running task; progress is unknown until reported."""
+        task_id = _current_task_id.get()
+        if task_id is None or task_id not in self._tasks:
+            raise OperationConflictError("Progress requires a running managed task")
+        if self._plugin_owners.get(task_id) != plugin_owner:
+            raise UserInputError("Task progress belongs to another owner")
+        if self._tasks[task_id].status != "running":
+            raise OperationConflictError("Task is no longer running")
+        if (
+            isinstance(percent, bool)
+            or not isinstance(percent, (int, float))
+            or not math.isfinite(percent)
+            or not 0 <= percent <= 100
+        ):
+            raise UserInputError(
+                "Progress must be a finite percentage between 0 and 100"
+            )
+        self._metadata[task_id]["progress_percent"] = float(percent)
+
+    def diagnostic_snapshot(self) -> TasksDiagnostics:
+        """Read bounded task identity and timing without arguments or result payloads."""
+        from collections import Counter
+
+        items = []
+        for task_id, record in self._tasks.items():
+            started, ended = self._timing.get(task_id, (None, None))
+            metadata = self._metadata.get(task_id, {})
+            future = self.futures.get(task_id)
+            items.append(
+                TaskDiagnostic(
+                    id=task_id,
+                    status=record.status,
+                    owner=self._plugin_owners.get(task_id),
+                    name=metadata.get("name", "background_task"),
+                    correlation_id=metadata.get("correlation_id"),
+                    cancellation_requested=metadata.get("cancellation_requested", False)
+                    or bool(future and future.cancelling()),
+                    progress_percent=metadata.get("progress_percent"),
+                    error_code=record.error.code if record.error else None,
+                    elapsed_seconds=(
+                        max(0, (ended or time.monotonic()) - started)
+                        if started is not None
+                        else None
+                    ),
+                )
+            )
+        active_ages = [
+            item.elapsed_seconds
+            for item in items
+            if item.status in {"queued", "running", "cancelling"}
+            and item.elapsed_seconds is not None
+        ]
+        return TasksDiagnostics(
+            active=self.active_task_count,
+            tasks=items,
+            accepting=not self._shutdown_started,
+            counts_by_status=dict(
+                Counter(record.status for record in self._tasks.values())
+            ),
+            capacity=self._max_tasks,
+            oldest_active_seconds=max(active_ages) if active_ages else None,
+        )
 
     async def cancel_task(self, task_id: str) -> bool:
         """Attempts to cancel a running task.
@@ -274,6 +368,7 @@ class TaskManager:
         task = self.futures[task_id]
         if task.done():
             return False
+        self._metadata.get(task_id, {})["cancellation_requested"] = True
         if not task.done() and not task.cancelling():
             task.cancel()
 
@@ -322,15 +417,17 @@ class TaskManager:
         self._blocked_plugins.discard(plugin_name)
 
     async def drain_plugin(self, plugin_name: str) -> None:
-        tasks = [
-            future
+        owned = [
+            (task_id, future)
             for task_id, future in self.futures.items()
             if self._plugin_owners.get(task_id) == plugin_name
         ]
+        tasks = [future for _, future in owned]
         if asyncio.current_task() in tasks:
             raise RuntimeError("An owned task cannot unload its own plugin.")
         self._blocked_plugins.add(plugin_name)
-        for task in tasks:
+        for task_id, task in owned:
+            self._metadata.get(task_id, {})["cancellation_requested"] = True
             if not task.done() and not task.cancelling():
                 task.cancel()
         if tasks:

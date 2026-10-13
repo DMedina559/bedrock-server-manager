@@ -10,6 +10,7 @@ import inspect
 import logging
 import os
 import sys
+import time
 import types
 import warnings
 from contextlib import asynccontextmanager
@@ -68,12 +69,18 @@ class PluginManager:
         settings_models: dict[str, type[BaseModel]] | None = None,
         diagnostic_cleanup: Callable[[str], None] | None = None,
         diagnostic_pending: Callable[[str], bool] | None = None,
+        diagnostic_failure: (
+            Callable[[str, str, BaseException | None], None] | None
+        ) = None,
         task_manager_provider: Callable[[], Optional["TaskManager"]] | None = None,
         connection_manager_provider: (
             Callable[[], Optional["ConnectionManager"]] | None
         ) = None,
     ):
         """Initialize the PluginManager with explicit required dependencies."""
+        self.diagnostic_failure = diagnostic_failure
+        self._plugin_observations: dict[str, dict[str, Any]] = {}
+        self._unloading: set[str] = set()
         self.diagnostic_pending = diagnostic_pending or (lambda owner: False)
         self.diagnostic_cleanup = diagnostic_cleanup or (lambda owner: None)
         self.state = state
@@ -937,10 +944,58 @@ class PluginManager:
                 self._web_app.router.on_shutdown[:] = self._web_shutdown_handlers
 
     def _set_runtime_status(self, plugin_name: str, status: PluginStatus) -> None:
+        observation = self._plugin_observations.setdefault(plugin_name, {})
+        observation["last_transition_at"] = time.time()
+        if status == "ERROR" and plugin_name not in self._unloading:
+            observation["load_failures"] = observation.get("load_failures", 0) + 1
+            if self.diagnostic_failure is not None:
+                self.diagnostic_failure(plugin_name, "load", None)
         self._runtime_records[plugin_name] = PluginRuntime(
             plugin_name=plugin_name,
             status=status,
             module_name=f"bsm_plugins.{plugin_name}" if status == "LOADED" else None,
+        )
+
+    def diagnostic_snapshot(
+        self, *, event_activity, registered_providers: dict[str, int], managed_tasks
+    ):
+        """Expose owned plugin capabilities and lifecycle observations without exception text."""
+        from ..diagnostics.models import PluginDiagnostic, PluginsDiagnostics
+
+        names = sorted(self.state.plugins.plugins)
+        result = []
+        for name in names[:100]:
+            owner = f"plugin:{name}"
+            observation = self._plugin_observations.get(name, {})
+            config = self.state.plugins.get(name)
+            result.append(
+                PluginDiagnostic(
+                    name=name,
+                    status=self.get_plugin_status(name),
+                    generation=self.events.owner_generation(owner),
+                    active_tasks=sum(
+                        not task.done() for task in self.plugin_tasks.get(name, [])
+                    ),
+                    managed_tasks=sum(
+                        task.owner == name
+                        and task.status in {"queued", "running", "cancelling"}
+                        for task in managed_tasks
+                    ),
+                    draining=name in self._unloading
+                    or name in self._draining_plugins
+                    or self.diagnostic_pending(name),
+                    version=config.version if config else None,
+                    listeners=event_activity.subscriptions_by_owner.get(owner, 0),
+                    workers=event_activity.workers_by_owner.get(owner, 0),
+                    diagnostic_providers=registered_providers.get(owner, 0),
+                    last_transition_at=observation.get("last_transition_at"),
+                    load_failures=observation.get("load_failures", 0),
+                    drain_failures=observation.get("drain_failures", 0),
+                    last_drain_duration_ms=observation.get("last_drain_duration_ms"),
+                )
+            )
+        return PluginsDiagnostics(
+            plugins=result, total=len(names), truncated=len(names) > 100
         )
 
     def get_plugin_runtime(self, plugin_name: str) -> PluginRuntime:
@@ -982,6 +1037,29 @@ class PluginManager:
         return "UNKNOWN" if cfg is None else "UNLOADED"
 
     async def unload_plugin_by_name(self, plugin_name: str) -> bool:
+        """Measure owned drain work and retain failures without changing propagation."""
+        started = time.monotonic()
+        self._unloading.add(plugin_name)
+        observation = self._plugin_observations.setdefault(plugin_name, {})
+        try:
+            result = await self._unload_plugin_by_name(plugin_name)
+            if not result and self.get_plugin_status(plugin_name) == "ERROR":
+                observation["drain_failures"] = observation.get("drain_failures", 0) + 1
+                if self.diagnostic_failure is not None:
+                    self.diagnostic_failure(plugin_name, "drain", None)
+            return result
+        except BaseException as error:
+            observation["drain_failures"] = observation.get("drain_failures", 0) + 1
+            if self.diagnostic_failure is not None:
+                self.diagnostic_failure(plugin_name, "drain", error)
+            raise
+        finally:
+            observation["last_drain_duration_ms"] = max(
+                0, (time.monotonic() - started) * 1000
+            )
+            self._unloading.discard(plugin_name)
+
+    async def _unload_plugin_by_name(self, plugin_name: str) -> bool:
         """Unloads a single plugin by name, stopping its tasks and unregistering its listeners."""
         self._check_lifecycle_task()
         async with self._lifecycle_lock:

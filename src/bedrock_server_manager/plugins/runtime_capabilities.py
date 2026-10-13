@@ -183,3 +183,10 @@ async def register_diagnostic_provider(
     app_context.diagnostics.register(
         f"plugin:{plugin_name}:{name}", handler, owner=f"plugin:{plugin_name}"
     )
+
+
+async def report_task_progress(
+    percent: float, *, app_context: AppContext, plugin_name: str | None = None
+) -> None:
+    """Report progress for the plugin's current managed task without exposing a context."""
+    app_context.task_manager.report_progress(percent, plugin_owner=plugin_name)

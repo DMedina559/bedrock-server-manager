@@ -51,6 +51,8 @@ class BedrockProcessManager:
         self.record_failure = record_failure
         self.monitor_observed_at: float | None = None
         self.monitor_failures = 0
+        self.monitor_observations: dict[str, float] = {}
+        self.monitor_errors: dict[str, str] = {}
         self.servers: Dict[str, "BedrockServer"] = {}
         self.restart_attempts: dict[str, int] = {}
         self._pending_player_events: set[str] = set()
@@ -107,6 +109,8 @@ class BedrockProcessManager:
         if server_name in self.servers:
             self.logger.debug("Removing server '%s' from process manager.", server_name)
             del self.servers[server_name]
+            self.monitor_observations.pop(server_name, None)
+            self.monitor_errors.pop(server_name, None)
             self.restart_attempts.pop(server_name, None)
             for phase in ("probe", "recovery", "players"):
                 self._failures.failures.pop(f"{phase}:{server_name}", None)
@@ -287,8 +291,11 @@ class BedrockProcessManager:
                     is_running = await server.is_running()
                     await server.reconcile_status(is_running)
                     self._failures.recover(f"probe:{server_name}")
+                    self.monitor_observations[server_name] = time.time()
+                    self.monitor_errors.pop(server_name, None)
                 except Exception as error:
                     self.monitor_failures += 1
+                    self.monitor_errors[server_name] = type(error).__name__
                     if self.record_failure is not None:
                         self.record_failure(server_name, error, probe_started)
                     self._failures.report(

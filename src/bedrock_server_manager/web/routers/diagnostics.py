@@ -1,14 +1,16 @@
 """Administrator-only metadata snapshots and sanitized support history."""
 
-from typing import Annotated
+from typing import Annotated, Literal
 
-from fastapi import APIRouter, Depends, HTTPException, Query
+from fastapi import APIRouter, Depends, HTTPException, Query, Response
 
 from ...context import AppContext
 from ...diagnostics.models import (
     DiagnosticHistory,
     DiagnosticReport,
+    DiagnosticRuns,
     DiagnosticSnapshot,
+    DiagnosticTrace,
 )
 from ...diagnostics.service import Diagnostics
 from ..deps import get_admin_user
@@ -21,7 +23,10 @@ router = APIRouter(
 )
 
 
-def get_diagnostics(context: AppContext = Depends(get_app_context)) -> Diagnostics:
+def get_diagnostics(
+    response: Response, context: AppContext = Depends(get_app_context)
+) -> Diagnostics:
+    response.headers["Cache-Control"] = "no-store"
     return context.diagnostics
 
 
@@ -43,6 +48,11 @@ async def get_diagnostic_history(
     subsystem: Annotated[str | None, Query(max_length=80)] = None,
     instance_id: Annotated[str | None, Query(max_length=32)] = None,
     correlation_id: Annotated[str | None, Query(max_length=160)] = None,
+    cursor: Annotated[str | None, Query(max_length=512)] = None,
+    owner: Annotated[str | None, Query(max_length=160)] = None,
+    code: Annotated[str | None, Query(max_length=80)] = None,
+    outcome: Literal["completed", "failed", "cancelled"] | None = None,
+    operation_id: Annotated[str | None, Query(max_length=160)] = None,
     service: Diagnostics = Depends(get_diagnostics),
 ) -> DiagnosticHistory:
     return await service.history.read(
@@ -50,6 +60,11 @@ async def get_diagnostic_history(
         subsystem=subsystem,
         instance_id=instance_id,
         correlation_id=correlation_id,
+        cursor=cursor,
+        owner=owner,
+        code=code,
+        outcome=outcome,
+        operation_id=operation_id,
     )
 
 
@@ -57,12 +72,37 @@ async def get_diagnostic_history(
     "/report", operation_id="get_diagnostic_report", response_model=DiagnosticReport
 )
 async def get_diagnostic_report(
+    response: Response,
     service: Diagnostics = Depends(get_diagnostics),
 ) -> DiagnosticReport:
     """Export typed sanitized metadata with bounded history across application runs."""
-    return DiagnosticReport(
-        snapshot=await service.snapshot(), history=await service.history.read()
+    report = await service.report()
+    response.headers["Content-Disposition"] = (
+        f'attachment; filename="bsm-diagnostics-{report.report_id}.json"'
     )
+    return report
+
+
+@router.get("/runs", operation_id="get_diagnostic_runs", response_model=DiagnosticRuns)
+async def get_diagnostic_runs(
+    limit: Annotated[int, Query(ge=1, le=50)] = 20,
+    service: Diagnostics = Depends(get_diagnostics),
+) -> DiagnosticRuns:
+    return await service.history.runs(current_instance=service.instance_id, limit=limit)
+
+
+@router.get(
+    "/trace/{correlation_id}",
+    operation_id="get_diagnostic_trace",
+    response_model=DiagnosticTrace,
+)
+async def get_diagnostic_trace(
+    correlation_id: str,
+    limit: Annotated[int, Query(ge=1, le=200)] = 100,
+    cursor: Annotated[str | None, Query(max_length=512)] = None,
+    service: Diagnostics = Depends(get_diagnostics),
+) -> DiagnosticTrace:
+    return await service.trace(correlation_id, limit=limit, cursor=cursor)
 
 
 @router.get(

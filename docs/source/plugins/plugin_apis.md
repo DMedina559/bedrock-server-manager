@@ -4404,9 +4404,112 @@ data = result.model_dump(mode="json")
 ```json
 {
   "$defs": {
+    "DiagnosticEnvironment": {
+      "additionalProperties": false,
+      "properties": {
+        "backend_version": {
+          "title": "Backend Version",
+          "type": "string"
+        },
+        "database_dialect": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Database Dialect"
+        },
+        "database_schema_revision": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Database Schema Revision"
+        },
+        "frontend_version": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Frontend Version"
+        },
+        "operating_system": {
+          "title": "Operating System",
+          "type": "string"
+        },
+        "python_version": {
+          "title": "Python Version",
+          "type": "string"
+        }
+      },
+      "required": [
+        "backend_version",
+        "python_version",
+        "operating_system"
+      ],
+      "title": "DiagnosticEnvironment",
+      "type": "object"
+    },
+    "DiagnosticFinding": {
+      "additionalProperties": false,
+      "properties": {
+        "issue": {
+          "$ref": "#/$defs/DiagnosticIssue"
+        },
+        "owner": {
+          "title": "Owner",
+          "type": "string"
+        },
+        "subsystem": {
+          "title": "Subsystem",
+          "type": "string"
+        }
+      },
+      "required": [
+        "subsystem",
+        "owner",
+        "issue"
+      ],
+      "title": "DiagnosticFinding",
+      "type": "object"
+    },
     "DiagnosticIssue": {
       "additionalProperties": false,
       "properties": {
+        "action": {
+          "anyOf": [
+            {
+              "enum": [
+                "inspect_logs",
+                "inspect_events",
+                "inspect_storage",
+                "inspect_plugins",
+                "wait_for_drain",
+                "check_configuration"
+              ],
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Action"
+        },
         "code": {
           "title": "Code",
           "type": "string"
@@ -4435,6 +4538,18 @@ data = result.model_dump(mode="json")
     "DiagnosticSection": {
       "additionalProperties": false,
       "properties": {
+        "age_seconds": {
+          "anyOf": [
+            {
+              "type": "number"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Age Seconds"
+        },
         "collected_at": {
           "title": "Collected At",
           "type": "number"
@@ -4510,14 +4625,43 @@ data = result.model_dump(mode="json")
           "title": "Issues",
           "type": "array"
         },
+        "last_success_at": {
+          "anyOf": [
+            {
+              "type": "number"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Last Success At"
+        },
         "name": {
           "title": "Name",
           "type": "string"
+        },
+        "observed_at": {
+          "anyOf": [
+            {
+              "type": "number"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Observed At"
         },
         "owner": {
           "default": "application",
           "title": "Owner",
           "type": "string"
+        },
+        "stale": {
+          "default": false,
+          "title": "Stale",
+          "type": "boolean"
         },
         "status": {
           "default": "unknown",
@@ -4536,6 +4680,52 @@ data = result.model_dump(mode="json")
         "collected_at"
       ],
       "title": "DiagnosticSection",
+      "type": "object"
+    },
+    "DiagnosticSummary": {
+      "additionalProperties": false,
+      "properties": {
+        "counts_by_status": {
+          "additionalProperties": {
+            "type": "integer"
+          },
+          "title": "Counts By Status",
+          "type": "object"
+        },
+        "findings": {
+          "items": {
+            "$ref": "#/$defs/DiagnosticFinding"
+          },
+          "maxItems": 100,
+          "title": "Findings",
+          "type": "array"
+        },
+        "ready": {
+          "title": "Ready",
+          "type": "boolean"
+        },
+        "status": {
+          "enum": [
+            "ok",
+            "degraded",
+            "unavailable",
+            "unknown"
+          ],
+          "title": "Status",
+          "type": "string"
+        },
+        "truncated": {
+          "default": false,
+          "title": "Truncated",
+          "type": "boolean"
+        }
+      },
+      "required": [
+        "status",
+        "ready",
+        "counts_by_status"
+      ],
+      "title": "DiagnosticSummary",
       "type": "object"
     },
     "EventDelivery": {
@@ -4590,6 +4780,18 @@ data = result.model_dump(mode="json")
           "title": "Active",
           "type": "array"
         },
+        "active_dispatches": {
+          "default": 0,
+          "title": "Active Dispatches",
+          "type": "integer"
+        },
+        "active_listeners_by_owner": {
+          "additionalProperties": {
+            "type": "integer"
+          },
+          "title": "Active Listeners By Owner",
+          "type": "object"
+        },
         "emitted": {
           "title": "Emitted",
           "type": "integer"
@@ -4597,6 +4799,12 @@ data = result.model_dump(mode="json")
         "failed_listeners": {
           "title": "Failed Listeners",
           "type": "integer"
+        },
+        "notification_delivery": {
+          "const": "inline",
+          "default": "inline",
+          "title": "Notification Delivery",
+          "type": "string"
         },
         "pending_waits": {
           "default": 0,
@@ -4625,6 +4833,13 @@ data = result.model_dump(mode="json")
         "subscriptions": {
           "title": "Subscriptions",
           "type": "integer"
+        },
+        "subscriptions_by_owner": {
+          "additionalProperties": {
+            "type": "integer"
+          },
+          "title": "Subscriptions By Owner",
+          "type": "object"
         },
         "suppressed": {
           "title": "Suppressed",
@@ -4960,6 +5175,16 @@ data = result.model_dump(mode="json")
     "MetricsDiagnostics": {
       "additionalProperties": false,
       "properties": {
+        "attempts": {
+          "default": 0,
+          "title": "Attempts",
+          "type": "integer"
+        },
+        "failures": {
+          "default": 0,
+          "title": "Failures",
+          "type": "integer"
+        },
         "interval_seconds": {
           "anyOf": [
             {
@@ -4978,6 +5203,30 @@ data = result.model_dump(mode="json")
           "title": "Kind",
           "type": "string"
         },
+        "last_duration_ms": {
+          "anyOf": [
+            {
+              "type": "number"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Last Duration Ms"
+        },
+        "last_error_type": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Last Error Type"
+        },
         "last_sample_at": {
           "anyOf": [
             {
@@ -4990,6 +5239,11 @@ data = result.model_dump(mode="json")
           "default": null,
           "title": "Last Sample At"
         },
+        "missed_intervals": {
+          "default": 0,
+          "title": "Missed Intervals",
+          "type": "integer"
+        },
         "sample_age_seconds": {
           "anyOf": [
             {
@@ -5001,6 +5255,23 @@ data = result.model_dump(mode="json")
           ],
           "default": null,
           "title": "Sample Age Seconds"
+        },
+        "successes": {
+          "default": 0,
+          "title": "Successes",
+          "type": "integer"
+        },
+        "unavailable_measurements": {
+          "items": {
+            "type": "string"
+          },
+          "title": "Unavailable Measurements",
+          "type": "array"
+        },
+        "warming_up": {
+          "default": true,
+          "title": "Warming Up",
+          "type": "boolean"
         }
       },
       "title": "MetricsDiagnostics",
@@ -5019,20 +5290,6 @@ data = result.model_dump(mode="json")
         },
         "history_limit": {
           "title": "History Limit",
-          "type": "integer"
-        },
-        "max_providers": {
-          "default": 128,
-          "maximum": 1000,
-          "minimum": 9,
-          "title": "Max Providers",
-          "type": "integer"
-        },
-        "max_providers_per_owner": {
-          "default": 8,
-          "maximum": 50,
-          "minimum": 1,
-          "title": "Max Providers Per Owner",
           "type": "integer"
         },
         "queue_limit": {
@@ -5071,12 +5328,61 @@ data = result.model_dump(mode="json")
           "title": "Active Tasks",
           "type": "integer"
         },
+        "diagnostic_providers": {
+          "default": 0,
+          "title": "Diagnostic Providers",
+          "type": "integer"
+        },
+        "drain_failures": {
+          "default": 0,
+          "title": "Drain Failures",
+          "type": "integer"
+        },
         "draining": {
           "title": "Draining",
           "type": "boolean"
         },
         "generation": {
           "title": "Generation",
+          "type": "integer"
+        },
+        "last_drain_duration_ms": {
+          "anyOf": [
+            {
+              "type": "number"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Last Drain Duration Ms"
+        },
+        "last_transition_at": {
+          "anyOf": [
+            {
+              "type": "number"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Last Transition At"
+        },
+        "listeners": {
+          "default": 0,
+          "title": "Listeners",
+          "type": "integer"
+        },
+        "load_failures": {
+          "default": 0,
+          "title": "Load Failures",
+          "type": "integer"
+        },
+        "managed_tasks": {
+          "default": 0,
+          "title": "Managed Tasks",
           "type": "integer"
         },
         "name": {
@@ -5086,6 +5392,23 @@ data = result.model_dump(mode="json")
         "status": {
           "title": "Status",
           "type": "string"
+        },
+        "version": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Version"
+        },
+        "workers": {
+          "default": 0,
+          "title": "Workers",
+          "type": "integer"
         }
       },
       "required": [
@@ -5100,12 +5423,38 @@ data = result.model_dump(mode="json")
     },
     "PluginValues": {
       "additionalProperties": false,
+      "description": "Explicit observations; string dumps and secrets are excluded.",
       "properties": {
+        "health": {
+          "default": "unknown",
+          "enum": [
+            "ok",
+            "degraded",
+            "unknown"
+          ],
+          "title": "Health",
+          "type": "string"
+        },
         "kind": {
           "const": "plugin_values",
           "default": "plugin_values",
           "title": "Kind",
           "type": "string"
+        },
+        "units": {
+          "additionalProperties": {
+            "enum": [
+              "count",
+              "seconds",
+              "milliseconds",
+              "bytes",
+              "percent"
+            ],
+            "type": "string"
+          },
+          "maxProperties": 50,
+          "title": "Units",
+          "type": "object"
         },
         "values": {
           "additionalProperties": {
@@ -5168,6 +5517,30 @@ data = result.model_dump(mode="json")
         "expected_status": {
           "title": "Expected Status",
           "type": "string"
+        },
+        "last_error_type": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Last Error Type"
+        },
+        "observed_at": {
+          "anyOf": [
+            {
+              "type": "number"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Observed At"
         },
         "observed_running": {
           "anyOf": [
@@ -5271,6 +5644,70 @@ data = result.model_dump(mode="json")
       "title": "ProcessesDiagnostics",
       "type": "object"
     },
+    "RegistryDiagnostics": {
+      "additionalProperties": false,
+      "properties": {
+        "failures": {
+          "default": 0,
+          "title": "Failures",
+          "type": "integer"
+        },
+        "max_providers": {
+          "title": "Max Providers",
+          "type": "integer"
+        },
+        "max_providers_per_owner": {
+          "title": "Max Providers Per Owner",
+          "type": "integer"
+        },
+        "owner_limits_scope": {
+          "const": "plugins",
+          "default": "plugins",
+          "title": "Owner Limits Scope",
+          "type": "string"
+        },
+        "pending": {
+          "title": "Pending",
+          "type": "integer"
+        },
+        "pending_by_owner": {
+          "additionalProperties": {
+            "type": "integer"
+          },
+          "title": "Pending By Owner",
+          "type": "object"
+        },
+        "registered": {
+          "title": "Registered",
+          "type": "integer"
+        },
+        "registered_by_owner": {
+          "additionalProperties": {
+            "type": "integer"
+          },
+          "title": "Registered By Owner",
+          "type": "object"
+        },
+        "rejected": {
+          "default": 0,
+          "title": "Rejected",
+          "type": "integer"
+        },
+        "timeouts": {
+          "default": 0,
+          "title": "Timeouts",
+          "type": "integer"
+        }
+      },
+      "required": [
+        "registered",
+        "pending",
+        "max_providers",
+        "max_providers_per_owner"
+      ],
+      "title": "RegistryDiagnostics",
+      "type": "object"
+    },
     "RuntimeDiagnostics": {
       "additionalProperties": false,
       "properties": {
@@ -5291,6 +5728,11 @@ data = result.model_dump(mode="json")
         "python_version": {
           "title": "Python Version",
           "type": "string"
+        },
+        "ready": {
+          "default": false,
+          "title": "Ready",
+          "type": "boolean"
         },
         "shutdown_reason": {
           "anyOf": [
@@ -5327,6 +5769,42 @@ data = result.model_dump(mode="json")
           ],
           "default": null,
           "title": "Stage"
+        },
+        "stage_elapsed_seconds": {
+          "anyOf": [
+            {
+              "type": "number"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Stage Elapsed Seconds"
+        },
+        "stage_started_at": {
+          "anyOf": [
+            {
+              "type": "number"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Stage Started At"
+        },
+        "stage_timeout_seconds": {
+          "anyOf": [
+            {
+              "type": "number"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Stage Timeout Seconds"
         },
         "uptime_seconds": {
           "title": "Uptime Seconds",
@@ -5448,6 +5926,42 @@ data = result.model_dump(mode="json")
           "default": null,
           "title": "Last Error Type"
         },
+        "last_reload_at": {
+          "anyOf": [
+            {
+              "type": "number"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Last Reload At"
+        },
+        "last_reload_duration_ms": {
+          "anyOf": [
+            {
+              "type": "number"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Last Reload Duration Ms"
+        },
+        "last_reload_error_type": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Last Reload Error Type"
+        },
         "last_success_at": {
           "anyOf": [
             {
@@ -5472,10 +5986,45 @@ data = result.model_dump(mode="json")
           "default": null,
           "title": "Lock Wait Ms"
         },
+        "lock_waiters": {
+          "default": 0,
+          "title": "Lock Waiters",
+          "type": "integer"
+        },
+        "max_lock_wait_ms": {
+          "default": 0,
+          "title": "Max Lock Wait Ms",
+          "type": "number"
+        },
+        "reload_active": {
+          "default": false,
+          "title": "Reload Active",
+          "type": "boolean"
+        },
+        "reload_attempts": {
+          "default": 0,
+          "title": "Reload Attempts",
+          "type": "integer"
+        },
+        "reload_failures": {
+          "default": 0,
+          "title": "Reload Failures",
+          "type": "integer"
+        },
+        "reload_successes": {
+          "default": 0,
+          "title": "Reload Successes",
+          "type": "integer"
+        },
         "successes": {
           "default": 0,
           "title": "Successes",
           "type": "integer"
+        },
+        "total_lock_wait_ms": {
+          "default": 0,
+          "title": "Total Lock Wait Ms",
+          "type": "number"
         }
       },
       "title": "StorageDiagnostics",
@@ -5484,6 +6033,23 @@ data = result.model_dump(mode="json")
     "TaskDiagnostic": {
       "additionalProperties": false,
       "properties": {
+        "cancellation_requested": {
+          "default": false,
+          "title": "Cancellation Requested",
+          "type": "boolean"
+        },
+        "correlation_id": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Correlation Id"
+        },
         "elapsed_seconds": {
           "anyOf": [
             {
@@ -5512,6 +6078,11 @@ data = result.model_dump(mode="json")
           "title": "Id",
           "type": "string"
         },
+        "name": {
+          "default": "background_task",
+          "title": "Name",
+          "type": "string"
+        },
         "owner": {
           "anyOf": [
             {
@@ -5523,6 +6094,20 @@ data = result.model_dump(mode="json")
           ],
           "default": null,
           "title": "Owner"
+        },
+        "progress_percent": {
+          "anyOf": [
+            {
+              "maximum": 100,
+              "minimum": 0,
+              "type": "number"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Progress Percent"
         },
         "status": {
           "title": "Status",
@@ -5547,6 +6132,11 @@ data = result.model_dump(mode="json")
           "title": "Active",
           "type": "integer"
         },
+        "capacity": {
+          "default": 100,
+          "title": "Capacity",
+          "type": "integer"
+        },
         "counts_by_status": {
           "additionalProperties": {
             "type": "integer"
@@ -5559,6 +6149,18 @@ data = result.model_dump(mode="json")
           "default": "tasks",
           "title": "Kind",
           "type": "string"
+        },
+        "oldest_active_seconds": {
+          "anyOf": [
+            {
+              "type": "number"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Oldest Active Seconds"
         },
         "tasks": {
           "items": {
@@ -5579,6 +6181,16 @@ data = result.model_dump(mode="json")
     "TransportDiagnostics": {
       "additionalProperties": false,
       "properties": {
+        "accepting": {
+          "default": true,
+          "title": "Accepting",
+          "type": "boolean"
+        },
+        "active_sends": {
+          "default": 0,
+          "title": "Active Sends",
+          "type": "integer"
+        },
         "connected_clients": {
           "title": "Connected Clients",
           "type": "integer"
@@ -5589,9 +6201,26 @@ data = result.model_dump(mode="json")
           "title": "Delivery Mode",
           "type": "string"
         },
+        "disconnects_by_reason": {
+          "additionalProperties": {
+            "type": "integer"
+          },
+          "title": "Disconnects By Reason",
+          "type": "object"
+        },
+        "dropped_messages": {
+          "default": 0,
+          "title": "Dropped Messages",
+          "type": "integer"
+        },
         "failed_sends": {
           "default": 0,
           "title": "Failed Sends",
+          "type": "integer"
+        },
+        "high_water_mark": {
+          "default": 0,
+          "title": "High Water Mark",
           "type": "integer"
         },
         "kind": {
@@ -5599,6 +6228,50 @@ data = result.model_dump(mode="json")
           "default": "transport",
           "title": "Kind",
           "type": "string"
+        },
+        "last_send_at": {
+          "anyOf": [
+            {
+              "type": "number"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Last Send At"
+        },
+        "last_send_duration_ms": {
+          "anyOf": [
+            {
+              "type": "number"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Last Send Duration Ms"
+        },
+        "max_pending_per_client": {
+          "default": 0,
+          "title": "Max Pending Per Client",
+          "type": "integer"
+        },
+        "pending_sends": {
+          "default": 0,
+          "title": "Pending Sends",
+          "type": "integer"
+        },
+        "queue_limit_per_client": {
+          "default": 64,
+          "title": "Queue Limit Per Client",
+          "type": "integer"
+        },
+        "send_timeouts": {
+          "default": 0,
+          "title": "Send Timeouts",
+          "type": "integer"
         },
         "subscriptions": {
           "title": "Subscriptions",
@@ -5635,12 +6308,18 @@ data = result.model_dump(mode="json")
       "title": "Counter Scope",
       "type": "string"
     },
+    "environment": {
+      "$ref": "#/$defs/DiagnosticEnvironment"
+    },
     "instance_id": {
       "title": "Instance Id",
       "type": "string"
     },
     "persistence": {
       "$ref": "#/$defs/PersistenceDiagnostics"
+    },
+    "registry": {
+      "$ref": "#/$defs/RegistryDiagnostics"
     },
     "schema_version": {
       "const": 1,
@@ -5654,12 +6333,18 @@ data = result.model_dump(mode="json")
       },
       "title": "Sections",
       "type": "array"
+    },
+    "summary": {
+      "$ref": "#/$defs/DiagnosticSummary"
     }
   },
   "required": [
     "instance_id",
     "collected_at",
     "sections",
+    "summary",
+    "registry",
+    "environment",
     "persistence"
   ],
   "title": "GetApplicationDiagnosticsResponse",
@@ -5758,6 +6443,19 @@ data = result.model_dump(mode="json")
 {
   "additionalProperties": false,
   "properties": {
+    "code": {
+      "anyOf": [
+        {
+          "maxLength": 80,
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "title": "Code"
+    },
     "correlation_id": {
       "anyOf": [
         {
@@ -5770,6 +6468,19 @@ data = result.model_dump(mode="json")
       ],
       "default": null,
       "title": "Correlation Id"
+    },
+    "cursor": {
+      "anyOf": [
+        {
+          "maxLength": 512,
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "title": "Cursor"
     },
     "instance_id": {
       "anyOf": [
@@ -5790,6 +6501,49 @@ data = result.model_dump(mode="json")
       "minimum": 1,
       "title": "Limit",
       "type": "integer"
+    },
+    "operation_id": {
+      "anyOf": [
+        {
+          "maxLength": 160,
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "title": "Operation Id"
+    },
+    "outcome": {
+      "anyOf": [
+        {
+          "enum": [
+            "completed",
+            "failed",
+            "cancelled"
+          ],
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "title": "Outcome"
+    },
+    "owner": {
+      "anyOf": [
+        {
+          "maxLength": 160,
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "title": "Owner"
     },
     "subsystem": {
       "anyOf": [
@@ -5818,6 +6572,18 @@ data = result.model_dump(mode="json")
     "DiagnosticRecord": {
       "additionalProperties": false,
       "properties": {
+        "backend_version": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Backend Version"
+        },
         "code": {
           "maxLength": 80,
           "title": "Code",
@@ -5837,9 +6603,17 @@ data = result.model_dump(mode="json")
           "title": "Correlation Id"
         },
         "duration_ms": {
-          "minimum": 0,
-          "title": "Duration Ms",
-          "type": "number"
+          "anyOf": [
+            {
+              "minimum": 0,
+              "type": "number"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Duration Ms"
         },
         "error_type": {
           "anyOf": [
@@ -5902,6 +6676,18 @@ data = result.model_dump(mode="json")
           "default": null,
           "title": "Owner"
         },
+        "phase": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Phase"
+        },
         "subsystem": {
           "maxLength": 80,
           "pattern": "^[\\w.:-]+$",
@@ -5920,8 +6706,7 @@ data = result.model_dump(mode="json")
         "subsystem",
         "operation",
         "outcome",
-        "code",
-        "duration_ms"
+        "code"
       ],
       "title": "DiagnosticRecord",
       "type": "object"
@@ -5932,6 +6717,18 @@ data = result.model_dump(mode="json")
     "available": {
       "title": "Available",
       "type": "boolean"
+    },
+    "next_cursor": {
+      "anyOf": [
+        {
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "title": "Next Cursor"
     },
     "records": {
       "items": {
@@ -6056,12 +6853,107 @@ data = result.model_dump(mode="json")
 ```json
 {
   "$defs": {
+    "DiagnosticEnvironment": {
+      "additionalProperties": false,
+      "properties": {
+        "backend_version": {
+          "title": "Backend Version",
+          "type": "string"
+        },
+        "database_dialect": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Database Dialect"
+        },
+        "database_schema_revision": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Database Schema Revision"
+        },
+        "frontend_version": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Frontend Version"
+        },
+        "operating_system": {
+          "title": "Operating System",
+          "type": "string"
+        },
+        "python_version": {
+          "title": "Python Version",
+          "type": "string"
+        }
+      },
+      "required": [
+        "backend_version",
+        "python_version",
+        "operating_system"
+      ],
+      "title": "DiagnosticEnvironment",
+      "type": "object"
+    },
+    "DiagnosticFinding": {
+      "additionalProperties": false,
+      "properties": {
+        "issue": {
+          "$ref": "#/$defs/DiagnosticIssue"
+        },
+        "owner": {
+          "title": "Owner",
+          "type": "string"
+        },
+        "subsystem": {
+          "title": "Subsystem",
+          "type": "string"
+        }
+      },
+      "required": [
+        "subsystem",
+        "owner",
+        "issue"
+      ],
+      "title": "DiagnosticFinding",
+      "type": "object"
+    },
     "DiagnosticHistory": {
       "additionalProperties": false,
       "properties": {
         "available": {
           "title": "Available",
           "type": "boolean"
+        },
+        "next_cursor": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Next Cursor"
         },
         "records": {
           "items": {
@@ -6086,6 +6978,26 @@ data = result.model_dump(mode="json")
     "DiagnosticIssue": {
       "additionalProperties": false,
       "properties": {
+        "action": {
+          "anyOf": [
+            {
+              "enum": [
+                "inspect_logs",
+                "inspect_events",
+                "inspect_storage",
+                "inspect_plugins",
+                "wait_for_drain",
+                "check_configuration"
+              ],
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Action"
+        },
         "code": {
           "title": "Code",
           "type": "string"
@@ -6114,6 +7026,18 @@ data = result.model_dump(mode="json")
     "DiagnosticRecord": {
       "additionalProperties": false,
       "properties": {
+        "backend_version": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Backend Version"
+        },
         "code": {
           "maxLength": 80,
           "title": "Code",
@@ -6133,9 +7057,17 @@ data = result.model_dump(mode="json")
           "title": "Correlation Id"
         },
         "duration_ms": {
-          "minimum": 0,
-          "title": "Duration Ms",
-          "type": "number"
+          "anyOf": [
+            {
+              "minimum": 0,
+              "type": "number"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Duration Ms"
         },
         "error_type": {
           "anyOf": [
@@ -6198,6 +7130,18 @@ data = result.model_dump(mode="json")
           "default": null,
           "title": "Owner"
         },
+        "phase": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Phase"
+        },
         "subsystem": {
           "maxLength": 80,
           "pattern": "^[\\w.:-]+$",
@@ -6216,15 +7160,133 @@ data = result.model_dump(mode="json")
         "subsystem",
         "operation",
         "outcome",
-        "code",
-        "duration_ms"
+        "code"
       ],
       "title": "DiagnosticRecord",
+      "type": "object"
+    },
+    "DiagnosticRun": {
+      "additionalProperties": false,
+      "properties": {
+        "backend_version": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Backend Version"
+        },
+        "cancelled_records": {
+          "title": "Cancelled Records",
+          "type": "integer"
+        },
+        "current_instance": {
+          "title": "Current Instance",
+          "type": "boolean"
+        },
+        "failed_records": {
+          "title": "Failed Records",
+          "type": "integer"
+        },
+        "first_record_at": {
+          "title": "First Record At",
+          "type": "number"
+        },
+        "instance_id": {
+          "title": "Instance Id",
+          "type": "string"
+        },
+        "last_observed_phase": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Last Observed Phase"
+        },
+        "last_record_at": {
+          "title": "Last Record At",
+          "type": "number"
+        },
+        "recording_closed": {
+          "anyOf": [
+            {
+              "type": "boolean"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Recording Closed"
+        },
+        "retained_records": {
+          "title": "Retained Records",
+          "type": "integer"
+        }
+      },
+      "required": [
+        "instance_id",
+        "first_record_at",
+        "last_record_at",
+        "retained_records",
+        "failed_records",
+        "cancelled_records",
+        "current_instance"
+      ],
+      "title": "DiagnosticRun",
+      "type": "object"
+    },
+    "DiagnosticRuns": {
+      "additionalProperties": false,
+      "properties": {
+        "available": {
+          "title": "Available",
+          "type": "boolean"
+        },
+        "runs": {
+          "items": {
+            "$ref": "#/$defs/DiagnosticRun"
+          },
+          "title": "Runs",
+          "type": "array"
+        },
+        "truncated": {
+          "title": "Truncated",
+          "type": "boolean"
+        }
+      },
+      "required": [
+        "runs",
+        "available",
+        "truncated"
+      ],
+      "title": "DiagnosticRuns",
       "type": "object"
     },
     "DiagnosticSection": {
       "additionalProperties": false,
       "properties": {
+        "age_seconds": {
+          "anyOf": [
+            {
+              "type": "number"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Age Seconds"
+        },
         "collected_at": {
           "title": "Collected At",
           "type": "number"
@@ -6300,14 +7362,43 @@ data = result.model_dump(mode="json")
           "title": "Issues",
           "type": "array"
         },
+        "last_success_at": {
+          "anyOf": [
+            {
+              "type": "number"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Last Success At"
+        },
         "name": {
           "title": "Name",
           "type": "string"
+        },
+        "observed_at": {
+          "anyOf": [
+            {
+              "type": "number"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Observed At"
         },
         "owner": {
           "default": "application",
           "title": "Owner",
           "type": "string"
+        },
+        "stale": {
+          "default": false,
+          "title": "Stale",
+          "type": "boolean"
         },
         "status": {
           "default": "unknown",
@@ -6341,12 +7432,18 @@ data = result.model_dump(mode="json")
           "title": "Counter Scope",
           "type": "string"
         },
+        "environment": {
+          "$ref": "#/$defs/DiagnosticEnvironment"
+        },
         "instance_id": {
           "title": "Instance Id",
           "type": "string"
         },
         "persistence": {
           "$ref": "#/$defs/PersistenceDiagnostics"
+        },
+        "registry": {
+          "$ref": "#/$defs/RegistryDiagnostics"
         },
         "schema_version": {
           "const": 1,
@@ -6360,15 +7457,67 @@ data = result.model_dump(mode="json")
           },
           "title": "Sections",
           "type": "array"
+        },
+        "summary": {
+          "$ref": "#/$defs/DiagnosticSummary"
         }
       },
       "required": [
         "instance_id",
         "collected_at",
         "sections",
+        "summary",
+        "registry",
+        "environment",
         "persistence"
       ],
       "title": "DiagnosticSnapshot",
+      "type": "object"
+    },
+    "DiagnosticSummary": {
+      "additionalProperties": false,
+      "properties": {
+        "counts_by_status": {
+          "additionalProperties": {
+            "type": "integer"
+          },
+          "title": "Counts By Status",
+          "type": "object"
+        },
+        "findings": {
+          "items": {
+            "$ref": "#/$defs/DiagnosticFinding"
+          },
+          "maxItems": 100,
+          "title": "Findings",
+          "type": "array"
+        },
+        "ready": {
+          "title": "Ready",
+          "type": "boolean"
+        },
+        "status": {
+          "enum": [
+            "ok",
+            "degraded",
+            "unavailable",
+            "unknown"
+          ],
+          "title": "Status",
+          "type": "string"
+        },
+        "truncated": {
+          "default": false,
+          "title": "Truncated",
+          "type": "boolean"
+        }
+      },
+      "required": [
+        "status",
+        "ready",
+        "counts_by_status"
+      ],
+      "title": "DiagnosticSummary",
       "type": "object"
     },
     "EventDelivery": {
@@ -6423,6 +7572,18 @@ data = result.model_dump(mode="json")
           "title": "Active",
           "type": "array"
         },
+        "active_dispatches": {
+          "default": 0,
+          "title": "Active Dispatches",
+          "type": "integer"
+        },
+        "active_listeners_by_owner": {
+          "additionalProperties": {
+            "type": "integer"
+          },
+          "title": "Active Listeners By Owner",
+          "type": "object"
+        },
         "emitted": {
           "title": "Emitted",
           "type": "integer"
@@ -6430,6 +7591,12 @@ data = result.model_dump(mode="json")
         "failed_listeners": {
           "title": "Failed Listeners",
           "type": "integer"
+        },
+        "notification_delivery": {
+          "const": "inline",
+          "default": "inline",
+          "title": "Notification Delivery",
+          "type": "string"
         },
         "pending_waits": {
           "default": 0,
@@ -6458,6 +7625,13 @@ data = result.model_dump(mode="json")
         "subscriptions": {
           "title": "Subscriptions",
           "type": "integer"
+        },
+        "subscriptions_by_owner": {
+          "additionalProperties": {
+            "type": "integer"
+          },
+          "title": "Subscriptions By Owner",
+          "type": "object"
         },
         "suppressed": {
           "title": "Suppressed",
@@ -6793,6 +7967,16 @@ data = result.model_dump(mode="json")
     "MetricsDiagnostics": {
       "additionalProperties": false,
       "properties": {
+        "attempts": {
+          "default": 0,
+          "title": "Attempts",
+          "type": "integer"
+        },
+        "failures": {
+          "default": 0,
+          "title": "Failures",
+          "type": "integer"
+        },
         "interval_seconds": {
           "anyOf": [
             {
@@ -6811,6 +7995,30 @@ data = result.model_dump(mode="json")
           "title": "Kind",
           "type": "string"
         },
+        "last_duration_ms": {
+          "anyOf": [
+            {
+              "type": "number"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Last Duration Ms"
+        },
+        "last_error_type": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Last Error Type"
+        },
         "last_sample_at": {
           "anyOf": [
             {
@@ -6823,6 +8031,11 @@ data = result.model_dump(mode="json")
           "default": null,
           "title": "Last Sample At"
         },
+        "missed_intervals": {
+          "default": 0,
+          "title": "Missed Intervals",
+          "type": "integer"
+        },
         "sample_age_seconds": {
           "anyOf": [
             {
@@ -6834,6 +8047,23 @@ data = result.model_dump(mode="json")
           ],
           "default": null,
           "title": "Sample Age Seconds"
+        },
+        "successes": {
+          "default": 0,
+          "title": "Successes",
+          "type": "integer"
+        },
+        "unavailable_measurements": {
+          "items": {
+            "type": "string"
+          },
+          "title": "Unavailable Measurements",
+          "type": "array"
+        },
+        "warming_up": {
+          "default": true,
+          "title": "Warming Up",
+          "type": "boolean"
         }
       },
       "title": "MetricsDiagnostics",
@@ -6852,20 +8082,6 @@ data = result.model_dump(mode="json")
         },
         "history_limit": {
           "title": "History Limit",
-          "type": "integer"
-        },
-        "max_providers": {
-          "default": 128,
-          "maximum": 1000,
-          "minimum": 9,
-          "title": "Max Providers",
-          "type": "integer"
-        },
-        "max_providers_per_owner": {
-          "default": 8,
-          "maximum": 50,
-          "minimum": 1,
-          "title": "Max Providers Per Owner",
           "type": "integer"
         },
         "queue_limit": {
@@ -6904,12 +8120,61 @@ data = result.model_dump(mode="json")
           "title": "Active Tasks",
           "type": "integer"
         },
+        "diagnostic_providers": {
+          "default": 0,
+          "title": "Diagnostic Providers",
+          "type": "integer"
+        },
+        "drain_failures": {
+          "default": 0,
+          "title": "Drain Failures",
+          "type": "integer"
+        },
         "draining": {
           "title": "Draining",
           "type": "boolean"
         },
         "generation": {
           "title": "Generation",
+          "type": "integer"
+        },
+        "last_drain_duration_ms": {
+          "anyOf": [
+            {
+              "type": "number"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Last Drain Duration Ms"
+        },
+        "last_transition_at": {
+          "anyOf": [
+            {
+              "type": "number"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Last Transition At"
+        },
+        "listeners": {
+          "default": 0,
+          "title": "Listeners",
+          "type": "integer"
+        },
+        "load_failures": {
+          "default": 0,
+          "title": "Load Failures",
+          "type": "integer"
+        },
+        "managed_tasks": {
+          "default": 0,
+          "title": "Managed Tasks",
           "type": "integer"
         },
         "name": {
@@ -6919,6 +8184,23 @@ data = result.model_dump(mode="json")
         "status": {
           "title": "Status",
           "type": "string"
+        },
+        "version": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Version"
+        },
+        "workers": {
+          "default": 0,
+          "title": "Workers",
+          "type": "integer"
         }
       },
       "required": [
@@ -6933,12 +8215,38 @@ data = result.model_dump(mode="json")
     },
     "PluginValues": {
       "additionalProperties": false,
+      "description": "Explicit observations; string dumps and secrets are excluded.",
       "properties": {
+        "health": {
+          "default": "unknown",
+          "enum": [
+            "ok",
+            "degraded",
+            "unknown"
+          ],
+          "title": "Health",
+          "type": "string"
+        },
         "kind": {
           "const": "plugin_values",
           "default": "plugin_values",
           "title": "Kind",
           "type": "string"
+        },
+        "units": {
+          "additionalProperties": {
+            "enum": [
+              "count",
+              "seconds",
+              "milliseconds",
+              "bytes",
+              "percent"
+            ],
+            "type": "string"
+          },
+          "maxProperties": 50,
+          "title": "Units",
+          "type": "object"
         },
         "values": {
           "additionalProperties": {
@@ -7001,6 +8309,30 @@ data = result.model_dump(mode="json")
         "expected_status": {
           "title": "Expected Status",
           "type": "string"
+        },
+        "last_error_type": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Last Error Type"
+        },
+        "observed_at": {
+          "anyOf": [
+            {
+              "type": "number"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Observed At"
         },
         "observed_running": {
           "anyOf": [
@@ -7104,6 +8436,70 @@ data = result.model_dump(mode="json")
       "title": "ProcessesDiagnostics",
       "type": "object"
     },
+    "RegistryDiagnostics": {
+      "additionalProperties": false,
+      "properties": {
+        "failures": {
+          "default": 0,
+          "title": "Failures",
+          "type": "integer"
+        },
+        "max_providers": {
+          "title": "Max Providers",
+          "type": "integer"
+        },
+        "max_providers_per_owner": {
+          "title": "Max Providers Per Owner",
+          "type": "integer"
+        },
+        "owner_limits_scope": {
+          "const": "plugins",
+          "default": "plugins",
+          "title": "Owner Limits Scope",
+          "type": "string"
+        },
+        "pending": {
+          "title": "Pending",
+          "type": "integer"
+        },
+        "pending_by_owner": {
+          "additionalProperties": {
+            "type": "integer"
+          },
+          "title": "Pending By Owner",
+          "type": "object"
+        },
+        "registered": {
+          "title": "Registered",
+          "type": "integer"
+        },
+        "registered_by_owner": {
+          "additionalProperties": {
+            "type": "integer"
+          },
+          "title": "Registered By Owner",
+          "type": "object"
+        },
+        "rejected": {
+          "default": 0,
+          "title": "Rejected",
+          "type": "integer"
+        },
+        "timeouts": {
+          "default": 0,
+          "title": "Timeouts",
+          "type": "integer"
+        }
+      },
+      "required": [
+        "registered",
+        "pending",
+        "max_providers",
+        "max_providers_per_owner"
+      ],
+      "title": "RegistryDiagnostics",
+      "type": "object"
+    },
     "RuntimeDiagnostics": {
       "additionalProperties": false,
       "properties": {
@@ -7124,6 +8520,11 @@ data = result.model_dump(mode="json")
         "python_version": {
           "title": "Python Version",
           "type": "string"
+        },
+        "ready": {
+          "default": false,
+          "title": "Ready",
+          "type": "boolean"
         },
         "shutdown_reason": {
           "anyOf": [
@@ -7160,6 +8561,42 @@ data = result.model_dump(mode="json")
           ],
           "default": null,
           "title": "Stage"
+        },
+        "stage_elapsed_seconds": {
+          "anyOf": [
+            {
+              "type": "number"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Stage Elapsed Seconds"
+        },
+        "stage_started_at": {
+          "anyOf": [
+            {
+              "type": "number"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Stage Started At"
+        },
+        "stage_timeout_seconds": {
+          "anyOf": [
+            {
+              "type": "number"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Stage Timeout Seconds"
         },
         "uptime_seconds": {
           "title": "Uptime Seconds",
@@ -7281,6 +8718,42 @@ data = result.model_dump(mode="json")
           "default": null,
           "title": "Last Error Type"
         },
+        "last_reload_at": {
+          "anyOf": [
+            {
+              "type": "number"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Last Reload At"
+        },
+        "last_reload_duration_ms": {
+          "anyOf": [
+            {
+              "type": "number"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Last Reload Duration Ms"
+        },
+        "last_reload_error_type": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Last Reload Error Type"
+        },
         "last_success_at": {
           "anyOf": [
             {
@@ -7305,10 +8778,45 @@ data = result.model_dump(mode="json")
           "default": null,
           "title": "Lock Wait Ms"
         },
+        "lock_waiters": {
+          "default": 0,
+          "title": "Lock Waiters",
+          "type": "integer"
+        },
+        "max_lock_wait_ms": {
+          "default": 0,
+          "title": "Max Lock Wait Ms",
+          "type": "number"
+        },
+        "reload_active": {
+          "default": false,
+          "title": "Reload Active",
+          "type": "boolean"
+        },
+        "reload_attempts": {
+          "default": 0,
+          "title": "Reload Attempts",
+          "type": "integer"
+        },
+        "reload_failures": {
+          "default": 0,
+          "title": "Reload Failures",
+          "type": "integer"
+        },
+        "reload_successes": {
+          "default": 0,
+          "title": "Reload Successes",
+          "type": "integer"
+        },
         "successes": {
           "default": 0,
           "title": "Successes",
           "type": "integer"
+        },
+        "total_lock_wait_ms": {
+          "default": 0,
+          "title": "Total Lock Wait Ms",
+          "type": "number"
         }
       },
       "title": "StorageDiagnostics",
@@ -7317,6 +8825,23 @@ data = result.model_dump(mode="json")
     "TaskDiagnostic": {
       "additionalProperties": false,
       "properties": {
+        "cancellation_requested": {
+          "default": false,
+          "title": "Cancellation Requested",
+          "type": "boolean"
+        },
+        "correlation_id": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Correlation Id"
+        },
         "elapsed_seconds": {
           "anyOf": [
             {
@@ -7345,6 +8870,11 @@ data = result.model_dump(mode="json")
           "title": "Id",
           "type": "string"
         },
+        "name": {
+          "default": "background_task",
+          "title": "Name",
+          "type": "string"
+        },
         "owner": {
           "anyOf": [
             {
@@ -7356,6 +8886,20 @@ data = result.model_dump(mode="json")
           ],
           "default": null,
           "title": "Owner"
+        },
+        "progress_percent": {
+          "anyOf": [
+            {
+              "maximum": 100,
+              "minimum": 0,
+              "type": "number"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Progress Percent"
         },
         "status": {
           "title": "Status",
@@ -7380,6 +8924,11 @@ data = result.model_dump(mode="json")
           "title": "Active",
           "type": "integer"
         },
+        "capacity": {
+          "default": 100,
+          "title": "Capacity",
+          "type": "integer"
+        },
         "counts_by_status": {
           "additionalProperties": {
             "type": "integer"
@@ -7392,6 +8941,18 @@ data = result.model_dump(mode="json")
           "default": "tasks",
           "title": "Kind",
           "type": "string"
+        },
+        "oldest_active_seconds": {
+          "anyOf": [
+            {
+              "type": "number"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Oldest Active Seconds"
         },
         "tasks": {
           "items": {
@@ -7412,6 +8973,16 @@ data = result.model_dump(mode="json")
     "TransportDiagnostics": {
       "additionalProperties": false,
       "properties": {
+        "accepting": {
+          "default": true,
+          "title": "Accepting",
+          "type": "boolean"
+        },
+        "active_sends": {
+          "default": 0,
+          "title": "Active Sends",
+          "type": "integer"
+        },
         "connected_clients": {
           "title": "Connected Clients",
           "type": "integer"
@@ -7422,9 +8993,26 @@ data = result.model_dump(mode="json")
           "title": "Delivery Mode",
           "type": "string"
         },
+        "disconnects_by_reason": {
+          "additionalProperties": {
+            "type": "integer"
+          },
+          "title": "Disconnects By Reason",
+          "type": "object"
+        },
+        "dropped_messages": {
+          "default": 0,
+          "title": "Dropped Messages",
+          "type": "integer"
+        },
         "failed_sends": {
           "default": 0,
           "title": "Failed Sends",
+          "type": "integer"
+        },
+        "high_water_mark": {
+          "default": 0,
+          "title": "High Water Mark",
           "type": "integer"
         },
         "kind": {
@@ -7432,6 +9020,50 @@ data = result.model_dump(mode="json")
           "default": "transport",
           "title": "Kind",
           "type": "string"
+        },
+        "last_send_at": {
+          "anyOf": [
+            {
+              "type": "number"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Last Send At"
+        },
+        "last_send_duration_ms": {
+          "anyOf": [
+            {
+              "type": "number"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Last Send Duration Ms"
+        },
+        "max_pending_per_client": {
+          "default": 0,
+          "title": "Max Pending Per Client",
+          "type": "integer"
+        },
+        "pending_sends": {
+          "default": 0,
+          "title": "Pending Sends",
+          "type": "integer"
+        },
+        "queue_limit_per_client": {
+          "default": 64,
+          "title": "Queue Limit Per Client",
+          "type": "integer"
+        },
+        "send_timeouts": {
+          "default": 0,
+          "title": "Send Timeouts",
+          "type": "integer"
         },
         "subscriptions": {
           "title": "Subscriptions",
@@ -7458,8 +9090,27 @@ data = result.model_dump(mode="json")
   },
   "additionalProperties": false,
   "properties": {
+    "generated_at": {
+      "title": "Generated At",
+      "type": "number"
+    },
     "history": {
       "$ref": "#/$defs/DiagnosticHistory"
+    },
+    "report_id": {
+      "title": "Report Id",
+      "type": "string"
+    },
+    "runs": {
+      "anyOf": [
+        {
+          "$ref": "#/$defs/DiagnosticRuns"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null
     },
     "snapshot": {
       "$ref": "#/$defs/DiagnosticSnapshot"
@@ -7535,6 +9186,1027 @@ data = result.model_dump(mode="json")
 | Name | Type | Default |
 |------|------|---------|
 | `request` | `bedrock_server_manager.api.models.diagnostics.GetDiagnosticReportRequest` | `REQUIRED` |
+
+---
+
+
+## `diagnostics.get_diagnostic_runs`
+```python
+await self.api.diagnostics.get_diagnostic_runs(request: bedrock_server_manager.api.models.diagnostics.GetDiagnosticRunsRequest)
+```
+- **Async (Requires await):** Yes
+
+- **Description:** List retained application instances without guessing whether older runs are alive.
+
+- **Returns:** `GetDiagnosticRunsResponse`
+
+Runtime context and plugin identity are injected by the bridge. Failures raise application exceptions; plugin cancellation raises `APICancelledError`.
+
+```python
+from bedrock_server_manager.api.models import GetDiagnosticRunsRequest
+payload = {}
+request = GetDiagnosticRunsRequest(**payload)
+result = await self.api.diagnostics.get_diagnostic_runs(request)
+data = result.model_dump(mode="json")
+```
+
+**Request schema:**
+
+```json
+{
+  "additionalProperties": false,
+  "properties": {
+    "limit": {
+      "default": 20,
+      "maximum": 50,
+      "minimum": 1,
+      "title": "Limit",
+      "type": "integer"
+    }
+  },
+  "title": "GetDiagnosticRunsRequest",
+  "type": "object"
+}
+```
+
+**Response schema:**
+
+```json
+{
+  "$defs": {
+    "DiagnosticRun": {
+      "additionalProperties": false,
+      "properties": {
+        "backend_version": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Backend Version"
+        },
+        "cancelled_records": {
+          "title": "Cancelled Records",
+          "type": "integer"
+        },
+        "current_instance": {
+          "title": "Current Instance",
+          "type": "boolean"
+        },
+        "failed_records": {
+          "title": "Failed Records",
+          "type": "integer"
+        },
+        "first_record_at": {
+          "title": "First Record At",
+          "type": "number"
+        },
+        "instance_id": {
+          "title": "Instance Id",
+          "type": "string"
+        },
+        "last_observed_phase": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Last Observed Phase"
+        },
+        "last_record_at": {
+          "title": "Last Record At",
+          "type": "number"
+        },
+        "recording_closed": {
+          "anyOf": [
+            {
+              "type": "boolean"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Recording Closed"
+        },
+        "retained_records": {
+          "title": "Retained Records",
+          "type": "integer"
+        }
+      },
+      "required": [
+        "instance_id",
+        "first_record_at",
+        "last_record_at",
+        "retained_records",
+        "failed_records",
+        "cancelled_records",
+        "current_instance"
+      ],
+      "title": "DiagnosticRun",
+      "type": "object"
+    }
+  },
+  "additionalProperties": false,
+  "properties": {
+    "available": {
+      "title": "Available",
+      "type": "boolean"
+    },
+    "runs": {
+      "items": {
+        "$ref": "#/$defs/DiagnosticRun"
+      },
+      "title": "Runs",
+      "type": "array"
+    },
+    "truncated": {
+      "title": "Truncated",
+      "type": "boolean"
+    }
+  },
+  "required": [
+    "runs",
+    "available",
+    "truncated"
+  ],
+  "title": "GetDiagnosticRunsResponse",
+  "type": "object"
+}
+```
+
+**Transport error schema:**
+
+```json
+{
+  "$defs": {
+    "JsonValue": {}
+  },
+  "additionalProperties": false,
+  "description": "Safe serialized failure; Python callers receive exceptions.",
+  "properties": {
+    "code": {
+      "enum": [
+        "validation_error",
+        "not_found",
+        "conflict",
+        "forbidden",
+        "unauthorized",
+        "http_error",
+        "operation_canceled",
+        "invalid_server_name",
+        "server_start_failed",
+        "server_stop_failed",
+        "server_error",
+        "application_error",
+        "internal_error",
+        "unavailable",
+        "operation_incomplete",
+        "file_error",
+        "storage_error",
+        "configuration_error",
+        "network_error",
+        "system_error"
+      ],
+      "title": "Code",
+      "type": "string"
+    },
+    "details": {
+      "additionalProperties": {
+        "$ref": "#/$defs/JsonValue"
+      },
+      "title": "Details",
+      "type": "object"
+    },
+    "message": {
+      "title": "Message",
+      "type": "string"
+    }
+  },
+  "required": [
+    "code",
+    "message"
+  ],
+  "title": "APIErrorResponse",
+  "type": "object"
+}
+```
+**Parameters:**
+
+| Name | Type | Default |
+|------|------|---------|
+| `request` | `bedrock_server_manager.api.models.diagnostics.GetDiagnosticRunsRequest` | `REQUIRED` |
+
+---
+
+
+## `diagnostics.get_diagnostic_trace`
+```python
+await self.api.diagnostics.get_diagnostic_trace(request: bedrock_server_manager.api.models.diagnostics.GetDiagnosticTraceRequest)
+```
+- **Async (Requires await):** Yes
+
+- **Description:** Read events, tasks, and retained failures sharing one correlation identity.
+
+- **Returns:** `GetDiagnosticTraceResponse`
+
+Runtime context and plugin identity are injected by the bridge. Failures raise application exceptions; plugin cancellation raises `APICancelledError`.
+
+```python
+from bedrock_server_manager.api.models import GetDiagnosticTraceRequest
+payload = {...}  # Supply required request fields below.
+request = GetDiagnosticTraceRequest(**payload)
+result = await self.api.diagnostics.get_diagnostic_trace(request)
+data = result.model_dump(mode="json")
+```
+
+**Request schema:**
+
+```json
+{
+  "additionalProperties": false,
+  "properties": {
+    "correlation_id": {
+      "maxLength": 160,
+      "minLength": 1,
+      "title": "Correlation Id",
+      "type": "string"
+    },
+    "cursor": {
+      "anyOf": [
+        {
+          "maxLength": 512,
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "title": "Cursor"
+    },
+    "limit": {
+      "default": 100,
+      "maximum": 200,
+      "minimum": 1,
+      "title": "Limit",
+      "type": "integer"
+    }
+  },
+  "required": [
+    "correlation_id"
+  ],
+  "title": "GetDiagnosticTraceRequest",
+  "type": "object"
+}
+```
+
+**Response schema:**
+
+```json
+{
+  "$defs": {
+    "DiagnosticHistory": {
+      "additionalProperties": false,
+      "properties": {
+        "available": {
+          "title": "Available",
+          "type": "boolean"
+        },
+        "next_cursor": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Next Cursor"
+        },
+        "records": {
+          "items": {
+            "$ref": "#/$defs/DiagnosticRecord"
+          },
+          "title": "Records",
+          "type": "array"
+        },
+        "truncated": {
+          "title": "Truncated",
+          "type": "boolean"
+        }
+      },
+      "required": [
+        "records",
+        "available",
+        "truncated"
+      ],
+      "title": "DiagnosticHistory",
+      "type": "object"
+    },
+    "DiagnosticRecord": {
+      "additionalProperties": false,
+      "properties": {
+        "backend_version": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Backend Version"
+        },
+        "code": {
+          "maxLength": 80,
+          "title": "Code",
+          "type": "string"
+        },
+        "correlation_id": {
+          "anyOf": [
+            {
+              "maxLength": 160,
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Correlation Id"
+        },
+        "duration_ms": {
+          "anyOf": [
+            {
+              "minimum": 0,
+              "type": "number"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Duration Ms"
+        },
+        "error_type": {
+          "anyOf": [
+            {
+              "maxLength": 80,
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Error Type"
+        },
+        "id": {
+          "title": "Id",
+          "type": "string"
+        },
+        "instance_id": {
+          "title": "Instance Id",
+          "type": "string"
+        },
+        "operation": {
+          "maxLength": 160,
+          "title": "Operation",
+          "type": "string"
+        },
+        "operation_id": {
+          "anyOf": [
+            {
+              "maxLength": 160,
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Operation Id"
+        },
+        "outcome": {
+          "enum": [
+            "completed",
+            "failed",
+            "cancelled"
+          ],
+          "title": "Outcome",
+          "type": "string"
+        },
+        "owner": {
+          "anyOf": [
+            {
+              "maxLength": 160,
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Owner"
+        },
+        "phase": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Phase"
+        },
+        "subsystem": {
+          "maxLength": 80,
+          "pattern": "^[\\w.:-]+$",
+          "title": "Subsystem",
+          "type": "string"
+        },
+        "timestamp": {
+          "title": "Timestamp",
+          "type": "number"
+        }
+      },
+      "required": [
+        "id",
+        "instance_id",
+        "timestamp",
+        "subsystem",
+        "operation",
+        "outcome",
+        "code"
+      ],
+      "title": "DiagnosticRecord",
+      "type": "object"
+    },
+    "EventDelivery": {
+      "additionalProperties": false,
+      "properties": {
+        "failed": {
+          "default": 0,
+          "minimum": 0,
+          "title": "Failed",
+          "type": "integer"
+        },
+        "owner": {
+          "title": "Owner",
+          "type": "string"
+        },
+        "sent": {
+          "default": 0,
+          "minimum": 0,
+          "title": "Sent",
+          "type": "integer"
+        },
+        "targeted": {
+          "default": 0,
+          "minimum": 0,
+          "title": "Targeted",
+          "type": "integer"
+        },
+        "unavailable": {
+          "default": 0,
+          "minimum": 0,
+          "title": "Unavailable",
+          "type": "integer"
+        }
+      },
+      "required": [
+        "owner"
+      ],
+      "title": "EventDelivery",
+      "type": "object"
+    },
+    "EventDiagnostics": {
+      "additionalProperties": false,
+      "properties": {
+        "accepting": {
+          "title": "Accepting",
+          "type": "boolean"
+        },
+        "active": {
+          "items": {
+            "$ref": "#/$defs/EventRecord"
+          },
+          "title": "Active",
+          "type": "array"
+        },
+        "active_dispatches": {
+          "default": 0,
+          "title": "Active Dispatches",
+          "type": "integer"
+        },
+        "active_listeners_by_owner": {
+          "additionalProperties": {
+            "type": "integer"
+          },
+          "title": "Active Listeners By Owner",
+          "type": "object"
+        },
+        "emitted": {
+          "title": "Emitted",
+          "type": "integer"
+        },
+        "failed_listeners": {
+          "title": "Failed Listeners",
+          "type": "integer"
+        },
+        "notification_delivery": {
+          "const": "inline",
+          "default": "inline",
+          "title": "Notification Delivery",
+          "type": "string"
+        },
+        "pending_waits": {
+          "default": 0,
+          "title": "Pending Waits",
+          "type": "integer"
+        },
+        "pending_workers": {
+          "default": 0,
+          "title": "Pending Workers",
+          "type": "integer"
+        },
+        "recent": {
+          "items": {
+            "$ref": "#/$defs/EventRecord"
+          },
+          "title": "Recent",
+          "type": "array"
+        },
+        "rejections_by_reason": {
+          "additionalProperties": {
+            "type": "integer"
+          },
+          "title": "Rejections By Reason",
+          "type": "object"
+        },
+        "subscriptions": {
+          "title": "Subscriptions",
+          "type": "integer"
+        },
+        "subscriptions_by_owner": {
+          "additionalProperties": {
+            "type": "integer"
+          },
+          "title": "Subscriptions By Owner",
+          "type": "object"
+        },
+        "suppressed": {
+          "title": "Suppressed",
+          "type": "integer"
+        },
+        "timeouts_by_owner": {
+          "additionalProperties": {
+            "type": "integer"
+          },
+          "title": "Timeouts By Owner",
+          "type": "object"
+        },
+        "workers_by_owner": {
+          "additionalProperties": {
+            "type": "integer"
+          },
+          "title": "Workers By Owner",
+          "type": "object"
+        }
+      },
+      "required": [
+        "accepting",
+        "emitted",
+        "suppressed",
+        "failed_listeners",
+        "subscriptions",
+        "active",
+        "recent"
+      ],
+      "title": "EventDiagnostics",
+      "type": "object"
+    },
+    "EventRecord": {
+      "additionalProperties": false,
+      "properties": {
+        "cancellation_reason": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Cancellation Reason"
+        },
+        "correlation_id": {
+          "title": "Correlation Id",
+          "type": "string"
+        },
+        "deliveries": {
+          "items": {
+            "$ref": "#/$defs/EventDelivery"
+          },
+          "title": "Deliveries",
+          "type": "array"
+        },
+        "duration_ms": {
+          "default": 0,
+          "title": "Duration Ms",
+          "type": "number"
+        },
+        "event_id": {
+          "title": "Event Id",
+          "type": "string"
+        },
+        "failures": {
+          "items": {
+            "$ref": "#/$defs/ListenerFailure"
+          },
+          "title": "Failures",
+          "type": "array"
+        },
+        "listeners": {
+          "items": {
+            "$ref": "#/$defs/ListenerRecord"
+          },
+          "title": "Listeners",
+          "type": "array"
+        },
+        "listeners_called": {
+          "default": 0,
+          "title": "Listeners Called",
+          "type": "integer"
+        },
+        "name": {
+          "title": "Name",
+          "type": "string"
+        },
+        "parent_event_id": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Parent Event Id"
+        },
+        "rejection_reason": {
+          "anyOf": [
+            {
+              "enum": [
+                "recursion",
+                "depth_limit",
+                "capacity",
+                "shutdown"
+              ],
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Rejection Reason"
+        },
+        "source": {
+          "title": "Source",
+          "type": "string"
+        },
+        "status": {
+          "enum": [
+            "dispatching",
+            "completed",
+            "partial",
+            "cancelled",
+            "suppressed"
+          ],
+          "title": "Status",
+          "type": "string"
+        },
+        "timestamp": {
+          "title": "Timestamp",
+          "type": "number"
+        }
+      },
+      "required": [
+        "event_id",
+        "correlation_id",
+        "name",
+        "source",
+        "timestamp",
+        "status"
+      ],
+      "title": "EventRecord",
+      "type": "object"
+    },
+    "ListenerFailure": {
+      "additionalProperties": false,
+      "properties": {
+        "code": {
+          "enum": [
+            "event_listener_failed",
+            "event_listener_timeout",
+            "event_depth_limit",
+            "event_capacity"
+          ],
+          "title": "Code",
+          "type": "string"
+        },
+        "error_type": {
+          "title": "Error Type",
+          "type": "string"
+        },
+        "owner": {
+          "title": "Owner",
+          "type": "string"
+        }
+      },
+      "required": [
+        "owner",
+        "error_type",
+        "code"
+      ],
+      "title": "ListenerFailure",
+      "type": "object"
+    },
+    "ListenerRecord": {
+      "additionalProperties": false,
+      "properties": {
+        "duration_ms": {
+          "default": 0,
+          "minimum": 0,
+          "title": "Duration Ms",
+          "type": "number"
+        },
+        "failure": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/ListenerFailure"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null
+        },
+        "listener_name": {
+          "title": "Listener Name",
+          "type": "string"
+        },
+        "observer": {
+          "title": "Observer",
+          "type": "boolean"
+        },
+        "owner": {
+          "title": "Owner",
+          "type": "string"
+        },
+        "status": {
+          "default": "running",
+          "enum": [
+            "running",
+            "completed",
+            "failed",
+            "timed_out",
+            "cancelled"
+          ],
+          "title": "Status",
+          "type": "string"
+        },
+        "subscription_id": {
+          "title": "Subscription Id",
+          "type": "string"
+        }
+      },
+      "required": [
+        "subscription_id",
+        "owner",
+        "observer",
+        "listener_name"
+      ],
+      "title": "ListenerRecord",
+      "type": "object"
+    },
+    "TaskDiagnostic": {
+      "additionalProperties": false,
+      "properties": {
+        "cancellation_requested": {
+          "default": false,
+          "title": "Cancellation Requested",
+          "type": "boolean"
+        },
+        "correlation_id": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Correlation Id"
+        },
+        "elapsed_seconds": {
+          "anyOf": [
+            {
+              "type": "number"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Elapsed Seconds"
+        },
+        "error_code": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Error Code"
+        },
+        "id": {
+          "title": "Id",
+          "type": "string"
+        },
+        "name": {
+          "default": "background_task",
+          "title": "Name",
+          "type": "string"
+        },
+        "owner": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Owner"
+        },
+        "progress_percent": {
+          "anyOf": [
+            {
+              "maximum": 100,
+              "minimum": 0,
+              "type": "number"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Progress Percent"
+        },
+        "status": {
+          "title": "Status",
+          "type": "string"
+        }
+      },
+      "required": [
+        "id",
+        "status"
+      ],
+      "title": "TaskDiagnostic",
+      "type": "object"
+    }
+  },
+  "additionalProperties": false,
+  "properties": {
+    "correlation_id": {
+      "title": "Correlation Id",
+      "type": "string"
+    },
+    "events": {
+      "anyOf": [
+        {
+          "$ref": "#/$defs/EventDiagnostics"
+        },
+        {
+          "type": "null"
+        }
+      ]
+    },
+    "history": {
+      "$ref": "#/$defs/DiagnosticHistory"
+    },
+    "tasks": {
+      "items": {
+        "$ref": "#/$defs/TaskDiagnostic"
+      },
+      "title": "Tasks",
+      "type": "array"
+    },
+    "tasks_available": {
+      "title": "Tasks Available",
+      "type": "boolean"
+    },
+    "truncated": {
+      "default": false,
+      "title": "Truncated",
+      "type": "boolean"
+    }
+  },
+  "required": [
+    "correlation_id",
+    "events",
+    "tasks",
+    "tasks_available",
+    "history"
+  ],
+  "title": "GetDiagnosticTraceResponse",
+  "type": "object"
+}
+```
+
+**Transport error schema:**
+
+```json
+{
+  "$defs": {
+    "JsonValue": {}
+  },
+  "additionalProperties": false,
+  "description": "Safe serialized failure; Python callers receive exceptions.",
+  "properties": {
+    "code": {
+      "enum": [
+        "validation_error",
+        "not_found",
+        "conflict",
+        "forbidden",
+        "unauthorized",
+        "http_error",
+        "operation_canceled",
+        "invalid_server_name",
+        "server_start_failed",
+        "server_stop_failed",
+        "server_error",
+        "application_error",
+        "internal_error",
+        "unavailable",
+        "operation_incomplete",
+        "file_error",
+        "storage_error",
+        "configuration_error",
+        "network_error",
+        "system_error"
+      ],
+      "title": "Code",
+      "type": "string"
+    },
+    "details": {
+      "additionalProperties": {
+        "$ref": "#/$defs/JsonValue"
+      },
+      "title": "Details",
+      "type": "object"
+    },
+    "message": {
+      "title": "Message",
+      "type": "string"
+    }
+  },
+  "required": [
+    "code",
+    "message"
+  ],
+  "title": "APIErrorResponse",
+  "type": "object"
+}
+```
+**Parameters:**
+
+| Name | Type | Default |
+|------|------|---------|
+| `request` | `bedrock_server_manager.api.models.diagnostics.GetDiagnosticTraceRequest` | `REQUIRED` |
 
 ---
 

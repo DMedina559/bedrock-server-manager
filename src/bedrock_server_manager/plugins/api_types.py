@@ -45,6 +45,10 @@ from bedrock_server_manager.api.models import (
     GetDiagnosticHistoryResponse,
     GetDiagnosticReportRequest,
     GetDiagnosticReportResponse,
+    GetDiagnosticRunsRequest,
+    GetDiagnosticRunsResponse,
+    GetDiagnosticTraceRequest,
+    GetDiagnosticTraceResponse,
     GetGlobalSettingRequest,
     GetGlobalSettingResponse,
     GetPermissionsRequest,
@@ -256,6 +260,14 @@ class DiagnosticsAPI(Protocol):
     async def get_diagnostic_report(
         self, request: GetDiagnosticReportRequest | Mapping[str, object]
     ) -> GetDiagnosticReportResponse: ...
+
+    async def get_diagnostic_runs(
+        self, request: GetDiagnosticRunsRequest | Mapping[str, object]
+    ) -> GetDiagnosticRunsResponse: ...
+
+    async def get_diagnostic_trace(
+        self, request: GetDiagnosticTraceRequest | Mapping[str, object]
+    ) -> GetDiagnosticTraceResponse: ...
 
 
 class InstallAPI(Protocol):
@@ -473,6 +485,8 @@ class RuntimeAPI(Protocol):
         self, name: str, handler: Callable[..., Any]
     ) -> None: ...
 
+    async def report_task_progress(self, percent: float) -> None: ...
+
 
 API_METHODS: dict[str, dict[str, str]] = {
     "addon": {
@@ -509,6 +523,8 @@ API_METHODS: dict[str, dict[str, str]] = {
         "get_application_diagnostics": "get_application_diagnostics",
         "get_diagnostic_history": "get_diagnostic_history",
         "get_diagnostic_report": "get_diagnostic_report",
+        "get_diagnostic_runs": "get_diagnostic_runs",
+        "get_diagnostic_trace": "get_diagnostic_trace",
     },
     "install": {
         "install_new_server": "install_new_server",

@@ -10,6 +10,10 @@ from .models.diagnostics import (
     GetDiagnosticHistoryResponse,
     GetDiagnosticReportRequest,
     GetDiagnosticReportResponse,
+    GetDiagnosticRunsRequest,
+    GetDiagnosticRunsResponse,
+    GetDiagnosticTraceRequest,
+    GetDiagnosticTraceResponse,
 )
 
 
@@ -38,7 +42,25 @@ async def get_diagnostic_report(
     request: GetDiagnosticReportRequest, *, app_context: AppContext
 ) -> GetDiagnosticReportResponse:
     """Build a support report without secrets, task arguments, or event payloads."""
-    return GetDiagnosticReportResponse(
-        snapshot=await app_context.diagnostics.snapshot(),
-        history=await app_context.diagnostics.history.read(),
+    report = await app_context.diagnostics.report()
+    return GetDiagnosticReportResponse.model_validate(report.model_dump())
+
+
+@api_method("get_diagnostic_runs")
+async def get_diagnostic_runs(
+    request: GetDiagnosticRunsRequest, *, app_context: AppContext
+) -> GetDiagnosticRunsResponse:
+    """List retained application instances without guessing whether older runs are alive."""
+    runs = await app_context.diagnostics.history.runs(
+        current_instance=app_context.diagnostics.instance_id, limit=request.limit
     )
+    return GetDiagnosticRunsResponse.model_validate(runs.model_dump())
+
+
+@api_method("get_diagnostic_trace")
+async def get_diagnostic_trace(
+    request: GetDiagnosticTraceRequest, *, app_context: AppContext
+) -> GetDiagnosticTraceResponse:
+    """Read events, tasks, and retained failures sharing one correlation identity."""
+    trace = await app_context.diagnostics.trace(**request.model_dump())
+    return GetDiagnosticTraceResponse.model_validate(trace.model_dump())

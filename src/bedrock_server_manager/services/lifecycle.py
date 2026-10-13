@@ -48,6 +48,9 @@ async def run_stage(
     failure: BaseException | None = None
     if diagnostics is not None:
         diagnostics.stage = name
+        diagnostics.stage_started_at = time.time()
+        diagnostics.stage_started_monotonic = started
+        diagnostics.stage_timeout_seconds = timeout
     task = asyncio.create_task(invoke(), name=f"lifecycle:{name}")
     _pending.add(task)
     task.add_done_callback(_consume)
@@ -89,3 +92,6 @@ async def run_stage(
             diagnostics.record("lifecycle", name, started=started, error=failure)
             if diagnostics.stage == name:
                 diagnostics.stage = None
+                diagnostics.stage_started_at = None
+                diagnostics.stage_started_monotonic = None
+                diagnostics.stage_timeout_seconds = None

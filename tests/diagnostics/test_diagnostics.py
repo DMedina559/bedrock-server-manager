@@ -31,7 +31,7 @@ async def test_history_survives_restart_and_retains_only_bounded_metadata(db):
     assert result.available and len(result.records) == 2
     assert all(record.instance_id == previous_instance for record in result.records)
     assert "SECRET" not in result.model_dump_json()
-    assert result.records[0].error_type == "RuntimeError"
+    assert any(record.error_type == "RuntimeError" for record in result.records)
     await restarted.close()
 
 

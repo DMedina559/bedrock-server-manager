@@ -3,7 +3,6 @@
 import os
 import platform
 import time
-from collections import Counter
 from typing import TYPE_CHECKING
 
 from .. import __version__
@@ -13,15 +12,10 @@ from .models import (
     DiagnosticOptions,
     EventsDiagnostics,
     MetricsDiagnostics,
-    PluginDiagnostic,
-    PluginsDiagnostics,
     ProcessDiagnostic,
     ProcessesDiagnostics,
     RuntimeDiagnostics,
     StateDiagnostics,
-    TaskDiagnostic,
-    TasksDiagnostics,
-    TransportDiagnostics,
 )
 from .service import Diagnostics
 
@@ -33,6 +27,18 @@ def configure_diagnostics(context: "AppContext") -> Diagnostics:
     """Compose metadata providers without eagerly initializing runtime services."""
     options = DiagnosticOptions.model_validate(context.settings.get("diagnostics", {}))
     service = Diagnostics(DiagnosticHistoryStore(context.db, options), options)
+    service.storage = context.storage.telemetry
+    service.event_activity_provider = lambda query: (
+        context._events.diagnostics(query) if context._events else None
+    )
+    service.task_snapshot_provider = lambda: (
+        context._task_manager.diagnostic_snapshot() if context._task_manager else None
+    )
+    service.phase_provider = lambda: context.lifecycle_phase
+    service.environment.database_dialect = (
+        context.db.engine.dialect.name if context.db.engine else None
+    )
+    service.environment.database_schema_revision = context.db.schema_revision
 
     async def runtime():
         web = (
@@ -41,6 +47,15 @@ def configure_diagnostics(context: "AppContext") -> Diagnostics:
             else None
         )
         return RuntimeDiagnostics(
+            ready=context.lifecycle_phase == "ready"
+            and (web is None or web.phase == "ready"),
+            stage_started_at=service.stage_started_at,
+            stage_elapsed_seconds=(
+                max(0, time.monotonic() - service.stage_started_monotonic)
+                if service.stage_started_monotonic is not None
+                else None
+            ),
+            stage_timeout_seconds=service.stage_timeout_seconds,
             phase=context.lifecycle_phase,
             stage=service.stage,
             shutdown_requested=web.shutdown_requested if web else None,
@@ -83,7 +98,7 @@ def configure_diagnostics(context: "AppContext") -> Diagnostics:
             )
 
     async def storage():
-        return service.storage.model_copy(deep=True)
+        return context.storage.diagnostic_snapshot()
 
     async def events():
         from ..events.models import EventActivityQuery
@@ -102,63 +117,31 @@ def configure_diagnostics(context: "AppContext") -> Diagnostics:
         manager = context._connection_manager
         if manager is None:
             raise RuntimeError("Transport not initialized")
-        return TransportDiagnostics(
-            connected_clients=len(manager.active_connections),
-            subscriptions=sum(
-                len(clients) for clients in manager.subscriptions.values()
-            ),
-            topics=len(manager.subscriptions),
-            successful_sends=manager.successful_sends,
-            failed_sends=manager.failed_sends,
-        )
+        return manager.diagnostic_snapshot()
 
     async def plugins():
         manager = context._plugin_manager
         if manager is None:
             raise RuntimeError("Plugins not initialized")
-        names = sorted(context.state.plugins.plugins)
-        return PluginsDiagnostics(
-            total=len(names),
-            truncated=len(names) > 100,
-            plugins=[
-                PluginDiagnostic(
-                    name=name,
-                    status=manager.get_plugin_status(name),
-                    generation=manager.events.owner_generation(f"plugin:{name}"),
-                    active_tasks=len(manager.get_plugin_runtime(name).active_tasks),
-                    draining=name in manager._draining_plugins
-                    or manager.diagnostic_pending(name),
-                )
-                for name in names[:100]
-            ],
+        from ..events.models import EventActivityQuery
+
+        activity = context.events.diagnostics(EventActivityQuery(limit=1))
+        owned = (
+            context._task_manager.diagnostic_snapshot().tasks
+            if context._task_manager
+            else []
+        )
+        return manager.diagnostic_snapshot(
+            event_activity=activity,
+            registered_providers=service.registry_snapshot().registered_by_owner,
+            managed_tasks=owned,
         )
 
     async def tasks():
         manager = context._task_manager
         if manager is None:
             raise RuntimeError("Tasks not initialized")
-        return TasksDiagnostics(
-            tasks=[
-                TaskDiagnostic(
-                    id=task_id,
-                    owner=manager._plugin_owners.get(task_id),
-                    status=record.status,
-                    error_code=record.error.code if record.error else None,
-                    elapsed_seconds=(
-                        (manager._timing[task_id][1] or time.monotonic())
-                        - manager._timing[task_id][0]
-                        if task_id in manager._timing
-                        else None
-                    ),
-                )
-                for task_id, record in manager.tasks.items()
-            ],
-            active=manager.active_task_count,
-            counts_by_status=dict(
-                Counter(item.status for item in manager.tasks.values())
-            ),
-            accepting=not manager._shutdown_started,
-        )
+        return manager.diagnostic_snapshot()
 
     async def processes():
         current = context.state
@@ -174,6 +157,12 @@ def configure_diagnostics(context: "AppContext") -> Diagnostics:
                         observed[name].running if name in observed else None
                     ),
                     pid=observed[name].pid if name in observed else None,
+                    observed_at=(
+                        manager.monitor_observations.get(name) if manager else None
+                    ),
+                    last_error_type=(
+                        manager.monitor_errors.get(name) if manager else None
+                    ),
                 )
                 for name, record in list(registered.items())[:100]
             ],
@@ -187,14 +176,9 @@ def configure_diagnostics(context: "AppContext") -> Diagnostics:
 
     async def metrics():
         manager = context._metrics_service
-        if manager is None or not manager._history:
+        if manager is None:
             return MetricsDiagnostics()
-        sampled = manager._history[-1].timestamp
-        return MetricsDiagnostics(
-            last_sample_at=sampled,
-            sample_age_seconds=max(0, time.time() - sampled),
-            interval_seconds=manager.interval_seconds,
-        )
+        return manager.diagnostic_snapshot()
 
     for name, provider in (
         ("runtime", runtime),

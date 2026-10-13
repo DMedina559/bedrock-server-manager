@@ -70,6 +70,10 @@ from .diagnostics import (
     GetDiagnosticHistoryResponse,
     GetDiagnosticReportRequest,
     GetDiagnosticReportResponse,
+    GetDiagnosticRunsRequest,
+    GetDiagnosticRunsResponse,
+    GetDiagnosticTraceRequest,
+    GetDiagnosticTraceResponse,
 )
 from .health import (
     GetApplicationHealthRequest,
@@ -406,4 +410,8 @@ __all__ += [
     "GetDiagnosticHistoryResponse",
     "GetDiagnosticReportRequest",
     "GetDiagnosticReportResponse",
+    "GetDiagnosticRunsRequest",
+    "GetDiagnosticRunsResponse",
+    "GetDiagnosticTraceRequest",
+    "GetDiagnosticTraceResponse",
 ]

@@ -3,7 +3,7 @@
 import asyncio
 import inspect
 import logging
-from collections import deque
+from collections import Counter, deque
 from contextlib import contextmanager
 from contextvars import ContextVar
 from copy import deepcopy
@@ -39,12 +39,17 @@ _correlation: ContextVar[str | None] = ContextVar("event_correlation", default=N
 
 
 @contextmanager
-def correlation_scope():
-    token = _correlation.set(_correlation.get() or uuid4().hex)
+def correlation_scope(identifier: str | None = None):
+    token = _correlation.set(_correlation.get() or identifier or uuid4().hex)
     try:
         yield
     finally:
         _correlation.reset(token)
+
+
+def current_correlation_id() -> str | None:
+    """Read the active operation's correlation identity."""
+    return _correlation.get()
 
 
 def _callback_identity(callback: Callable[..., Any]) -> tuple[int, int]:
@@ -688,6 +693,20 @@ class EventBus:
             suppressed=self.suppressed,
             failed_listeners=self.failed_listeners,
             subscriptions=len(self._subscriptions),
+            active_dispatches=len(self._active),
+            subscriptions_by_owner=dict(
+                Counter(
+                    subscription.owner for subscription in self._subscriptions.values()
+                )
+            ),
+            active_listeners_by_owner=dict(
+                Counter(
+                    listener.owner
+                    for record in self._active.values()
+                    for listener in record.listeners
+                    if listener.status == "running"
+                )
+            ),
             pending_workers=sum(map(len, self._workers.values())),
             workers_by_owner={
                 owner: len(workers) for owner, workers in self._workers.items()

@@ -14,6 +14,7 @@ from ..api.models.metrics import (
     MetricsSample,
     ServerMetrics,
 )
+from ..diagnostics.models import MetricsDiagnostics
 from ..logging import RepeatedFailureReporter
 from ..state_revision import revision_clock
 
@@ -38,6 +39,8 @@ class MetricsService:
         self._cpu: Any = None
         self._time: float | None = None
         self._failures = RepeatedFailureReporter(logger)
+        self.telemetry = MetricsDiagnostics()
+        self._last_success_monotonic: float | None = None
 
     @property
     def interval_seconds(self) -> float:
@@ -126,47 +129,106 @@ class MetricsService:
 
     async def sample(self, lag_ms: float = 0.0) -> MetricsSample:
         async with self._lock:
-            stamp = revision_clock.capture()
-            task_count = len(asyncio.all_tasks())
-            values = await asyncio.to_thread(self._collect)
-            servers = []
-            for name in self.context.state.servers.servers:
-                # Lifecycle/startup monitoring owns process discovery. Sampling
-                # must not repeatedly probe PID files for known stopped servers.
-                if not self.context.state.runtime.get_server_runtime(name).running:
-                    continue
-                try:
-                    info = await self.context.get_server(name).get_process_info()
-                    servers.append(
-                        ServerMetrics.model_validate(
-                            {
-                                "server_name": name,
-                                **{
-                                    key: value
-                                    for key, value in (info or {}).items()
-                                    if key in {"pid", "cpu_percent", "memory_mb"}
-                                },
-                            }
+            started = time.monotonic()
+            stats = self.telemetry
+            stats.attempts += 1
+            try:
+                sample = await self._sample(lag_ms)
+                stats.successes += 1
+                stats.last_error_type = None
+                stats.last_sample_at = sample.timestamp
+                stats.interval_seconds = self.interval_seconds
+                stats.warming_up = stats.successes < 2
+                stats.unavailable_measurements = [
+                    name
+                    for name in (
+                        "app_cpu_percent",
+                        "app_ram_mb",
+                        "thread_count",
+                        "uptime_seconds",
+                        "sys_cpu_percent",
+                        "sys_ram_mb",
+                        "sys_ram_total_mb",
+                        "sys_ram_percent",
+                        "net_tx_kib_s",
+                        "net_rx_kib_s",
+                        "disk_read_kib_s",
+                        "disk_write_kib_s",
+                    )
+                    if getattr(sample, name) is None
+                ]
+                if self._last_success_monotonic is not None:
+                    stats.missed_intervals += max(
+                        0,
+                        int(
+                            (started - self._last_success_monotonic)
+                            / self.interval_seconds
                         )
+                        - 1,
                     )
-                except Exception:
-                    logger.debug(
-                        "Process metrics unavailable for server '%s'.",
-                        name,
-                        exc_info=True,
+                self._last_success_monotonic = started
+                return sample
+            except Exception as error:
+                stats.failures += 1
+                stats.last_error_type = type(error).__name__
+                if self.context._diagnostics is not None:
+                    self.context._diagnostics.record(
+                        "metrics", "sample", started=started, error=error
                     )
-                    servers.append(ServerMetrics(server_name=name))
-            sample = MetricsSample(
-                timestamp=time.time(),
-                asyncio_task_count=task_count,
-                background_task_count=self.context.task_manager.active_task_count,
-                loop_lag_ms=max(0.0, lag_ms),
-                servers=servers,
-                **values,
-                **stamp,
-            )
-            self._history.append(sample)
-            return sample.model_copy(deep=True)
+                raise
+            finally:
+                stats.last_duration_ms = max(0, (time.monotonic() - started) * 1000)
+
+    def diagnostic_snapshot(self) -> MetricsDiagnostics:
+        """Expose sampler metadata without triggering resource reads."""
+        result = self.telemetry.model_copy(deep=True)
+        if result.last_sample_at is not None:
+            result.sample_age_seconds = max(0, time.time() - result.last_sample_at)
+        result.interval_seconds = self.interval_seconds
+        return result
+
+    async def _sample(self, lag_ms: float = 0.0) -> MetricsSample:
+        stamp = revision_clock.capture()
+        task_count = len(asyncio.all_tasks())
+        values = await asyncio.to_thread(self._collect)
+        servers = []
+        for name in self.context.state.servers.servers:
+            # Lifecycle/startup monitoring owns process discovery. Sampling
+            # must not repeatedly probe PID files for known stopped servers.
+            if not self.context.state.runtime.get_server_runtime(name).running:
+                continue
+            try:
+                info = await self.context.get_server(name).get_process_info()
+                servers.append(
+                    ServerMetrics.model_validate(
+                        {
+                            "server_name": name,
+                            **{
+                                key: value
+                                for key, value in (info or {}).items()
+                                if key in {"pid", "cpu_percent", "memory_mb"}
+                            },
+                        }
+                    )
+                )
+            except Exception:
+                logger.debug(
+                    "Process metrics unavailable for server '%s'.",
+                    name,
+                    exc_info=True,
+                )
+                servers.append(ServerMetrics(server_name=name))
+        sample = MetricsSample(
+            timestamp=time.time(),
+            asyncio_task_count=task_count,
+            background_task_count=self.context.task_manager.active_task_count,
+            loop_lag_ms=max(0.0, lag_ms),
+            servers=servers,
+            **values,
+            **stamp,
+        )
+        self._history.append(sample)
+        return sample.model_copy(deep=True)
 
     async def snapshot(self) -> GetApplicationMetricsResponse:
         async with self._snapshot_lock:

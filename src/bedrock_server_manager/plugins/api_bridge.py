@@ -162,6 +162,7 @@ def create_app_api(
             raise RuntimeError("Runtime capabilities require application context")
         functions: dict[str, Callable[..., Any]] = {
             "register_diagnostic_provider": runtime_capabilities.register_diagnostic_provider,
+            "report_task_progress": runtime_capabilities.report_task_progress,
             "run_task": runtime_capabilities.run_task,
             "server_lifecycle_manager": runtime_capabilities.server_lifecycle_manager,
             "websocket_register_data_provider": runtime_capabilities.register_data_provider,
@@ -300,6 +301,7 @@ class CapabilityNamespace:
         if self._domain == "runtime":
             names = {
                 "register_diagnostic_provider": "register_diagnostic_provider",
+                "report_task_progress": "report_task_progress",
                 "run_task": "run_task",
                 "server_lifecycle_manager": "server_lifecycle_manager",
                 "register_data_provider": "websocket_register_data_provider",

@@ -212,6 +212,12 @@ class DiagnosticHistoryRow(Base):
     correlation_id: Mapped[str | None] = mapped_column(
         String(160), nullable=True, index=True
     )
+    owner: Mapped[str | None] = mapped_column(String(160), nullable=True, index=True)
+    code: Mapped[str | None] = mapped_column(String(80), nullable=True, index=True)
+    outcome: Mapped[str | None] = mapped_column(String(16), nullable=True, index=True)
+    operation_id: Mapped[str | None] = mapped_column(
+        String(160), nullable=True, index=True
+    )
     record: Mapped[dict[str, JsonValue]] = mapped_column(JSON, nullable=False)
 
 

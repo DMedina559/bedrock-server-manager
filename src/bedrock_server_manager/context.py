@@ -609,6 +609,11 @@ class AppContext:
                 diagnostic_cleanup=lambda owner: self.diagnostics.remove_owner(
                     f"plugin:{owner}"
                 ),
+                diagnostic_failure=(
+                    self._diagnostics.record_plugin_failure
+                    if self._diagnostics
+                    else None
+                ),
                 diagnostic_pending=lambda owner: self.diagnostics.owner_pending(
                     f"plugin:{owner}"
                 ),
@@ -638,7 +643,13 @@ class AppContext:
             from .web.websocket_manager import ConnectionManager
 
             self._connection_manager = ConnectionManager(
-                user_provider=self.state.users.get
+                user_provider=self.state.users.get,
+                outbound_queue_limit=self.settings.get("web.outbound_queue_limit", 64),
+                record_failure=(
+                    self._diagnostics.record_transport_failure
+                    if self._diagnostics
+                    else None
+                ),
             )
             from .events.websocket import attach_websocket_observer
 
