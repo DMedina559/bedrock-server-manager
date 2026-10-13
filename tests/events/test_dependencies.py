@@ -6,6 +6,7 @@ import sys
 from dataclasses import dataclass
 
 import pytest
+from pydantic import BaseModel
 
 from bedrock_server_manager.events import (
     EventBus,
@@ -123,6 +124,11 @@ class Restart(PluginBase):
         for plugin in app_context.plugin_manager.plugins
         if plugin.api._plugin_name == "restart_events"
     )
+
+    class EmptyPayload(BaseModel):
+        pass
+
+    current.api.events.define("restart_events:test", EmptyPayload)
     assert (await current.api.events.emit("restart_events:test")).status == "completed"
 
 
@@ -255,3 +261,87 @@ async def test_transport_failure_receipts_are_retained_without_payload_history()
     assert receipt.deliveries[0].failed == 1
     assert receipt.listeners[0].status == "failed"
     assert "not-retained" not in bus.diagnostics().model_dump_json()
+
+
+@pytest.mark.parametrize("owner_limit", [False, True])
+async def test_outstanding_workers_bound_queued_work_and_release_capacity(owner_limit):
+    import threading
+
+    release = threading.Event()
+    bus = EventBus(
+        EventOptions(
+            max_active=1 if not owner_limit else 4,
+            max_workers_per_owner=1 if owner_limit else None,
+            listener_timeout_seconds=0.02,
+        )
+    )
+    calls = []
+
+    def listener():
+        calls.append(1)
+        release.wait(5)
+
+    bus.subscribe("bounded", listener, owner="plugin:bounded")
+    try:
+        first = await bus.emit("bounded")
+        assert first.listeners[0].status == "timed_out"
+        for _ in range(2):
+            receipt = await bus.emit("bounded")
+            assert receipt.failures[0].code == "event_capacity"
+        diagnostics = bus.diagnostics()
+        assert diagnostics.pending_workers == 1
+        assert diagnostics.workers_by_owner == {"plugin:bounded": 1}
+        assert diagnostics.timeouts_by_owner == {"plugin:bounded": 1}
+        assert diagnostics.rejections_by_reason == {"worker_capacity": 2}
+        assert calls == [1]
+        with pytest.raises(RuntimeError, match="still draining"):
+            bus.open_owner("plugin:bounded")
+    finally:
+        release.set()
+    await bus.drain_owner("plugin:bounded", 2)
+    bus.open_owner("plugin:bounded")
+    bus.activate_owner("plugin:bounded")
+    assert (await bus.emit("bounded")).status == "completed"
+    assert bus.diagnostics().pending_workers == 0
+    await bus.close()
+
+
+async def test_reload_waits_for_old_sync_generation(app_context, plugin_factory):
+    import threading
+
+    plugin = await plugin_factory(
+        "draining_events",
+        """
+from bedrock_server_manager.plugins import PluginBase
+class Draining(PluginBase):
+    version = "1.0"
+""",
+    )
+    release, cancelled = threading.Event(), threading.Event()
+    owner = "plugin:draining_events"
+    bus = app_context.events
+    bus.options.listener_timeout_seconds = 0.02
+    await app_context.settings.set("lifecycle.plugin_timeout_seconds", 0.02)
+
+    def worker(*, cancellation_event):
+        cancellation_event.wait(5)
+        cancelled.set()
+        release.wait(5)
+
+    plugin.api.events.listen("draining", worker)
+    try:
+        await bus.emit("draining")
+        assert not await app_context.plugin_manager.reload_plugin("draining_events")
+        assert cancelled.is_set()
+        assert (
+            app_context.plugin_manager.get_plugin_status("draining_events") == "ERROR"
+        )
+        assert not await app_context.plugin_manager.load_plugin_by_name(
+            "draining_events"
+        )
+        assert bus.owner_generation(owner) == 1
+    finally:
+        release.set()
+    await bus.drain_owner(owner, 2)
+    assert await app_context.plugin_manager.load_plugin_by_name("draining_events")
+    assert bus.owner_generation(owner) == 2

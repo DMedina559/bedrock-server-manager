@@ -87,6 +87,7 @@ class PluginManager:
         self._runtime_records: dict[str, PluginRuntime] = {}
         self.plugins: List[PluginBase] = []
         self._pending_plugins: dict[str, PluginBase] = {}
+        self._draining_plugins: dict[str, set[str]] = {}
 
         self.events = events if events is not None else EventBus()
         self.api_factory = api_factory or (
@@ -625,6 +626,8 @@ class PluginManager:
             sorted_plugin_names = self._sort_plugin_dependencies(enabled_plugins_data)
 
             for plugin_name in sorted_plugin_names:
+                if not self._can_replace_plugin(plugin_name):
+                    continue
                 plugin_class = enabled_plugins_data[plugin_name]
                 instance = None
                 try:
@@ -1036,6 +1039,9 @@ class PluginManager:
                     error=e,
                 )
 
+            owners = set(self._event_owners(target_instance))
+            if any(self.events.owner_pending(owner) for owner in owners):
+                self._draining_plugins[plugin_key] = owners
             self._pending_plugins.pop(plugin_key, None)
             if target_instance in self.plugins:
                 self.plugins.remove(target_instance)
@@ -1073,8 +1079,22 @@ class PluginManager:
                 raise ExceptionGroup(
                     f"Plugin '{plugin_key}' cleanup failed", unload_errors
                 )
+            if unload_errors:
+                self._set_runtime_status(plugin_name, "ERROR")
+                return False
             logger.info("Plugin '%s' unloaded successfully.", plugin_name)
             return True
+
+    def _can_replace_plugin(self, plugin_name: str) -> bool:
+        owners = self._draining_plugins.get(plugin_name, set())
+        if any(self.events.owner_pending(owner) for owner in owners):
+            self._set_runtime_status(plugin_name, "ERROR")
+            logger.warning(
+                "Plugin '%s' is still draining its old event generation", plugin_name
+            )
+            return False
+        self._draining_plugins.pop(plugin_name, None)
+        return True
 
     async def load_plugin_by_name(self, plugin_name: str) -> bool:
         """Loads and initializes a single plugin by name if discoverable."""
@@ -1082,6 +1102,8 @@ class PluginManager:
         async with self._lifecycle_lock:
             if self._shutdown_started:
                 raise RuntimeError("Cannot start plugins during shutdown.")
+            if not self._can_replace_plugin(plugin_name):
+                return False
             for p in self.plugins:
                 api = getattr(p, "api", None)
                 ident = getattr(api, "_plugin_name", None) or getattr(p, "name", None)
@@ -1249,7 +1271,19 @@ class PluginManager:
             if self._shutdown_started:
                 raise RuntimeError("Cannot start plugins during shutdown.")
             logger.info("Reloading plugin '%s'...", plugin_name)
-            await self.unload_plugin_by_name(plugin_name)
+            loaded = (
+                any(
+                    (
+                        getattr(getattr(plugin, "api", None), "_plugin_name", None)
+                        or plugin.name
+                    )
+                    == plugin_name
+                    for plugin in self.plugins
+                )
+                or plugin_name in self._pending_plugins
+            )
+            if loaded and not await self.unload_plugin_by_name(plugin_name):
+                return False
             return await self.load_plugin_by_name(plugin_name)
 
     async def enable_plugin(

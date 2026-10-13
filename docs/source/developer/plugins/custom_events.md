@@ -84,7 +84,8 @@ A saved API from an unloaded plugin cannot register or emit after reload.
 Plugins and external callers may emit custom events; core before, after, and
 lifecycle events are reserved for the application. Legacy `send_event()` and
 `listen_for_event()` remain supported through the same bus. Undeclared custom
-events remain JSON-only for compatibility.
+events remain JSON-only through legacy `send_event()` for compatibility.
+Native `events.emit()` requires a declaration owned by the emitting plugin.
 
 For a private custom event, pass `public=False` to `events.define()`. Public
 events keep the WebSocket topic `event:<name>` and the existing `type`, `topic`,
@@ -100,7 +101,8 @@ For transport-only topic data and live dashboards, use
 ## Diagnostics and limits
 
 `events.diagnostics()` returns copied metadata for current and recent dispatches,
-including per-listener subscription IDs, callback names, durations, outcomes,
+including pending worker and wait counts, workers and timeouts by owner,
+rejections by reason, per-listener subscription IDs, callback names, durations, outcomes,
 listener failures, delivery counts, and correlation IDs.
 Payloads and exception messages are not retained. History is bounded and held in
 memory; it is not a replay log and does not survive a restart.
@@ -112,10 +114,29 @@ events and returns a typed dispatch summary.
 
 The `events` settings section controls `history_limit` (200), `max_active` (256),
 `max_depth` (32), `listener_timeout_seconds` (30), and `hook_timeout_seconds` (120).
-Duplicate recursive dispatches with the same identity are suppressed. Capacity
+`max_workers` bounds outstanding synchronous callbacks globally, including queued
+and timed-out work; by default it follows `max_active`. `max_workers_per_owner`
+can impose a tighter owner limit and otherwise follows the global worker limit.
+Worker capacity returns only when the underlying callback finishes. Rejections
+produce `event_capacity` listener failures and increment `worker_capacity` diagnostics.
+
+Duplicate recursive notifications with the same identity are suppressed.
+Recursive before-operation hooks cancel the nested operation before mutation. Capacity
 and depth exhaustion produce a partial receipt and cancel before hooks. During
 shutdown, plugin listeners drain before unload and the bus drains before the
-WebSocket transport closes.
+WebSocket transport closes. Draining signals cooperative cancellation immediately.
+If a plugin's old callbacks cannot drain, its status becomes `ERROR`, reload fails,
+and subsequent loads remain blocked until those callbacks finish. Transport
+observer failures are recorded but cannot veto an operation, even in strict mode.
+Observers use the notification timeout, including when observing a before hook.
+
+Listeners accept `priority` (default zero); higher priorities run first, with
+registration order breaking ties. Ordinary hooks always run before transport
+observers. This applies to `listen()` and `once()`:
+
+```python
+self.api.events.listen("before_server_start", self.check_maintenance, priority=100)
+```
 
 ## Filtered activity
 

@@ -16,13 +16,17 @@ class PluginEventAPI:
     def __init__(self, dispatch: Callable[..., Any]):
         self._dispatch = dispatch
 
-    def listen(self, name: str, callback: Callable[..., Any]) -> str:
+    def listen(
+        self, name: str, callback: Callable[..., Any], *, priority: int = 0
+    ) -> str:
         """Register a listener automatically removed when this plugin unloads."""
-        return cast(str, self._dispatch("listen", name, callback))
+        return cast(str, self._dispatch("listen", name, callback, priority=priority))
 
-    def once(self, name: str, callback: Callable[..., Any]) -> str:
+    def once(
+        self, name: str, callback: Callable[..., Any], *, priority: int = 0
+    ) -> str:
         """Listen once, including when callback dispatch overlaps another event."""
-        return cast(str, self._dispatch("once", name, callback))
+        return cast(str, self._dispatch("once", name, callback, priority=priority))
 
     async def wait_for(
         self,

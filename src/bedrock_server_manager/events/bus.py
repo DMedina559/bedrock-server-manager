@@ -61,6 +61,7 @@ class Subscription:
     callback: Callable[..., Any]
     observer: bool = False
     once: bool = False
+    priority: int = 0
 
 
 class EventBus:
@@ -86,6 +87,8 @@ class EventBus:
         ] = {}
         self._waiters: dict[str, set[asyncio.Future[dict[str, Any]]]] = {}
         self._workers: dict[str, dict[asyncio.Task[Any], ThreadEvent]] = {}
+        self._rejections: dict[str, int] = {}
+        self._timeouts: dict[str, int] = {}
         self.accepting = True
         self.emitted = self.suppressed = self.failed_listeners = 0
 
@@ -99,6 +102,7 @@ class EventBus:
         observer: bool = False,
         generation: int | None = None,
         once: bool = False,
+        priority: int = 0,
     ) -> str:
         with self._lock:
             self.check_owner(owner, generation)
@@ -113,11 +117,19 @@ class EventBus:
                     _callback_identity(subscription.callback),
                     subscription.observer,
                     subscription.once,
-                ) == (name, owner, _callback_identity(callback), observer, once):
+                    subscription.priority,
+                ) == (
+                    name,
+                    owner,
+                    _callback_identity(callback),
+                    observer,
+                    once,
+                    priority,
+                ):
                     return subscription.token
             token = uuid4().hex
             self._subscriptions[token] = Subscription(
-                token, name, owner, callback, observer, once
+                token, name, owner, callback, observer, once, priority
             )
             return token
 
@@ -197,6 +209,8 @@ class EventBus:
 
     def open_owner(self, owner: str) -> int:
         with self._lock:
+            if self.owner_pending(owner):
+                raise RuntimeError("Previous event owner generation is still draining")
             self._generations[owner] = self._generations.get(owner, 0) + 1
             self._closed_owners.discard(owner)
             return self._generations[owner]
@@ -232,7 +246,13 @@ class EventBus:
             for future in self._waiters.pop(owner, set()):
                 future.cancel()
 
+    def owner_pending(self, owner: str) -> bool:
+        return bool(self._inflight.get(owner) or self._workers.get(owner))
+
     async def drain_owner(self, owner: str, timeout: float) -> None:
+        self.deactivate_owner(owner)
+        for cancellation in self._workers.get(owner, {}).values():
+            cancellation.set()
         current = asyncio.current_task()
         pending = {
             future
@@ -257,7 +277,9 @@ class EventBus:
         with self._lock:
             selected = []
             seen: set[tuple[str, tuple[int, int], bool]] = set()
-            for subscription in self._subscriptions.values():
+            for subscription in sorted(
+                self._subscriptions.values(), key=lambda item: -item.priority
+            ):
                 identity = (
                     subscription.owner,
                     _callback_identity(subscription.callback),
@@ -274,7 +296,7 @@ class EventBus:
                 ):
                     selected.append(subscription)
                     seen.add(identity)
-            return selected
+            return sorted(selected, key=lambda item: -item.priority)
 
     async def _invoke(
         self,
@@ -295,6 +317,13 @@ class EventBus:
                     callback_data[key] = data[key]
         if inspect.iscoroutinefunction(subscription.callback):
             return await subscription.callback(*callback_args, **callback_data)
+        worker_limit = self.options.max_workers or self.options.max_active
+        owner_limit = self.options.max_workers_per_owner or worker_limit
+        if (
+            sum(map(len, self._workers.values())) >= worker_limit
+            or len(self._workers.get(subscription.owner, {})) >= owner_limit
+        ):
+            raise EventWorkerCapacityError("Outstanding event worker capacity reached")
         cancellation = ThreadEvent()
         try:
             signature = inspect.signature(subscription.callback)
@@ -351,11 +380,21 @@ class EventBus:
                 code=(
                     "event_listener_timeout"
                     if isinstance(error, TimeoutError)
-                    else "event_listener_failed"
+                    else (
+                        "event_capacity"
+                        if isinstance(error, EventWorkerCapacityError)
+                        else "event_listener_failed"
+                    )
                 ),
             )
         )
         self.failed_listeners += 1
+        if isinstance(error, TimeoutError):
+            self._timeouts[owner] = self._timeouts.get(owner, 0) + 1
+        if isinstance(error, EventWorkerCapacityError):
+            self._rejections["worker_capacity"] = (
+                self._rejections.get("worker_capacity", 0) + 1
+            )
         logger.warning(
             "Event listener '%s' failed for '%s': %s",
             owner,
@@ -392,7 +431,7 @@ class EventBus:
         try:
             timeout = (
                 self.options.hook_timeout_seconds
-                if definition.phase == "before"
+                if definition.phase == "before" and not subscription.observer
                 else self.options.listener_timeout_seconds
             )
             async with asyncio.timeout(timeout):
@@ -422,9 +461,13 @@ class EventBus:
             self._failure(record, subscription.owner, error)
             listener.failure = record.failures[-1]
             control = data.get("event")
-            if definition.phase == "before" and isinstance(control, CancellableEvent):
+            if (
+                not subscription.observer
+                and definition.phase == "before"
+                and isinstance(control, CancellableEvent)
+            ):
                 control.cancel("A before-operation listener did not complete")
-            if strict:
+            if strict and not subscription.observer:
                 raise
         finally:
             listener.duration_ms = (monotonic() - started) * 1000
@@ -478,6 +521,7 @@ class EventBus:
                 status="cancelled",
                 rejection_reason="shutdown",
             )
+            self._rejections["shutdown"] = self._rejections.get("shutdown", 0) + 1
             self._recent.append(record.model_copy(deep=True))
             raise EventDispatchRejected(record)
         data = dict(payload or {})
@@ -531,8 +575,15 @@ class EventBus:
         )
         self.emitted += 1
         if any(key == identity for _, key, _ in stack):
-            record.status = "suppressed"
+            control = data.get("event")
+            if definition.phase == "before" and isinstance(control, CancellableEvent):
+                control.cancel("Recursive before-operation dispatch rejected")
+                record.cancellation_reason = control.cancel_reason
+                record.status = "cancelled"
+            else:
+                record.status = "suppressed"
             record.rejection_reason = "recursion"
+            self._rejections["recursion"] = self._rejections.get("recursion", 0) + 1
             self.suppressed += 1
             self._recent.append(record)
             return record.model_copy(deep=True)
@@ -543,6 +594,9 @@ class EventBus:
             record.status = "partial"
             record.rejection_reason = (
                 "depth_limit" if len(stack) >= self.options.max_depth else "capacity"
+            )
+            self._rejections[record.rejection_reason] = (
+                self._rejections.get(record.rejection_reason, 0) + 1
             )
             record.failures.append(
                 ListenerFailure(
@@ -619,6 +673,13 @@ class EventBus:
             suppressed=self.suppressed,
             failed_listeners=self.failed_listeners,
             subscriptions=len(self._subscriptions),
+            pending_workers=sum(map(len, self._workers.values())),
+            workers_by_owner={
+                owner: len(workers) for owner, workers in self._workers.items()
+            },
+            pending_waits=sum(map(len, self._waiters.values())),
+            rejections_by_reason=self._rejections,
+            timeouts_by_owner=self._timeouts,
             active=[record for record in self._active.values() if matches(record)][
                 :limit
             ],
@@ -651,6 +712,10 @@ class EventBus:
             await asyncio.wait(pending_workers, timeout=max(0, deadline - monotonic()))
         self._subscriptions.clear()
         self._owners.clear()
+
+
+class EventWorkerCapacityError(RuntimeError):
+    """No additional synchronous callback may be queued or started."""
 
 
 class EventDispatchRejected(RuntimeError):

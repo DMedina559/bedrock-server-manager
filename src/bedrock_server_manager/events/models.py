@@ -105,6 +105,11 @@ class EventDiagnostics(EventModel):
     suppressed: int
     failed_listeners: int
     subscriptions: int
+    pending_workers: int = 0
+    workers_by_owner: dict[str, int] = Field(default_factory=dict)
+    pending_waits: int = 0
+    rejections_by_reason: dict[str, int] = Field(default_factory=dict)
+    timeouts_by_owner: dict[str, int] = Field(default_factory=dict)
     active: list[EventRecord]
     recent: list[EventRecord]
 
@@ -116,6 +121,8 @@ class EventCatalog(EventModel):
 class EventOptions(EventModel):
     history_limit: int = Field(default=200, ge=0, le=10000)
     max_active: int = Field(default=256, ge=1, le=10000)
+    max_workers: int | None = Field(default=None, ge=1, le=10000)
+    max_workers_per_owner: int | None = Field(default=None, ge=1, le=10000)
     max_depth: int = Field(default=32, ge=1, le=128)
     listener_timeout_seconds: float = Field(default=30, gt=0, le=3600)
     hook_timeout_seconds: float = Field(default=120, gt=0, le=3600)

@@ -37,7 +37,7 @@ async def test_once_is_consumed_before_overlapping_delivery():
     assert seen == [1]
     assert receipt.listeners[0].subscription_id == token
     assert receipt.listeners[0].status == "completed"
-    assert receipt.listeners[0].duration_ms > 0
+    assert receipt.listeners[0].duration_ms >= 0
     assert receipt.listeners[0].listener_name.endswith("listener")
     assert bus.diagnostics().subscriptions == 0
 
@@ -99,7 +99,7 @@ async def test_listener_failure_and_active_diagnostics_filters():
     first = await bus.emit("example")
     assert first.listeners[0].status == "timed_out"
     assert first.listeners[0].failure.code == "event_listener_timeout"
-    assert first.listeners[0].duration_ms > 0
+    assert first.listeners[0].duration_ms >= 0
     await bus.emit("other")
     query = EventActivityQuery(
         owner="plugin:slow",
@@ -296,3 +296,23 @@ async def test_listeners_and_observers_receive_same_normalized_contract_fields()
     )
     await bus.emit("typed:changed", {"value": "2", "ignored": object()})
     assert listeners == observers == [{"value": 2}]
+
+
+async def test_native_custom_emission_requires_own_declaration():
+    from bedrock_server_manager.events.capabilities import create_event_capabilities
+
+    class Payload(BaseModel):
+        count: int
+
+    bus = EventBus()
+    bus.open_owner("plugin:owner")
+    _, legacy, dispatch = create_event_capabilities("owner", bus)
+    for name in ("owner:undeclared", "other:undeclared", "undeclared"):
+        with pytest.raises(ValueError, match="own declared"):
+            dispatch("emit", name)
+    dispatch("define", "owner:changed", Payload)
+    assert (await dispatch("emit", "owner:changed", count=1)).status == "completed"
+    bus.define(EventDefinition(name="other:changed", owner="plugin:other"), Payload)
+    with pytest.raises(ValueError, match="own declared"):
+        dispatch("emit", "other:changed", count=1)
+    assert (await legacy("legacy_event", count=1)).status == "completed"

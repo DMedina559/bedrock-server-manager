@@ -19,7 +19,11 @@ def create_event_capabilities(
         bus.check_owner(event_owner, event_generation)
 
     def event_listener(
-        event_name: str, callback: Callable[..., None], *, once: bool = False
+        event_name: str,
+        callback: Callable[..., None],
+        *,
+        once: bool = False,
+        priority: int = 0,
     ):
         require_event_owner()
         if bus is None:
@@ -31,6 +35,7 @@ def create_event_capabilities(
             active=is_core,
             generation=event_generation,
             once=once,
+            priority=priority,
         )
 
     async def event_sender(event_name: str, *args: Any, **kwargs: Any):
@@ -64,6 +69,15 @@ def create_event_capabilities(
                 **kwargs,
             )
         if action == "emit":
+            definition = bus.registry.definition(args[0])
+            if not is_core and (
+                not bus.registry.declared(args[0])
+                or definition.phase != "custom"
+                or definition.owner != event_owner
+            ):
+                raise ValueError(
+                    "Plugins may only emit their own declared custom events"
+                )
             return event_sender(*args, **kwargs)
         if action == "diagnostics":
             return bus.diagnostics(*args, **kwargs)

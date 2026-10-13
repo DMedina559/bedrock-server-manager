@@ -31,7 +31,7 @@ async def test_standalone_delivery_isolated_payloads_and_bounded_history():
     for _ in range(3):
         result = await bus.emit("demo", payload)
         assert result.listeners_called == 2
-        assert result.duration_ms > 0
+        assert result.duration_ms >= 0
     assert payload == {"items": ["original"]}
     assert received == [{"items": ["original"]}] * 3
     snapshot = bus.diagnostics()
@@ -296,3 +296,80 @@ class Broken(PluginBase):
     assert not await app_context.plugin_manager.load_plugin_by_name("broken_events")
     assert not app_context.events.registry.declared("broken_events:changed")
     assert not app_context.events.events_for_owner("plugin:broken_events")
+
+
+@pytest.mark.parametrize("strict", [False, True])
+async def test_before_observer_failure_cannot_veto_operation(strict):
+    bus = EventBus(EventOptions(listener_timeout_seconds=0.01, hook_timeout_seconds=1))
+    bus.registry.register(EventDefinition(name="before_observed", phase="before"))
+
+    async def transport(event):
+        await asyncio.Event().wait()
+
+    bus.subscribe("*", transport, observer=True)
+    control = CancellableEvent()
+    receipt = await bus.emit("before_observed", {"event": control}, strict=strict)
+    assert not control.is_cancelled
+    assert receipt.status == "partial"
+    assert receipt.listeners[0].status == "timed_out"
+
+
+async def test_recursive_hook_prevents_nested_mutation():
+    from bedrock_server_manager.events.decorator import trigger_event
+
+    bus = EventBus()
+    mutations, nested = [], []
+
+    @trigger_event(before="before_recursive")
+    async def operation(*, events: EventBus):
+        mutations.append("mutation")
+        return "done"
+
+    async def hook(**data):
+        nested.append(await operation(events=bus))
+
+    bus.subscribe("before_recursive", hook)
+    assert await operation(events=bus) == "done"
+    assert mutations == ["mutation"]
+    assert nested[0]["status"] == "canceled"
+    assert bus.diagnostics().rejections_by_reason == {"recursion": 1}
+
+
+async def test_duration_accounting_uses_elapsed_clock(monkeypatch):
+    import bedrock_server_manager.events.bus as module
+
+    ticks = iter([10.0, 10.125, 10.375, 10.5])
+    monkeypatch.setattr(module, "monotonic", lambda: next(ticks))
+    bus = EventBus()
+
+    async def listener():
+        pass
+
+    bus.subscribe("clock", listener)
+    receipt = await bus.emit("clock")
+    assert receipt.duration_ms == 500
+    assert receipt.listeners[0].duration_ms == 250
+
+
+async def test_listener_priority_is_stable_and_hooks_precede_observers():
+    bus = EventBus()
+    calls = []
+
+    async def first():
+        calls.append("first")
+
+    async def second():
+        calls.append("second")
+
+    async def last():
+        calls.append("last")
+
+    async def observer(event):
+        calls.append("observer")
+
+    bus.subscribe("ordered", observer, observer=True, priority=100)
+    bus.subscribe("ordered", last, priority=-1)
+    bus.subscribe("ordered", first, priority=10)
+    bus.subscribe("ordered", second, priority=10)
+    await bus.emit("ordered")
+    assert calls == ["first", "second", "last", "observer"]
