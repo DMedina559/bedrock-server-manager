@@ -167,3 +167,19 @@ async def register_data_provider(
             error=e,
         )
         raise
+
+
+async def register_diagnostic_provider(
+    name: str,
+    handler: Callable[..., Any],
+    *,
+    app_context: AppContext,
+    plugin_name: str | None = None,
+) -> None:
+    """Register asynchronous numeric metadata for this plugin's diagnostic section."""
+    if not plugin_name:
+        raise UserInputError("Plugin diagnostics require an explicit owner")
+    app_context.events.check_owner(f"plugin:{plugin_name}")
+    app_context.diagnostics.register(
+        f"plugin:{plugin_name}:{name}", handler, owner=f"plugin:{plugin_name}"
+    )

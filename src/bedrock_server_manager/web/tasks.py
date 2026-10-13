@@ -2,8 +2,12 @@
 import asyncio
 import inspect
 import logging
+import time
 import uuid
-from typing import Any, Callable, Dict, Optional
+from typing import TYPE_CHECKING, Any, Callable, Dict, Optional
+
+if TYPE_CHECKING:
+    from ..diagnostics.service import Diagnostics
 
 from pydantic import BaseModel, ValidationError
 
@@ -26,8 +30,12 @@ class TaskManager:
         self,
         connection_manager: ConnectionManager | None,
         max_workers: Optional[int] = None,
+        *,
+        diagnostics: "Diagnostics | None" = None,
     ):
         """Initialize the TaskManager with explicit dependencies."""
+        self.diagnostics = diagnostics
+        self._timing: dict[str, tuple[float, float | None]] = {}
         self.connection_manager = connection_manager
         self._tasks: Dict[str, TaskRecord] = {}
         self.futures: Dict[str, asyncio.Task] = {}
@@ -116,6 +124,20 @@ class TaskManager:
                     "Background task returned invalid JSON data."
                 ) from validation_error
             self._tasks[task_id] = record
+            if (
+                status in {"completed", "failed", "cancelled"}
+                and task_id in self._timing
+            ):
+                started, finished = self._timing[task_id]
+                if finished is None:
+                    self._timing[task_id] = started, time.monotonic()
+                    if self.diagnostics is not None:
+                        self.diagnostics.record_task(
+                            task_id,
+                            record,
+                            started=started,
+                            owner=self._plugin_owners.get(task_id),
+                        )
             notification = asyncio.create_task(self._notify_client_of_update(task_id))
             self._background_tasks.add(notification)
             notification.add_done_callback(self._background_tasks.discard)
@@ -203,10 +225,12 @@ class TaskManager:
                 raise OperationConflictError("Background task capacity reached.")
             del self._tasks[oldest_task_id]
             self._plugin_owners.pop(oldest_task_id, None)
+            self._timing.pop(oldest_task_id, None)
             if oldest_task_id in self.futures:
                 del self.futures[oldest_task_id]
 
         self._tasks[task_id] = candidate
+        self._timing[task_id] = time.monotonic(), None
         if _plugin_owner is not None:
             self._plugin_owners[task_id] = _plugin_owner
 

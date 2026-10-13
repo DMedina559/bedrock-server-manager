@@ -6,6 +6,7 @@ Persistence Storage Layer providing state persistence operations between AppStat
 import asyncio
 import inspect
 import logging
+import time
 from contextlib import asynccontextmanager
 from copy import deepcopy
 from typing import (
@@ -40,6 +41,7 @@ from .repositories import (
 )
 
 if TYPE_CHECKING:
+    from ..diagnostics.service import Diagnostics
     from .database import Database
 
 Record = TypeVar("Record", bound=BaseModel)
@@ -64,6 +66,17 @@ class Storage:
         self.audit_log_repo = AuditLogRepository(db)
         self._listeners: List[Callable[[AppState, ChangeSet], Any]] = []
         self._flush_lock = asyncio.Lock()
+        self.diagnostics: Diagnostics | None = None
+
+    @asynccontextmanager
+    async def _write_scope(self):
+        started = time.monotonic()
+        async with self._flush_lock:
+            if self.diagnostics is not None:
+                self.diagnostics.storage.lock_wait_ms = max(
+                    0, (time.monotonic() - started) * 1000
+                )
+            yield
 
     @property
     def write_lock(self) -> asyncio.Lock:
@@ -102,6 +115,37 @@ class Storage:
 
     @asynccontextmanager
     async def transaction(self) -> AsyncGenerator[AsyncSession, None]:
+        """Observe transactions without making diagnostic writes part of the transaction."""
+        diagnostics = self.diagnostics
+        started = time.monotonic()
+        error: BaseException | None = None
+        if diagnostics is not None:
+            diagnostics.storage.attempts += 1
+            diagnostics.storage.active += 1
+        try:
+            async with self._transaction() as session:
+                yield session
+        except BaseException as failure:
+            error = failure
+            raise
+        finally:
+            if diagnostics is not None:
+                stats = diagnostics.storage
+                stats.active -= 1
+                stats.last_duration_ms = max(0, (time.monotonic() - started) * 1000)
+                if error is None:
+                    stats.successes += 1
+                    stats.last_success_at = time.time()
+                    stats.last_error_type = None
+                else:
+                    stats.failures += 1
+                    stats.last_error_type = type(error).__name__
+                    diagnostics.record(
+                        "storage", "transaction", started=started, error=error
+                    )
+
+    @asynccontextmanager
+    async def _transaction(self) -> AsyncGenerator[AsyncSession, None]:
         """Commit once; a rolled-back unit of work must be replayed by its caller."""
         async with self.db.session_manager() as session:
             try:
@@ -137,7 +181,7 @@ class Storage:
         acknowledge: Callable[[str], None],
     ) -> Record:
         """Publish a service mutation only after its transaction commits."""
-        async with self._flush_lock:
+        async with self._write_scope():
             async with get_lock(name):
                 record = build(get(name))
                 async with self.transaction() as session:
@@ -153,7 +197,7 @@ class Storage:
         changeset: ChangeSet,
         mutate: Callable[[SettingsState], None],
     ) -> None:
-        async with self._flush_lock:
+        async with self._write_scope():
             async with state.settings.get_lock("global"):
                 candidate = type(state.settings).model_validate(
                     state.settings.model_dump()
@@ -189,7 +233,7 @@ class Storage:
         changeset = deepcopy(changeset)
         if changeset.is_empty():
             return
-        async with self._flush_lock:
+        async with self._write_scope():
             settings_snapshot = None
             async with self.transaction() as session:
                 if changeset.settings_changed:
@@ -283,7 +327,7 @@ class Storage:
         if state is None:
             state = AppState()
 
-        async with self._flush_lock:
+        async with self._write_scope():
             return await self._load_state(state)
 
     async def _load_state(self, state: AppState) -> AppState:
@@ -360,7 +404,7 @@ class Storage:
 
     async def delete_server(self, state: AppState, server_name: str) -> None:
         """Serialize deletion with reload/flush and acknowledge only after commit."""
-        async with self._flush_lock:
+        async with self._write_scope():
             async with state.servers.get_lock(server_name):
                 async with self.transaction() as session:
                     await self.server_repo.delete_server(session, server_name)

@@ -50,6 +50,7 @@ documentation matching your installed release.
    extras/web_extras.md
    extras/websockets.md
    extras/web_runtime.md
+   extras/diagnostics.md
    web/theming.md
 
 .. toctree::

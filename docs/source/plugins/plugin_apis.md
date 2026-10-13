@@ -4354,6 +4354,3191 @@ data = result.model_dump(mode="json")
 ---
 
 
+## `diagnostics.get_application_diagnostics`
+```python
+await self.api.diagnostics.get_application_diagnostics(request: bedrock_server_manager.api.models.diagnostics.GetApplicationDiagnosticsRequest)
+```
+- **Async (Requires await):** Yes
+
+- **Description:** Read bounded subsystem metadata; unavailable providers remain isolated.
+
+- **Returns:** `GetApplicationDiagnosticsResponse`
+
+Runtime context and plugin identity are injected by the bridge. Failures raise application exceptions; plugin cancellation raises `APICancelledError`.
+
+```python
+from bedrock_server_manager.api.models import GetApplicationDiagnosticsRequest
+payload = {}
+request = GetApplicationDiagnosticsRequest(**payload)
+result = await self.api.diagnostics.get_application_diagnostics(request)
+data = result.model_dump(mode="json")
+```
+
+**Request schema:**
+
+```json
+{
+  "additionalProperties": false,
+  "properties": {
+    "subsystem": {
+      "anyOf": [
+        {
+          "maxLength": 80,
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "title": "Subsystem"
+    }
+  },
+  "title": "GetApplicationDiagnosticsRequest",
+  "type": "object"
+}
+```
+
+**Response schema:**
+
+```json
+{
+  "$defs": {
+    "DiagnosticIssue": {
+      "additionalProperties": false,
+      "properties": {
+        "code": {
+          "title": "Code",
+          "type": "string"
+        },
+        "message": {
+          "title": "Message",
+          "type": "string"
+        },
+        "severity": {
+          "default": "warning",
+          "enum": [
+            "warning",
+            "error"
+          ],
+          "title": "Severity",
+          "type": "string"
+        }
+      },
+      "required": [
+        "code",
+        "message"
+      ],
+      "title": "DiagnosticIssue",
+      "type": "object"
+    },
+    "DiagnosticSection": {
+      "additionalProperties": false,
+      "properties": {
+        "collected_at": {
+          "title": "Collected At",
+          "type": "number"
+        },
+        "data": {
+          "anyOf": [
+            {
+              "discriminator": {
+                "mapping": {
+                  "events": "#/$defs/EventsDiagnostics",
+                  "metrics": "#/$defs/MetricsDiagnostics",
+                  "plugin_values": "#/$defs/PluginValues",
+                  "plugins": "#/$defs/PluginsDiagnostics",
+                  "processes": "#/$defs/ProcessesDiagnostics",
+                  "runtime": "#/$defs/RuntimeDiagnostics",
+                  "state": "#/$defs/StateDiagnostics",
+                  "storage": "#/$defs/StorageDiagnostics",
+                  "tasks": "#/$defs/TasksDiagnostics",
+                  "transport": "#/$defs/TransportDiagnostics"
+                },
+                "propertyName": "kind"
+              },
+              "oneOf": [
+                {
+                  "$ref": "#/$defs/RuntimeDiagnostics"
+                },
+                {
+                  "$ref": "#/$defs/StateDiagnostics"
+                },
+                {
+                  "$ref": "#/$defs/StorageDiagnostics"
+                },
+                {
+                  "$ref": "#/$defs/EventsDiagnostics"
+                },
+                {
+                  "$ref": "#/$defs/TransportDiagnostics"
+                },
+                {
+                  "$ref": "#/$defs/PluginsDiagnostics"
+                },
+                {
+                  "$ref": "#/$defs/TasksDiagnostics"
+                },
+                {
+                  "$ref": "#/$defs/ProcessesDiagnostics"
+                },
+                {
+                  "$ref": "#/$defs/MetricsDiagnostics"
+                },
+                {
+                  "$ref": "#/$defs/PluginValues"
+                }
+              ]
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Data"
+        },
+        "duration_ms": {
+          "default": 0,
+          "title": "Duration Ms",
+          "type": "number"
+        },
+        "issues": {
+          "items": {
+            "$ref": "#/$defs/DiagnosticIssue"
+          },
+          "maxItems": 20,
+          "title": "Issues",
+          "type": "array"
+        },
+        "name": {
+          "title": "Name",
+          "type": "string"
+        },
+        "owner": {
+          "default": "application",
+          "title": "Owner",
+          "type": "string"
+        },
+        "status": {
+          "default": "unknown",
+          "enum": [
+            "ok",
+            "degraded",
+            "unavailable",
+            "unknown"
+          ],
+          "title": "Status",
+          "type": "string"
+        }
+      },
+      "required": [
+        "name",
+        "collected_at"
+      ],
+      "title": "DiagnosticSection",
+      "type": "object"
+    },
+    "EventDelivery": {
+      "additionalProperties": false,
+      "properties": {
+        "failed": {
+          "default": 0,
+          "minimum": 0,
+          "title": "Failed",
+          "type": "integer"
+        },
+        "owner": {
+          "title": "Owner",
+          "type": "string"
+        },
+        "sent": {
+          "default": 0,
+          "minimum": 0,
+          "title": "Sent",
+          "type": "integer"
+        },
+        "targeted": {
+          "default": 0,
+          "minimum": 0,
+          "title": "Targeted",
+          "type": "integer"
+        },
+        "unavailable": {
+          "default": 0,
+          "minimum": 0,
+          "title": "Unavailable",
+          "type": "integer"
+        }
+      },
+      "required": [
+        "owner"
+      ],
+      "title": "EventDelivery",
+      "type": "object"
+    },
+    "EventDiagnostics": {
+      "additionalProperties": false,
+      "properties": {
+        "accepting": {
+          "title": "Accepting",
+          "type": "boolean"
+        },
+        "active": {
+          "items": {
+            "$ref": "#/$defs/EventRecord"
+          },
+          "title": "Active",
+          "type": "array"
+        },
+        "emitted": {
+          "title": "Emitted",
+          "type": "integer"
+        },
+        "failed_listeners": {
+          "title": "Failed Listeners",
+          "type": "integer"
+        },
+        "pending_waits": {
+          "default": 0,
+          "title": "Pending Waits",
+          "type": "integer"
+        },
+        "pending_workers": {
+          "default": 0,
+          "title": "Pending Workers",
+          "type": "integer"
+        },
+        "recent": {
+          "items": {
+            "$ref": "#/$defs/EventRecord"
+          },
+          "title": "Recent",
+          "type": "array"
+        },
+        "rejections_by_reason": {
+          "additionalProperties": {
+            "type": "integer"
+          },
+          "title": "Rejections By Reason",
+          "type": "object"
+        },
+        "subscriptions": {
+          "title": "Subscriptions",
+          "type": "integer"
+        },
+        "suppressed": {
+          "title": "Suppressed",
+          "type": "integer"
+        },
+        "timeouts_by_owner": {
+          "additionalProperties": {
+            "type": "integer"
+          },
+          "title": "Timeouts By Owner",
+          "type": "object"
+        },
+        "workers_by_owner": {
+          "additionalProperties": {
+            "type": "integer"
+          },
+          "title": "Workers By Owner",
+          "type": "object"
+        }
+      },
+      "required": [
+        "accepting",
+        "emitted",
+        "suppressed",
+        "failed_listeners",
+        "subscriptions",
+        "active",
+        "recent"
+      ],
+      "title": "EventDiagnostics",
+      "type": "object"
+    },
+    "EventOptions": {
+      "additionalProperties": false,
+      "properties": {
+        "history_limit": {
+          "default": 200,
+          "maximum": 10000,
+          "minimum": 0,
+          "title": "History Limit",
+          "type": "integer"
+        },
+        "hook_timeout_seconds": {
+          "default": 120,
+          "exclusiveMinimum": 0,
+          "maximum": 3600,
+          "title": "Hook Timeout Seconds",
+          "type": "number"
+        },
+        "listener_timeout_seconds": {
+          "default": 30,
+          "exclusiveMinimum": 0,
+          "maximum": 3600,
+          "title": "Listener Timeout Seconds",
+          "type": "number"
+        },
+        "max_active": {
+          "default": 256,
+          "maximum": 10000,
+          "minimum": 1,
+          "title": "Max Active",
+          "type": "integer"
+        },
+        "max_depth": {
+          "default": 32,
+          "maximum": 128,
+          "minimum": 1,
+          "title": "Max Depth",
+          "type": "integer"
+        },
+        "max_workers": {
+          "anyOf": [
+            {
+              "maximum": 10000,
+              "minimum": 1,
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Max Workers"
+        },
+        "max_workers_per_owner": {
+          "anyOf": [
+            {
+              "maximum": 10000,
+              "minimum": 1,
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Max Workers Per Owner"
+        }
+      },
+      "title": "EventOptions",
+      "type": "object"
+    },
+    "EventRecord": {
+      "additionalProperties": false,
+      "properties": {
+        "cancellation_reason": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Cancellation Reason"
+        },
+        "correlation_id": {
+          "title": "Correlation Id",
+          "type": "string"
+        },
+        "deliveries": {
+          "items": {
+            "$ref": "#/$defs/EventDelivery"
+          },
+          "title": "Deliveries",
+          "type": "array"
+        },
+        "duration_ms": {
+          "default": 0,
+          "title": "Duration Ms",
+          "type": "number"
+        },
+        "event_id": {
+          "title": "Event Id",
+          "type": "string"
+        },
+        "failures": {
+          "items": {
+            "$ref": "#/$defs/ListenerFailure"
+          },
+          "title": "Failures",
+          "type": "array"
+        },
+        "listeners": {
+          "items": {
+            "$ref": "#/$defs/ListenerRecord"
+          },
+          "title": "Listeners",
+          "type": "array"
+        },
+        "listeners_called": {
+          "default": 0,
+          "title": "Listeners Called",
+          "type": "integer"
+        },
+        "name": {
+          "title": "Name",
+          "type": "string"
+        },
+        "parent_event_id": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Parent Event Id"
+        },
+        "rejection_reason": {
+          "anyOf": [
+            {
+              "enum": [
+                "recursion",
+                "depth_limit",
+                "capacity",
+                "shutdown"
+              ],
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Rejection Reason"
+        },
+        "source": {
+          "title": "Source",
+          "type": "string"
+        },
+        "status": {
+          "enum": [
+            "dispatching",
+            "completed",
+            "partial",
+            "cancelled",
+            "suppressed"
+          ],
+          "title": "Status",
+          "type": "string"
+        },
+        "timestamp": {
+          "title": "Timestamp",
+          "type": "number"
+        }
+      },
+      "required": [
+        "event_id",
+        "correlation_id",
+        "name",
+        "source",
+        "timestamp",
+        "status"
+      ],
+      "title": "EventRecord",
+      "type": "object"
+    },
+    "EventsDiagnostics": {
+      "additionalProperties": false,
+      "properties": {
+        "activity": {
+          "$ref": "#/$defs/EventDiagnostics"
+        },
+        "capacity": {
+          "$ref": "#/$defs/EventOptions"
+        },
+        "kind": {
+          "const": "events",
+          "default": "events",
+          "title": "Kind",
+          "type": "string"
+        }
+      },
+      "required": [
+        "activity",
+        "capacity"
+      ],
+      "title": "EventsDiagnostics",
+      "type": "object"
+    },
+    "ListenerFailure": {
+      "additionalProperties": false,
+      "properties": {
+        "code": {
+          "enum": [
+            "event_listener_failed",
+            "event_listener_timeout",
+            "event_depth_limit",
+            "event_capacity"
+          ],
+          "title": "Code",
+          "type": "string"
+        },
+        "error_type": {
+          "title": "Error Type",
+          "type": "string"
+        },
+        "owner": {
+          "title": "Owner",
+          "type": "string"
+        }
+      },
+      "required": [
+        "owner",
+        "error_type",
+        "code"
+      ],
+      "title": "ListenerFailure",
+      "type": "object"
+    },
+    "ListenerRecord": {
+      "additionalProperties": false,
+      "properties": {
+        "duration_ms": {
+          "default": 0,
+          "minimum": 0,
+          "title": "Duration Ms",
+          "type": "number"
+        },
+        "failure": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/ListenerFailure"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null
+        },
+        "listener_name": {
+          "title": "Listener Name",
+          "type": "string"
+        },
+        "observer": {
+          "title": "Observer",
+          "type": "boolean"
+        },
+        "owner": {
+          "title": "Owner",
+          "type": "string"
+        },
+        "status": {
+          "default": "running",
+          "enum": [
+            "running",
+            "completed",
+            "failed",
+            "timed_out",
+            "cancelled"
+          ],
+          "title": "Status",
+          "type": "string"
+        },
+        "subscription_id": {
+          "title": "Subscription Id",
+          "type": "string"
+        }
+      },
+      "required": [
+        "subscription_id",
+        "owner",
+        "observer",
+        "listener_name"
+      ],
+      "title": "ListenerRecord",
+      "type": "object"
+    },
+    "MetricsDiagnostics": {
+      "additionalProperties": false,
+      "properties": {
+        "interval_seconds": {
+          "anyOf": [
+            {
+              "type": "number"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Interval Seconds"
+        },
+        "kind": {
+          "const": "metrics",
+          "default": "metrics",
+          "title": "Kind",
+          "type": "string"
+        },
+        "last_sample_at": {
+          "anyOf": [
+            {
+              "type": "number"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Last Sample At"
+        },
+        "sample_age_seconds": {
+          "anyOf": [
+            {
+              "type": "number"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Sample Age Seconds"
+        }
+      },
+      "title": "MetricsDiagnostics",
+      "type": "object"
+    },
+    "PersistenceDiagnostics": {
+      "additionalProperties": false,
+      "properties": {
+        "accepting": {
+          "title": "Accepting",
+          "type": "boolean"
+        },
+        "dropped": {
+          "title": "Dropped",
+          "type": "integer"
+        },
+        "history_limit": {
+          "title": "History Limit",
+          "type": "integer"
+        },
+        "max_providers": {
+          "default": 128,
+          "maximum": 1000,
+          "minimum": 9,
+          "title": "Max Providers",
+          "type": "integer"
+        },
+        "max_providers_per_owner": {
+          "default": 8,
+          "maximum": 50,
+          "minimum": 1,
+          "title": "Max Providers Per Owner",
+          "type": "integer"
+        },
+        "queue_limit": {
+          "title": "Queue Limit",
+          "type": "integer"
+        },
+        "queued": {
+          "title": "Queued",
+          "type": "integer"
+        },
+        "retention_days": {
+          "title": "Retention Days",
+          "type": "integer"
+        },
+        "write_failures": {
+          "title": "Write Failures",
+          "type": "integer"
+        }
+      },
+      "required": [
+        "queued",
+        "queue_limit",
+        "dropped",
+        "write_failures",
+        "accepting",
+        "history_limit",
+        "retention_days"
+      ],
+      "title": "PersistenceDiagnostics",
+      "type": "object"
+    },
+    "PluginDiagnostic": {
+      "additionalProperties": false,
+      "properties": {
+        "active_tasks": {
+          "title": "Active Tasks",
+          "type": "integer"
+        },
+        "draining": {
+          "title": "Draining",
+          "type": "boolean"
+        },
+        "generation": {
+          "title": "Generation",
+          "type": "integer"
+        },
+        "name": {
+          "title": "Name",
+          "type": "string"
+        },
+        "status": {
+          "title": "Status",
+          "type": "string"
+        }
+      },
+      "required": [
+        "name",
+        "status",
+        "generation",
+        "active_tasks",
+        "draining"
+      ],
+      "title": "PluginDiagnostic",
+      "type": "object"
+    },
+    "PluginValues": {
+      "additionalProperties": false,
+      "properties": {
+        "kind": {
+          "const": "plugin_values",
+          "default": "plugin_values",
+          "title": "Kind",
+          "type": "string"
+        },
+        "values": {
+          "additionalProperties": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "boolean"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "maxProperties": 50,
+          "title": "Values",
+          "type": "object"
+        }
+      },
+      "required": [
+        "values"
+      ],
+      "title": "PluginValues",
+      "type": "object"
+    },
+    "PluginsDiagnostics": {
+      "additionalProperties": false,
+      "properties": {
+        "kind": {
+          "const": "plugins",
+          "default": "plugins",
+          "title": "Kind",
+          "type": "string"
+        },
+        "plugins": {
+          "items": {
+            "$ref": "#/$defs/PluginDiagnostic"
+          },
+          "title": "Plugins",
+          "type": "array"
+        },
+        "total": {
+          "default": 0,
+          "title": "Total",
+          "type": "integer"
+        },
+        "truncated": {
+          "default": false,
+          "title": "Truncated",
+          "type": "boolean"
+        }
+      },
+      "title": "PluginsDiagnostics",
+      "type": "object"
+    },
+    "ProcessDiagnostic": {
+      "additionalProperties": false,
+      "properties": {
+        "expected_status": {
+          "title": "Expected Status",
+          "type": "string"
+        },
+        "observed_running": {
+          "anyOf": [
+            {
+              "type": "boolean"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Observed Running"
+        },
+        "pid": {
+          "anyOf": [
+            {
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Pid"
+        },
+        "server_name": {
+          "title": "Server Name",
+          "type": "string"
+        }
+      },
+      "required": [
+        "server_name",
+        "expected_status"
+      ],
+      "title": "ProcessDiagnostic",
+      "type": "object"
+    },
+    "ProcessesDiagnostics": {
+      "additionalProperties": false,
+      "properties": {
+        "kind": {
+          "const": "processes",
+          "default": "processes",
+          "title": "Kind",
+          "type": "string"
+        },
+        "last_monitor_at": {
+          "anyOf": [
+            {
+              "type": "number"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Last Monitor At"
+        },
+        "monitor_failures": {
+          "anyOf": [
+            {
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Monitor Failures"
+        },
+        "observation_available": {
+          "title": "Observation Available",
+          "type": "boolean"
+        },
+        "observed_running": {
+          "title": "Observed Running",
+          "type": "integer"
+        },
+        "processes": {
+          "items": {
+            "$ref": "#/$defs/ProcessDiagnostic"
+          },
+          "title": "Processes",
+          "type": "array"
+        },
+        "registered": {
+          "title": "Registered",
+          "type": "integer"
+        },
+        "truncated": {
+          "default": false,
+          "title": "Truncated",
+          "type": "boolean"
+        }
+      },
+      "required": [
+        "registered",
+        "observed_running",
+        "observation_available"
+      ],
+      "title": "ProcessesDiagnostics",
+      "type": "object"
+    },
+    "RuntimeDiagnostics": {
+      "additionalProperties": false,
+      "properties": {
+        "kind": {
+          "const": "runtime",
+          "default": "runtime",
+          "title": "Kind",
+          "type": "string"
+        },
+        "phase": {
+          "title": "Phase",
+          "type": "string"
+        },
+        "pid": {
+          "title": "Pid",
+          "type": "integer"
+        },
+        "python_version": {
+          "title": "Python Version",
+          "type": "string"
+        },
+        "shutdown_reason": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Shutdown Reason"
+        },
+        "shutdown_requested": {
+          "anyOf": [
+            {
+              "type": "boolean"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Shutdown Requested"
+        },
+        "stage": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Stage"
+        },
+        "uptime_seconds": {
+          "title": "Uptime Seconds",
+          "type": "number"
+        },
+        "version": {
+          "title": "Version",
+          "type": "string"
+        }
+      },
+      "required": [
+        "phase",
+        "pid",
+        "uptime_seconds",
+        "version",
+        "python_version"
+      ],
+      "title": "RuntimeDiagnostics",
+      "type": "object"
+    },
+    "StateDiagnostics": {
+      "additionalProperties": false,
+      "properties": {
+        "counts": {
+          "additionalProperties": {
+            "type": "integer"
+          },
+          "title": "Counts",
+          "type": "object"
+        },
+        "epoch": {
+          "title": "Epoch",
+          "type": "string"
+        },
+        "kind": {
+          "const": "state",
+          "default": "state",
+          "title": "Kind",
+          "type": "string"
+        },
+        "observation_revision": {
+          "title": "Observation Revision",
+          "type": "integer"
+        },
+        "oldest_pending_age_seconds": {
+          "anyOf": [
+            {
+              "type": "number"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Oldest Pending Age Seconds"
+        },
+        "pending_changes": {
+          "additionalProperties": {
+            "type": "integer"
+          },
+          "title": "Pending Changes",
+          "type": "object"
+        }
+      },
+      "required": [
+        "epoch",
+        "observation_revision",
+        "counts",
+        "pending_changes"
+      ],
+      "title": "StateDiagnostics",
+      "type": "object"
+    },
+    "StorageDiagnostics": {
+      "additionalProperties": false,
+      "properties": {
+        "active": {
+          "default": 0,
+          "title": "Active",
+          "type": "integer"
+        },
+        "attempts": {
+          "default": 0,
+          "title": "Attempts",
+          "type": "integer"
+        },
+        "failures": {
+          "default": 0,
+          "title": "Failures",
+          "type": "integer"
+        },
+        "kind": {
+          "const": "storage",
+          "default": "storage",
+          "title": "Kind",
+          "type": "string"
+        },
+        "last_duration_ms": {
+          "anyOf": [
+            {
+              "type": "number"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Last Duration Ms"
+        },
+        "last_error_type": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Last Error Type"
+        },
+        "last_success_at": {
+          "anyOf": [
+            {
+              "type": "number"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Last Success At"
+        },
+        "lock_wait_ms": {
+          "anyOf": [
+            {
+              "type": "number"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Lock Wait Ms"
+        },
+        "successes": {
+          "default": 0,
+          "title": "Successes",
+          "type": "integer"
+        }
+      },
+      "title": "StorageDiagnostics",
+      "type": "object"
+    },
+    "TaskDiagnostic": {
+      "additionalProperties": false,
+      "properties": {
+        "elapsed_seconds": {
+          "anyOf": [
+            {
+              "type": "number"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Elapsed Seconds"
+        },
+        "error_code": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Error Code"
+        },
+        "id": {
+          "title": "Id",
+          "type": "string"
+        },
+        "owner": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Owner"
+        },
+        "status": {
+          "title": "Status",
+          "type": "string"
+        }
+      },
+      "required": [
+        "id",
+        "status"
+      ],
+      "title": "TaskDiagnostic",
+      "type": "object"
+    },
+    "TasksDiagnostics": {
+      "additionalProperties": false,
+      "properties": {
+        "accepting": {
+          "title": "Accepting",
+          "type": "boolean"
+        },
+        "active": {
+          "title": "Active",
+          "type": "integer"
+        },
+        "counts_by_status": {
+          "additionalProperties": {
+            "type": "integer"
+          },
+          "title": "Counts By Status",
+          "type": "object"
+        },
+        "kind": {
+          "const": "tasks",
+          "default": "tasks",
+          "title": "Kind",
+          "type": "string"
+        },
+        "tasks": {
+          "items": {
+            "$ref": "#/$defs/TaskDiagnostic"
+          },
+          "title": "Tasks",
+          "type": "array"
+        }
+      },
+      "required": [
+        "active",
+        "counts_by_status",
+        "accepting"
+      ],
+      "title": "TasksDiagnostics",
+      "type": "object"
+    },
+    "TransportDiagnostics": {
+      "additionalProperties": false,
+      "properties": {
+        "connected_clients": {
+          "title": "Connected Clients",
+          "type": "integer"
+        },
+        "delivery_mode": {
+          "const": "direct",
+          "default": "direct",
+          "title": "Delivery Mode",
+          "type": "string"
+        },
+        "failed_sends": {
+          "default": 0,
+          "title": "Failed Sends",
+          "type": "integer"
+        },
+        "kind": {
+          "const": "transport",
+          "default": "transport",
+          "title": "Kind",
+          "type": "string"
+        },
+        "subscriptions": {
+          "title": "Subscriptions",
+          "type": "integer"
+        },
+        "successful_sends": {
+          "default": 0,
+          "title": "Successful Sends",
+          "type": "integer"
+        },
+        "topics": {
+          "title": "Topics",
+          "type": "integer"
+        }
+      },
+      "required": [
+        "connected_clients",
+        "subscriptions",
+        "topics"
+      ],
+      "title": "TransportDiagnostics",
+      "type": "object"
+    }
+  },
+  "additionalProperties": false,
+  "properties": {
+    "collected_at": {
+      "title": "Collected At",
+      "type": "number"
+    },
+    "counter_scope": {
+      "const": "current_instance",
+      "default": "current_instance",
+      "title": "Counter Scope",
+      "type": "string"
+    },
+    "instance_id": {
+      "title": "Instance Id",
+      "type": "string"
+    },
+    "persistence": {
+      "$ref": "#/$defs/PersistenceDiagnostics"
+    },
+    "schema_version": {
+      "const": 1,
+      "default": 1,
+      "title": "Schema Version",
+      "type": "integer"
+    },
+    "sections": {
+      "items": {
+        "$ref": "#/$defs/DiagnosticSection"
+      },
+      "title": "Sections",
+      "type": "array"
+    }
+  },
+  "required": [
+    "instance_id",
+    "collected_at",
+    "sections",
+    "persistence"
+  ],
+  "title": "GetApplicationDiagnosticsResponse",
+  "type": "object"
+}
+```
+
+**Transport error schema:**
+
+```json
+{
+  "$defs": {
+    "JsonValue": {}
+  },
+  "additionalProperties": false,
+  "description": "Safe serialized failure; Python callers receive exceptions.",
+  "properties": {
+    "code": {
+      "enum": [
+        "validation_error",
+        "not_found",
+        "conflict",
+        "forbidden",
+        "unauthorized",
+        "http_error",
+        "operation_canceled",
+        "invalid_server_name",
+        "server_start_failed",
+        "server_stop_failed",
+        "server_error",
+        "application_error",
+        "internal_error",
+        "unavailable",
+        "operation_incomplete",
+        "file_error",
+        "storage_error",
+        "configuration_error",
+        "network_error",
+        "system_error"
+      ],
+      "title": "Code",
+      "type": "string"
+    },
+    "details": {
+      "additionalProperties": {
+        "$ref": "#/$defs/JsonValue"
+      },
+      "title": "Details",
+      "type": "object"
+    },
+    "message": {
+      "title": "Message",
+      "type": "string"
+    }
+  },
+  "required": [
+    "code",
+    "message"
+  ],
+  "title": "APIErrorResponse",
+  "type": "object"
+}
+```
+**Parameters:**
+
+| Name | Type | Default |
+|------|------|---------|
+| `request` | `bedrock_server_manager.api.models.diagnostics.GetApplicationDiagnosticsRequest` | `REQUIRED` |
+
+---
+
+
+## `diagnostics.get_diagnostic_history`
+```python
+await self.api.diagnostics.get_diagnostic_history(request: bedrock_server_manager.api.models.diagnostics.GetDiagnosticHistoryRequest)
+```
+- **Async (Requires await):** Yes
+
+- **Description:** Read sanitized retained records, optionally scoped to an application run.
+
+- **Returns:** `GetDiagnosticHistoryResponse`
+
+Runtime context and plugin identity are injected by the bridge. Failures raise application exceptions; plugin cancellation raises `APICancelledError`.
+
+```python
+from bedrock_server_manager.api.models import GetDiagnosticHistoryRequest
+payload = {}
+request = GetDiagnosticHistoryRequest(**payload)
+result = await self.api.diagnostics.get_diagnostic_history(request)
+data = result.model_dump(mode="json")
+```
+
+**Request schema:**
+
+```json
+{
+  "additionalProperties": false,
+  "properties": {
+    "correlation_id": {
+      "anyOf": [
+        {
+          "maxLength": 160,
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "title": "Correlation Id"
+    },
+    "instance_id": {
+      "anyOf": [
+        {
+          "maxLength": 32,
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "title": "Instance Id"
+    },
+    "limit": {
+      "default": 100,
+      "maximum": 200,
+      "minimum": 1,
+      "title": "Limit",
+      "type": "integer"
+    },
+    "subsystem": {
+      "anyOf": [
+        {
+          "maxLength": 80,
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "title": "Subsystem"
+    }
+  },
+  "title": "GetDiagnosticHistoryRequest",
+  "type": "object"
+}
+```
+
+**Response schema:**
+
+```json
+{
+  "$defs": {
+    "DiagnosticRecord": {
+      "additionalProperties": false,
+      "properties": {
+        "code": {
+          "maxLength": 80,
+          "title": "Code",
+          "type": "string"
+        },
+        "correlation_id": {
+          "anyOf": [
+            {
+              "maxLength": 160,
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Correlation Id"
+        },
+        "duration_ms": {
+          "minimum": 0,
+          "title": "Duration Ms",
+          "type": "number"
+        },
+        "error_type": {
+          "anyOf": [
+            {
+              "maxLength": 80,
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Error Type"
+        },
+        "id": {
+          "title": "Id",
+          "type": "string"
+        },
+        "instance_id": {
+          "title": "Instance Id",
+          "type": "string"
+        },
+        "operation": {
+          "maxLength": 160,
+          "title": "Operation",
+          "type": "string"
+        },
+        "operation_id": {
+          "anyOf": [
+            {
+              "maxLength": 160,
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Operation Id"
+        },
+        "outcome": {
+          "enum": [
+            "completed",
+            "failed",
+            "cancelled"
+          ],
+          "title": "Outcome",
+          "type": "string"
+        },
+        "owner": {
+          "anyOf": [
+            {
+              "maxLength": 160,
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Owner"
+        },
+        "subsystem": {
+          "maxLength": 80,
+          "pattern": "^[\\w.:-]+$",
+          "title": "Subsystem",
+          "type": "string"
+        },
+        "timestamp": {
+          "title": "Timestamp",
+          "type": "number"
+        }
+      },
+      "required": [
+        "id",
+        "instance_id",
+        "timestamp",
+        "subsystem",
+        "operation",
+        "outcome",
+        "code",
+        "duration_ms"
+      ],
+      "title": "DiagnosticRecord",
+      "type": "object"
+    }
+  },
+  "additionalProperties": false,
+  "properties": {
+    "available": {
+      "title": "Available",
+      "type": "boolean"
+    },
+    "records": {
+      "items": {
+        "$ref": "#/$defs/DiagnosticRecord"
+      },
+      "title": "Records",
+      "type": "array"
+    },
+    "truncated": {
+      "title": "Truncated",
+      "type": "boolean"
+    }
+  },
+  "required": [
+    "records",
+    "available",
+    "truncated"
+  ],
+  "title": "GetDiagnosticHistoryResponse",
+  "type": "object"
+}
+```
+
+**Transport error schema:**
+
+```json
+{
+  "$defs": {
+    "JsonValue": {}
+  },
+  "additionalProperties": false,
+  "description": "Safe serialized failure; Python callers receive exceptions.",
+  "properties": {
+    "code": {
+      "enum": [
+        "validation_error",
+        "not_found",
+        "conflict",
+        "forbidden",
+        "unauthorized",
+        "http_error",
+        "operation_canceled",
+        "invalid_server_name",
+        "server_start_failed",
+        "server_stop_failed",
+        "server_error",
+        "application_error",
+        "internal_error",
+        "unavailable",
+        "operation_incomplete",
+        "file_error",
+        "storage_error",
+        "configuration_error",
+        "network_error",
+        "system_error"
+      ],
+      "title": "Code",
+      "type": "string"
+    },
+    "details": {
+      "additionalProperties": {
+        "$ref": "#/$defs/JsonValue"
+      },
+      "title": "Details",
+      "type": "object"
+    },
+    "message": {
+      "title": "Message",
+      "type": "string"
+    }
+  },
+  "required": [
+    "code",
+    "message"
+  ],
+  "title": "APIErrorResponse",
+  "type": "object"
+}
+```
+**Parameters:**
+
+| Name | Type | Default |
+|------|------|---------|
+| `request` | `bedrock_server_manager.api.models.diagnostics.GetDiagnosticHistoryRequest` | `REQUIRED` |
+
+---
+
+
+## `diagnostics.get_diagnostic_report`
+```python
+await self.api.diagnostics.get_diagnostic_report(request: bedrock_server_manager.api.models.diagnostics.GetDiagnosticReportRequest)
+```
+- **Async (Requires await):** Yes
+
+- **Description:** Build a support report without secrets, task arguments, or event payloads.
+
+- **Returns:** `GetDiagnosticReportResponse`
+
+Runtime context and plugin identity are injected by the bridge. Failures raise application exceptions; plugin cancellation raises `APICancelledError`.
+
+```python
+from bedrock_server_manager.api.models import GetDiagnosticReportRequest
+payload = {}
+request = GetDiagnosticReportRequest(**payload)
+result = await self.api.diagnostics.get_diagnostic_report(request)
+data = result.model_dump(mode="json")
+```
+
+**Request schema:**
+
+```json
+{
+  "additionalProperties": false,
+  "properties": {},
+  "title": "GetDiagnosticReportRequest",
+  "type": "object"
+}
+```
+
+**Response schema:**
+
+```json
+{
+  "$defs": {
+    "DiagnosticHistory": {
+      "additionalProperties": false,
+      "properties": {
+        "available": {
+          "title": "Available",
+          "type": "boolean"
+        },
+        "records": {
+          "items": {
+            "$ref": "#/$defs/DiagnosticRecord"
+          },
+          "title": "Records",
+          "type": "array"
+        },
+        "truncated": {
+          "title": "Truncated",
+          "type": "boolean"
+        }
+      },
+      "required": [
+        "records",
+        "available",
+        "truncated"
+      ],
+      "title": "DiagnosticHistory",
+      "type": "object"
+    },
+    "DiagnosticIssue": {
+      "additionalProperties": false,
+      "properties": {
+        "code": {
+          "title": "Code",
+          "type": "string"
+        },
+        "message": {
+          "title": "Message",
+          "type": "string"
+        },
+        "severity": {
+          "default": "warning",
+          "enum": [
+            "warning",
+            "error"
+          ],
+          "title": "Severity",
+          "type": "string"
+        }
+      },
+      "required": [
+        "code",
+        "message"
+      ],
+      "title": "DiagnosticIssue",
+      "type": "object"
+    },
+    "DiagnosticRecord": {
+      "additionalProperties": false,
+      "properties": {
+        "code": {
+          "maxLength": 80,
+          "title": "Code",
+          "type": "string"
+        },
+        "correlation_id": {
+          "anyOf": [
+            {
+              "maxLength": 160,
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Correlation Id"
+        },
+        "duration_ms": {
+          "minimum": 0,
+          "title": "Duration Ms",
+          "type": "number"
+        },
+        "error_type": {
+          "anyOf": [
+            {
+              "maxLength": 80,
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Error Type"
+        },
+        "id": {
+          "title": "Id",
+          "type": "string"
+        },
+        "instance_id": {
+          "title": "Instance Id",
+          "type": "string"
+        },
+        "operation": {
+          "maxLength": 160,
+          "title": "Operation",
+          "type": "string"
+        },
+        "operation_id": {
+          "anyOf": [
+            {
+              "maxLength": 160,
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Operation Id"
+        },
+        "outcome": {
+          "enum": [
+            "completed",
+            "failed",
+            "cancelled"
+          ],
+          "title": "Outcome",
+          "type": "string"
+        },
+        "owner": {
+          "anyOf": [
+            {
+              "maxLength": 160,
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Owner"
+        },
+        "subsystem": {
+          "maxLength": 80,
+          "pattern": "^[\\w.:-]+$",
+          "title": "Subsystem",
+          "type": "string"
+        },
+        "timestamp": {
+          "title": "Timestamp",
+          "type": "number"
+        }
+      },
+      "required": [
+        "id",
+        "instance_id",
+        "timestamp",
+        "subsystem",
+        "operation",
+        "outcome",
+        "code",
+        "duration_ms"
+      ],
+      "title": "DiagnosticRecord",
+      "type": "object"
+    },
+    "DiagnosticSection": {
+      "additionalProperties": false,
+      "properties": {
+        "collected_at": {
+          "title": "Collected At",
+          "type": "number"
+        },
+        "data": {
+          "anyOf": [
+            {
+              "discriminator": {
+                "mapping": {
+                  "events": "#/$defs/EventsDiagnostics",
+                  "metrics": "#/$defs/MetricsDiagnostics",
+                  "plugin_values": "#/$defs/PluginValues",
+                  "plugins": "#/$defs/PluginsDiagnostics",
+                  "processes": "#/$defs/ProcessesDiagnostics",
+                  "runtime": "#/$defs/RuntimeDiagnostics",
+                  "state": "#/$defs/StateDiagnostics",
+                  "storage": "#/$defs/StorageDiagnostics",
+                  "tasks": "#/$defs/TasksDiagnostics",
+                  "transport": "#/$defs/TransportDiagnostics"
+                },
+                "propertyName": "kind"
+              },
+              "oneOf": [
+                {
+                  "$ref": "#/$defs/RuntimeDiagnostics"
+                },
+                {
+                  "$ref": "#/$defs/StateDiagnostics"
+                },
+                {
+                  "$ref": "#/$defs/StorageDiagnostics"
+                },
+                {
+                  "$ref": "#/$defs/EventsDiagnostics"
+                },
+                {
+                  "$ref": "#/$defs/TransportDiagnostics"
+                },
+                {
+                  "$ref": "#/$defs/PluginsDiagnostics"
+                },
+                {
+                  "$ref": "#/$defs/TasksDiagnostics"
+                },
+                {
+                  "$ref": "#/$defs/ProcessesDiagnostics"
+                },
+                {
+                  "$ref": "#/$defs/MetricsDiagnostics"
+                },
+                {
+                  "$ref": "#/$defs/PluginValues"
+                }
+              ]
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Data"
+        },
+        "duration_ms": {
+          "default": 0,
+          "title": "Duration Ms",
+          "type": "number"
+        },
+        "issues": {
+          "items": {
+            "$ref": "#/$defs/DiagnosticIssue"
+          },
+          "maxItems": 20,
+          "title": "Issues",
+          "type": "array"
+        },
+        "name": {
+          "title": "Name",
+          "type": "string"
+        },
+        "owner": {
+          "default": "application",
+          "title": "Owner",
+          "type": "string"
+        },
+        "status": {
+          "default": "unknown",
+          "enum": [
+            "ok",
+            "degraded",
+            "unavailable",
+            "unknown"
+          ],
+          "title": "Status",
+          "type": "string"
+        }
+      },
+      "required": [
+        "name",
+        "collected_at"
+      ],
+      "title": "DiagnosticSection",
+      "type": "object"
+    },
+    "DiagnosticSnapshot": {
+      "additionalProperties": false,
+      "properties": {
+        "collected_at": {
+          "title": "Collected At",
+          "type": "number"
+        },
+        "counter_scope": {
+          "const": "current_instance",
+          "default": "current_instance",
+          "title": "Counter Scope",
+          "type": "string"
+        },
+        "instance_id": {
+          "title": "Instance Id",
+          "type": "string"
+        },
+        "persistence": {
+          "$ref": "#/$defs/PersistenceDiagnostics"
+        },
+        "schema_version": {
+          "const": 1,
+          "default": 1,
+          "title": "Schema Version",
+          "type": "integer"
+        },
+        "sections": {
+          "items": {
+            "$ref": "#/$defs/DiagnosticSection"
+          },
+          "title": "Sections",
+          "type": "array"
+        }
+      },
+      "required": [
+        "instance_id",
+        "collected_at",
+        "sections",
+        "persistence"
+      ],
+      "title": "DiagnosticSnapshot",
+      "type": "object"
+    },
+    "EventDelivery": {
+      "additionalProperties": false,
+      "properties": {
+        "failed": {
+          "default": 0,
+          "minimum": 0,
+          "title": "Failed",
+          "type": "integer"
+        },
+        "owner": {
+          "title": "Owner",
+          "type": "string"
+        },
+        "sent": {
+          "default": 0,
+          "minimum": 0,
+          "title": "Sent",
+          "type": "integer"
+        },
+        "targeted": {
+          "default": 0,
+          "minimum": 0,
+          "title": "Targeted",
+          "type": "integer"
+        },
+        "unavailable": {
+          "default": 0,
+          "minimum": 0,
+          "title": "Unavailable",
+          "type": "integer"
+        }
+      },
+      "required": [
+        "owner"
+      ],
+      "title": "EventDelivery",
+      "type": "object"
+    },
+    "EventDiagnostics": {
+      "additionalProperties": false,
+      "properties": {
+        "accepting": {
+          "title": "Accepting",
+          "type": "boolean"
+        },
+        "active": {
+          "items": {
+            "$ref": "#/$defs/EventRecord"
+          },
+          "title": "Active",
+          "type": "array"
+        },
+        "emitted": {
+          "title": "Emitted",
+          "type": "integer"
+        },
+        "failed_listeners": {
+          "title": "Failed Listeners",
+          "type": "integer"
+        },
+        "pending_waits": {
+          "default": 0,
+          "title": "Pending Waits",
+          "type": "integer"
+        },
+        "pending_workers": {
+          "default": 0,
+          "title": "Pending Workers",
+          "type": "integer"
+        },
+        "recent": {
+          "items": {
+            "$ref": "#/$defs/EventRecord"
+          },
+          "title": "Recent",
+          "type": "array"
+        },
+        "rejections_by_reason": {
+          "additionalProperties": {
+            "type": "integer"
+          },
+          "title": "Rejections By Reason",
+          "type": "object"
+        },
+        "subscriptions": {
+          "title": "Subscriptions",
+          "type": "integer"
+        },
+        "suppressed": {
+          "title": "Suppressed",
+          "type": "integer"
+        },
+        "timeouts_by_owner": {
+          "additionalProperties": {
+            "type": "integer"
+          },
+          "title": "Timeouts By Owner",
+          "type": "object"
+        },
+        "workers_by_owner": {
+          "additionalProperties": {
+            "type": "integer"
+          },
+          "title": "Workers By Owner",
+          "type": "object"
+        }
+      },
+      "required": [
+        "accepting",
+        "emitted",
+        "suppressed",
+        "failed_listeners",
+        "subscriptions",
+        "active",
+        "recent"
+      ],
+      "title": "EventDiagnostics",
+      "type": "object"
+    },
+    "EventOptions": {
+      "additionalProperties": false,
+      "properties": {
+        "history_limit": {
+          "default": 200,
+          "maximum": 10000,
+          "minimum": 0,
+          "title": "History Limit",
+          "type": "integer"
+        },
+        "hook_timeout_seconds": {
+          "default": 120,
+          "exclusiveMinimum": 0,
+          "maximum": 3600,
+          "title": "Hook Timeout Seconds",
+          "type": "number"
+        },
+        "listener_timeout_seconds": {
+          "default": 30,
+          "exclusiveMinimum": 0,
+          "maximum": 3600,
+          "title": "Listener Timeout Seconds",
+          "type": "number"
+        },
+        "max_active": {
+          "default": 256,
+          "maximum": 10000,
+          "minimum": 1,
+          "title": "Max Active",
+          "type": "integer"
+        },
+        "max_depth": {
+          "default": 32,
+          "maximum": 128,
+          "minimum": 1,
+          "title": "Max Depth",
+          "type": "integer"
+        },
+        "max_workers": {
+          "anyOf": [
+            {
+              "maximum": 10000,
+              "minimum": 1,
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Max Workers"
+        },
+        "max_workers_per_owner": {
+          "anyOf": [
+            {
+              "maximum": 10000,
+              "minimum": 1,
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Max Workers Per Owner"
+        }
+      },
+      "title": "EventOptions",
+      "type": "object"
+    },
+    "EventRecord": {
+      "additionalProperties": false,
+      "properties": {
+        "cancellation_reason": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Cancellation Reason"
+        },
+        "correlation_id": {
+          "title": "Correlation Id",
+          "type": "string"
+        },
+        "deliveries": {
+          "items": {
+            "$ref": "#/$defs/EventDelivery"
+          },
+          "title": "Deliveries",
+          "type": "array"
+        },
+        "duration_ms": {
+          "default": 0,
+          "title": "Duration Ms",
+          "type": "number"
+        },
+        "event_id": {
+          "title": "Event Id",
+          "type": "string"
+        },
+        "failures": {
+          "items": {
+            "$ref": "#/$defs/ListenerFailure"
+          },
+          "title": "Failures",
+          "type": "array"
+        },
+        "listeners": {
+          "items": {
+            "$ref": "#/$defs/ListenerRecord"
+          },
+          "title": "Listeners",
+          "type": "array"
+        },
+        "listeners_called": {
+          "default": 0,
+          "title": "Listeners Called",
+          "type": "integer"
+        },
+        "name": {
+          "title": "Name",
+          "type": "string"
+        },
+        "parent_event_id": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Parent Event Id"
+        },
+        "rejection_reason": {
+          "anyOf": [
+            {
+              "enum": [
+                "recursion",
+                "depth_limit",
+                "capacity",
+                "shutdown"
+              ],
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Rejection Reason"
+        },
+        "source": {
+          "title": "Source",
+          "type": "string"
+        },
+        "status": {
+          "enum": [
+            "dispatching",
+            "completed",
+            "partial",
+            "cancelled",
+            "suppressed"
+          ],
+          "title": "Status",
+          "type": "string"
+        },
+        "timestamp": {
+          "title": "Timestamp",
+          "type": "number"
+        }
+      },
+      "required": [
+        "event_id",
+        "correlation_id",
+        "name",
+        "source",
+        "timestamp",
+        "status"
+      ],
+      "title": "EventRecord",
+      "type": "object"
+    },
+    "EventsDiagnostics": {
+      "additionalProperties": false,
+      "properties": {
+        "activity": {
+          "$ref": "#/$defs/EventDiagnostics"
+        },
+        "capacity": {
+          "$ref": "#/$defs/EventOptions"
+        },
+        "kind": {
+          "const": "events",
+          "default": "events",
+          "title": "Kind",
+          "type": "string"
+        }
+      },
+      "required": [
+        "activity",
+        "capacity"
+      ],
+      "title": "EventsDiagnostics",
+      "type": "object"
+    },
+    "ListenerFailure": {
+      "additionalProperties": false,
+      "properties": {
+        "code": {
+          "enum": [
+            "event_listener_failed",
+            "event_listener_timeout",
+            "event_depth_limit",
+            "event_capacity"
+          ],
+          "title": "Code",
+          "type": "string"
+        },
+        "error_type": {
+          "title": "Error Type",
+          "type": "string"
+        },
+        "owner": {
+          "title": "Owner",
+          "type": "string"
+        }
+      },
+      "required": [
+        "owner",
+        "error_type",
+        "code"
+      ],
+      "title": "ListenerFailure",
+      "type": "object"
+    },
+    "ListenerRecord": {
+      "additionalProperties": false,
+      "properties": {
+        "duration_ms": {
+          "default": 0,
+          "minimum": 0,
+          "title": "Duration Ms",
+          "type": "number"
+        },
+        "failure": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/ListenerFailure"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null
+        },
+        "listener_name": {
+          "title": "Listener Name",
+          "type": "string"
+        },
+        "observer": {
+          "title": "Observer",
+          "type": "boolean"
+        },
+        "owner": {
+          "title": "Owner",
+          "type": "string"
+        },
+        "status": {
+          "default": "running",
+          "enum": [
+            "running",
+            "completed",
+            "failed",
+            "timed_out",
+            "cancelled"
+          ],
+          "title": "Status",
+          "type": "string"
+        },
+        "subscription_id": {
+          "title": "Subscription Id",
+          "type": "string"
+        }
+      },
+      "required": [
+        "subscription_id",
+        "owner",
+        "observer",
+        "listener_name"
+      ],
+      "title": "ListenerRecord",
+      "type": "object"
+    },
+    "MetricsDiagnostics": {
+      "additionalProperties": false,
+      "properties": {
+        "interval_seconds": {
+          "anyOf": [
+            {
+              "type": "number"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Interval Seconds"
+        },
+        "kind": {
+          "const": "metrics",
+          "default": "metrics",
+          "title": "Kind",
+          "type": "string"
+        },
+        "last_sample_at": {
+          "anyOf": [
+            {
+              "type": "number"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Last Sample At"
+        },
+        "sample_age_seconds": {
+          "anyOf": [
+            {
+              "type": "number"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Sample Age Seconds"
+        }
+      },
+      "title": "MetricsDiagnostics",
+      "type": "object"
+    },
+    "PersistenceDiagnostics": {
+      "additionalProperties": false,
+      "properties": {
+        "accepting": {
+          "title": "Accepting",
+          "type": "boolean"
+        },
+        "dropped": {
+          "title": "Dropped",
+          "type": "integer"
+        },
+        "history_limit": {
+          "title": "History Limit",
+          "type": "integer"
+        },
+        "max_providers": {
+          "default": 128,
+          "maximum": 1000,
+          "minimum": 9,
+          "title": "Max Providers",
+          "type": "integer"
+        },
+        "max_providers_per_owner": {
+          "default": 8,
+          "maximum": 50,
+          "minimum": 1,
+          "title": "Max Providers Per Owner",
+          "type": "integer"
+        },
+        "queue_limit": {
+          "title": "Queue Limit",
+          "type": "integer"
+        },
+        "queued": {
+          "title": "Queued",
+          "type": "integer"
+        },
+        "retention_days": {
+          "title": "Retention Days",
+          "type": "integer"
+        },
+        "write_failures": {
+          "title": "Write Failures",
+          "type": "integer"
+        }
+      },
+      "required": [
+        "queued",
+        "queue_limit",
+        "dropped",
+        "write_failures",
+        "accepting",
+        "history_limit",
+        "retention_days"
+      ],
+      "title": "PersistenceDiagnostics",
+      "type": "object"
+    },
+    "PluginDiagnostic": {
+      "additionalProperties": false,
+      "properties": {
+        "active_tasks": {
+          "title": "Active Tasks",
+          "type": "integer"
+        },
+        "draining": {
+          "title": "Draining",
+          "type": "boolean"
+        },
+        "generation": {
+          "title": "Generation",
+          "type": "integer"
+        },
+        "name": {
+          "title": "Name",
+          "type": "string"
+        },
+        "status": {
+          "title": "Status",
+          "type": "string"
+        }
+      },
+      "required": [
+        "name",
+        "status",
+        "generation",
+        "active_tasks",
+        "draining"
+      ],
+      "title": "PluginDiagnostic",
+      "type": "object"
+    },
+    "PluginValues": {
+      "additionalProperties": false,
+      "properties": {
+        "kind": {
+          "const": "plugin_values",
+          "default": "plugin_values",
+          "title": "Kind",
+          "type": "string"
+        },
+        "values": {
+          "additionalProperties": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "boolean"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "maxProperties": 50,
+          "title": "Values",
+          "type": "object"
+        }
+      },
+      "required": [
+        "values"
+      ],
+      "title": "PluginValues",
+      "type": "object"
+    },
+    "PluginsDiagnostics": {
+      "additionalProperties": false,
+      "properties": {
+        "kind": {
+          "const": "plugins",
+          "default": "plugins",
+          "title": "Kind",
+          "type": "string"
+        },
+        "plugins": {
+          "items": {
+            "$ref": "#/$defs/PluginDiagnostic"
+          },
+          "title": "Plugins",
+          "type": "array"
+        },
+        "total": {
+          "default": 0,
+          "title": "Total",
+          "type": "integer"
+        },
+        "truncated": {
+          "default": false,
+          "title": "Truncated",
+          "type": "boolean"
+        }
+      },
+      "title": "PluginsDiagnostics",
+      "type": "object"
+    },
+    "ProcessDiagnostic": {
+      "additionalProperties": false,
+      "properties": {
+        "expected_status": {
+          "title": "Expected Status",
+          "type": "string"
+        },
+        "observed_running": {
+          "anyOf": [
+            {
+              "type": "boolean"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Observed Running"
+        },
+        "pid": {
+          "anyOf": [
+            {
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Pid"
+        },
+        "server_name": {
+          "title": "Server Name",
+          "type": "string"
+        }
+      },
+      "required": [
+        "server_name",
+        "expected_status"
+      ],
+      "title": "ProcessDiagnostic",
+      "type": "object"
+    },
+    "ProcessesDiagnostics": {
+      "additionalProperties": false,
+      "properties": {
+        "kind": {
+          "const": "processes",
+          "default": "processes",
+          "title": "Kind",
+          "type": "string"
+        },
+        "last_monitor_at": {
+          "anyOf": [
+            {
+              "type": "number"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Last Monitor At"
+        },
+        "monitor_failures": {
+          "anyOf": [
+            {
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Monitor Failures"
+        },
+        "observation_available": {
+          "title": "Observation Available",
+          "type": "boolean"
+        },
+        "observed_running": {
+          "title": "Observed Running",
+          "type": "integer"
+        },
+        "processes": {
+          "items": {
+            "$ref": "#/$defs/ProcessDiagnostic"
+          },
+          "title": "Processes",
+          "type": "array"
+        },
+        "registered": {
+          "title": "Registered",
+          "type": "integer"
+        },
+        "truncated": {
+          "default": false,
+          "title": "Truncated",
+          "type": "boolean"
+        }
+      },
+      "required": [
+        "registered",
+        "observed_running",
+        "observation_available"
+      ],
+      "title": "ProcessesDiagnostics",
+      "type": "object"
+    },
+    "RuntimeDiagnostics": {
+      "additionalProperties": false,
+      "properties": {
+        "kind": {
+          "const": "runtime",
+          "default": "runtime",
+          "title": "Kind",
+          "type": "string"
+        },
+        "phase": {
+          "title": "Phase",
+          "type": "string"
+        },
+        "pid": {
+          "title": "Pid",
+          "type": "integer"
+        },
+        "python_version": {
+          "title": "Python Version",
+          "type": "string"
+        },
+        "shutdown_reason": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Shutdown Reason"
+        },
+        "shutdown_requested": {
+          "anyOf": [
+            {
+              "type": "boolean"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Shutdown Requested"
+        },
+        "stage": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Stage"
+        },
+        "uptime_seconds": {
+          "title": "Uptime Seconds",
+          "type": "number"
+        },
+        "version": {
+          "title": "Version",
+          "type": "string"
+        }
+      },
+      "required": [
+        "phase",
+        "pid",
+        "uptime_seconds",
+        "version",
+        "python_version"
+      ],
+      "title": "RuntimeDiagnostics",
+      "type": "object"
+    },
+    "StateDiagnostics": {
+      "additionalProperties": false,
+      "properties": {
+        "counts": {
+          "additionalProperties": {
+            "type": "integer"
+          },
+          "title": "Counts",
+          "type": "object"
+        },
+        "epoch": {
+          "title": "Epoch",
+          "type": "string"
+        },
+        "kind": {
+          "const": "state",
+          "default": "state",
+          "title": "Kind",
+          "type": "string"
+        },
+        "observation_revision": {
+          "title": "Observation Revision",
+          "type": "integer"
+        },
+        "oldest_pending_age_seconds": {
+          "anyOf": [
+            {
+              "type": "number"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Oldest Pending Age Seconds"
+        },
+        "pending_changes": {
+          "additionalProperties": {
+            "type": "integer"
+          },
+          "title": "Pending Changes",
+          "type": "object"
+        }
+      },
+      "required": [
+        "epoch",
+        "observation_revision",
+        "counts",
+        "pending_changes"
+      ],
+      "title": "StateDiagnostics",
+      "type": "object"
+    },
+    "StorageDiagnostics": {
+      "additionalProperties": false,
+      "properties": {
+        "active": {
+          "default": 0,
+          "title": "Active",
+          "type": "integer"
+        },
+        "attempts": {
+          "default": 0,
+          "title": "Attempts",
+          "type": "integer"
+        },
+        "failures": {
+          "default": 0,
+          "title": "Failures",
+          "type": "integer"
+        },
+        "kind": {
+          "const": "storage",
+          "default": "storage",
+          "title": "Kind",
+          "type": "string"
+        },
+        "last_duration_ms": {
+          "anyOf": [
+            {
+              "type": "number"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Last Duration Ms"
+        },
+        "last_error_type": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Last Error Type"
+        },
+        "last_success_at": {
+          "anyOf": [
+            {
+              "type": "number"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Last Success At"
+        },
+        "lock_wait_ms": {
+          "anyOf": [
+            {
+              "type": "number"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Lock Wait Ms"
+        },
+        "successes": {
+          "default": 0,
+          "title": "Successes",
+          "type": "integer"
+        }
+      },
+      "title": "StorageDiagnostics",
+      "type": "object"
+    },
+    "TaskDiagnostic": {
+      "additionalProperties": false,
+      "properties": {
+        "elapsed_seconds": {
+          "anyOf": [
+            {
+              "type": "number"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Elapsed Seconds"
+        },
+        "error_code": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Error Code"
+        },
+        "id": {
+          "title": "Id",
+          "type": "string"
+        },
+        "owner": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Owner"
+        },
+        "status": {
+          "title": "Status",
+          "type": "string"
+        }
+      },
+      "required": [
+        "id",
+        "status"
+      ],
+      "title": "TaskDiagnostic",
+      "type": "object"
+    },
+    "TasksDiagnostics": {
+      "additionalProperties": false,
+      "properties": {
+        "accepting": {
+          "title": "Accepting",
+          "type": "boolean"
+        },
+        "active": {
+          "title": "Active",
+          "type": "integer"
+        },
+        "counts_by_status": {
+          "additionalProperties": {
+            "type": "integer"
+          },
+          "title": "Counts By Status",
+          "type": "object"
+        },
+        "kind": {
+          "const": "tasks",
+          "default": "tasks",
+          "title": "Kind",
+          "type": "string"
+        },
+        "tasks": {
+          "items": {
+            "$ref": "#/$defs/TaskDiagnostic"
+          },
+          "title": "Tasks",
+          "type": "array"
+        }
+      },
+      "required": [
+        "active",
+        "counts_by_status",
+        "accepting"
+      ],
+      "title": "TasksDiagnostics",
+      "type": "object"
+    },
+    "TransportDiagnostics": {
+      "additionalProperties": false,
+      "properties": {
+        "connected_clients": {
+          "title": "Connected Clients",
+          "type": "integer"
+        },
+        "delivery_mode": {
+          "const": "direct",
+          "default": "direct",
+          "title": "Delivery Mode",
+          "type": "string"
+        },
+        "failed_sends": {
+          "default": 0,
+          "title": "Failed Sends",
+          "type": "integer"
+        },
+        "kind": {
+          "const": "transport",
+          "default": "transport",
+          "title": "Kind",
+          "type": "string"
+        },
+        "subscriptions": {
+          "title": "Subscriptions",
+          "type": "integer"
+        },
+        "successful_sends": {
+          "default": 0,
+          "title": "Successful Sends",
+          "type": "integer"
+        },
+        "topics": {
+          "title": "Topics",
+          "type": "integer"
+        }
+      },
+      "required": [
+        "connected_clients",
+        "subscriptions",
+        "topics"
+      ],
+      "title": "TransportDiagnostics",
+      "type": "object"
+    }
+  },
+  "additionalProperties": false,
+  "properties": {
+    "history": {
+      "$ref": "#/$defs/DiagnosticHistory"
+    },
+    "snapshot": {
+      "$ref": "#/$defs/DiagnosticSnapshot"
+    }
+  },
+  "required": [
+    "snapshot",
+    "history"
+  ],
+  "title": "GetDiagnosticReportResponse",
+  "type": "object"
+}
+```
+
+**Transport error schema:**
+
+```json
+{
+  "$defs": {
+    "JsonValue": {}
+  },
+  "additionalProperties": false,
+  "description": "Safe serialized failure; Python callers receive exceptions.",
+  "properties": {
+    "code": {
+      "enum": [
+        "validation_error",
+        "not_found",
+        "conflict",
+        "forbidden",
+        "unauthorized",
+        "http_error",
+        "operation_canceled",
+        "invalid_server_name",
+        "server_start_failed",
+        "server_stop_failed",
+        "server_error",
+        "application_error",
+        "internal_error",
+        "unavailable",
+        "operation_incomplete",
+        "file_error",
+        "storage_error",
+        "configuration_error",
+        "network_error",
+        "system_error"
+      ],
+      "title": "Code",
+      "type": "string"
+    },
+    "details": {
+      "additionalProperties": {
+        "$ref": "#/$defs/JsonValue"
+      },
+      "title": "Details",
+      "type": "object"
+    },
+    "message": {
+      "title": "Message",
+      "type": "string"
+    }
+  },
+  "required": [
+    "code",
+    "message"
+  ],
+  "title": "APIErrorResponse",
+  "type": "object"
+}
+```
+**Parameters:**
+
+| Name | Type | Default |
+|------|------|---------|
+| `request` | `bedrock_server_manager.api.models.diagnostics.GetDiagnosticReportRequest` | `REQUIRED` |
+
+---
+
+
 ## `install.install_new_server`
 ```python
 await self.api.install.install_new_server(request: bedrock_server_manager.api.models.install.InstallNewServerRequest)

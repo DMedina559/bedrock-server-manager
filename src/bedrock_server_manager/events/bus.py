@@ -72,6 +72,7 @@ class EventBus:
         revision_provider: Callable[[], Mapping[str, Any]] | None = None,
     ):
         self.options = options or EventOptions()
+        self.diagnostic_recorder: Callable[[EventRecord], None] | None = None
         self.registry = EventRegistry(builtin_events)
         self._revision_provider = revision_provider
         self._subscriptions: dict[str, Subscription] = {}
@@ -523,6 +524,13 @@ class EventBus:
             )
             self._rejections["shutdown"] = self._rejections.get("shutdown", 0) + 1
             self._recent.append(record.model_copy(deep=True))
+            if self.diagnostic_recorder is not None and record.failures:
+                try:
+                    self.diagnostic_recorder(record.model_copy(deep=True))
+                except Exception:
+                    logger.debug(
+                        "Event diagnostics recording unavailable", exc_info=True
+                    )
             raise EventDispatchRejected(record)
         data = dict(payload or {})
         definition = self.registry.definition(name)
@@ -642,6 +650,13 @@ class EventBus:
             record.duration_ms = (monotonic() - started) * 1000
             self._active.pop(record.event_id, None)
             self._recent.append(record.model_copy(deep=True))
+            if self.diagnostic_recorder is not None and record.failures:
+                try:
+                    self.diagnostic_recorder(record.model_copy(deep=True))
+                except Exception:
+                    logger.debug(
+                        "Event diagnostics recording unavailable", exc_info=True
+                    )
             if task is not None and not already_owned:
                 self._tasks.discard(task)
             _stack.reset(token)

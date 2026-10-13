@@ -5,6 +5,7 @@ from . import (
     application,
     backup_restore,
     ban,
+    diagnostics,
     install,
     misc,
     permissions,
@@ -20,6 +21,7 @@ from . import (
 )
 
 __all__ = [
+    "diagnostics",
     "application",
     "addon",
     "backup_restore",

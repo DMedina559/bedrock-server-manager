@@ -9,6 +9,7 @@ handles periodic tasks like player scanning from logs.
 
 import asyncio
 import logging
+import time
 from typing import TYPE_CHECKING, Any, Awaitable, Callable, Dict, Optional
 
 from ..error import BSMError, FileOperationError
@@ -38,6 +39,7 @@ class BedrockProcessManager:
         events: Optional["EventPublisher"] = None,
         stop_server: Callable[[str], Awaitable[None]] | None = None,
         get_bans: Callable[[str], Awaitable[list["BanItem"]]] | None = None,
+        record_failure: Callable[[str, Exception, float], None] | None = None,
     ):
         """Initialize the BedrockProcessManager with explicit dependencies."""
         self.settings = settings
@@ -46,6 +48,9 @@ class BedrockProcessManager:
         self.events = events
         self.stop_server = stop_server
         self.get_bans = get_bans
+        self.record_failure = record_failure
+        self.monitor_observed_at: float | None = None
+        self.monitor_failures = 0
         self.servers: Dict[str, "BedrockServer"] = {}
         self.restart_attempts: dict[str, int] = {}
         self._pending_player_events: set[str] = set()
@@ -277,11 +282,15 @@ class BedrockProcessManager:
             self.player_scan_counter += monitoring_interval
             for server_name, server in list(self.servers.items()):
                 # Determine run state
+                probe_started = time.monotonic()
                 try:
                     is_running = await server.is_running()
                     await server.reconcile_status(is_running)
                     self._failures.recover(f"probe:{server_name}")
                 except Exception as error:
+                    self.monitor_failures += 1
+                    if self.record_failure is not None:
+                        self.record_failure(server_name, error, probe_started)
                     self._failures.report(
                         f"probe:{server_name}",
                         "Server monitoring unavailable (%s): %s; retrying.",
@@ -418,5 +427,6 @@ class BedrockProcessManager:
                             "Player monitoring unavailable (%s): %s; retrying.",
                             e,
                         )
+            self.monitor_observed_at = time.time()
             if self.player_scan_counter >= player_log_monitoring_interval_sec:
                 self.player_scan_counter = 0

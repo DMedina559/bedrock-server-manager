@@ -33,12 +33,18 @@ from bedrock_server_manager.api.models import (
     GetAllServersDataResponse,
     GetAllServerSettingsRequest,
     GetAllServerSettingsResponse,
+    GetApplicationDiagnosticsRequest,
+    GetApplicationDiagnosticsResponse,
     GetApplicationHealthRequest,
     GetApplicationHealthResponse,
     GetApplicationMetricsRequest,
     GetApplicationMetricsResponse,
     GetBedrockProcessInfoRequest,
     GetBedrockProcessInfoResponse,
+    GetDiagnosticHistoryRequest,
+    GetDiagnosticHistoryResponse,
+    GetDiagnosticReportRequest,
+    GetDiagnosticReportResponse,
     GetGlobalSettingRequest,
     GetGlobalSettingResponse,
     GetPermissionsRequest,
@@ -236,6 +242,20 @@ class BanAPI(Protocol):
     async def get_server_bans(
         self, request: GetServerBansRequest | Mapping[str, object]
     ) -> GetServerBansResponse: ...
+
+
+class DiagnosticsAPI(Protocol):
+    async def get_application_diagnostics(
+        self, request: GetApplicationDiagnosticsRequest | Mapping[str, object]
+    ) -> GetApplicationDiagnosticsResponse: ...
+
+    async def get_diagnostic_history(
+        self, request: GetDiagnosticHistoryRequest | Mapping[str, object]
+    ) -> GetDiagnosticHistoryResponse: ...
+
+    async def get_diagnostic_report(
+        self, request: GetDiagnosticReportRequest | Mapping[str, object]
+    ) -> GetDiagnosticReportResponse: ...
 
 
 class InstallAPI(Protocol):
@@ -449,6 +469,10 @@ class RuntimeAPI(Protocol):
         self, topic: str, handler: Callable[..., Any]
     ) -> None: ...
 
+    async def register_diagnostic_provider(
+        self, name: str, handler: Callable[..., Any]
+    ) -> None: ...
+
 
 API_METHODS: dict[str, dict[str, str]] = {
     "addon": {
@@ -481,6 +505,11 @@ API_METHODS: dict[str, dict[str, str]] = {
         "restore_world": "restore_world",
     },
     "ban": {"add_server_ban": "add_server_ban", "get_server_bans": "get_server_bans"},
+    "diagnostics": {
+        "get_application_diagnostics": "get_application_diagnostics",
+        "get_diagnostic_history": "get_diagnostic_history",
+        "get_diagnostic_report": "get_diagnostic_report",
+    },
     "install": {
         "install_new_server": "install_new_server",
         "update_server": "update_server",

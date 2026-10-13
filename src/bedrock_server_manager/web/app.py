@@ -111,6 +111,7 @@ def create_web_app(
 
     app.state.app_context = app_context
     app.state.web_runtime = runtime
+    app_context._web_runtime = runtime
 
     @app.middleware("http")
     async def reject_new_mutations(request, call_next):

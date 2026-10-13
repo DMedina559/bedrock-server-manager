@@ -62,6 +62,8 @@ def generate():
 
     async def register_data_provider(self, topic: str, handler: Callable[..., Any]) -> None: ...
 
+    async def register_diagnostic_provider(self, name: str, handler: Callable[..., Any]) -> None: ...
+
 """
         + "API_METHODS: dict[str, dict[str, str]] = "
         + repr(mapping)

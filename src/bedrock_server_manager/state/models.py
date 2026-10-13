@@ -4,6 +4,7 @@ Typed domain state models for ServerState, PluginState, UserState, and RuntimeSt
 """
 
 import asyncio
+import time
 from dataclasses import dataclass, field
 from typing import Dict, List, Optional, Self, cast
 
@@ -37,10 +38,15 @@ class ServerConfigState(PersistentRecord):
 class ServerState:
     _servers: Dict[str, ServerConfigState] = field(default_factory=dict)
     _dirty: bool = field(default=False, init=False, repr=False)
+    _dirty_since: float | None = field(default=None, init=False, repr=False)
     _dirty_servers: set[str] = field(init=False, repr=False, default_factory=set)
     _locks: Dict[str, asyncio.Lock] = field(
         init=False, repr=False, default_factory=dict
     )
+
+    @property
+    def count(self) -> int:
+        return len(self._servers)
 
     @property
     def servers(self) -> Dict[str, ServerConfigState]:
@@ -65,6 +71,8 @@ class ServerState:
         return self._locks[server_name]
 
     def mark_dirty(self, server_name: Optional[str] = None) -> None:
+        if not self._dirty:
+            self._dirty_since = time.monotonic()
         self._dirty = True
         if server_name:
             self._dirty_servers.add(server_name)
@@ -73,10 +81,20 @@ class ServerState:
         self._dirty_servers.discard(server_name)
         if not self._dirty_servers:
             self._dirty = False
+            self._dirty_since = None
 
     def clear_dirty(self) -> None:
         self._dirty = False
+        self._dirty_since = None
         self._dirty_servers.clear()
+
+    @property
+    def dirty_age_seconds(self) -> float | None:
+        return (
+            max(0, time.monotonic() - self._dirty_since)
+            if self._dirty_since is not None
+            else None
+        )
 
     @property
     def is_dirty(self) -> bool:
@@ -109,10 +127,15 @@ class PluginInfoState(PersistentRecord):
 class PluginState:
     _plugins: Dict[str, PluginInfoState] = field(default_factory=dict)
     _dirty: bool = field(default=False, init=False, repr=False)
+    _dirty_since: float | None = field(default=None, init=False, repr=False)
     _dirty_plugins: set[str] = field(init=False, repr=False, default_factory=set)
     _locks: Dict[str, asyncio.Lock] = field(
         init=False, repr=False, default_factory=dict
     )
+
+    @property
+    def count(self) -> int:
+        return len(self._plugins)
 
     @property
     def plugins(self) -> Dict[str, PluginInfoState]:
@@ -137,6 +160,8 @@ class PluginState:
         return self._locks[plugin_name]
 
     def mark_dirty(self, plugin_name: Optional[str] = None) -> None:
+        if not self._dirty:
+            self._dirty_since = time.monotonic()
         self._dirty = True
         if plugin_name:
             self._dirty_plugins.add(plugin_name)
@@ -145,10 +170,20 @@ class PluginState:
         self._dirty_plugins.discard(plugin_name)
         if not self._dirty_plugins:
             self._dirty = False
+            self._dirty_since = None
 
     def clear_dirty(self) -> None:
         self._dirty = False
+        self._dirty_since = None
         self._dirty_plugins.clear()
+
+    @property
+    def dirty_age_seconds(self) -> float | None:
+        return (
+            max(0, time.monotonic() - self._dirty_since)
+            if self._dirty_since is not None
+            else None
+        )
 
     @property
     def is_dirty(self) -> bool:
@@ -183,10 +218,15 @@ class UserInfoState(PersistentRecord):
 class UserState:
     _users: Dict[str, UserInfoState] = field(default_factory=dict)
     _dirty: bool = field(default=False, init=False, repr=False)
+    _dirty_since: float | None = field(default=None, init=False, repr=False)
     _dirty_users: set[str] = field(init=False, repr=False, default_factory=set)
     _locks: Dict[str, asyncio.Lock] = field(
         init=False, repr=False, default_factory=dict
     )
+
+    @property
+    def count(self) -> int:
+        return len(self._users)
 
     @property
     def users(self) -> Dict[str, UserInfoState]:
@@ -211,6 +251,8 @@ class UserState:
         return self._locks[username]
 
     def mark_dirty(self, username: Optional[str] = None) -> None:
+        if not self._dirty:
+            self._dirty_since = time.monotonic()
         self._dirty = True
         if username:
             self._dirty_users.add(username)
@@ -219,10 +261,20 @@ class UserState:
         self._dirty_users.discard(username)
         if not self._dirty_users:
             self._dirty = False
+            self._dirty_since = None
 
     def clear_dirty(self) -> None:
         self._dirty = False
+        self._dirty_since = None
         self._dirty_users.clear()
+
+    @property
+    def dirty_age_seconds(self) -> float | None:
+        return (
+            max(0, time.monotonic() - self._dirty_since)
+            if self._dirty_since is not None
+            else None
+        )
 
     @property
     def is_dirty(self) -> bool:

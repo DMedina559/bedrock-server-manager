@@ -44,6 +44,8 @@ class ConnectionManager:
         self.io_timeout = 5.0
         # Maps a unique client ID to its Client object
         self.active_connections: Dict[str, Client] = {}
+        self.successful_sends = 0
+        self.failed_sends = 0
         # Maps a topic to a list of client IDs subscribed to it
         self.subscriptions: Dict[str, List[str]] = {}
         # Maps a topic to a registered DataProvider
@@ -225,6 +227,7 @@ class ConnectionManager:
                     client_id,
                     e,
                 )
+                self.failed_sends += 1
                 await self.disconnect(client_id)
                 return DeliveryResult(targeted=1, unavailable=1)
             except Exception as e:
@@ -236,8 +239,10 @@ class ConnectionManager:
                     error=e,
                 )
                 # Consider the connection lost and disconnect the client
+                self.failed_sends += 1
                 await self.disconnect(client_id)
                 return DeliveryResult(targeted=1, failed=1)
+            self.successful_sends += 1
             return DeliveryResult(targeted=1, sent=1)
         return DeliveryResult(targeted=1, unavailable=1)
 

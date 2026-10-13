@@ -66,12 +66,16 @@ class PluginManager:
         events: EventBus | None = None,
         api_factory: Callable[[str], "AppAPI"] | None = None,
         settings_models: dict[str, type[BaseModel]] | None = None,
+        diagnostic_cleanup: Callable[[str], None] | None = None,
+        diagnostic_pending: Callable[[str], bool] | None = None,
         task_manager_provider: Callable[[], Optional["TaskManager"]] | None = None,
         connection_manager_provider: (
             Callable[[], Optional["ConnectionManager"]] | None
         ) = None,
     ):
         """Initialize the PluginManager with explicit required dependencies."""
+        self.diagnostic_pending = diagnostic_pending or (lambda owner: False)
+        self.diagnostic_cleanup = diagnostic_cleanup or (lambda owner: None)
         self.state = state
         self.storage = storage
         self.settings = settings
@@ -1002,6 +1006,7 @@ class PluginManager:
 
             if asyncio.current_task() in self.plugin_tasks.get(plugin_key, []):
                 raise RuntimeError("A plugin task cannot unload its own plugin.")
+            self.diagnostic_cleanup(plugin_key)
             tasks_to_await = []
             if plugin_key in self.plugin_tasks:
                 for task in self.plugin_tasks.pop(plugin_key, []):
@@ -1044,7 +1049,9 @@ class PluginManager:
                 )
 
             owners = set(self._event_owners(target_instance))
-            if any(self.events.owner_pending(owner) for owner in owners):
+            if self.diagnostic_pending(plugin_name) or any(
+                self.events.owner_pending(owner) for owner in owners
+            ):
                 self._draining_plugins[plugin_key] = owners
             self._pending_plugins.pop(plugin_key, None)
             if target_instance in self.plugins:
@@ -1091,7 +1098,9 @@ class PluginManager:
 
     def _can_replace_plugin(self, plugin_name: str) -> bool:
         owners = self._draining_plugins.get(plugin_name, set())
-        if any(self.events.owner_pending(owner) for owner in owners):
+        if self.diagnostic_pending(plugin_name) or any(
+            self.events.owner_pending(owner) for owner in owners
+        ):
             self._set_runtime_status(plugin_name, "ERROR")
             logger.warning(
                 "Plugin '%s' is still draining its old event generation", plugin_name

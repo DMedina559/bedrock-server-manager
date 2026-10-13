@@ -63,6 +63,14 @@ from .ban import (
     RemoveServerBanResponse,
 )
 from .common import APIErrorResponse, APIRequest, APIResponse
+from .diagnostics import (
+    GetApplicationDiagnosticsRequest,
+    GetApplicationDiagnosticsResponse,
+    GetDiagnosticHistoryRequest,
+    GetDiagnosticHistoryResponse,
+    GetDiagnosticReportRequest,
+    GetDiagnosticReportResponse,
+)
 from .health import (
     GetApplicationHealthRequest,
     GetApplicationHealthResponse,
@@ -388,4 +396,14 @@ __all__ += [
     "GetApplicationHealthRequest",
     "GetApplicationHealthResponse",
     "HealthCheck",
+]
+
+
+__all__ += [
+    "GetApplicationDiagnosticsRequest",
+    "GetApplicationDiagnosticsResponse",
+    "GetDiagnosticHistoryRequest",
+    "GetDiagnosticHistoryResponse",
+    "GetDiagnosticReportRequest",
+    "GetDiagnosticReportResponse",
 ]
