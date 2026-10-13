@@ -4,8 +4,11 @@ from typing import Annotated, Literal
 
 from fastapi import APIRouter, Depends, HTTPException, Query, Response
 
+from ...api.models.diagnostics import CompareDiagnosticSnapshotsRequest
 from ...context import AppContext
+from ...diagnostics.comparison import compare_snapshots
 from ...diagnostics.models import (
+    DiagnosticComparison,
     DiagnosticHistory,
     DiagnosticReport,
     DiagnosticRuns,
@@ -103,6 +106,19 @@ async def get_diagnostic_trace(
     service: Diagnostics = Depends(get_diagnostics),
 ) -> DiagnosticTrace:
     return await service.trace(correlation_id, limit=limit, cursor=cursor)
+
+
+@router.post(
+    "/compare",
+    operation_id="compare_diagnostic_snapshots",
+    response_model=DiagnosticComparison,
+)
+async def compare_diagnostic_snapshots(
+    request: CompareDiagnosticSnapshotsRequest,
+    service: Diagnostics = Depends(get_diagnostics),
+) -> DiagnosticComparison:
+    """Compare supplied metadata; administrator authentication is required."""
+    return compare_snapshots(request.before, request.after)
 
 
 @router.get(

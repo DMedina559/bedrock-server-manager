@@ -109,7 +109,8 @@ async def get_application_metrics(
     request: GetApplicationMetricsRequest, *, app_context: AppContext
 ) -> GetApplicationMetricsResponse:
     """Return shared, bounded performance history without sampling per request."""
-    return await app_context.metrics_service.snapshot()
+    result = await app_context.metrics_service.snapshot()
+    return GetApplicationMetricsResponse.model_validate(result.model_dump())
 
 
 @api_method("get_application_health")

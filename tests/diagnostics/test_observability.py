@@ -1,6 +1,7 @@
 """Verify observable behavior across persistence, task and transport boundaries."""
 
 import asyncio
+import copy
 import time
 
 import pytest
@@ -83,6 +84,7 @@ async def test_failed_provider_retains_last_observation_and_rejection_counts(db)
     failed = True
     second = await service.snapshot()
     assert first.sections[0].status == "ok"
+    assert first.summary.status == "ok" and first.summary.ready is None
     assert second.sections[0].status == "unavailable" and second.sections[0].stale
     assert second.sections[0].data.values["pending"] == 2
     stale_runtime = DiagnosticSection(
@@ -324,3 +326,184 @@ def test_history_index_migration_preserves_existing_records(tmp_path):
             sa.select(restored.c.record)
         ).scalar_one() == record.model_dump(mode="json")
     engine.dispose()
+
+
+async def test_comparison_respects_restarts_and_requires_administrator(
+    admin_auth_client, auth_client
+):
+    before = (await admin_auth_client.get("/api/diagnostics")).json()
+    after = copy.deepcopy(before)
+    after["collected_at"] += 1
+    storage = next(
+        section for section in after["sections"] if section["name"] == "storage"
+    )
+    storage["data"]["failures"] += 3
+    response = await admin_auth_client.post(
+        "/api/diagnostics/compare", json={"before": before, "after": after}
+    )
+    assert response.status_code == 200
+    change = next(
+        change
+        for change in response.json()["changes"]
+        if change["subsystem"] == "storage" and change["field"] == "failures"
+    )
+    assert change["delta"] == 3 and not change["counter_reset"]
+    after["instance_id"] = "restarted"
+    response = await admin_auth_client.post(
+        "/api/diagnostics/compare", json={"before": before, "after": after}
+    )
+    change = next(
+        change for change in response.json()["changes"] if change["field"] == "failures"
+    )
+    assert (
+        response.json()["same_instance"] is False
+        and change["delta"] is None
+        and change["counter_reset"]
+    )
+    assert (
+        await auth_client.post(
+            "/api/diagnostics/compare", json={"before": before, "after": after}
+        )
+    ).status_code == 403
+
+
+async def test_trace_preserves_history_when_live_sources_fail(db):
+    service = Diagnostics(
+        DiagnosticHistoryStore(db, DiagnosticOptions()), DiagnosticOptions()
+    )
+    service.start()
+    service.record(
+        "tasks",
+        "probe",
+        started=time.monotonic(),
+        correlation_id="trace",
+        error=RuntimeError("PRIVATE"),
+    )
+    await service.history.queue.join()
+
+    def fail(*args):
+        raise RuntimeError("PRIVATE")
+
+    service.event_activity_provider = fail
+    service.task_snapshot_provider = fail
+    trace = await service.trace("trace")
+    assert trace.history.available and len(trace.history.records) == 1
+    assert not trace.events_available and not trace.tasks_available
+    assert {issue.code for issue in trace.issues} == {
+        "trace_events_unavailable",
+        "trace_tasks_unavailable",
+    }
+    assert "PRIVATE" not in trace.model_dump_json()
+    await service.close()
+
+
+async def test_nested_event_observations_are_bounded_without_altering_bus(db):
+    from bedrock_server_manager.diagnostics.models import EventsDiagnostics
+    from bedrock_server_manager.events import EventBus
+    from bedrock_server_manager.events.models import EventActivityQuery
+    from bedrock_server_manager.results import DeliveryResult
+
+    bus = EventBus()
+
+    async def fail(**data):
+        raise RuntimeError("PRIVATE")
+
+    async def deliver(envelope):
+        return DeliveryResult(targeted=1, sent=1)
+
+    for index in range(4):
+        bus.subscribe("probe", fail, owner=f"hook:{index}")
+        bus.subscribe("probe", deliver, owner=f"observer:{index}", observer=True)
+    await bus.emit("probe", {"value": "PRIVATE"})
+    record = await bus.emit("probe", {"value": "PRIVATE"})
+    options = DiagnosticOptions(event_detail_limit=2, event_record_limit=1)
+    service = Diagnostics(DiagnosticHistoryStore(db, options), options)
+
+    async def provider():
+        return EventsDiagnostics(activity=bus.diagnostics(), capacity=bus.options)
+
+    service.register("events", provider)
+    service.event_activity_provider = bus.diagnostics
+    snapshot = await service.snapshot()
+    data = snapshot.sections[0].data
+    assert data.truncated and data.activity.recent_truncated
+    event = data.activity.recent[0]
+    assert len(event.listeners) == len(event.failures) == len(event.deliveries) == 2
+    trace = await service.trace(record.correlation_id)
+    assert trace.truncated and trace.events_available
+    original = bus.diagnostics(EventActivityQuery()).recent[0]
+    assert (
+        len(original.listeners) == 8
+        and len(original.failures) == len(original.deliveries) == 4
+    )
+    assert "PRIVATE" not in snapshot.model_dump_json()
+    await service.close()
+    await bus.close()
+
+
+async def test_concurrent_collection_reports_cache_pressure(db):
+    options = DiagnosticOptions(provider_timeout_seconds=1)
+    service = Diagnostics(DiagnosticHistoryStore(db, options), options)
+    entered, release = asyncio.Event(), asyncio.Event()
+    blocking = False
+
+    async def provider():
+        if blocking:
+            entered.set()
+            await release.wait()
+        return PluginValues(health="ok", values={"queued": 0})
+
+    service.register("plugin:probe:health", provider, owner="plugin:probe")
+    first = await service.snapshot()
+    blocking = True
+    collecting = asyncio.create_task(service.snapshot())
+    await entered.wait()
+    cached = await service.snapshot()
+    assert cached.snapshot_id == first.snapshot_id
+    assert cached.collection.cache_hits == 1 and cached.collection.active
+    assert cached.collection.cache_age_seconds >= 0
+    release.set()
+    refreshed = await collecting
+    assert refreshed.snapshot_id != first.snapshot_id
+    assert refreshed.collection.collections == 2 and not refreshed.collection.active
+    await service.close()
+
+
+async def test_periodic_health_records_and_recent_windows_are_bounded(db):
+    from bedrock_server_manager.diagnostics.activity import RecentOutcomes
+    from bedrock_server_manager.diagnostics.sampling import HealthSampler
+
+    clock = [10.0]
+    recent = RecentOutcomes(clock=lambda: clock[0])
+    recent.record("diagnostics", "failed", "provider_timeout")
+    assert recent.snapshot().failures == recent.snapshot().timeouts == 1
+    clock[0] += 301
+    assert recent.snapshot().failures == recent.snapshot().timeouts == 0
+    options = DiagnosticOptions()
+    service = Diagnostics(DiagnosticHistoryStore(db, options), options)
+    health = "ok"
+
+    async def provider():
+        return PluginValues(health=health, values={"queued": 1})
+
+    service.register("plugin:probe:health", provider, owner="plugin:probe")
+    service.start()
+    sampler = HealthSampler(
+        interval=10,
+        collect=service.snapshot,
+        record=service._enqueue,
+        instance_id=service.instance_id,
+        telemetry=service.collection,
+    )
+    sampler.start()
+    await sampler.record_once()
+    health = "degraded"
+    await sampler.record_once()
+    await sampler.close()
+    await service.history.queue.join()
+    retained = await service.history.read(code="health_transition")
+    assert retained.available and len(retained.records) == 1
+    assert retained.records[0].health.sections == {"plugin:probe:health": "degraded"}
+    assert service.collection.periodic_cycles == 2
+    assert service.history.snapshot().last_success_at is not None
+    await service.close()

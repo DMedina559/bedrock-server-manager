@@ -1,11 +1,15 @@
 """Evidence-based health rules; normal activity is separate from failure."""
 
+from collections import Counter
 from typing import Literal
 
 from .models import (
     DiagnosticData,
+    DiagnosticFinding,
     DiagnosticIssue,
     DiagnosticOptions,
+    DiagnosticSection,
+    DiagnosticSummary,
     EventsDiagnostics,
     MetricsDiagnostics,
     PluginsDiagnostics,
@@ -206,3 +210,53 @@ def _state(
             "inspect_storage",
         )
     return "ok", []
+
+
+def summarize_health(sections: list[DiagnosticSection]) -> DiagnosticSummary:
+    """Aggregate observed health independently from application readiness."""
+    counts = dict(Counter(section.status for section in sections))
+    findings = [
+        DiagnosticFinding(subsystem=section.name, owner=section.owner, issue=issue)
+        for section in sections
+        for issue in section.issues
+    ]
+    runtime = next(
+        (
+            section
+            for section in sections
+            if isinstance(section.data, RuntimeDiagnostics)
+        ),
+        None,
+    )
+    ready = (
+        None
+        if runtime is None
+        else bool(
+            runtime.status == "ok"
+            and not runtime.stale
+            and isinstance(runtime.data, RuntimeDiagnostics)
+            and runtime.data.ready
+        )
+    )
+    status = (
+        "degraded"
+        if counts.get("degraded")
+        else (
+            "unavailable"
+            if counts.get("unavailable")
+            else (
+                "unknown"
+                if not sections
+                or counts.get("unknown")
+                or any(section.stale for section in sections)
+                else "ok"
+            )
+        )
+    )
+    return DiagnosticSummary(
+        status=status,
+        ready=ready,
+        counts_by_status=counts,
+        findings=findings[:100],
+        truncated=len(findings) > 100,
+    )

@@ -5,6 +5,7 @@ from typing import Literal
 from pydantic import Field
 
 from ...diagnostics.models import (
+    DiagnosticComparison,
     DiagnosticHistory,
     DiagnosticReport,
     DiagnosticRuns,
@@ -61,4 +62,13 @@ class GetDiagnosticTraceRequest(APIRequest):
 
 
 class GetDiagnosticTraceResponse(DiagnosticTrace, APIResponse):
+    pass
+
+
+class CompareDiagnosticSnapshotsRequest(APIRequest):
+    before: DiagnosticSnapshot
+    after: DiagnosticSnapshot
+
+
+class CompareDiagnosticSnapshotsResponse(DiagnosticComparison, APIResponse):
     pass

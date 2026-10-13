@@ -57,3 +57,27 @@ The runtime assigns the section name `plugin:<plugin_name>:connection` and its o
 Providers are removed during plugin unload. An old unfinished provider prevents replacement of the same name until it drains. Registration limits bound provider counts globally and per plugin owner. Registry diagnostics show configured limits, ownership, pending providers, failures, timeouts, and rejected registrations. Built-in application providers are outside the per-plugin limit. Plugin authors can read typed diagnostics with `self.api.diagnostics.get_application_diagnostics({})`, `get_diagnostic_history({})`, and `get_diagnostic_report({})`.
 
 Provider health defaults to `unknown`; explicitly return `ok` or `degraded` when the provider has evidence. Provider collection failures are reported separately as `unavailable`. Optional units are `count`, `seconds`, `milliseconds`, `bytes`, or `percent` and must refer to a returned value. Labels are bounded to 80 characters. Providers should report measurements rather than perform expensive probes.
+
+## Diagnose the diagnostic subsystem
+
+`collection` reports actual collection requests, completed collections, failures, cache hits/age, current activity, and last collection timing. Its health also reflects observed history read/write failures and an unexpectedly stopped writer. `persistence` identifies writer state and the most recent successful read/write. These observations require no additional database health probes.
+
+Subsystem-only responses summarize the selected observations. Their `summary.ready` is `null` when runtime readiness was not observed, so a healthy plugin section can report `ok` independently. Runtime readiness requires a fresh successful runtime observation. Repeated requests for one timed-out callback that is still draining do not create additional timeout records or restart that callback.
+
+The `recent` window aggregates recorded failures, cancellations, and timeouts for the current instance over thirty ten-second buckets. It counts observed outcomes even if the journal writer later drops them. It resets on restart and is not a rate calculation for all subsystem operations.
+
+Event observations limit both record counts and nested listener/failure/delivery details. Defaults are 20 active and 20 recent records, with 50 entries per detail list. `diagnostics.event_record_limit` and `event_detail_limit` configure these bounds. Truncation flags distinguish partial results from complete activity. Traces report event, task, and history availability independently and preserve available sources when another source fails.
+
+## Compare snapshots
+
+`POST /api/diagnostics/compare` (`compare_diagnostic_snapshots`) accepts `before` and `after` snapshots and returns up to 200 metadata changes. Administrator authentication is required. Save the original JSON snapshots to compare observations later.
+
+Comparisons include subsystem health, numeric observations, and plugin status/generation changes. Numeric deltas require snapshots from the same instance in chronological order. Counter decreases and instance changes are marked as resets instead of negative activity. Gauge decreases can still have valid negative deltas. Comparisons are observations, not an atomic transaction history.
+
+## Optional periodic history
+
+Set `diagnostics.snapshot_interval_seconds` to a value from 10 to 86,400 seconds to persist compact health samples and transitions while the application is running. The default is `null`, which disables periodic sampling. Restart after changing the setting.
+
+Samples retain overall health, readiness, and subsystem status labels; they do not store full snapshots or event/task payloads. They share the history queue and retention budget with lifecycle/failure records. For example, a 60-second interval can consume 1,000 records in about 17 hours, so choose the interval and history limit together. Periodic collection failures are counted, and shutdown cancels the sampler before flushing history.
+
+For remote support reports, the API/CLI client provides `bsm-cli diagnostics report --output bsm-support-report.json` through live OpenAPI discovery. Use an administrator account and a backend exposing `get_diagnostic_report`. Existing destinations require `--force`; incomplete downloads never replace the destination.

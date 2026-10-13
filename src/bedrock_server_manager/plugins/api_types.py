@@ -17,6 +17,8 @@ from bedrock_server_manager.api.models import (
     BackupWorldResponse,
     BroadcastRequest,
     BroadcastResponse,
+    CompareDiagnosticSnapshotsRequest,
+    CompareDiagnosticSnapshotsResponse,
     DisableAddonRequest,
     DisableAddonResponse,
     EnableAddonRequest,
@@ -249,6 +251,10 @@ class BanAPI(Protocol):
 
 
 class DiagnosticsAPI(Protocol):
+    async def compare_diagnostic_snapshots(
+        self, request: CompareDiagnosticSnapshotsRequest | Mapping[str, object]
+    ) -> CompareDiagnosticSnapshotsResponse: ...
+
     async def get_application_diagnostics(
         self, request: GetApplicationDiagnosticsRequest | Mapping[str, object]
     ) -> GetApplicationDiagnosticsResponse: ...
@@ -520,6 +526,7 @@ API_METHODS: dict[str, dict[str, str]] = {
     },
     "ban": {"add_server_ban": "add_server_ban", "get_server_bans": "get_server_bans"},
     "diagnostics": {
+        "compare_diagnostic_snapshots": "compare_diagnostic_snapshots",
         "get_application_diagnostics": "get_application_diagnostics",
         "get_diagnostic_history": "get_diagnostic_history",
         "get_diagnostic_report": "get_diagnostic_report",

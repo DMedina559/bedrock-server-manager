@@ -217,7 +217,7 @@ class AppContext:
         self.loop = asyncio.get_running_loop()
         self.lifecycle_phase = LifecyclePhase.STARTING
         if self._diagnostics is not None:
-            self._diagnostics.history.start()
+            self._diagnostics.start()
         self._started_components = set()
         timeout = self.settings.get("lifecycle.startup_timeout_seconds", 30.0)
         grace = self.settings.get("lifecycle.cancellation_grace_seconds", 2.0)

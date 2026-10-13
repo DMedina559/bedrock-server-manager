@@ -11,11 +11,13 @@ from typing import Any
 from uuid import uuid4
 
 from ..events.models import EventActivityQuery, EventDiagnostics
+from .activity import RecentOutcomes, bound_event_activity
+from .health import summarize_health
 from .history import DiagnosticHistoryStore
 from .models import (
+    CollectionDiagnostics,
     DiagnosticData,
     DiagnosticEnvironment,
-    DiagnosticFinding,
     DiagnosticIssue,
     DiagnosticOptions,
     DiagnosticRecord,
@@ -24,14 +26,14 @@ from .models import (
     DiagnosticSnapshot,
     DiagnosticSummary,
     DiagnosticTrace,
+    EventsDiagnostics,
     MetricsDiagnostics,
     PluginValues,
     ProcessesDiagnostics,
     RegistryDiagnostics,
-    RuntimeDiagnostics,
-    StorageDiagnostics,
     TasksDiagnostics,
 )
+from .sampling import HealthSampler
 
 Provider = Callable[[], Coroutine[Any, Any, DiagnosticData]]
 
@@ -42,7 +44,6 @@ class Diagnostics:
         self.started_at = time.time()
         self.history = history
         self.options = options
-        self.storage = StorageDiagnostics()
         self.stage: str | None = None
         self.stage_started_at: float | None = None
         self.stage_started_monotonic: float | None = None
@@ -65,6 +66,16 @@ class Diagnostics:
             lambda: None
         )
         self.phase_provider: Callable[[], str | None] = lambda: None
+        self.collection = CollectionDiagnostics()
+        self.recent = RecentOutcomes()
+        self._timed_out: set[asyncio.Task] = set()
+        self._sampler = HealthSampler(
+            interval=options.snapshot_interval_seconds,
+            collect=self.snapshot,
+            record=self._enqueue,
+            instance_id=self.instance_id,
+            telemetry=self.collection,
+        )
         self.provider_failures = 0
         self.provider_timeouts = 0
         self.provider_rejections = 0
@@ -148,13 +159,13 @@ class Diagnostics:
 
     def _enqueue(self, **values: Any) -> None:
         try:
-            self.history.enqueue(
-                DiagnosticRecord(
-                    backend_version=self.environment.backend_version,
-                    phase=self.phase_provider(),
-                    **values,
-                )
+            record = DiagnosticRecord(
+                backend_version=self.environment.backend_version,
+                phase=self.phase_provider(),
+                **values,
             )
+            self.recent.record(record.subsystem, record.outcome, record.code)
+            self.history.enqueue(record)
         except Exception:
             self.history.dropped += 1
 
@@ -179,46 +190,7 @@ class Diagnostics:
         )
 
     def summary(self, sections: list[DiagnosticSection]) -> DiagnosticSummary:
-        counts = dict(Counter(section.status for section in sections))
-        findings = [
-            DiagnosticFinding(subsystem=section.name, owner=section.owner, issue=issue)
-            for section in sections
-            for issue in section.issues
-        ]
-        runtime = next(
-            (
-                section
-                for section in sections
-                if isinstance(section.data, RuntimeDiagnostics)
-            ),
-            None,
-        )
-        ready = bool(
-            runtime is not None
-            and runtime.status == "ok"
-            and not runtime.stale
-            and isinstance(runtime.data, RuntimeDiagnostics)
-            and runtime.data.ready
-        )
-        status = (
-            "degraded"
-            if findings
-            and (
-                ready or any(finding.issue.severity == "error" for finding in findings)
-            )
-            else (
-                "unknown"
-                if not ready or counts.get("unknown")
-                else "unavailable" if counts.get("unavailable") else "ok"
-            )
-        )
-        return DiagnosticSummary(
-            status=status,
-            ready=ready,
-            counts_by_status=counts,
-            findings=findings[:100],
-            truncated=len(findings) > 100,
-        )
+        return summarize_health(sections)
 
     def _unavailable(
         self, name: str, owner: str, started: float, code: str
@@ -301,6 +273,7 @@ class Diagnostics:
         correlation_id: str | None = None,
         owner: str | None = None,
         operation_id: str | None = None,
+        code: str | None = None,
     ) -> None:
         """Record fixed labels and exception types without making recording mandatory."""
         self._enqueue(
@@ -314,7 +287,8 @@ class Diagnostics:
                 if isinstance(error, asyncio.CancelledError)
                 else "failed" if error else "completed"
             ),
-            code=f"{subsystem}_{'cancelled' if isinstance(error, asyncio.CancelledError) else 'failed' if error else 'completed'}",
+            code=code
+            or f"{subsystem}_{'cancelled' if isinstance(error, asyncio.CancelledError) else 'failed' if error else 'completed'}",
             error_type=type(error).__name__[:80] if error else None,
             correlation_id=correlation_id,
             owner=owner[:160] if owner else None,
@@ -370,13 +344,17 @@ class Diagnostics:
         started = time.monotonic()
         task = self._pending.get(name)
         if task is not None and task.done():
+            self._timed_out.discard(task)
             self._pending.pop(name, None)
             self._pending_owners.pop(name, None)
             task = None
+        if task is not None and task in self._timed_out:
+            return self._unavailable(name, owner, started, "provider_draining")
         if task is None:
             task = asyncio.create_task(provider(), name=f"diagnostic:{name}")
             self._pending[name] = task
             self._pending_owners[name] = owner
+            task.add_done_callback(self._timed_out.discard)
             task.add_done_callback(
                 lambda finished: (
                     finished.exception() if not finished.cancelled() else None
@@ -386,10 +364,16 @@ class Diagnostics:
             {task}, timeout=self.options.provider_timeout_seconds
         )
         if not done:
+            self._timed_out.add(task)
             task.cancel()
             self.provider_timeouts += 1
             self.record(
-                "diagnostics", name, started=started, error=TimeoutError(), owner=owner
+                "diagnostics",
+                name,
+                started=started,
+                error=TimeoutError(),
+                owner=owner,
+                code="provider_timeout",
             )
             return self._unavailable(name, owner, started, "provider_timeout")
         self._pending.pop(name, None)
@@ -398,6 +382,14 @@ class Diagnostics:
             data = task.result()
             if owner != "application" and not isinstance(data, PluginValues):
                 raise ValueError("Plugin providers must return PluginValues")
+            if isinstance(data, EventsDiagnostics):
+                data = data.model_copy(deep=True)
+                data.activity, truncated = bound_event_activity(
+                    data.activity,
+                    records=self.options.event_record_limit,
+                    details=self.options.event_detail_limit,
+                )
+                data.truncated = data.truncated or truncated
             status, issues = self._health(data)
             observed_at = (
                 data.last_sample_at
@@ -434,12 +426,56 @@ class Diagnostics:
 
         return evaluate_health(data, self.options)
 
+    def collection_snapshot(self) -> CollectionDiagnostics:
+        """Expose collection and writer observations without additional I/O."""
+        result = self.collection.model_copy(deep=True)
+        persistence = self.history.snapshot()
+        result.active = self._lock.locked()
+        result.periodic_enabled = self.options.snapshot_interval_seconds is not None
+        if persistence.writer_status == "failed":
+            result.status = "unavailable"
+        elif (
+            result.last_error_type
+            or persistence.last_error_type
+            or persistence.last_read_error_type
+        ):
+            result.status = "degraded"
+        return result
+
     async def snapshot(self, subsystem: str | None = None) -> DiagnosticSnapshot:
+        """Collect independent observations and account for collection overhead."""
+        self.collection.requests += 1
+        started = time.monotonic()
+        cached = self._lock.locked() and self._last_snapshot is not None
+        try:
+            result = await self._snapshot(subsystem)
+            if not cached:
+                self.collection.last_success_at = time.time()
+                self.collection.last_error_type = None
+                self.collection.last_duration_ms = max(
+                    0, (time.monotonic() - started) * 1000
+                )
+            result.collection = self.collection_snapshot()
+            result.recent = self.recent.snapshot()
+            return result
+        except Exception as error:
+            self.collection.failures += 1
+            self.collection.last_error_type = type(error).__name__
+            self.collection.last_duration_ms = max(
+                0, (time.monotonic() - started) * 1000
+            )
+            raise
+
+    async def _snapshot(self, subsystem: str | None = None) -> DiagnosticSnapshot:
         if not self.accepting:
             from ..error import DependencyUnavailableError
 
             raise DependencyUnavailableError("Diagnostics collection is closed")
         if self._lock.locked() and self._last_snapshot is not None:
+            self.collection.cache_hits += 1
+            self.collection.cache_age_seconds = max(
+                0, time.time() - self._last_snapshot.collected_at
+            )
             cached = self._last_snapshot.model_copy(deep=True)
             for section in cached.sections:
                 section.age_seconds = max(
@@ -468,6 +504,8 @@ class Diagnostics:
                 "Diagnostics collection is busy"
             ) from error
         try:
+            self.collection.collections += 1
+            self.collection.cache_age_seconds = None
             providers = [
                 (name, owner, provider)
                 for name, (owner, provider) in self._providers.items()
@@ -504,27 +542,61 @@ class Diagnostics:
         history = await self.history.read(
             limit=limit, cursor=cursor, correlation_id=correlation_id
         )
-        events = self.event_activity_provider(
-            EventActivityQuery(correlation_id=correlation_id, limit=min(limit, 100))
+        issues = []
+        events = None
+        tasks = None
+        truncated = history.truncated
+        try:
+            activity = self.event_activity_provider(
+                EventActivityQuery(correlation_id=correlation_id, limit=min(limit, 100))
+            )
+            if activity is not None:
+                events, detail_truncated = bound_event_activity(
+                    activity,
+                    records=min(limit, self.options.event_record_limit),
+                    details=self.options.event_detail_limit,
+                )
+                truncated = truncated or detail_truncated
+        except Exception:
+            issues.append(
+                DiagnosticIssue(
+                    code="trace_events_unavailable",
+                    message="Live event observations are unavailable.",
+                    action="inspect_events",
+                )
+            )
+        try:
+            tasks = self.task_snapshot_provider()
+        except Exception:
+            issues.append(
+                DiagnosticIssue(
+                    code="trace_tasks_unavailable",
+                    message="Live task observations are unavailable.",
+                    action="inspect_logs",
+                )
+            )
+        if not history.available:
+            issues.append(
+                DiagnosticIssue(
+                    code="trace_history_unavailable",
+                    message="Retained history is unavailable.",
+                    action="inspect_storage",
+                )
+            )
+        matching_tasks = (
+            [task for task in tasks.tasks if task.correlation_id == correlation_id]
+            if tasks is not None
+            else []
         )
-        truncated = False
-        if events is not None:
-            for record in events.active + events.recent:
-                record.cancellation_reason = None
-                truncated = truncated or len(record.listeners) > 50
-                record.listeners = record.listeners[:50]
-        tasks = self.task_snapshot_provider()
         return DiagnosticTrace(
             correlation_id=correlation_id,
             events=events,
-            tasks=(
-                [task for task in tasks.tasks if task.correlation_id == correlation_id]
-                if tasks
-                else []
-            ),
+            events_available=events is not None,
+            tasks=matching_tasks[:limit],
             tasks_available=tasks is not None,
             history=history,
-            truncated=truncated or history.truncated,
+            issues=issues,
+            truncated=truncated or len(matching_tasks) > limit,
         )
 
     async def report(self) -> DiagnosticReport:
@@ -537,9 +609,17 @@ class Diagnostics:
         )
         return DiagnosticReport(snapshot=snapshot, history=history, runs=runs)
 
+    def start(self) -> None:
+        """Start recording and optional periodic observations on the owning loop."""
+        if not self.accepting:
+            return
+        self.history.start()
+        self._sampler.start()
+
     async def close(self) -> None:
         if not self.accepting:
             return
+        await self._sampler.close()
         self.record("runtime", "diagnostics_closed", started=time.monotonic())
         self.accepting = False
         for task in self._pending.values():
@@ -548,6 +628,7 @@ class Diagnostics:
         if tasks:
             done, _ = await asyncio.wait(tasks, timeout=1)
             for task in done:
+                self._timed_out.discard(task)
                 if not task.cancelled():
                     task.exception()
         await self.history.close()

@@ -27,7 +27,6 @@ def configure_diagnostics(context: "AppContext") -> Diagnostics:
     """Compose metadata providers without eagerly initializing runtime services."""
     options = DiagnosticOptions.model_validate(context.settings.get("diagnostics", {}))
     service = Diagnostics(DiagnosticHistoryStore(context.db, options), options)
-    service.storage = context.storage.telemetry
     service.event_activity_provider = lambda query: (
         context._events.diagnostics(query) if context._events else None
     )
@@ -106,7 +105,7 @@ def configure_diagnostics(context: "AppContext") -> Diagnostics:
         bus = context._events
         if bus is None:
             raise RuntimeError("Event subsystem not initialized")
-        activity = bus.diagnostics(EventActivityQuery(limit=20))
+        activity = bus.diagnostics(EventActivityQuery(limit=options.event_record_limit))
         for record in activity.active + activity.recent:
             record.cancellation_reason = None
         return EventsDiagnostics(

@@ -1,4 +1,3 @@
-# bedrock_server_manager/core/system/windows_class.py
 """Host the web runtime as a Windows SCM service using pywin32."""
 
 import logging
@@ -7,7 +6,7 @@ import sys
 import threading
 from pathlib import Path
 
-from ...logging import log_operation_error
+from ..logging import log_operation_error
 
 try:
     import pywintypes
@@ -39,12 +38,13 @@ class WebServerWindowsService(win32serviceutil.ServiceFramework):
     app_context = None
 
     def __init__(self, args):
-        """Constructor is simple. It only gets the service name from ``args``. All other
-        configuration is loaded internally.
+        """Initialize service identity and shutdown coordination.
+
+        :param args: Arguments supplied by the Windows service dispatcher.
         """
         win32serviceutil.ServiceFramework.__init__(self, args)
         self.shutdown_event = threading.Event()
-        from ...web.runtime import WebRuntime
+        from .runtime import WebRuntime
 
         self.runtime = WebRuntime()
         self.logger = logging.getLogger(__name__)
@@ -71,18 +71,14 @@ class WebServerWindowsService(win32serviceutil.ServiceFramework):
 
         failed = False
         try:
-            from ...web.main import run_web_server
+            from .main import run_web_server
 
             if getattr(sys, "frozen", False):
                 # If running as a frozen exe (e.g., PyInstaller)
                 script_dir = os.path.dirname(sys.executable)
             else:
                 # If running as a normal .py script
-                # Step up from core/system/windows_class.py to the project root
-                # bedrock_server_manager -> src -> project root
-                script_dir = str(
-                    Path(__file__).resolve().parent.parent.parent.parent.parent
-                )
+                script_dir = str(Path(__file__).resolve().parents[3])
 
             os.chdir(script_dir)
             # --- The service runs the web app DIRECTLY in a thread ---

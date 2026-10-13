@@ -81,6 +81,7 @@ documentation matching your installed release.
    :caption: Backend contributors and Python reference
 
    developer/overview.md
+   developer/web_architecture.md
    developer/api/api
    developer/classes/classes
    developer/core/core

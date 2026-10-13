@@ -9,14 +9,14 @@ from typing import TYPE_CHECKING, Any
 
 import psutil
 
-from ..api.models.metrics import (
-    GetApplicationMetricsResponse,
-    MetricsSample,
-    ServerMetrics,
-)
 from ..diagnostics.models import MetricsDiagnostics
 from ..logging import RepeatedFailureReporter
 from ..state_revision import revision_clock
+from .metrics_models import (
+    MetricsSample,
+    MetricsSnapshot,
+    ServerMetrics,
+)
 
 if TYPE_CHECKING:
     from ..context import AppContext
@@ -230,12 +230,12 @@ class MetricsService:
         self._history.append(sample)
         return sample.model_copy(deep=True)
 
-    async def snapshot(self) -> GetApplicationMetricsResponse:
+    async def snapshot(self) -> MetricsSnapshot:
         async with self._snapshot_lock:
             if not self._history:
                 await self.sample()
         latest = self._history[-1]
-        return GetApplicationMetricsResponse(
+        return MetricsSnapshot(
             latest=latest.model_copy(deep=True),
             history=[sample.model_copy(deep=True) for sample in self._history],
             interval_seconds=self.interval_seconds,

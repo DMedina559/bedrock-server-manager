@@ -100,6 +100,8 @@ class EventRecord(EventModel):
 
 
 class EventDiagnostics(EventModel):
+    active_truncated: bool = False
+    recent_truncated: bool = False
     accepting: bool
     emitted: int
     suppressed: int

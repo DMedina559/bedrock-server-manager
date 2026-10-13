@@ -64,6 +64,8 @@ from .ban import (
 )
 from .common import APIErrorResponse, APIRequest, APIResponse
 from .diagnostics import (
+    CompareDiagnosticSnapshotsRequest,
+    CompareDiagnosticSnapshotsResponse,
     GetApplicationDiagnosticsRequest,
     GetApplicationDiagnosticsResponse,
     GetDiagnosticHistoryRequest,
@@ -404,6 +406,8 @@ __all__ += [
 
 
 __all__ += [
+    "CompareDiagnosticSnapshotsRequest",
+    "CompareDiagnosticSnapshotsResponse",
     "GetApplicationDiagnosticsRequest",
     "GetApplicationDiagnosticsResponse",
     "GetDiagnosticHistoryRequest",

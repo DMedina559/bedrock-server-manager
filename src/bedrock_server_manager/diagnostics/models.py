@@ -10,7 +10,9 @@ from ..events.models import EventDiagnostics, EventOptions
 
 
 class DiagnosticModel(BaseModel):
-    model_config = ConfigDict(extra="forbid", allow_inf_nan=False)
+    model_config = ConfigDict(
+        extra="forbid", allow_inf_nan=False, revalidate_instances="always"
+    )
 
 
 class DiagnosticOptions(DiagnosticModel):
@@ -24,10 +26,22 @@ class DiagnosticOptions(DiagnosticModel):
     retention_days: int = Field(default=7, ge=1, le=365)
     stale_after_seconds: float = Field(default=15.0, gt=0, le=3600)
     state_pending_warn_seconds: float = Field(default=60.0, gt=0, le=86400)
+    event_record_limit: int = Field(default=20, ge=1, le=100)
+    event_detail_limit: int = Field(default=50, ge=1, le=200)
+    snapshot_interval_seconds: float | None = Field(default=None, ge=10, le=86400)
     provider_timeout_seconds: float = Field(default=1, gt=0, le=10)
 
 
+class DiagnosticHealthSample(DiagnosticModel):
+    status: Literal["ok", "degraded", "unavailable", "unknown"]
+    ready: bool | None
+    sections: dict[str, Literal["ok", "degraded", "unavailable", "unknown"]] = Field(
+        max_length=1000
+    )
+
+
 class DiagnosticRecord(DiagnosticModel):
+    health: DiagnosticHealthSample | None = None
     backend_version: str | None = None
     phase: str | None = None
     id: str
@@ -109,6 +123,7 @@ class StorageDiagnostics(DiagnosticModel):
 
 
 class EventsDiagnostics(DiagnosticModel):
+    truncated: bool = False
     kind: Literal["events"] = "events"
     activity: EventDiagnostics
     capacity: EventOptions
@@ -219,6 +234,8 @@ class MetricsDiagnostics(DiagnosticModel):
 class PluginValues(DiagnosticModel):
     """Explicit observations; string dumps and secrets are excluded."""
 
+    model_config = ConfigDict(strict=True, revalidate_instances="always")
+
     kind: Literal["plugin_values"] = "plugin_values"
     health: Literal["ok", "degraded", "unknown"] = "unknown"
     units: dict[
@@ -271,6 +288,12 @@ class PersistenceDiagnostics(DiagnosticModel):
     accepting: bool
     history_limit: int
     retention_days: int
+    writer_status: Literal["not_started", "running", "failed", "closed"] = "not_started"
+    last_success_at: float | None = None
+    last_error_type: str | None = None
+    read_failures: int = 0
+    last_read_success_at: float | None = None
+    last_read_error_type: str | None = None
 
 
 class RegistryDiagnostics(DiagnosticModel):
@@ -294,7 +317,7 @@ class DiagnosticFinding(DiagnosticModel):
 
 class DiagnosticSummary(DiagnosticModel):
     status: Literal["ok", "degraded", "unavailable", "unknown"]
-    ready: bool
+    ready: bool | None
     counts_by_status: dict[str, int]
     findings: list[DiagnosticFinding] = Field(default_factory=list, max_length=100)
     truncated: bool = False
@@ -309,12 +332,47 @@ class DiagnosticEnvironment(DiagnosticModel):
     database_schema_revision: str | None = None
 
 
+class CollectionDiagnostics(DiagnosticModel):
+    status: Literal["ok", "degraded", "unavailable"] = "ok"
+    requests: int = 0
+    collections: int = 0
+    failures: int = 0
+    cache_hits: int = 0
+    cache_age_seconds: float | None = None
+    active: bool = False
+    last_duration_ms: float | None = None
+    last_success_at: float | None = None
+    last_error_type: str | None = None
+    periodic_enabled: bool = False
+    periodic_cycles: int = 0
+    periodic_failures: int = 0
+
+
+class RecentDiagnosticCounts(DiagnosticModel):
+    failed: int = 0
+    cancelled: int = 0
+    timeouts: int = 0
+
+
+class RecentDiagnosticWindow(DiagnosticModel):
+    window_seconds: Literal[300] = 300
+    bucket_seconds: Literal[10] = 10
+    observed_since: float
+    failures: int = 0
+    timeouts: int = 0
+    cancelled: int = 0
+    by_subsystem: dict[str, RecentDiagnosticCounts] = Field(default_factory=dict)
+
+
 class DiagnosticSnapshot(DiagnosticModel):
     schema_version: Literal[1] = 1
+    snapshot_id: str = Field(default_factory=lambda: uuid4().hex)
     instance_id: str
     collected_at: float
     counter_scope: Literal["current_instance"] = "current_instance"
-    sections: list[DiagnosticSection]
+    sections: list[DiagnosticSection] = Field(max_length=1000)
+    collection: CollectionDiagnostics = Field(default_factory=CollectionDiagnostics)
+    recent: RecentDiagnosticWindow | None = None
     summary: DiagnosticSummary
     registry: RegistryDiagnostics
     environment: DiagnosticEnvironment
@@ -358,7 +416,27 @@ class DiagnosticReport(DiagnosticModel):
 class DiagnosticTrace(DiagnosticModel):
     correlation_id: str
     events: EventDiagnostics | None
+    events_available: bool = False
+    issues: list[DiagnosticIssue] = Field(default_factory=list, max_length=3)
     tasks: list[TaskDiagnostic]
     tasks_available: bool
     history: DiagnosticHistory
+    truncated: bool = False
+
+
+class DiagnosticChange(DiagnosticModel):
+    subsystem: str
+    field: str
+    before: float | int | bool | str | None
+    after: float | int | bool | str | None
+    delta: float | None = None
+    counter_reset: bool = False
+
+
+class DiagnosticComparison(DiagnosticModel):
+    before_snapshot_id: str
+    after_snapshot_id: str
+    same_instance: bool
+    elapsed_seconds: float | None
+    changes: list[DiagnosticChange] = Field(default_factory=list, max_length=200)
     truncated: bool = False

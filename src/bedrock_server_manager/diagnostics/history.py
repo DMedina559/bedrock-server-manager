@@ -60,6 +60,11 @@ class DiagnosticHistoryStore:
         self.dropped = 0
         self.write_failures = 0
         self.accepting = True
+        self.last_success_at: float | None = None
+        self.last_error_type: str | None = None
+        self.read_failures = 0
+        self.last_read_success_at: float | None = None
+        self.last_read_error_type: str | None = None
         self._worker: asyncio.Task | None = None
 
     def start(self) -> None:
@@ -84,7 +89,8 @@ class DiagnosticHistoryStore:
             except asyncio.CancelledError:
                 self.dropped += 1
                 raise
-            except Exception:
+            except Exception as error:
+                self.last_error_type = type(error).__name__
                 self.write_failures += 1
                 self.dropped += 1
             finally:
@@ -128,6 +134,16 @@ class DiagnosticHistoryStore:
                     delete(DiagnosticHistoryRow).where(DiagnosticHistoryRow.id.in_(ids))
                 )
             await session.commit()
+        self.last_success_at = time.time()
+        self.last_error_type = None
+
+    def _read_succeeded(self) -> None:
+        self.last_read_success_at = time.time()
+        self.last_read_error_type = None
+
+    def _read_failed(self, error: Exception) -> None:
+        self.read_failures += 1
+        self.last_read_error_type = type(error).__name__
 
     async def read(
         self,
@@ -189,6 +205,7 @@ class DiagnosticHistoryStore:
                     records = [
                         DiagnosticRecord.model_validate(row.record) for row in rows
                     ]
+                    self._read_succeeded()
                     return DiagnosticHistory(
                         records=records[:limit],
                         available=True,
@@ -199,7 +216,8 @@ class DiagnosticHistoryStore:
                             else None
                         ),
                     )
-        except Exception:
+        except Exception as error:
+            self._read_failed(error)
             return DiagnosticHistory(records=[], available=False, truncated=False)
 
     async def runs(self, *, current_instance: str, limit: int = 20) -> DiagnosticRuns:
@@ -239,22 +257,41 @@ class DiagnosticHistoryStore:
                         .limit(limit + 1)
                     )
                     groups = (await session.execute(query)).all()
-                    runs = []
-                    for group in groups[:limit]:
-                        latest = (
-                            await session.scalars(
-                                select(DiagnosticHistoryRow)
-                                .where(
-                                    DiagnosticHistoryRow.instance_id
-                                    == group.instance_id
-                                )
-                                .order_by(
+                    ranked = (
+                        select(
+                            DiagnosticHistoryRow.id,
+                            func.row_number()
+                            .over(
+                                partition_by=DiagnosticHistoryRow.instance_id,
+                                order_by=(
                                     DiagnosticHistoryRow.timestamp.desc(),
                                     DiagnosticHistoryRow.id.desc(),
-                                )
-                                .limit(1)
+                                ),
                             )
-                        ).one()
+                            .label("rank"),
+                        )
+                        .where(
+                            DiagnosticHistoryRow.instance_id.in_(
+                                [group.instance_id for group in groups[:limit]]
+                            )
+                        )
+                        .subquery()
+                    )
+                    latest_rows = (
+                        (
+                            await session.scalars(
+                                select(DiagnosticHistoryRow)
+                                .join(ranked, ranked.c.id == DiagnosticHistoryRow.id)
+                                .where(ranked.c.rank == 1)
+                            )
+                        ).all()
+                        if groups
+                        else []
+                    )
+                    latest_by_instance = {row.instance_id: row for row in latest_rows}
+                    runs = []
+                    for group in groups[:limit]:
+                        latest = latest_by_instance[group.instance_id]
                         record = DiagnosticRecord.model_validate(latest.record)
                         runs.append(
                             DiagnosticRun(
@@ -274,14 +311,30 @@ class DiagnosticHistoryStore:
                                 ),
                             )
                         )
+                    self._read_succeeded()
                     return DiagnosticRuns(
                         runs=runs, available=True, truncated=len(groups) > limit
                     )
-        except Exception:
+        except Exception as error:
+            self._read_failed(error)
             return DiagnosticRuns(runs=[], available=False, truncated=False)
 
     def snapshot(self) -> PersistenceDiagnostics:
         return PersistenceDiagnostics(
+            writer_status=(
+                "closed"
+                if not self.accepting
+                else (
+                    "not_started"
+                    if self._worker is None
+                    else "failed" if self._worker.done() else "running"
+                )
+            ),
+            last_success_at=self.last_success_at,
+            last_error_type=self.last_error_type,
+            read_failures=self.read_failures,
+            last_read_success_at=self.last_read_success_at,
+            last_read_error_type=self.last_read_error_type,
             queued=self.queue.qsize(),
             queue_limit=self.options.queue_limit,
             dropped=self.dropped,

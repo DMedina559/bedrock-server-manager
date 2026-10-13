@@ -39,6 +39,7 @@ async def test_history_survives_restart_and_retains_only_bounded_metadata(db):
 async def test_slow_and_broken_plugin_providers_do_not_hide_other_sections(db):
     options = DiagnosticOptions(provider_timeout_seconds=0.01)
     service = Diagnostics(DiagnosticHistoryStore(db, options), options)
+    service.start()
     calls = 0
     release = asyncio.Event()
 
@@ -70,6 +71,10 @@ async def test_slow_and_broken_plugin_providers_do_not_hide_other_sections(db):
             assert sections["plugin:other:broken"].status == "unavailable"
             assert "SECRET" not in result.model_dump_json()
         assert calls == 1
+        assert service.provider_timeouts == 1
+        await service.history.queue.join()
+        timeout_records = await service.history.read(code="provider_timeout")
+        assert len(timeout_records.records) == 1
         service.remove_owner("plugin:demo")
         with pytest.raises(ValueError, match="draining"):
             service.register("plugin:demo:slow", healthy, owner="plugin:demo")
@@ -98,6 +103,9 @@ async def test_database_failure_does_not_break_recording_or_collection(db, monke
     await store.queue.join()
     assert (await service.snapshot()).persistence.write_failures == 1
     assert store.dropped == 2
+    observation = (await service.snapshot()).persistence
+    assert observation.last_error_type == "RuntimeError"
+    assert (await service.snapshot()).collection.status == "degraded"
     await service.close()
 
 

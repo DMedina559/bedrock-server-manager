@@ -687,6 +687,8 @@ class EventBus:
                 )
             )
 
+        active = [record for record in self._active.values() if matches(record)]
+        recent = [record for record in self._recent if matches(record)]
         return EventDiagnostics(
             accepting=self.accepting,
             emitted=self.emitted,
@@ -714,10 +716,10 @@ class EventBus:
             pending_waits=sum(map(len, self._waiters.values())),
             rejections_by_reason=self._rejections,
             timeouts_by_owner=self._timeouts,
-            active=[record for record in self._active.values() if matches(record)][
-                :limit
-            ],
-            recent=[record for record in self._recent if matches(record)][-limit:],
+            active=active[:limit],
+            recent=recent[-limit:],
+            active_truncated=len(active) > limit,
+            recent_truncated=len(recent) > limit,
         ).model_copy(deep=True)
 
     async def close(self) -> None:
