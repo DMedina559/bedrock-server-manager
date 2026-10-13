@@ -63,6 +63,20 @@ from .ban import (
     RemoveServerBanResponse,
 )
 from .common import APIErrorResponse, APIRequest, APIResponse
+from .diagnostics import (
+    CompareDiagnosticSnapshotsRequest,
+    CompareDiagnosticSnapshotsResponse,
+    GetApplicationDiagnosticsRequest,
+    GetApplicationDiagnosticsResponse,
+    GetDiagnosticHistoryRequest,
+    GetDiagnosticHistoryResponse,
+    GetDiagnosticReportRequest,
+    GetDiagnosticReportResponse,
+    GetDiagnosticRunsRequest,
+    GetDiagnosticRunsResponse,
+    GetDiagnosticTraceRequest,
+    GetDiagnosticTraceResponse,
+)
 from .health import (
     GetApplicationHealthRequest,
     GetApplicationHealthResponse,
@@ -388,4 +402,20 @@ __all__ += [
     "GetApplicationHealthRequest",
     "GetApplicationHealthResponse",
     "HealthCheck",
+]
+
+
+__all__ += [
+    "CompareDiagnosticSnapshotsRequest",
+    "CompareDiagnosticSnapshotsResponse",
+    "GetApplicationDiagnosticsRequest",
+    "GetApplicationDiagnosticsResponse",
+    "GetDiagnosticHistoryRequest",
+    "GetDiagnosticHistoryResponse",
+    "GetDiagnosticReportRequest",
+    "GetDiagnosticReportResponse",
+    "GetDiagnosticRunsRequest",
+    "GetDiagnosticRunsResponse",
+    "GetDiagnosticTraceRequest",
+    "GetDiagnosticTraceResponse",
 ]

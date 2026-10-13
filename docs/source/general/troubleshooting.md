@@ -22,6 +22,10 @@ Record the plugin name, version and event or task that failed. Disable the suspe
 
 Check the release notes and verify that the frontend, API client and external plugins support the backend contract. Recreate service definitions when the runtime guide calls for it. Back up storage before changing versions or running migrations; database upgrades are not necessarily reversible by reinstalling an older package.
 
+## Diagnostic snapshots
+
+Administrators can collect a [sanitized diagnostic report](../extras/diagnostics.md) to inspect runtime stages, event failures, pending state changes, storage writes, and background operations. Retained records identify their application instance, so previous-run failures remain distinguishable after a restart. Unavailable sections and dropped records are reported explicitly.
+
 ## Report an issue
 
 Search the [issue tracker](https://github.com/DMedina559/bedrock-server-manager/issues), then use the appropriate report template. Include BSM/Python/OS versions, installation method, the action that failed, reproduction steps and relevant error output. Remove passwords, tokens and private connection strings from logs before sharing them.

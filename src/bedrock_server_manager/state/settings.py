@@ -7,10 +7,12 @@ import asyncio
 import copy
 import logging
 import os
+import time
 from typing import Any, Dict, Optional, Set
 
 from pydantic import BaseModel, ConfigDict, Field, JsonValue, PrivateAttr, TypeAdapter
 
+from ..diagnostics.models import DiagnosticOptions
 from ..error import ConfigurationError
 from .validation import json_equal
 
@@ -51,6 +53,7 @@ class MonitoringSettings(SettingsRecord):
 
 
 class WebSettings(SettingsRecord):
+    outbound_queue_limit: int = Field(default=64, ge=1, le=10000)
     forwarded_allow_ips: str = "127.0.0.1"
     host: str = "127.0.0.1"
     port: int = Field(default=11325, ge=1, le=65535)
@@ -82,10 +85,12 @@ class SettingsState(BaseModel):
     monitoring: MonitoringSettings = Field(default_factory=MonitoringSettings)
     web: WebSettings = Field(default_factory=WebSettings)
     lifecycle: LifecycleSettings = Field(default_factory=LifecycleSettings)
+    diagnostics: DiagnosticOptions = Field(default_factory=DiagnosticOptions)
     custom: Dict[str, JsonValue] = Field(default_factory=dict)
     plugin_settings: Dict[str, Dict[str, JsonValue]] = Field(default_factory=dict)
 
     _dirty: bool = PrivateAttr(default=False)
+    _dirty_since: float | None = PrivateAttr(default=None)
     _dirty_keys: Set[str] = PrivateAttr(default_factory=set)
     _locks: Dict[str, asyncio.Lock] = PrivateAttr(default_factory=dict)
 
@@ -109,6 +114,8 @@ class SettingsState(BaseModel):
         return self._locks[root_key]
 
     def mark_dirty(self, key: Optional[str] = None) -> None:
+        if not self._dirty:
+            self._dirty_since = time.monotonic()
         self._dirty = True
         if key:
             self._dirty_keys.add(key)
@@ -117,10 +124,20 @@ class SettingsState(BaseModel):
         self._dirty_keys.discard(key)
         if not self._dirty_keys:
             self._dirty = False
+            self._dirty_since = None
 
     def clear_dirty(self) -> None:
         self._dirty = False
+        self._dirty_since = None
         self._dirty_keys.clear()
+
+    @property
+    def dirty_age_seconds(self) -> float | None:
+        return (
+            max(0, time.monotonic() - self._dirty_since)
+            if self._dirty_since is not None
+            else None
+        )
 
     @property
     def is_dirty(self) -> bool:
@@ -245,6 +262,7 @@ class SettingsState(BaseModel):
             "monitoring": self.monitoring.model_dump(),
             "web": self.web.model_dump(exclude_none=True),
             "lifecycle": self.lifecycle.model_dump(),
+            "diagnostics": self.diagnostics.model_dump(),
             "custom": copy.deepcopy(self.custom),
             "plugin_settings": copy.deepcopy(self.plugin_settings),
         }

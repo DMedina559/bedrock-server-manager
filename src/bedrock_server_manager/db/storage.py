@@ -6,6 +6,7 @@ Persistence Storage Layer providing state persistence operations between AppStat
 import asyncio
 import inspect
 import logging
+import time
 from contextlib import asynccontextmanager
 from copy import deepcopy
 from typing import (
@@ -23,6 +24,7 @@ from pydantic import BaseModel
 from sqlalchemy.exc import OperationalError
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from ..diagnostics.models import StorageDiagnostics
 from ..error import BSMError, StorageError
 from ..logging import log_operation_error
 from ..state.app_state import AppState
@@ -40,6 +42,7 @@ from .repositories import (
 )
 
 if TYPE_CHECKING:
+    from ..diagnostics.service import Diagnostics
     from .database import Database
 
 Record = TypeVar("Record", bound=BaseModel)
@@ -64,6 +67,31 @@ class Storage:
         self.audit_log_repo = AuditLogRepository(db)
         self._listeners: List[Callable[[AppState, ChangeSet], Any]] = []
         self._flush_lock = asyncio.Lock()
+        self.diagnostics: Diagnostics | None = None
+        self.telemetry = StorageDiagnostics()
+
+    @asynccontextmanager
+    async def _write_scope(self):
+        started = time.monotonic()
+        acquired = False
+        stats = self.telemetry
+        stats.lock_waiters += 1
+        try:
+            async with self._flush_lock:
+                acquired = True
+                stats.lock_waiters -= 1
+                waited = max(0, (time.monotonic() - started) * 1000)
+                stats.lock_wait_ms = waited
+                stats.total_lock_wait_ms += waited
+                stats.max_lock_wait_ms = max(stats.max_lock_wait_ms, waited)
+                yield
+        finally:
+            if not acquired:
+                stats.lock_waiters -= 1
+
+    def diagnostic_snapshot(self) -> StorageDiagnostics:
+        """Return owned write/reload observations without querying the database."""
+        return self.telemetry.model_copy(deep=True)
 
     @property
     def write_lock(self) -> asyncio.Lock:
@@ -102,6 +130,36 @@ class Storage:
 
     @asynccontextmanager
     async def transaction(self) -> AsyncGenerator[AsyncSession, None]:
+        """Observe transactions without making diagnostic writes part of the transaction."""
+        diagnostics = self.diagnostics
+        started = time.monotonic()
+        error: BaseException | None = None
+        stats = self.telemetry
+        stats.attempts += 1
+        stats.active += 1
+        try:
+            async with self._transaction() as session:
+                yield session
+        except BaseException as failure:
+            error = failure
+            raise
+        finally:
+            stats.active -= 1
+            stats.last_duration_ms = max(0, (time.monotonic() - started) * 1000)
+            if error is None:
+                stats.successes += 1
+                stats.last_success_at = time.time()
+                stats.last_error_type = None
+            else:
+                stats.failures += 1
+                stats.last_error_type = type(error).__name__
+                if diagnostics is not None:
+                    diagnostics.record(
+                        "storage", "transaction", started=started, error=error
+                    )
+
+    @asynccontextmanager
+    async def _transaction(self) -> AsyncGenerator[AsyncSession, None]:
         """Commit once; a rolled-back unit of work must be replayed by its caller."""
         async with self.db.session_manager() as session:
             try:
@@ -137,7 +195,7 @@ class Storage:
         acknowledge: Callable[[str], None],
     ) -> Record:
         """Publish a service mutation only after its transaction commits."""
-        async with self._flush_lock:
+        async with self._write_scope():
             async with get_lock(name):
                 record = build(get(name))
                 async with self.transaction() as session:
@@ -153,7 +211,7 @@ class Storage:
         changeset: ChangeSet,
         mutate: Callable[[SettingsState], None],
     ) -> None:
-        async with self._flush_lock:
+        async with self._write_scope():
             async with state.settings.get_lock("global"):
                 candidate = type(state.settings).model_validate(
                     state.settings.model_dump()
@@ -189,7 +247,7 @@ class Storage:
         changeset = deepcopy(changeset)
         if changeset.is_empty():
             return
-        async with self._flush_lock:
+        async with self._write_scope():
             settings_snapshot = None
             async with self.transaction() as session:
                 if changeset.settings_changed:
@@ -283,8 +341,28 @@ class Storage:
         if state is None:
             state = AppState()
 
-        async with self._flush_lock:
-            return await self._load_state(state)
+        started = time.monotonic()
+        stats = self.telemetry
+        stats.reload_attempts += 1
+        stats.reload_active = True
+        try:
+            async with self._write_scope():
+                result = await self._load_state(state)
+            stats.reload_successes += 1
+            stats.last_reload_at = time.time()
+            stats.last_reload_error_type = None
+            return result
+        except BaseException as error:
+            stats.reload_failures += 1
+            stats.last_reload_error_type = type(error).__name__
+            if self.diagnostics is not None:
+                self.diagnostics.record(
+                    "storage", "reload", started=started, error=error
+                )
+            raise
+        finally:
+            stats.reload_active = False
+            stats.last_reload_duration_ms = max(0, (time.monotonic() - started) * 1000)
 
     async def _load_state(self, state: AppState) -> AppState:
         async with self.db.session_manager() as session:
@@ -360,7 +438,7 @@ class Storage:
 
     async def delete_server(self, state: AppState, server_name: str) -> None:
         """Serialize deletion with reload/flush and acknowledge only after commit."""
-        async with self._flush_lock:
+        async with self._write_scope():
             async with state.servers.get_lock(server_name):
                 async with self.transaction() as session:
                     await self.server_repo.delete_server(session, server_name)

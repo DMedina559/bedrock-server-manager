@@ -68,6 +68,7 @@ or error to determine whether the operation completed.
    :caption: Global Operations
 
    application
+   diagnostics
    player
 
 .. toctree::

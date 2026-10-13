@@ -101,6 +101,8 @@ def create_cli_app():
                 """A cleanup function to be run on exit."""
 
                 logger.debug("Running CLI app shutdown hooks...")
+                if app_context._diagnostics is not None:
+                    asyncio.run(app_context._diagnostics.close())
                 app_context.db.close()
                 logger.debug("CLI app shutdown hooks complete.")
 

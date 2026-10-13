@@ -100,11 +100,17 @@ class EventRecord(EventModel):
 
 
 class EventDiagnostics(EventModel):
+    active_truncated: bool = False
+    recent_truncated: bool = False
     accepting: bool
     emitted: int
     suppressed: int
     failed_listeners: int
     subscriptions: int
+    active_dispatches: int = 0
+    subscriptions_by_owner: dict[str, int] = Field(default_factory=dict)
+    active_listeners_by_owner: dict[str, int] = Field(default_factory=dict)
+    notification_delivery: Literal["inline"] = "inline"
     pending_workers: int = 0
     workers_by_owner: dict[str, int] = Field(default_factory=dict)
     pending_waits: int = 0

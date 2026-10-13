@@ -13,6 +13,7 @@ from sqlalchemy import (
     JSON,
     Boolean,
     DateTime,
+    Float,
     ForeignKey,
     Integer,
     String,
@@ -198,6 +199,26 @@ class Player(Base):
     xuid: Mapped[str | None] = mapped_column(
         String(20), nullable=True, unique=True, index=True
     )
+
+
+class DiagnosticHistoryRow(Base):
+    """Bounded sanitized diagnostic history, separate from domain and audit records."""
+
+    __tablename__ = "diagnostic_history"
+    id: Mapped[str] = mapped_column(String(32), primary_key=True)
+    instance_id: Mapped[str] = mapped_column(String(32), nullable=False, index=True)
+    timestamp: Mapped[float] = mapped_column(Float, nullable=False, index=True)
+    subsystem: Mapped[str] = mapped_column(String(80), nullable=False, index=True)
+    correlation_id: Mapped[str | None] = mapped_column(
+        String(160), nullable=True, index=True
+    )
+    owner: Mapped[str | None] = mapped_column(String(160), nullable=True, index=True)
+    code: Mapped[str | None] = mapped_column(String(80), nullable=True, index=True)
+    outcome: Mapped[str | None] = mapped_column(String(16), nullable=True, index=True)
+    operation_id: Mapped[str | None] = mapped_column(
+        String(160), nullable=True, index=True
+    )
+    record: Mapped[dict[str, JsonValue]] = mapped_column(JSON, nullable=False)
 
 
 class AuditLog(Base):

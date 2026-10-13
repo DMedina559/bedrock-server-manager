@@ -9,6 +9,7 @@ handles periodic tasks like player scanning from logs.
 
 import asyncio
 import logging
+import time
 from typing import TYPE_CHECKING, Any, Awaitable, Callable, Dict, Optional
 
 from ..error import BSMError, FileOperationError
@@ -38,6 +39,7 @@ class BedrockProcessManager:
         events: Optional["EventPublisher"] = None,
         stop_server: Callable[[str], Awaitable[None]] | None = None,
         get_bans: Callable[[str], Awaitable[list["BanItem"]]] | None = None,
+        record_failure: Callable[[str, Exception, float], None] | None = None,
     ):
         """Initialize the BedrockProcessManager with explicit dependencies."""
         self.settings = settings
@@ -46,6 +48,11 @@ class BedrockProcessManager:
         self.events = events
         self.stop_server = stop_server
         self.get_bans = get_bans
+        self.record_failure = record_failure
+        self.monitor_observed_at: float | None = None
+        self.monitor_failures = 0
+        self.monitor_observations: dict[str, float] = {}
+        self.monitor_errors: dict[str, str] = {}
         self.servers: Dict[str, "BedrockServer"] = {}
         self.restart_attempts: dict[str, int] = {}
         self._pending_player_events: set[str] = set()
@@ -102,6 +109,8 @@ class BedrockProcessManager:
         if server_name in self.servers:
             self.logger.debug("Removing server '%s' from process manager.", server_name)
             del self.servers[server_name]
+            self.monitor_observations.pop(server_name, None)
+            self.monitor_errors.pop(server_name, None)
             self.restart_attempts.pop(server_name, None)
             for phase in ("probe", "recovery", "players"):
                 self._failures.failures.pop(f"{phase}:{server_name}", None)
@@ -277,11 +286,18 @@ class BedrockProcessManager:
             self.player_scan_counter += monitoring_interval
             for server_name, server in list(self.servers.items()):
                 # Determine run state
+                probe_started = time.monotonic()
                 try:
                     is_running = await server.is_running()
                     await server.reconcile_status(is_running)
                     self._failures.recover(f"probe:{server_name}")
+                    self.monitor_observations[server_name] = time.time()
+                    self.monitor_errors.pop(server_name, None)
                 except Exception as error:
+                    self.monitor_failures += 1
+                    self.monitor_errors[server_name] = type(error).__name__
+                    if self.record_failure is not None:
+                        self.record_failure(server_name, error, probe_started)
                     self._failures.report(
                         f"probe:{server_name}",
                         "Server monitoring unavailable (%s): %s; retrying.",
@@ -418,5 +434,6 @@ class BedrockProcessManager:
                             "Player monitoring unavailable (%s): %s; retrying.",
                             e,
                         )
+            self.monitor_observed_at = time.time()
             if self.player_scan_counter >= player_log_monitoring_interval_sec:
                 self.player_scan_counter = 0

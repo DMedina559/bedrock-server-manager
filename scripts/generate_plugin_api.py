@@ -62,6 +62,10 @@ def generate():
 
     async def register_data_provider(self, topic: str, handler: Callable[..., Any]) -> None: ...
 
+    async def register_diagnostic_provider(self, name: str, handler: Callable[..., Any]) -> None: ...
+
+    async def report_task_progress(self, percent: float) -> None: ...
+
 """
         + "API_METHODS: dict[str, dict[str, str]] = "
         + repr(mapping)

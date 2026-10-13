@@ -109,7 +109,8 @@ async def get_application_metrics(
     request: GetApplicationMetricsRequest, *, app_context: AppContext
 ) -> GetApplicationMetricsResponse:
     """Return shared, bounded performance history without sampling per request."""
-    return await app_context.metrics_service.snapshot()
+    result = await app_context.metrics_service.snapshot()
+    return GetApplicationMetricsResponse.model_validate(result.model_dump())
 
 
 @api_method("get_application_health")
@@ -123,9 +124,9 @@ async def get_application_health(
         database_healthy = False
     results = {
         "lifecycle": (
-            app_context.lifecycle_phase == "ready",
+            app_context.is_ready,
             "Application ready",
-            f"Application {app_context.lifecycle_phase}",
+            "Application runtime is not ready",
         ),
         "database": (database_healthy, "Database reachable", "Database unavailable"),
         "state": (
@@ -144,6 +145,7 @@ async def get_application_health(
         for name, (healthy, ok, failed) in results.items()
     }
     return GetApplicationHealthResponse(
+        ready=app_context.is_ready,
         lifecycle=app_context.lifecycle_phase,
         health=(
             "healthy" if all(check.healthy for check in checks.values()) else "degraded"

@@ -14,6 +14,7 @@ from pydantic.json_schema import JsonSchemaValue
 from ...contracts import DataContract, FailureInfo
 from ...contracts import NonEmptyStr as NonEmptyStr
 from ...contracts import ServerName as ServerName
+from ...state_revision import StateRevision as StateRevision
 
 
 class APIRequest(DataContract):
@@ -88,21 +89,6 @@ class ActionResponse(APIResponse):
 class PlayerInfo(APIResponse):
     name: str
     xuid: str
-
-
-class StateRevision(APIResponse):
-    """Optional for legacy producers; compare revisions only within an epoch."""
-
-    epoch: str | None = None
-    revision: int | None = Field(default=None, ge=1, le=2**53 - 1)
-
-    @model_validator(mode="after")
-    def validate_revision_pair(self) -> Self:
-        if self.epoch is not None and not self.epoch.strip():
-            raise ValueError("epoch must not be blank")
-        if (self.epoch is None) != (self.revision is None):
-            raise ValueError("epoch and revision must be supplied together")
-        return self
 
 
 class ServerSummary(StateRevision):

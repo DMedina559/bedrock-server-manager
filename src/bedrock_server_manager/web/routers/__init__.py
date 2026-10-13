@@ -1,3 +1,4 @@
+from .diagnostics import router as diagnostics_router
 from .events import router as events_router
 
 """
@@ -32,6 +33,7 @@ from .websocket import router as websocket_router
 from .world import router as world_router
 
 all_routers = [
+    diagnostics_router,
     runtime_router,
     events_router,
     logs_router,
@@ -62,6 +64,7 @@ all_routers = [
 ]
 
 __all__ = [
+    "diagnostics_router",
     "events_router",
     "all_routers",
     "account_router",

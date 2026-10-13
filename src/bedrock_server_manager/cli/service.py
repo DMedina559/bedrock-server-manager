@@ -438,7 +438,7 @@ if platform.system() == "Windows":
     import servicemanager
     import win32serviceutil
 
-    from ..core.system.windows_class import PYWIN32_AVAILABLE, WebServerWindowsService
+    from ..web.windows_service import PYWIN32_AVAILABLE, WebServerWindowsService
 
     @service.command(
         "_run-web",

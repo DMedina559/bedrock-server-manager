@@ -3,7 +3,7 @@
 import asyncio
 import inspect
 import logging
-from collections import deque
+from collections import Counter, deque
 from contextlib import contextmanager
 from contextvars import ContextVar
 from copy import deepcopy
@@ -39,12 +39,17 @@ _correlation: ContextVar[str | None] = ContextVar("event_correlation", default=N
 
 
 @contextmanager
-def correlation_scope():
-    token = _correlation.set(_correlation.get() or uuid4().hex)
+def correlation_scope(identifier: str | None = None):
+    token = _correlation.set(_correlation.get() or identifier or uuid4().hex)
     try:
         yield
     finally:
         _correlation.reset(token)
+
+
+def current_correlation_id() -> str | None:
+    """Read the active operation's correlation identity."""
+    return _correlation.get()
 
 
 def _callback_identity(callback: Callable[..., Any]) -> tuple[int, int]:
@@ -72,6 +77,7 @@ class EventBus:
         revision_provider: Callable[[], Mapping[str, Any]] | None = None,
     ):
         self.options = options or EventOptions()
+        self.diagnostic_recorder: Callable[[EventRecord], None] | None = None
         self.registry = EventRegistry(builtin_events)
         self._revision_provider = revision_provider
         self._subscriptions: dict[str, Subscription] = {}
@@ -523,6 +529,13 @@ class EventBus:
             )
             self._rejections["shutdown"] = self._rejections.get("shutdown", 0) + 1
             self._recent.append(record.model_copy(deep=True))
+            if self.diagnostic_recorder is not None and record.failures:
+                try:
+                    self.diagnostic_recorder(record.model_copy(deep=True))
+                except Exception:
+                    logger.debug(
+                        "Event diagnostics recording unavailable", exc_info=True
+                    )
             raise EventDispatchRejected(record)
         data = dict(payload or {})
         definition = self.registry.definition(name)
@@ -642,6 +655,13 @@ class EventBus:
             record.duration_ms = (monotonic() - started) * 1000
             self._active.pop(record.event_id, None)
             self._recent.append(record.model_copy(deep=True))
+            if self.diagnostic_recorder is not None and record.failures:
+                try:
+                    self.diagnostic_recorder(record.model_copy(deep=True))
+                except Exception:
+                    logger.debug(
+                        "Event diagnostics recording unavailable", exc_info=True
+                    )
             if task is not None and not already_owned:
                 self._tasks.discard(task)
             _stack.reset(token)
@@ -667,12 +687,28 @@ class EventBus:
                 )
             )
 
+        active = [record for record in self._active.values() if matches(record)]
+        recent = [record for record in self._recent if matches(record)]
         return EventDiagnostics(
             accepting=self.accepting,
             emitted=self.emitted,
             suppressed=self.suppressed,
             failed_listeners=self.failed_listeners,
             subscriptions=len(self._subscriptions),
+            active_dispatches=len(self._active),
+            subscriptions_by_owner=dict(
+                Counter(
+                    subscription.owner for subscription in self._subscriptions.values()
+                )
+            ),
+            active_listeners_by_owner=dict(
+                Counter(
+                    listener.owner
+                    for record in self._active.values()
+                    for listener in record.listeners
+                    if listener.status == "running"
+                )
+            ),
             pending_workers=sum(map(len, self._workers.values())),
             workers_by_owner={
                 owner: len(workers) for owner, workers in self._workers.items()
@@ -680,10 +716,10 @@ class EventBus:
             pending_waits=sum(map(len, self._waiters.values())),
             rejections_by_reason=self._rejections,
             timeouts_by_owner=self._timeouts,
-            active=[record for record in self._active.values() if matches(record)][
-                :limit
-            ],
-            recent=[record for record in self._recent if matches(record)][-limit:],
+            active=active[:limit],
+            recent=recent[-limit:],
+            active_truncated=len(active) > limit,
+            recent_truncated=len(recent) > limit,
         ).model_copy(deep=True)
 
     async def close(self) -> None:

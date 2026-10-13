@@ -17,6 +17,8 @@ from bedrock_server_manager.api.models import (
     BackupWorldResponse,
     BroadcastRequest,
     BroadcastResponse,
+    CompareDiagnosticSnapshotsRequest,
+    CompareDiagnosticSnapshotsResponse,
     DisableAddonRequest,
     DisableAddonResponse,
     EnableAddonRequest,
@@ -33,12 +35,22 @@ from bedrock_server_manager.api.models import (
     GetAllServersDataResponse,
     GetAllServerSettingsRequest,
     GetAllServerSettingsResponse,
+    GetApplicationDiagnosticsRequest,
+    GetApplicationDiagnosticsResponse,
     GetApplicationHealthRequest,
     GetApplicationHealthResponse,
     GetApplicationMetricsRequest,
     GetApplicationMetricsResponse,
     GetBedrockProcessInfoRequest,
     GetBedrockProcessInfoResponse,
+    GetDiagnosticHistoryRequest,
+    GetDiagnosticHistoryResponse,
+    GetDiagnosticReportRequest,
+    GetDiagnosticReportResponse,
+    GetDiagnosticRunsRequest,
+    GetDiagnosticRunsResponse,
+    GetDiagnosticTraceRequest,
+    GetDiagnosticTraceResponse,
     GetGlobalSettingRequest,
     GetGlobalSettingResponse,
     GetPermissionsRequest,
@@ -236,6 +248,32 @@ class BanAPI(Protocol):
     async def get_server_bans(
         self, request: GetServerBansRequest | Mapping[str, object]
     ) -> GetServerBansResponse: ...
+
+
+class DiagnosticsAPI(Protocol):
+    async def compare_diagnostic_snapshots(
+        self, request: CompareDiagnosticSnapshotsRequest | Mapping[str, object]
+    ) -> CompareDiagnosticSnapshotsResponse: ...
+
+    async def get_application_diagnostics(
+        self, request: GetApplicationDiagnosticsRequest | Mapping[str, object]
+    ) -> GetApplicationDiagnosticsResponse: ...
+
+    async def get_diagnostic_history(
+        self, request: GetDiagnosticHistoryRequest | Mapping[str, object]
+    ) -> GetDiagnosticHistoryResponse: ...
+
+    async def get_diagnostic_report(
+        self, request: GetDiagnosticReportRequest | Mapping[str, object]
+    ) -> GetDiagnosticReportResponse: ...
+
+    async def get_diagnostic_runs(
+        self, request: GetDiagnosticRunsRequest | Mapping[str, object]
+    ) -> GetDiagnosticRunsResponse: ...
+
+    async def get_diagnostic_trace(
+        self, request: GetDiagnosticTraceRequest | Mapping[str, object]
+    ) -> GetDiagnosticTraceResponse: ...
 
 
 class InstallAPI(Protocol):
@@ -449,6 +487,12 @@ class RuntimeAPI(Protocol):
         self, topic: str, handler: Callable[..., Any]
     ) -> None: ...
 
+    async def register_diagnostic_provider(
+        self, name: str, handler: Callable[..., Any]
+    ) -> None: ...
+
+    async def report_task_progress(self, percent: float) -> None: ...
+
 
 API_METHODS: dict[str, dict[str, str]] = {
     "addon": {
@@ -481,6 +525,14 @@ API_METHODS: dict[str, dict[str, str]] = {
         "restore_world": "restore_world",
     },
     "ban": {"add_server_ban": "add_server_ban", "get_server_bans": "get_server_bans"},
+    "diagnostics": {
+        "compare_diagnostic_snapshots": "compare_diagnostic_snapshots",
+        "get_application_diagnostics": "get_application_diagnostics",
+        "get_diagnostic_history": "get_diagnostic_history",
+        "get_diagnostic_report": "get_diagnostic_report",
+        "get_diagnostic_runs": "get_diagnostic_runs",
+        "get_diagnostic_trace": "get_diagnostic_trace",
+    },
     "install": {
         "install_new_server": "install_new_server",
         "update_server": "update_server",

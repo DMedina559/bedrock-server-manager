@@ -50,6 +50,7 @@ documentation matching your installed release.
    extras/web_extras.md
    extras/websockets.md
    extras/web_runtime.md
+   extras/diagnostics.md
    web/theming.md
 
 .. toctree::
@@ -80,6 +81,7 @@ documentation matching your installed release.
    :caption: Backend contributors and Python reference
 
    developer/overview.md
+   developer/web_architecture.md
    developer/api/api
    developer/classes/classes
    developer/core/core

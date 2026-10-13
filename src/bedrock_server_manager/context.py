@@ -9,7 +9,7 @@ from typing import TYPE_CHECKING, Any, Dict, Optional
 
 from sqlalchemy import inspect, select
 
-from .services.lifecycle import LifecyclePhase, run_stage
+from .services.lifecycle import LifecyclePhase, is_application_ready, run_stage
 
 if TYPE_CHECKING:
     from asyncio import AbstractEventLoop
@@ -19,6 +19,7 @@ if TYPE_CHECKING:
     from .core.bedrock_server import BedrockServer
     from .db.database import Database
     from .db.storage import Storage
+    from .diagnostics.service import Diagnostics
     from .events import EventBus
     from .plugins.api_bridge import AppAPI
     from .plugins.plugin_manager import PluginManager
@@ -30,6 +31,7 @@ if TYPE_CHECKING:
     from .state.app_state import AppState
     from .web.log_streamer import LogStreamer
     from .web.resource_monitor import ResourceMonitor
+    from .web.runtime import WebRuntime
     from .web.tasks import TaskManager
     from .web.websocket_manager import ConnectionManager
 
@@ -68,6 +70,8 @@ class AppContext:
         self._log_streamer: Optional["LogStreamer"] = None
         self._api: Optional["AppAPI"] = None
         self._events: EventBus | None = None
+        self._diagnostics: Diagnostics | None = None
+        self._web_runtime: WebRuntime | None = None
 
         self.loop: Optional["AbstractEventLoop"] = None
         self._shutdown_task: asyncio.Task[None] | None = None
@@ -104,6 +108,10 @@ class AppContext:
             raise RuntimeError("Cannot reload context while its runtime is active.")
         if any(not task.done() for task in self._lifecycle_tasks):
             raise RuntimeError("Cannot reload while lifecycle work is still running.")
+        if self._diagnostics is not None and self._diagnostics.has_pending_providers:
+            raise RuntimeError(
+                "Cannot reload while diagnostic providers are still running."
+            )
         if self._shutdown_task is not None:
             for name in (
                 "_task_manager",
@@ -115,6 +123,7 @@ class AppContext:
                 "_connection_manager",
                 "_events",
                 "_api",
+                "_diagnostics",
             ):
                 setattr(self, name, None)
             self._servers.clear()
@@ -142,6 +151,13 @@ class AppContext:
                 app_context=self,
             )
         await self._settings.load()
+
+        from .diagnostics.composition import configure_diagnostics
+
+        if self._diagnostics is not None:
+            await self._diagnostics.close()
+        self._diagnostics = configure_diagnostics(self)
+        self._storage.diagnostics = self._diagnostics
 
         from .utils import get_utils
 
@@ -200,6 +216,8 @@ class AppContext:
     async def _startup_components(self) -> None:
         self.loop = asyncio.get_running_loop()
         self.lifecycle_phase = LifecyclePhase.STARTING
+        if self._diagnostics is not None:
+            self._diagnostics.start()
         self._started_components = set()
         timeout = self.settings.get("lifecycle.startup_timeout_seconds", 30.0)
         grace = self.settings.get("lifecycle.cancellation_grace_seconds", 2.0)
@@ -238,6 +256,7 @@ class AppContext:
                     timeout,
                     grace,
                     owned_tasks=self._lifecycle_tasks,
+                    diagnostics=self._diagnostics,
                 )
             self.lifecycle_phase = LifecyclePhase.READY
             getLogger(__name__).info("Application runtime ready.")
@@ -298,7 +317,12 @@ class AppContext:
         async def stop(name: str, action: Any, deadline: float = timeout) -> None:
             try:
                 await run_stage(
-                    name, action, deadline, grace, owned_tasks=self._lifecycle_tasks
+                    name,
+                    action,
+                    deadline,
+                    grace,
+                    owned_tasks=self._lifecycle_tasks,
+                    diagnostics=self._diagnostics if name != "close database" else None,
                 )
             except (Exception, asyncio.CancelledError) as error:
                 failure = (
@@ -346,6 +370,8 @@ class AppContext:
         if self._connection_manager is not None:
             await stop("close websockets", self._connection_manager.shutdown)
         await stop("flush state", self.flush)
+        if self._diagnostics is not None:
+            await self._diagnostics.close()
         if self._db is not None:
             await stop("close database", self._db.shutdown)
         self.lifecycle_phase = (
@@ -508,6 +534,26 @@ class AppContext:
         return self._state
 
     @property
+    def diagnostics(self) -> "Diagnostics":
+        """Return diagnostics after application configuration has loaded."""
+        if self._diagnostics is None:
+            raise RuntimeError("Diagnostics require a loaded application context")
+        return self._diagnostics
+
+    @property
+    def is_ready(self) -> bool:
+        """Observe readiness using loaded state and existing runtimes only."""
+        return is_application_ready(
+            self.lifecycle_phase,
+            state_loaded=self.state_loaded,
+            web_phase=(
+                self._web_runtime.snapshot().phase
+                if self._web_runtime is not None
+                else None
+            ),
+        )
+
+    @property
     def state_loaded(self) -> bool:
         """Whether the persistent state has been loaded into this context."""
         return self._state is not None and self._storage is not None
@@ -551,6 +597,8 @@ class AppContext:
                 EventOptions.model_validate(options),
                 revision_provider=revision_clock.capture,
             )
+            if self._diagnostics is not None:
+                self._events.diagnostic_recorder = self._diagnostics.record_event
         return self._events
 
     @property
@@ -571,6 +619,17 @@ class AppContext:
                 settings_models=self.plugin_service.settings_models,
                 task_manager_provider=lambda: self._task_manager,
                 connection_manager_provider=lambda: self._connection_manager,
+                diagnostic_cleanup=lambda owner: self.diagnostics.remove_owner(
+                    f"plugin:{owner}"
+                ),
+                diagnostic_failure=(
+                    self._diagnostics.record_plugin_failure
+                    if self._diagnostics
+                    else None
+                ),
+                diagnostic_pending=lambda owner: self.diagnostics.owner_pending(
+                    f"plugin:{owner}"
+                ),
             )
         return self._plugin_manager
 
@@ -584,6 +643,7 @@ class AppContext:
 
             self._task_manager = TaskManager(
                 connection_manager=self.connection_manager,
+                diagnostics=self._diagnostics,
             )
         return self._task_manager
 
@@ -596,7 +656,13 @@ class AppContext:
             from .web.websocket_manager import ConnectionManager
 
             self._connection_manager = ConnectionManager(
-                user_provider=self.state.users.get
+                user_provider=self.state.users.get,
+                outbound_queue_limit=self.settings.get("web.outbound_queue_limit", 64),
+                record_failure=(
+                    self._diagnostics.record_transport_failure
+                    if self._diagnostics
+                    else None
+                ),
             )
             from .events.websocket import attach_websocket_observer
 
@@ -720,6 +786,11 @@ class AppContext:
                 events=self.events,
                 stop_server=self._stop_monitored_server,
                 get_bans=self._get_monitored_bans,
+                record_failure=(
+                    self._diagnostics.record_monitor_failure
+                    if self._diagnostics is not None
+                    else None
+                ),
             )
         return self._bedrock_process_manager
 

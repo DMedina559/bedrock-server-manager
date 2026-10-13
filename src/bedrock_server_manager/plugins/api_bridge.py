@@ -31,6 +31,7 @@ if TYPE_CHECKING:
         ApplicationAPI,
         BackupRestoreAPI,
         BanAPI,
+        DiagnosticsAPI,
         InstallAPI,
         MiscAPI,
         PermissionsAPI,
@@ -50,6 +51,7 @@ logger = logging.getLogger(__name__)
 
 # Modules allowed from bedrock_server_manager.api
 ALLOWED_API_MODULES = {
+    "diagnostics",
     "addon",
     "allowlist",
     "application",
@@ -159,6 +161,8 @@ def create_app_api(
         if app_context is None:
             raise RuntimeError("Runtime capabilities require application context")
         functions: dict[str, Callable[..., Any]] = {
+            "register_diagnostic_provider": runtime_capabilities.register_diagnostic_provider,
+            "report_task_progress": runtime_capabilities.report_task_progress,
             "run_task": runtime_capabilities.run_task,
             "server_lifecycle_manager": runtime_capabilities.server_lifecycle_manager,
             "websocket_register_data_provider": runtime_capabilities.register_data_provider,
@@ -296,6 +300,8 @@ class CapabilityNamespace:
     def __getattr__(self, name: str) -> Callable[..., Any]:
         if self._domain == "runtime":
             names = {
+                "register_diagnostic_provider": "register_diagnostic_provider",
+                "report_task_progress": "report_task_progress",
                 "run_task": "run_task",
                 "server_lifecycle_manager": "server_lifecycle_manager",
                 "register_data_provider": "websocket_register_data_provider",
@@ -385,6 +391,11 @@ class AppAPI:
     @property
     def world(self) -> "WorldAPI":
         return cast("WorldAPI", self._namespace("world"))
+
+    @property
+    def diagnostics(self) -> "DiagnosticsAPI":
+        """Read typed diagnostics through the plugin data API."""
+        return cast("DiagnosticsAPI", self._namespace("diagnostics"))
 
     @property
     def runtime(self) -> "RuntimeAPI":
