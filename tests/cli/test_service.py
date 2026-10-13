@@ -1,3 +1,4 @@
+import shlex
 from unittest.mock import MagicMock
 
 import pytest
@@ -29,8 +30,14 @@ def test_configure_service_flags_write_real_unit(
     unit = systemd.path(system).read_text()
     assert f"WorkingDirectory={app_context.data_dir}" in unit
     assert "web start --mode direct" in unit
-    assert f"--config-dir {app_context.config_dir}" in unit
-    assert f"--data-dir {app_context.data_dir}" in unit
+    command = next(
+        line.removeprefix("ExecStart=")
+        for line in unit.splitlines()
+        if line.startswith("ExecStart=")
+    )
+    arguments = shlex.split(command.replace("%%", "%"))
+    assert arguments[arguments.index("--config-dir") + 1] == app_context.config_dir
+    assert arguments[arguments.index("--data-dir") + 1] == app_context.data_dir
     assert "ExecStop=" not in unit
     assert "Restart=on-failure" in unit
     assert "TimeoutStopSec=180s" in unit
