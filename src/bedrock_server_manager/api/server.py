@@ -525,11 +525,8 @@ async def set_server_status(
     Accepts SetServerStatusRequest and returns SetServerStatusResponse.
     Invalid requests fail validation before side effects; operation failures raise application exceptions.
     """
-    from ..events.server import change_server_status
-
-    result = await change_server_status(
-        app_context.get_server(request.server_name), request.status
-    )
+    server = app_context.get_server(request.server_name)
+    result = await server.configuration.set_status(request.status, app_context.events)
     return SetServerStatusResponse.model_validate(result.model_dump())
 
 

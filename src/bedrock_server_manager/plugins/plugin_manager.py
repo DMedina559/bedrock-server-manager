@@ -28,11 +28,14 @@ from typing import (
 )
 
 from fastapi import APIRouter, FastAPI
+from pydantic import BaseModel
 from starlette.routing import BaseRoute, Route
 from starlette.types import Lifespan
 
 if TYPE_CHECKING:
-    from ..context import AppContext
+    from .api_bridge import AppAPI
+    from ..web.tasks import TaskManager
+    from ..web.websocket_manager import ConnectionManager
     from ..state.app_state import AppState
     from ..db.storage import Storage
     from ..config.settings import Settings
@@ -59,13 +62,19 @@ class PluginManager:
         state: "AppState",
         storage: "Storage",
         settings: "Settings",
-        app_context: Optional["AppContext"] = None,
+        *,
+        events: EventBus | None = None,
+        api_factory: Callable[[str], "AppAPI"] | None = None,
+        settings_models: dict[str, type[BaseModel]] | None = None,
+        task_manager_provider: Callable[[], Optional["TaskManager"]] | None = None,
+        connection_manager_provider: (
+            Callable[[], Optional["ConnectionManager"]] | None
+        ) = None,
     ):
         """Initialize the PluginManager with explicit required dependencies."""
         self.state = state
         self.storage = storage
         self.settings = settings
-        self.app_context = app_context
         user_plugin_dir = Path(self.settings.get("paths.plugins"))
         default_plugin_dir = Path(__file__).parent / "default"
 
@@ -79,7 +88,13 @@ class PluginManager:
         self.plugins: List[PluginBase] = []
         self._pending_plugins: dict[str, PluginBase] = {}
 
-        self.events = app_context.events if app_context is not None else EventBus()
+        self.events = events if events is not None else EventBus()
+        self.api_factory = api_factory or (
+            lambda name: create_app_api(name, None, events=self.events)
+        )
+        self.settings_models = settings_models if settings_models is not None else {}
+        self.task_manager_provider = task_manager_provider or (lambda: None)
+        self.connection_manager_provider = connection_manager_provider or (lambda: None)
         self.plugin_fastapi_routers: List[APIRouter] = []
         self._router_owners: dict[str, list[APIRouter]] = {}
         self._mount_owners: dict[str, list[Tuple[str, Path, str]]] = {}
@@ -488,8 +503,8 @@ class PluginManager:
                 version = getattr(p_class, "version", None)
                 if version and version != "N/A":
                     self._discovered_classes[p_name] = p_class
-                    if self.app_context:
-                        models = self.app_context.plugin_service.settings_models
+                    if self.settings_models is not None:
+                        models = self.settings_models
                         if p_class.settings_model is not None:
                             models[p_name] = p_class.settings_model
                         else:
@@ -531,8 +546,8 @@ class PluginManager:
         ]
         for plugin_name in plugins_to_remove:
             del self.plugin_config[plugin_name]
-            if self.app_context:
-                self.app_context.plugin_service.settings_models.pop(plugin_name, None)
+            if self.settings_models is not None:
+                self.settings_models.pop(plugin_name, None)
 
         await self._save_config()
 
@@ -615,17 +630,13 @@ class PluginManager:
                 try:
                     plugin_logger = logging.getLogger(f"plugin.{plugin_name}")
                     self.events.open_owner(f"plugin:{plugin_name}")
-                    api_instance = create_app_api(
-                        plugin_name=plugin_name, app_context=self.app_context
-                    )
+                    api_instance = self.api_factory(plugin_name)
 
                     instance = plugin_class(plugin_name, api_instance, plugin_logger)
                     self._pending_plugins[plugin_name] = instance
-                    if (
-                        self.app_context is not None
-                        and self.app_context._task_manager is not None
-                    ):
-                        self.app_context._task_manager.allow_plugin(plugin_name)
+                    task_manager = self.task_manager_provider()
+                    if task_manager is not None:
+                        task_manager.allow_plugin(plugin_name)
 
                     # Support both single (_app_event_name) and stacked/multi (_app_event_names) decorators
                     for _, method in inspect.getmembers(
@@ -849,18 +860,8 @@ class PluginManager:
         owner = RouterLifespan(
             self._web_app,
             self._router_owners.get(name, []),
-            timeout=(
-                self.app_context.settings.get("lifecycle.plugin_timeout_seconds", 10.0)
-                if self.app_context
-                else 10.0
-            ),
-            grace=(
-                self.app_context.settings.get(
-                    "lifecycle.cancellation_grace_seconds", 2.0
-                )
-                if self.app_context
-                else 2.0
-            ),
+            timeout=(self.settings.get("lifecycle.plugin_timeout_seconds", 10.0)),
+            grace=(self.settings.get("lifecycle.cancellation_grace_seconds", 2.0)),
         )
         self._router_lifespans[name] = owner
         try:
@@ -1013,21 +1014,13 @@ class PluginManager:
                 except RuntimeError:
                     pass
 
-            if (
-                self.app_context is not None
-                and self.app_context._task_manager is not None
-            ):
-                await self.app_context._task_manager.drain_plugin(plugin_key)
+            task_manager = self.task_manager_provider()
+            if task_manager is not None:
+                await task_manager.drain_plugin(plugin_key)
 
             unload_errors: list[Exception] = []
             try:
-                timeout = (
-                    self.app_context.settings.get(
-                        "lifecycle.plugin_timeout_seconds", 10.0
-                    )
-                    if self.app_context
-                    else 10.0
-                )
+                timeout = self.settings.get("lifecycle.plugin_timeout_seconds", 10.0)
                 async with asyncio.timeout(timeout):
                     for owner in self._event_owners(target_instance):
                         self.events.deactivate_owner(owner)
@@ -1064,8 +1057,8 @@ class PluginManager:
             for owner in self._event_owners(target_instance):
                 self.events.remove_owner(owner)
 
-            if self.app_context and hasattr(self.app_context, "connection_manager"):
-                cm = self.app_context.connection_manager
+            cm = self.connection_manager_provider()
+            if cm is not None:
                 cm.unregister_plugin_providers(plugin_key)
                 cm.unregister_plugin_providers(target_instance.name)
                 cm.unregister_plugin_providers(plugin_name)
@@ -1115,8 +1108,8 @@ class PluginManager:
                     self._set_runtime_status(plugin_name, "ERROR")
                 return False
 
-            if self.app_context:
-                models = self.app_context.plugin_service.settings_models
+            if self.settings_models is not None:
+                models = self.settings_models
                 if p_class.settings_model is not None:
                     models[plugin_name] = p_class.settings_model
                 else:
@@ -1125,17 +1118,13 @@ class PluginManager:
             try:
                 plugin_logger = logging.getLogger(f"plugin.{plugin_name}")
                 self.events.open_owner(f"plugin:{plugin_name}")
-                api_instance = create_app_api(
-                    plugin_name=plugin_name, app_context=self.app_context
-                )
+                api_instance = self.api_factory(plugin_name)
 
                 instance = p_class(plugin_name, api_instance, plugin_logger)
                 self._pending_plugins[plugin_name] = instance
-                if (
-                    self.app_context is not None
-                    and self.app_context._task_manager is not None
-                ):
-                    self.app_context._task_manager.allow_plugin(plugin_name)
+                task_manager = self.task_manager_provider()
+                if task_manager is not None:
+                    task_manager.allow_plugin(plugin_name)
 
                 for _, method in inspect.getmembers(
                     instance, predicate=inspect.ismethod

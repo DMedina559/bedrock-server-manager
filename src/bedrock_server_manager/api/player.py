@@ -121,7 +121,11 @@ async def scan_and_update_player_db(
         raise BSMError("Storage is not initialized.")
     try:
         base_dir = app_context.settings.get("paths.servers", "")
-        scan_result = await discover_and_store_players(base_dir, app_context)
+        scan_result = await discover_and_store_players(
+            base_dir,
+            server_provider=app_context.prepare_server,
+            storage=app_context.storage,
+        )
         return ScanAndUpdatePlayerDbResponse(
             status="partial" if scan_result.scan_errors else "success",
             message=f"Player discovery found {scan_result.unique_players_submitted_for_saving} unique players; {scan_result.actually_saved_or_updated_in_db} saved/updated.",

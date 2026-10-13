@@ -1,13 +1,9 @@
 """Server status mutation hooks shared by core and API adapters."""
 
-from typing import Any, Literal
+from typing import Literal
 
 from pydantic import ConfigDict, Field
 
-from ..error import APICancelledError
-from ..state_revision import revision_clock
-from .bus import correlation_scope
-from .control import CancellableEvent
 from .models import EventDefinition, EventModel
 from .registry import builtin_events
 
@@ -47,39 +43,3 @@ for name, phase, model in (
         ),
         model,
     )
-
-
-async def change_server_status(server: Any, status: str) -> StatusResult:
-    request = StatusRequest(server_name=server.server_name, status=status)
-    context = server.app_context
-    data = {**request.model_dump(), "request": request}
-    control = CancellableEvent()
-    with correlation_scope():
-        if context is not None:
-            try:
-                await context.events.emit(
-                    "before_server_status_change",
-                    {**data, "event": control},
-                    revision=dict(revision_clock.capture()),
-                )
-            finally:
-                control.seal()
-            if control.is_cancelled:
-                raise APICancelledError(
-                    control.cancel_reason or "Status change cancelled"
-                )
-        previous = await server.get_status_from_config()
-        await server.configuration.update("server_info.status", request.status)
-        result = StatusResult(
-            message=f"Server status set to {status}.",
-            server_name=request.server_name,
-            previous_status=previous,
-            new_status=request.status,
-        )
-        if context is not None:
-            await context.events.emit(
-                "after_server_status_change",
-                {**data, "result": result},
-                revision=dict(revision_clock.capture()),
-            )
-        return result

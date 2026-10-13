@@ -5,7 +5,13 @@ from typing import Any
 from pydantic import BaseModel, JsonValue, TypeAdapter
 
 _json_payload: TypeAdapter[JsonValue] = TypeAdapter(JsonValue)
-PRIVATE_FIELDS = {"app_context", "current_user", "event", "_triggering_plugin"}
+PRIVATE_FIELDS = {
+    "app_context",
+    "current_user",
+    "event",
+    "_triggering_plugin",
+    "cancellation_event",
+}
 
 
 def sanitize(data: Any) -> JsonValue:

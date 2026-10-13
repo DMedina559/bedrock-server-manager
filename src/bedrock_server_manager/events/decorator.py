@@ -17,7 +17,6 @@ from typing import (
 from pydantic import BaseModel, ConfigDict, ValidationError, create_model
 
 from ..error import APICancelledError, APIResponseValidationError
-from ..state_revision import revision_clock
 from .bus import correlation_scope
 from .control import CancellableEvent
 from .models import EventDefinition
@@ -118,11 +117,14 @@ def trigger_event(
                     )
                 data = dict(bound.arguments)
                 context = data.get("app_context")
-                if context is not None and not func.__module__.startswith(
+                events = data.pop("events", None)
+                if events is None and context is not None:
+                    events = context.events
+                if events is not None and not func.__module__.startswith(
                     "bedrock_server_manager."
                 ):
                     for declaration, model in declarations:
-                        context.events.registry.register(declaration, model)
+                        events.registry.register(declaration, model)
                 request = data.get("request")
                 if isinstance(request, BaseModel):
                     request = deepcopy(request)
@@ -138,11 +140,9 @@ def trigger_event(
                         data["plugin_name"] = data.pop("target_plugin_name")
                 control = CancellableEvent()
                 data["event"] = control
-                if before and context is not None:
+                if before and events is not None:
                     try:
-                        await context.events.emit(
-                            before, data, revision=dict(revision_clock.capture())
-                        )
+                        await events.emit(before, data)
                     finally:
                         control.seal()
                     if control.is_cancelled:
@@ -168,11 +168,9 @@ def trigger_event(
                         raise APIResponseValidationError(
                             f"Operation {func.__name__} produced invalid output"
                         ) from error
-                if after and context is not None:
+                if after and events is not None:
                     data["result"] = deepcopy(result)
-                    await context.events.emit(
-                        after, data, revision=dict(revision_clock.capture())
-                    )
+                    await events.emit(after, data)
                 return cast(R, result)
 
         setattr(wrapped, "__validates_event_result__", typed_response)

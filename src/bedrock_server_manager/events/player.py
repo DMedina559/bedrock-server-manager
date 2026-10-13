@@ -1,11 +1,12 @@
 """Core player notifications do not require the plugin API facade."""
 
-from typing import Self
+from typing import Literal, Self
 
 from pydantic import Field, model_validator
 
-from ..state_revision import revision_clock
-from .models import EventModel
+from .models import EventDefinition, EventModel, EventRecord
+from .publisher import EventPublisher
+from .registry import builtin_events
 
 
 class PlayerPresence(EventModel):
@@ -25,16 +26,33 @@ class PlayerSnapshot(EventModel):
         return self
 
 
+class PlayerChangeResult(PlayerSnapshot):
+    status: Literal["success"] = "success"
+    message: str | None = None
+
+
+class BeforePlayerChange(PlayerSnapshot):
+    request: PlayerSnapshot
+
+
+class AfterPlayerChange(BeforePlayerChange):
+    result: PlayerChangeResult
+
+
+for name, phase, model in (
+    ("before_server_players_change", "before", BeforePlayerChange),
+    ("after_server_players_change", "after", AfterPlayerChange),
+):
+    builtin_events.register(
+        EventDefinition(name=name, phase=phase), model, allow_variants=True
+    )
+
+
 async def publish_player_snapshot(
-    context, *, server_name: str, player_count: int, players: list[dict]
-) -> None:
-    snapshot = PlayerSnapshot(
-        server_name=server_name, player_count=player_count, players=players
-    )
+    events: EventPublisher, snapshot: PlayerSnapshot
+) -> EventRecord:
+    """Return the receipt so callers can retry dispatch rejected before delivery."""
     data = snapshot.model_dump(mode="json")
-    # State is already authoritative; this is an after-operation notification.
-    data["result"] = {"status": "success", "message": None, **data}
-    data["request"] = snapshot.model_dump(mode="json")
-    await context.events.emit(
-        "after_server_players_change", data, revision=dict(revision_clock.capture())
-    )
+    data["request"] = snapshot
+    data["result"] = PlayerChangeResult(**snapshot.model_dump())
+    return await events.emit("after_server_players_change", data)

@@ -239,7 +239,10 @@ async def test_core_status_and_player_events_do_not_use_api_facade(
     app_context, real_bedrock_server, monkeypatch
 ):
     from bedrock_server_manager.context import AppContext
-    from bedrock_server_manager.events.player import publish_player_snapshot
+    from bedrock_server_manager.events.player import (
+        PlayerSnapshot,
+        publish_player_snapshot,
+    )
 
     monkeypatch.setattr(
         AppContext,
@@ -256,10 +259,10 @@ async def test_core_status_and_player_events_do_not_use_api_facade(
     )
     await real_bedrock_server.set_status_in_config("STOPPED")
     await publish_player_snapshot(
-        app_context,
-        server_name=real_bedrock_server.server_name,
-        player_count=0,
-        players=[],
+        app_context.events,
+        PlayerSnapshot(
+            server_name=real_bedrock_server.server_name, player_count=0, players=[]
+        ),
     )
     assert [event.name for event in seen] == [
         "before_server_status_change",

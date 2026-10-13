@@ -7,6 +7,7 @@ from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT / "src"))
+from bedrock_server_manager import api  # noqa: E402, F401
 from bedrock_server_manager.plugins.api_bridge import _api_registry  # noqa: E402
 from bedrock_server_manager.plugins.api_contract import get_contract  # noqa: E402
 

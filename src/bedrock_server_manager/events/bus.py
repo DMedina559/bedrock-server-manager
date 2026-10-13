@@ -8,6 +8,7 @@ from contextlib import contextmanager
 from contextvars import ContextVar
 from copy import deepcopy
 from dataclasses import dataclass
+from threading import Event as ThreadEvent
 from threading import RLock
 from time import monotonic, time
 from typing import Any, Callable, Mapping
@@ -46,6 +47,12 @@ def correlation_scope():
         _correlation.reset(token)
 
 
+def _callback_identity(callback: Callable[..., Any]) -> tuple[int, int]:
+    if inspect.ismethod(callback):
+        return id(callback.__self__), id(callback.__func__)
+    return id(callback), 0
+
+
 @dataclass(frozen=True)
 class Subscription:
     token: str
@@ -78,6 +85,7 @@ class EventBus:
             str, dict[asyncio.Future[None], asyncio.Task[Any] | None]
         ] = {}
         self._waiters: dict[str, set[asyncio.Future[dict[str, Any]]]] = {}
+        self._workers: dict[str, dict[asyncio.Task[Any], ThreadEvent]] = {}
         self.accepting = True
         self.emitted = self.suppressed = self.failed_listeners = 0
 
@@ -102,10 +110,10 @@ class EventBus:
                 if (
                     subscription.name,
                     subscription.owner,
-                    subscription.callback,
+                    _callback_identity(subscription.callback),
                     subscription.observer,
                     subscription.once,
-                ) == (name, owner, callback, observer, once):
+                ) == (name, owner, _callback_identity(callback), observer, once):
                     return subscription.token
             token = uuid4().hex
             self._subscriptions[token] = Subscription(
@@ -231,6 +239,7 @@ class EventBus:
             for future, task in self._inflight.get(owner, {}).items()
             if task is not current
         }
+        pending.update(self._workers.get(owner, {}))
         if pending:
             _, overdue = await asyncio.wait(pending, timeout=timeout)
             if overdue:
@@ -247,11 +256,11 @@ class EventBus:
     ) -> list[Subscription]:
         with self._lock:
             selected = []
-            seen: set[tuple[str, Callable[..., Any], bool]] = set()
+            seen: set[tuple[str, tuple[int, int], bool]] = set()
             for subscription in self._subscriptions.values():
                 identity = (
                     subscription.owner,
-                    subscription.callback,
+                    _callback_identity(subscription.callback),
                     subscription.once,
                 )
                 allowed = subscription.owner in (
@@ -286,9 +295,52 @@ class EventBus:
                     callback_data[key] = data[key]
         if inspect.iscoroutinefunction(subscription.callback):
             return await subscription.callback(*callback_args, **callback_data)
-        result = await asyncio.to_thread(
-            subscription.callback, *callback_args, **callback_data
+        cancellation = ThreadEvent()
+        try:
+            signature = inspect.signature(subscription.callback)
+            parameter = signature.parameters.get("cancellation_event")
+            if (
+                parameter is not None
+                and parameter.kind != inspect.Parameter.POSITIONAL_ONLY
+                and "cancellation_event"
+                not in signature.bind_partial(*callback_args, **callback_data).arguments
+            ):
+                callback_data["cancellation_event"] = cancellation
+        except (TypeError, ValueError):
+            pass
+        worker = asyncio.create_task(
+            asyncio.to_thread(subscription.callback, *callback_args, **callback_data)
         )
+        workers = self._workers.setdefault(subscription.owner, {})
+        workers[worker] = cancellation
+        abandoned = False
+
+        def finished(task: asyncio.Task[Any]) -> None:
+            workers.pop(task, None)
+            if not workers:
+                self._workers.pop(subscription.owner, None)
+            if (
+                not task.cancelled()
+                and task.exception() is None
+                and abandoned
+                and inspect.iscoroutine(task.result())
+            ):
+                task.result().close()
+
+        worker.add_done_callback(finished)
+        try:
+            result = await asyncio.shield(worker)
+        except asyncio.CancelledError:
+            abandoned = True
+            cancellation.set()
+            if (
+                worker.done()
+                and not worker.cancelled()
+                and worker.exception() is None
+                and inspect.iscoroutine(worker.result())
+            ):
+                worker.result().close()
+            raise
         return await result if inspect.isawaitable(result) else result
 
     def _failure(self, record: EventRecord, owner: str, error: Exception) -> None:
@@ -574,20 +626,29 @@ class EventBus:
         ).model_copy(deep=True)
 
     async def close(self) -> None:
+        deadline = monotonic() + self.options.listener_timeout_seconds
         self.accepting = False
         for futures in self._waiters.values():
             for future in futures:
                 future.cancel()
         self._waiters.clear()
+        for workers in self._workers.values():
+            for cancellation in workers.values():
+                cancellation.set()
         tasks = self._tasks - {asyncio.current_task()}
         if tasks:
             _, pending = await asyncio.wait(
-                tasks, timeout=self.options.listener_timeout_seconds
+                tasks, timeout=max(0, deadline - monotonic())
             )
             for task in pending:
                 task.cancel()
             if pending:
                 await asyncio.wait(pending, timeout=1)
+        pending_workers = {
+            worker for owned in self._workers.values() for worker in owned
+        }
+        if pending_workers:
+            await asyncio.wait(pending_workers, timeout=max(0, deadline - monotonic()))
         self._subscriptions.clear()
         self._owners.clear()
 

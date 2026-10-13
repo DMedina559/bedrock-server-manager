@@ -8,7 +8,7 @@ def test_not_singleton(app_context):
         state=app_context.state,
         storage=app_context.storage,
         settings=app_context.settings,
-        app_context=app_context,
+        events=app_context.events,
     )
     assert pm1 is not pm2
 

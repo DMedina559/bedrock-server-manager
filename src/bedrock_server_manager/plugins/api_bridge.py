@@ -18,13 +18,11 @@ from typing import (
     cast,
 )
 
-from pydantic import BaseModel
-
 from .api_contract import get_contract, validate_contract
-from .api_types import API_METHODS
 
 if TYPE_CHECKING:
     from ..context import AppContext
+    from ..events import EventBus
 
 if TYPE_CHECKING:
     from .api_types import (
@@ -135,10 +133,25 @@ def api_method(name: str, expose_to_plugins: bool = True) -> Callable[[F], F]:
     return decorator
 
 
+def _api_methods():
+    from .api_types import API_METHODS
+
+    return API_METHODS
+
+
 def create_app_api(
-    plugin_name: str, app_context: Optional["AppContext"], is_core: bool = False
+    plugin_name: str,
+    app_context: Optional["AppContext"],
+    is_core: bool = False,
+    *,
+    events: "EventBus | None" = None,
 ) -> "AppAPI":
     """Factory function to create an AppAPI instance."""
+
+    # Register built-in adapters explicitly at the API boundary.
+    from importlib import import_module
+
+    import_module("bedrock_server_manager.api")
 
     def runtime_dispatcher(name: str) -> Callable[..., Any]:
         from . import runtime_capabilities
@@ -250,92 +263,17 @@ def create_app_api(
             setattr(sync_wrapper, "__signature__", public_signature)
             return sync_wrapper
 
-    event_owner = "application" if is_core else f"plugin:{plugin_name}"
-    event_generation = (
-        app_context.events.owner_generation(event_owner) if app_context else 0
+    from ..events.capabilities import create_event_capabilities
+
+    event_listener, event_sender, event_dispatcher = create_event_capabilities(
+        plugin_name,
+        (
+            events
+            if events is not None
+            else app_context.events if app_context is not None else None
+        ),
+        is_core=is_core,
     )
-
-    def require_event_owner():
-        if app_context is None:
-            raise RuntimeError("AppContext is unavailable")
-        app_context.events.check_owner(event_owner, event_generation)
-
-    def event_listener(
-        event_name: str, callback: Callable[..., None], *, once: bool = False
-    ):
-        require_event_owner()
-        if app_context is None:
-            raise RuntimeError("AppContext is unavailable")
-        return app_context.events.subscribe(
-            event_name,
-            callback,
-            owner=event_owner,
-            active=is_core,
-            generation=event_generation,
-            once=once,
-        )
-
-    async def event_sender(event_name: str, *args: Any, **kwargs: Any):
-        require_event_owner()
-        if app_context is None:
-            raise RuntimeError("AppContext is unavailable")
-        kwargs["_triggering_plugin"] = plugin_name
-        definition = app_context.events.registry.definition(event_name)
-        if (
-            not is_core
-            and app_context.events.registry.declared(event_name)
-            and (definition.phase != "custom" or definition.owner != event_owner)
-        ):
-            raise ValueError("Plugins may only emit their own declared custom events")
-        return await app_context.events.emit(
-            event_name, kwargs, *args, source=f"plugin:{plugin_name}"
-        )
-
-    def event_dispatcher(action: str, *args: Any, **kwargs: Any):
-        require_event_owner()
-        if app_context is None:
-            raise RuntimeError("AppContext is unavailable")
-        bus = app_context.events
-        if action == "listen":
-            return event_listener(*args, **kwargs)
-        if action == "once":
-            return event_listener(*args, once=True, **kwargs)
-        if action == "wait_for":
-            return bus.wait_for(
-                *args,
-                owner=event_owner,
-                generation=event_generation,
-                active=is_core,
-                **kwargs,
-            )
-        if action == "emit":
-            return event_sender(*args, **kwargs)
-        if action == "diagnostics":
-            return bus.diagnostics(*args, **kwargs)
-        if action == "unsubscribe":
-            bus.unsubscribe(args[0], owner=event_owner)
-            return None
-        if action == "define":
-            from ..events.models import EventDefinition
-
-            name, model = args
-            if (
-                not name.startswith(f"{plugin_name}:")
-                or not isinstance(model, type)
-                or not issubclass(model, BaseModel)
-            ):
-                raise ValueError(
-                    "Declare a Pydantic payload under the plugin's namespace"
-                )
-            definition = EventDefinition(
-                name=name,
-                owner=event_owner,
-                description=kwargs.get("description", ""),
-                public=kwargs.get("public", True),
-            )
-            bus.define(definition, model, generation=event_generation)
-            return bus.registry.definition(name)
-        raise ValueError(f"Unknown event capability: {action}")
 
     return AppAPI(
         plugin_name,
@@ -365,7 +303,7 @@ class CapabilityNamespace:
             if name not in names or self._api._runtime_dispatcher is None:
                 raise AttributeError(f"Unknown runtime capability: {name}")
             return self._api._runtime_dispatcher(names[name])
-        registered = API_METHODS.get(self._domain, {}).get(name)
+        registered = _api_methods().get(self._domain, {}).get(name)
         if registered is None:
             entry = _api_registry.get(name)
             if entry is None or entry[4] != self._domain:
@@ -545,9 +483,9 @@ class AppAPI:
                         "method": next(
                             (
                                 f"{domain}.{method}"
-                                for method, registered in API_METHODS.get(
-                                    domain, {}
-                                ).items()
+                                for method, registered in _api_methods()
+                                .get(domain, {})
+                                .items()
                                 if registered == name
                             ),
                             f"{domain}.{name}",
@@ -584,9 +522,9 @@ class AppAPI:
                         "method": next(
                             (
                                 f"{domain}.{method}"
-                                for method, registered in API_METHODS.get(
-                                    domain, {}
-                                ).items()
+                                for method, registered in _api_methods()
+                                .get(domain, {})
+                                .items()
                                 if registered == name
                             ),
                             f"{domain}.{name}",

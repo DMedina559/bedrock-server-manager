@@ -20,8 +20,8 @@ from .server.world import ServerWorlds
 
 if TYPE_CHECKING:
     from ..config.settings import Settings
-    from ..context import AppContext
     from ..db.storage import Storage
+    from ..events.publisher import EventPublisher
     from ..state.app_state import AppState
 
 
@@ -33,14 +33,14 @@ class BedrockServer(ServerResources):
         server_name: str,
         *,
         settings: "Settings | None" = None,
-        app_context: "AppContext | None" = None,
+        events: "EventPublisher | None" = None,
         state: "AppState | None" = None,
         storage: "Storage | None" = None,
     ) -> None:
         super().__init__(
             server_name,
             settings=settings,
-            app_context=app_context,
+            events=events,
             state=state,
             storage=storage,
         )
@@ -115,13 +115,7 @@ class BedrockServer(ServerResources):
 
     async def set_status_in_config(self, status_string: str) -> None:
         """Persist status and emit hooks without going through the API facade."""
-        from ..events.server import change_server_status
-
-        if self.app_context is not None and not self.app_context.events.accepting:
-            # A repeated stop after shutdown can still update the in-memory snapshot.
-            await self.configuration.update("server_info.status", status_string)
-            return
-        await change_server_status(self, status_string)
+        await self.configuration.set_status(status_string, self.events)
 
     async def get_world_name(self) -> str:
         value = (

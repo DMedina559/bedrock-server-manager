@@ -580,13 +580,18 @@ class AppContext:
         Lazily loads and returns the PluginManager instance.
         """
         if self._plugin_manager is None:
+            from .plugins.api_bridge import create_app_api
             from .plugins.plugin_manager import PluginManager
 
             self._plugin_manager = PluginManager(
                 state=self.state,
                 storage=self.storage,
                 settings=self.settings,
-                app_context=self,
+                events=self.events,
+                api_factory=lambda name: create_app_api(name, self),
+                settings_models=self.plugin_service.settings_models,
+                task_manager_provider=lambda: self._task_manager,
+                connection_manager_provider=lambda: self._connection_manager,
             )
         return self._plugin_manager
 
@@ -712,6 +717,15 @@ class AppContext:
         if self._connection_manager is not None:
             await self._connection_manager.revoke_user(username)
 
+    async def _stop_monitored_server(self, server_name: str) -> None:
+        await self.api.server.stop({"server_name": server_name})
+
+    async def _get_monitored_bans(self, server_name: str):
+        from .state.models import BanItem
+
+        response = await self.api.ban.get_server_bans({"server_name": server_name})
+        return [BanItem.model_validate(item.model_dump()) for item in response.bans]
+
     @property
     def bedrock_process_manager(self) -> "BedrockProcessManager":
         """
@@ -724,7 +738,9 @@ class AppContext:
                 settings=self.settings,
                 storage=self.storage,
                 server_provider=self.get_server,
-                api=self.api,
+                events=self.events,
+                stop_server=self._stop_monitored_server,
+                get_bans=self._get_monitored_bans,
             )
         return self._bedrock_process_manager
 
@@ -785,7 +801,7 @@ class AppContext:
         if server_name not in self._servers:
             self._servers[server_name] = BedrockServer(
                 server_name=server_name,
-                app_context=self,
+                events=self.events,
                 settings=self.settings,
                 state=self._state,
                 storage=self._storage,

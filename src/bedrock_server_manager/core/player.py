@@ -1,8 +1,10 @@
 import logging
 import os
-from typing import Any, Dict, List
+from typing import TYPE_CHECKING, Any, Callable, Dict, List
 
-from ..context import AppContext
+if TYPE_CHECKING:
+    from ..db.storage import Storage
+    from .bedrock_server import BedrockServer
 from ..error import (
     AppFileNotFoundError,
     FileOperationError,
@@ -48,7 +50,10 @@ async def get_known_players(storage: Any) -> List[Dict[str, str]]:
 
 
 async def discover_and_store_players(  # noqa: C901
-    base_dir: str, app_context: AppContext
+    base_dir: str,
+    *,
+    server_provider: Callable[[str], "BedrockServer"],
+    storage: "Storage",
 ) -> PlayerScanDetails:
     """Scans all server logs for player data and updates the central player database asynchronously."""
     import aiofiles.os
@@ -71,7 +76,7 @@ async def discover_and_store_players(  # noqa: C901
 
         logger.debug("Processing potential server '%s'.", server_name_candidate)
         try:
-            server_instance = app_context.prepare_server(server_name_candidate)
+            server_instance = server_provider(server_name_candidate)
             is_installed = await server_instance.is_installed()
 
             if not is_installed:
@@ -121,9 +126,7 @@ async def discover_and_store_players(  # noqa: C901
         unique_players_to_save_map = {p["xuid"]: p for p in all_discovered_from_logs}
         unique_players_to_save_list = list(unique_players_to_save_map.values())
         try:
-            saved_count = await save_player_data(
-                app_context.storage, unique_players_to_save_list
-            )
+            saved_count = await save_player_data(storage, unique_players_to_save_list)
         except (FileOperationError, Exception) as e_save:
             log_operation_error(
                 logger,

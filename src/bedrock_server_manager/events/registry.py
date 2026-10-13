@@ -8,6 +8,7 @@ from typing import Any
 from pydantic import BaseModel, TypeAdapter
 
 from .models import EventCatalog, EventDefinition
+from .serialization import PRIVATE_FIELDS
 
 
 class EventRegistry:
@@ -25,6 +26,10 @@ class EventRegistry:
         *,
         allow_variants: bool = False,
     ) -> None:
+        if payload_model is not None and PRIVATE_FIELDS.intersection(
+            payload_model.model_fields
+        ):
+            raise ValueError("Event payload fields cannot use reserved runtime names")
         with self._lock:
             existing = self._definitions.get(definition.name)
             inherited = (

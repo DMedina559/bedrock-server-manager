@@ -4,7 +4,11 @@ from typing import TYPE_CHECKING, cast
 
 from pydantic import JsonValue
 
-from ...error import ConfigurationError, MissingArgumentError
+from ...error import APICancelledError, ConfigurationError, MissingArgumentError
+from ...events.bus import correlation_scope
+from ...events.control import CancellableEvent
+from ...events.publisher import EventPublisher
+from ...events.server import StatusRequest, StatusResult
 from ...services.server_service import ServerService
 from ...state.models import ServerConfigState
 
@@ -36,6 +40,38 @@ class ServerConfiguration:
         await ServerService(self.server.state, self.server.storage).update_setting(
             self.server.server_name, key, value
         )
+
+    async def set_status(
+        self, status: str, events: EventPublisher | None = None
+    ) -> StatusResult:
+        request = StatusRequest(server_name=self.server.server_name, status=status)
+        data = {**request.model_dump(), "request": request}
+        control = CancellableEvent()
+        with correlation_scope():
+            if events is not None and events.accepting:
+                try:
+                    await events.emit(
+                        "before_server_status_change", {**data, "event": control}
+                    )
+                finally:
+                    control.seal()
+                if control.is_cancelled:
+                    raise APICancelledError(
+                        control.cancel_reason or "Status change cancelled"
+                    )
+            previous = self.snapshot().status
+            await self.update("server_info.status", request.status)
+            result = StatusResult(
+                message=f"Server status set to {request.status}.",
+                server_name=request.server_name,
+                previous_status=previous,
+                new_status=request.status,
+            )
+            if events is not None and events.accepting:
+                await events.emit(
+                    "after_server_status_change", {**data, "result": result}
+                )
+            return result
 
     def read(self, key: str) -> JsonValue:
         if not key:

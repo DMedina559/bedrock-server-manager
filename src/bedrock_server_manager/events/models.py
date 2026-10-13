@@ -57,6 +57,14 @@ class ListenerFailure(EventModel):
 class EventDelivery(DeliveryResult):
     owner: str
 
+    @classmethod
+    def combine(cls, items: list[DeliveryResult]) -> "EventDelivery":
+        owners = {item.owner for item in items if isinstance(item, cls)}
+        if len(owners) != 1 or any(not isinstance(item, cls) for item in items):
+            raise ValueError("Event delivery aggregation requires one explicit owner")
+        counts = DeliveryResult.combine(items)
+        return cls(owner=owners.pop(), **counts.model_dump())
+
 
 class ListenerRecord(EventModel):
     subscription_id: str

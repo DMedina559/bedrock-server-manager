@@ -22,13 +22,13 @@ def test_initialization(real_bedrock_server):
 def test_missing_server_name(app_context):
     """Test that initializing without a server name raises an error."""
     with pytest.raises(MissingArgumentError):
-        BedrockServer(server_name="", app_context=app_context)
+        BedrockServer(server_name="", events=app_context.events)
 
 
-def test_missing_app_context():
-    """Test that initializing without an app context raises an error."""
+def test_missing_settings():
+    """Test that initializing without settings raises an error."""
     with pytest.raises(ConfigurationError):
-        BedrockServer(server_name="test_server", app_context=None)
+        BedrockServer(server_name="test_server", events=None)
 
 
 async def test_missing_base_dir_setting(app_context):
@@ -38,7 +38,7 @@ async def test_missing_base_dir_setting(app_context):
         BedrockServer(
             server_name="test_server",
             settings=app_context.settings,
-            app_context=app_context,
+            events=app_context.events,
         )
 
 

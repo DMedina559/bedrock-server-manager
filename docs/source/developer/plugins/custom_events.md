@@ -180,3 +180,37 @@ shared event declarations opt into this, while plugin `define()` rejects acciden
 contract replacement. Event envelopes require epoch/revision together and
 positive JavaScript-safe revisions; transport counts reuse the shared delivery
 invariant that every targeted recipient has an outcome.
+
+## Core dependency boundaries
+
+Application composition owns the bus. Core server handles receive an
+`EventPublisher` rather than AppContext; status changes run through
+`ServerConfiguration.set_status(status, events)`. Player observations use
+`publish_player_snapshot(events, PlayerSnapshot(...))` and return an `EventRecord`.
+The process monitor retains rejected snapshots for a later retry, while partial
+listener delivery is recorded without replaying handlers that already succeeded.
+The publisher supplies revision metadata, so core producers do not reach into a
+global revision clock.
+
+Non-API operation hooks can receive a keyword-only `events` bus explicitly.
+That dependency is excluded from event payloads. API operation hooks retain their
+AppContext adapter. Event-only HTTP handlers resolve a bus dependency, and plugin
+native event capabilities capture their original bus and generation for the
+entire runtime lifetime. A stale capability cannot follow AppContext to a new bus
+after shutdown/load.
+
+Importing `bedrock_server_manager.events` does not initialize API registration,
+plugins, or HTTP. Public root exports remain available through lazy imports;
+creating AppAPI explicitly registers built-in API adapters. The legacy unused
+`plugins.util.broadcast_event` transport helper has been removed; public events
+use the bus observer.
+
+Payload declarations reject reserved runtime fields (`app_context`, `current_user`,
+`event`, `_triggering_plugin`, and `cancellation_event`) before a publisher runs.
+Delivery aggregation requires one owner and combines only recipient counts.
+
+Synchronous listeners remain owned while their worker thread runs, including
+when dispatch times out. An optional `cancellation_event` parameter receives a
+threading event signaled on timeout/cancellation/shutdown; cooperative workers
+should check it and return promptly. Plugin unload drains worker completion within
+its lifecycle deadline. A deadline cannot forcibly terminate a worker thread.

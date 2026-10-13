@@ -1,13 +1,20 @@
 """Optional observer preserving the public WebSocket event protocol."""
 
-from typing import Any
+from typing import Any, Protocol
 
+from ..results import DeliveryResult
 from .bus import EventBus
 from .models import EventEnvelope
 
 
-def attach_websocket_observer(bus: EventBus, manager: Any) -> str:
-    async def publish(event: EventEnvelope) -> Any:
+class TopicPublisher(Protocol):
+    async def broadcast_to_topic(
+        self, topic: str, message: dict[str, Any]
+    ) -> DeliveryResult: ...
+
+
+def attach_websocket_observer(bus: EventBus, manager: TopicPublisher) -> str:
+    async def publish(event: EventEnvelope) -> DeliveryResult:
         data = event.model_dump(
             exclude={"name", "source", "timestamp", "parent_event_id"},
             exclude_none=True,
