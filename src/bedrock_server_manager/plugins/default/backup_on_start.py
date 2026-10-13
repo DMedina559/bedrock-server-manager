@@ -26,10 +26,9 @@ class PluginSettings(BaseModel):
 
 
 class AutoBackupOnStart(PluginBase):
-    """
-    Performs a full backup of a server each time a start command is initiated.
-    This plugin hooks into the `before_server_start` event to ensure a recent
-    backup exists before the server goes online.
+    """Performs a full backup of a server each time a start command is initiated. This
+    plugin hooks into the ``before_server_start`` event to ensure a recent backup
+    exists before the server goes online.
     """
 
     settings_model = PluginSettings

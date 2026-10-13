@@ -20,7 +20,7 @@ plugin event and websocket delivery path is retained.
 Configuration reads do not register missing servers, and writes require state
 and storage. Restart counters belong to ``BedrockProcessManager``.
 
-.. autoclass:: bedrock_server_manager.BedrockServer
+.. autoclass:: bedrock_server_manager.core.bedrock_server.BedrockServer
    :members:
    :show-inheritance:
 

@@ -1,20 +1,5 @@
 # bedrock_server_manager/web/routers/settings.py
-"""
-FastAPI router for managing global application settings.
-
-This module provides endpoints for viewing and modifying the application's
-global configuration, typically stored in ``bedrock_server_manager.json``.
-It includes:
-
-- API endpoints to:
-    - Retrieve all current global settings (:func:`~.get_all_settings_api_route`).
-    - Set a specific global setting by its key (:func:`~.set_setting_api_route`).
-    - Trigger a reload of settings from the configuration file
-      (:func:`~.reload_settings_api_route`).
-
-These routes interface with the underlying settings management logic in
-:mod:`~bedrock_server_manager.api.settings` and require user authentication.
-"""
+"""FastAPI router for managing global application settings."""
 
 import logging
 
@@ -46,9 +31,7 @@ async def get_all_settings(
     current_user: UserResponse = Depends(get_admin_user),
     app_context: AppContext = Depends(get_app_context),
 ) -> SettingsResponse:
-    """
-    Retrieves all global application settings.
-    """
+    """Return all global application settings."""
     identity = current_user.username
     logger.debug("Get global settings request by '%s'.", identity)
     result = await settings_api.get_all_global_settings(
@@ -72,9 +55,7 @@ async def post_set_setting(
     current_user: UserResponse = Depends(get_admin_user),
     app_context: AppContext = Depends(get_app_context),
 ) -> SettingsResponse:
-    """
-    Sets a specific global application setting.
-    """
+    """Set a specific global application setting."""
     identity = current_user.username
     logger.info(
         "Set global setting request for key '%s' by '%s'.", payload.key, identity

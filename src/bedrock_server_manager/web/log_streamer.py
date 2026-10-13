@@ -28,8 +28,7 @@ class LogHistoryPage(BaseModel):
 
 
 class LogStreamer:
-    """
-    Manages streaming of log files to WebSocket clients.
+    """Manage streaming of log files to WebSocket clients.
 
     Continuously monitors active WebSocket subscriptions and tails the corresponding
     log files, broadcasting new lines to subscribed clients.
@@ -53,7 +52,7 @@ class LogStreamer:
         self._failures = RepeatedFailureReporter(logger)
 
     def start(self):
-        """Starts the log streaming background task."""
+        """Start the log streaming background task."""
         if self.running:
             return
         self.running = True
@@ -61,7 +60,7 @@ class LogStreamer:
         logger.debug("LogStreamer started.")
 
     def stop(self):
-        """Stops the log streaming background task."""
+        """Stop the log streaming background task."""
         self.running = False
         if self._task:
             self._task.cancel()

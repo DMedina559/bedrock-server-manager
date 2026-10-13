@@ -243,7 +243,9 @@ class APIDocsGenerator(PluginBase):
 
             lines.append("\n---\n")
 
-        return "\n".join(lines)
+        if lines and lines[-1].strip() == "---":
+            lines.pop()
+        return "\n".join(lines).rstrip() + "\n"
 
     def _format_event_markdown(self, event_list: list) -> str:
         """
@@ -308,4 +310,6 @@ class APIDocsGenerator(PluginBase):
 
             lines.append("\n---\n")
 
-        return "\n".join(lines)
+        if lines and lines[-1].strip() == "---":
+            lines.pop()
+        return "\n".join(lines).rstrip() + "\n"

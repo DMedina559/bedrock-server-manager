@@ -1,6 +1,6 @@
 # bedrock_server_manager/api/websocket.py
-"""
-Provides API functions for interacting with WebSockets and managing real-time data providers.
+"""Provide API functions for interacting with WebSockets and managing real-time data
+providers.
 """
 
 import logging
@@ -41,11 +41,7 @@ def _delivery_status(
 async def broadcast(
     request: BroadcastRequest, *, app_context: AppContext
 ) -> BroadcastResponse:
-    """Broadcasts a JSON payload to all WebSocket clients subscribed to a given topic.
-
-    Accepts BroadcastRequest and returns BroadcastResponse.
-    Invalid requests fail validation before side effects; operation failures raise application exceptions.
-    """
+    """Broadcasts a JSON payload to all WebSocket clients subscribed to a given topic."""
     topic = request.topic
     data = request.data
     try:
@@ -76,11 +72,7 @@ async def broadcast(
 async def send_to_user(
     request: SendToUserRequest, *, app_context: AppContext
 ) -> SendToUserResponse:
-    """Sends a JSON payload to all active WebSocket connections belonging to a user.
-
-    Accepts SendToUserRequest and returns SendToUserResponse.
-    Invalid requests fail validation before side effects; operation failures raise application exceptions.
-    """
+    """Sends a JSON payload to all active WebSocket connections belonging to a user."""
     username = request.username
     data = request.data
     try:
@@ -101,11 +93,7 @@ async def send_to_user(
 async def send_to_client(
     request: SendToClientRequest, *, app_context: AppContext
 ) -> SendToClientResponse:
-    """Sends a JSON payload directly to a specific connected WebSocket client ID.
-
-    Accepts SendToClientRequest and returns SendToClientResponse.
-    Invalid requests fail validation before side effects; operation failures raise application exceptions.
-    """
+    """Sends a JSON payload directly to a specific connected WebSocket client ID."""
     client_id = request.client_id
     data = request.data
     try:
@@ -126,11 +114,7 @@ async def send_to_client(
 async def unregister_data_provider(
     request: UnregisterDataProviderRequest, *, app_context: AppContext
 ) -> UnregisterDataProviderResponse:
-    """Unregisters a data provider handler for a WebSocket topic.
-
-    Accepts UnregisterDataProviderRequest and returns UnregisterDataProviderResponse.
-    Invalid requests fail validation before side effects; operation failures raise application exceptions.
-    """
+    """Unregisters a data provider handler for a WebSocket topic."""
     topic = request.topic
     try:
         removed = app_context.connection_manager.unregister_data_provider(topic)
@@ -154,11 +138,7 @@ async def unregister_data_provider(
 async def publish_ws_event(
     request: PublishWsEventRequest, *, app_context: AppContext
 ) -> PublishWsEventResponse:
-    """Publishes a custom WebSocket event to topic 'ws_event:{event_name}'.
-
-    Accepts PublishWsEventRequest and returns PublishWsEventResponse.
-    Invalid requests fail validation before side effects; operation failures raise application exceptions.
-    """
+    """Publishes a custom WebSocket event to topic 'ws_event:{event_name}'."""
     event_name = request.event_name
     data = request.data
     try:

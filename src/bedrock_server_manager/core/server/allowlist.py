@@ -28,7 +28,7 @@ class ServerAllowlist:
         )
 
     async def get_allowlist(self) -> List[Dict[str, Any]]:
-        """Reads the `allowlist.json` file asynchronously and returns its contents."""
+        """Reads the ``allowlist.json`` file asynchronously and returns its contents."""
         self.logger.debug(
             "Server '%s': Loading allowlist from %s",
             self.server.server_name,
@@ -140,7 +140,7 @@ class ServerAllowlist:
             return added_count
 
     async def remove_from_allowlist(self, player_name_to_remove: str) -> bool:
-        """Removes a player from the allowlist asynchronously."""
+        """Remove a player from the allowlist asynchronously."""
         async with self.server.get_file_lock(self.server.paths.allowlist_json_path):
             if not isinstance(player_name_to_remove, str) or not player_name_to_remove:
                 raise MissingArgumentError(

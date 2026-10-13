@@ -2,10 +2,9 @@ from fastapi.staticfiles import StaticFiles
 
 
 class IngressAwareStaticFiles(StaticFiles):
-    """
-    Custom StaticFiles class to handle Ingress stripped paths.
-    Temporarily strips the ingress path from `scope['root_path']` during `__call__`
-    to prevent `starlette.routing.get_route_path` from failing to match.
+    """Custom StaticFiles class to handle Ingress stripped paths. Temporarily strips the
+    ingress path from ``scope['root_path']`` during ``__call__`` to prevent
+    ``starlette.routing.get_route_path`` from failing to match.
     """
 
     async def __call__(self, scope, receive, send):

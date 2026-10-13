@@ -68,24 +68,33 @@ def test_all_registered_data_apis_expose_version_two_contracts():
     )
 
 
-@pytest.mark.parametrize("operation_name, operation", list(operations()))
-async def test_unknown_fields_fail_before_runtime_access(
-    operation_name, operation, app_context
-):
-    context = app_context
-    before = context.state.runtime.servers
-    with pytest.raises(ValidationError):
+async def test_unknown_fields_fail_before_runtime_access():
+    """Validate every API's input without constructing runtime dependencies."""
+
+    class UnavailableRuntime:
+        def __getattr__(self, name):
+            raise AssertionError(f"Input validation accessed runtime attribute {name}")
+
+    failures = []
+    for operation_name, operation in operations():
         runtime = (
-            {"app_context": context}
+            {"app_context": UnavailableRuntime()}
             if "app_context" in inspect.signature(operation).parameters
             else {}
         )
         if "plugin_name" in inspect.signature(operation).parameters:
             runtime["plugin_name"] = "test_plugin"
-        result = operation({"unexpected_field": True}, **runtime)
-        if inspect.isawaitable(result):
-            await result
-    assert context.state.runtime.servers == before, operation_name
+        try:
+            result = operation({"unexpected_field": True}, **runtime)
+            if inspect.isawaitable(result):
+                await result
+        except ValidationError:
+            continue
+        except Exception as error:
+            failures.append(f"{operation_name}: {type(error).__name__}: {error}")
+        else:
+            failures.append(f"{operation_name}: unknown field was accepted")
+    assert not failures, "\n".join(failures)
 
 
 def test_config_values_reject_non_json_runtime_objects():

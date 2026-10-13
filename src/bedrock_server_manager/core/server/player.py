@@ -27,17 +27,9 @@ class ServerPlayers:
     def _parse_player_log_events(
         self, start_cursor: int = 0
     ) -> Iterator[Tuple[Optional[str], Optional[str], Optional[str], int]]:
-        """A generator that safely and incrementally parses the server log file.
+        """Yield ``(event, name, XUID, cursor)`` records from a byte offset.
 
-        Reads lines in binary mode to accurately handle incomplete lines from active flushes,
-        and yields player connection and disconnection events.
-
-        Args:
-            start_cursor (int): The byte offset to start reading from.
-
-        Yields:
-            Tuple[str, str, str, int]: A tuple containing the event type ("connect" or "disconnect"),
-            the player's name, the player's XUID, and the cursor position right after reading the line.
+        Leave incomplete log lines for the next read.
         """
         log_file = self.server.paths.server_log_path
         if not os.path.isfile(log_file):
@@ -92,29 +84,10 @@ class ServerPlayers:
     async def scan_log_for_players(
         self, incremental: bool = False
     ) -> List[Dict[str, str]]:
-        """Scans the server's log file for player connection entries to extract gamertags and XUIDs asynchronously.
+        """Return unique ``name`` and ``xuid`` records found in the server log.
 
-        This method reads the server's primary output log file (obtained via
-        :attr:`~.ServerResources.server_log_path`) to find player connections.
-        It collects unique players based on their XUID to avoid duplicates.
-
-        Args:
-            incremental (bool): If True, starts reading from the last recorded position
-                instead of the beginning. Useful for periodic polling to save memory.
-
-        Returns:
-            List[Dict[str, str]]: A list of unique player data dictionaries found
-            in the log. Each dictionary has two keys:
-
-                - "name" (str): The player's gamertag.
-                - "xuid" (str): The player's Xbox User ID (XUID).
-
-            Returns an empty list if the log file doesn't exist, is empty, or if
-            no player connection entries are found.
-
-        Raises:
-            FileOperationError: If an OS-level error occurs while trying to read
-                the log file (e.g., permission issues).
+        Incremental reads resume at the saved cursor; missing logs produce an empty
+        list.
         """
         log_file = self.server.paths.server_log_path
         self.logger.debug(
@@ -157,14 +130,10 @@ class ServerPlayers:
             ) from e
 
     async def update_online_players(self) -> List[Dict[str, str]]:
-        """Incrementally parses the server log to update the list of currently online players asynchronously.
+        """Update online-player records from new complete log lines.
 
-        Reads new lines from the log file starting from the last known cursor position
-        (`self._log_file_cursor`), updates the `self.players` attribute, and saves the new cursor position.
-
-        Returns:
-            List[Dict[str, str]]: The updated list of dictionaries for each currently
-            online player, containing their "name" and "xuid".
+        Return name/XUID records and retain the cursor. Clear players when the
+        server is stopped.
         """
         is_running = await self.server.is_running()
         if not is_running:

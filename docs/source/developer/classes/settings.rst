@@ -3,7 +3,7 @@
 Settings Core Documentation
 ===========================
 
-.. autoclass:: bedrock_server_manager.Settings
+.. autoclass:: bedrock_server_manager.config.settings.Settings
    :members:
    :undoc-members:
    :show-inheritance:

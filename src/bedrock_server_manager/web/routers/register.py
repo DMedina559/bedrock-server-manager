@@ -73,9 +73,7 @@ async def validate_token(
     token: str,
     app_context: AppContext = Depends(get_app_context),
 ):
-    """
-    Checks if a registration token is valid.
-    """
+    """Check if a registration token is valid."""
     async with app_context.storage.transaction() as session:
         registration_token = await app_context.storage.user_repo.get_registration_token(
             session, token
@@ -101,9 +99,7 @@ async def register_user(
     data: UserLoginPayload,
     app_context: AppContext = Depends(get_app_context),
 ):
-    """
-    Creates a new user from a registration token.
-    """
+    """Create a new user from a registration token."""
     record = await app_context.user_service.create_account(
         data.username, get_password_hash(data.password.get_secret_value()), token=token
     )

@@ -134,55 +134,47 @@ We use [Black](https://github.com/psf/black) for uncompromising Python code form
 
 ### Docstrings (Google Python Format for Sphinx)
 
-Comprehensive documentation is crucial for maintainability and for our automated documentation generation pipeline using Sphinx. All public modules, classes, functions, and methods **must** have docstrings.
+Keep docstrings short and compatible with Sphinx Napoleon. Public modules,
+classes, functions and methods should explain their purpose in one summary
+sentence. Add a short paragraph only for behavior a caller cannot infer from the
+signature: units, ownership, side effects, cancellation, atomicity or failure
+semantics.
 
-We follow the [Google Python Style Guide for Docstrings](https://google.github.io/styleguide/pyguide.html#38-comments-and-docstrings), ensuring they are **Sphinx-compatible**. This means they should be parsable by Sphinx to generate the project's API documentation.
+Use Google-style `Args:`, `Returns:`, `Yields:` and `Raises:` sections when they
+clarify a contract. Do not repeat annotated types, model field lists, defaults,
+implementation steps or the same validation boilerplate on every API method.
+Use double backticks for literals and Sphinx roles such as `:class:` and
+`:meth:` for references. Keep destructive effects and important error conditions
+explicit. Put extended examples and architectural explanations in the developer
+or plugin guides.
 
-**Key requirements for docstrings:**
+Typed plugin data APIs use `@api_method(...)`, request/response models and
+`@validate_contract`; generated references describe those contracts directly.
+Update generated API/event references when their descriptions change.
 
-*   **Summary Line:** Start with a concise summary line.
-*   **Detailed Explanation:** Follow with a more detailed explanation if needed.
-*   **Args Section:** Document all parameters using the `Args:` (or `Arguments:`) section. Clearly specify the type and meaning of each parameter.
-    *   Example: `param1 (int): Description of the first parameter.`
-*   **Returns Section:** Document the return value using the `Returns:` (or `Yields:`) section, including its type.
-    *   Example: `bool: True if the operation was successful, False otherwise.`
-*   **Raises Section:** Document any exceptions raised using the `Raises:` section.
-    *   Example: `ValueError: If param1 is negative.`
-*   **Attributes Section (for classes):** Document class attributes under an `Attributes:` section in the class docstring.
-*   **Clarity and Completeness:** Ensure docstrings are clear, grammatically correct, and provide enough information for another developer (or your future self) to understand the code's purpose, usage, and behavior without needing to read the source code.
-
-**Plugin API Methods:**
-
-*   Functions intended to be exposed as API methods for plugins **must** be decorated with `@plugin_method("exposed_api_name")` (from `bedrock_server_manager.plugins.api_bridge`).
-*   These methods require particularly thorough docstrings as they form the public contract for plugin developers. Their documentation is automatically collated into a dedicated "Plugin API Reference" section.
-
-**Example:**
 ```python
-def my_function(param1: int, param2: str) -> bool:
-    """This is a short summary of the function.
+async def import_world(archive: Path) -> str:
+    """Replace the active world from a validated archive and return its name.
 
-    This function does something interesting with its parameters.
-    It can span multiple lines, providing further details on its
-    behavior, usage context, or any notable aspects.
-
-    Args:
-        param1 (int): The first parameter, which must be a non-negative integer.
-        param2 (str): The second parameter, expected to be a descriptive string.
-
-    Returns:
-        bool: True if the operation was successful, False otherwise.
-
-    Raises:
-        ValueError: If param1 is negative.
-        TypeError: If param2 is not a string.
+    Extraction failure preserves the existing world.
     """
-    if param1 < 0:
-        raise ValueError("param1 cannot be negative")
-    if not isinstance(param2, str):
-        raise TypeError("param2 must be a string")
-    # ... function logic ...
-    return True
 ```
+
+### Test cost and isolation
+
+Test distinct behavior rather than adding a separate application startup for
+each input value. Pure contract tables can scan all models without runtime
+fixtures; integration tests should exercise real storage, processes and transports.
+Consolidate repeated setup when one lifecycle can verify the same assertions.
+
+The database fixture migrates an empty template once, then gives each test an
+independent file, engine and event-loop resources. Migration tests create their
+own databases and exercise upgrade/reopen paths directly. Never share mutable
+application state or live SQLAlchemy sessions between tests.
+
+Inspect `pytest --durations=25` before changing deadlines or removing tests.
+Retain distinct failure and concurrency coverage. CI tests the minimum and maximum
+supported Python versions only, on Linux and Windows.
 
 ### Understanding Existing Code
 

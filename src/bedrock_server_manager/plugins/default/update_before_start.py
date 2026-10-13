@@ -11,10 +11,9 @@ from bedrock_server_manager.logging import log_operation_error
 
 
 class AutoupdatePlugin(PluginBase):
-    """
-    Automatically updates a server to the latest version before it starts.
-    This plugin checks for a server-specific `autoupdate: true` setting in its
-    configuration. If enabled, it triggers the update process before launch.
+    """Automatically updates a server to the latest version before it starts. This plugin
+    checks for a server-specific ``autoupdate: true`` setting in its configuration. If
+    enabled, it triggers the update process before launch.
     """
 
     version = "1.2.0"
@@ -31,9 +30,8 @@ class AutoupdatePlugin(PluginBase):
 
     @app_event("before_server_start")
     async def update_before_start(self, **kwargs: Any):
-        """
-        Checks for the 'autoupdate' flag before a server starts and runs
-        the update process if it's enabled.
+        """Check for the 'autoupdate' flag before a server starts and runs the update
+        process if it's enabled.
         """
         server_name = str(kwargs.get("server_name"))
         if not server_name or server_name == "None":

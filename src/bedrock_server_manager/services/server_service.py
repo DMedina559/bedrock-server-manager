@@ -19,7 +19,7 @@ if TYPE_CHECKING:
 
 
 class ServerService:
-    """Handles business logic and mutations for Bedrock servers."""
+    """Handle business logic and mutations for Bedrock servers."""
 
     def __init__(
         self,
@@ -30,7 +30,7 @@ class ServerService:
         self.storage = storage
 
     def get_server_state(self, server_name: str) -> Optional[ServerConfigState]:
-        """Retrieves a server configuration state model snapshot."""
+        """Return a server configuration state model snapshot."""
         cfg = self.state.servers.get(server_name)
         if cfg:
             res: ServerConfigState = cfg.model_copy()
@@ -47,7 +47,7 @@ class ServerService:
         target_version: Optional[str] = None,
         custom: Optional[Dict[str, JsonValue]] = None,
     ) -> ServerConfigState:
-        """Registers or updates server state model while maintaining dirty tracking."""
+        """Register or updates server state model while maintaining dirty tracking."""
         values: dict[str, object] = {"server_name": server_name}
         for name, value in (
             ("installed_version", installed_version),
@@ -128,11 +128,11 @@ class ServerService:
         )
 
     async def set_autostart(self, server_name: str, enabled: bool) -> None:
-        """Sets server autostart flag."""
+        """Set server autostart flag."""
         await self.register_or_update_server(server_name, autostart=enabled)
 
     async def set_autoupdate(self, server_name: str, enabled: bool) -> None:
-        """Sets server autoupdate flag."""
+        """Set server autoupdate flag."""
         await self.register_or_update_server(server_name, autoupdate=enabled)
 
     async def add_server_ban(
@@ -149,11 +149,11 @@ class ServerService:
             )
 
     async def remove_server_ban(self, server_name: str, xuid: str) -> BanMutation:
-        """Removes a server ban record by XUID."""
+        """Remove a server ban record by XUID."""
         async with self.storage.transaction() as session:
             return await self.storage.ban_repo.remove_ban(session, server_name, xuid)
 
     async def get_server_bans(self, server_name: str) -> list[BanItem]:
-        """Retrieves all bans for a specific server."""
+        """Return all bans for a specific server."""
         async with self.storage.transaction() as session:
             return await self.storage.ban_repo.get_bans(session, server_name)

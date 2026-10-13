@@ -1,7 +1,5 @@
 # src/bedrock_server_manager/context.py
-"""
-Defines the central application context.
-"""
+"""Define the central application context."""
 
 from __future__ import annotations
 
@@ -49,9 +47,7 @@ class AppContext:
         log_level: Optional[str] = None,
         logger: Optional[Logger] = None,
     ):
-        """
-        Initializes the AppContext.
-        """
+        """Initialize the AppContext."""
 
         self._config_dir: Optional[str] = config_dir
         self._data_dir: Optional[str] = data_dir
@@ -74,7 +70,6 @@ class AppContext:
         self._events: EventBus | None = None
 
         self.loop: Optional["AbstractEventLoop"] = None
-        self._web_server: Optional[Any] = None
         self._shutdown_task: asyncio.Task[None] | None = None
         self.lifecycle_phase = LifecyclePhase.STOPPED
         self._startup_task: asyncio.Task[None] | None = None
@@ -93,8 +88,8 @@ class AppContext:
         self._user_service: Optional["UserService"] = None
 
     async def load(self):
-        """
-        Loads the application context by initializing the settings, AppState, and Storage.
+        """Load the application context by initializing the settings, AppState, and
+        Storage.
         """
         from . import api  # noqa: F401
         from .config.settings import Settings
@@ -375,17 +370,7 @@ class AppContext:
         return self._pre_app_config_cache
 
     def get_pre_app_config(self, key: str, default: Any = None) -> Any:
-        """
-        Retrieves a single value from the cached pre-application configuration.
-        Supports dot notation for nested keys (e.g., 'web.cors_origins').
-
-        Args:
-            key (str): The key of the value to retrieve.
-            default (Any, optional): The default value to return if the key is not found.
-
-        Returns:
-            Any: The configuration value or the default.
-        """
+        """Read a dotted key from cached bootstrap configuration or return its default."""
         keys = key.split(".")
         value = self.pre_app_config
         for k in keys:
@@ -513,9 +498,7 @@ class AppContext:
 
     @property
     def state(self) -> "AppState":
-        """
-        Returns the AppState instance.
-        """
+        """Return the AppState instance."""
         if self._state is None:
             from .error import BSMError
 
@@ -531,9 +514,7 @@ class AppContext:
 
     @property
     def storage(self) -> "Storage":
-        """
-        Returns the Storage instance.
-        """
+        """Return the Storage instance."""
         if self._storage is None:
             from .error import BSMError
 
@@ -544,9 +525,7 @@ class AppContext:
 
     @property
     def settings(self) -> "Settings":
-        """
-        Returns the Settings instance.
-        """
+        """Return the Settings instance."""
         if self._settings is None:
             from .config.settings import Settings
 
@@ -670,7 +649,7 @@ class AppContext:
 
     @property
     def settings_service(self) -> "SettingsService":
-        """Returns the SettingsService instance."""
+        """Return the SettingsService instance."""
         if self._settings_service is None:
             from .services.settings_service import SettingsService
 
@@ -684,7 +663,7 @@ class AppContext:
 
     @property
     def server_service(self) -> "ServerService":
-        """Returns the ServerService instance."""
+        """Return the ServerService instance."""
         if self._server_service is None:
             from .services.server_service import ServerService
 
@@ -693,7 +672,7 @@ class AppContext:
 
     @property
     def plugin_service(self) -> "PluginService":
-        """Returns the PluginService instance."""
+        """Return the PluginService instance."""
         if self._plugin_service is None:
             from .services.plugin_service import PluginService
 
@@ -702,7 +681,7 @@ class AppContext:
 
     @property
     def user_service(self) -> "UserService":
-        """Returns the UserService instance."""
+        """Return the UserService instance."""
         if self._user_service is None:
             from .services.user_service import UserService
 
@@ -809,8 +788,8 @@ class AppContext:
         return self._servers[server_name]
 
     async def remove_server(self, server_name: str):
-        """
-        Stops a server, removes it from the process manager, and discards it from the context cache.
+        """Stop a server, removes it from the process manager, and discards it from the
+        context cache.
         """
         # 1. Get the server instance from the cache.
         if server_name in self._servers:

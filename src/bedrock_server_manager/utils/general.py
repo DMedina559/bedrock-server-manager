@@ -1,6 +1,5 @@
 # bedrock_server_manager/utils/general.py
-"""
-Provides general utility functions for the application.
+"""Provide general utility functions for the application.
 
 Includes startup checks, timestamp generation, and interactive prompts.
 """

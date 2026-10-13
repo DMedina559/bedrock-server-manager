@@ -48,9 +48,8 @@ logger = logging.getLogger(__name__)
 
 
 class Storage:
-    """
-    Handles loading, persisting, and transaction boundaries between
-    the in-memory AppState and the persistent database.
+    """Handle loading, persisting, and transaction boundaries between the in-memory
+    AppState and the persistent database.
     """
 
     def __init__(self, db: "Database", data_dir: str):
@@ -72,7 +71,9 @@ class Storage:
         return self._flush_lock
 
     def subscribe(self, listener: Callable[[AppState, ChangeSet], Any]) -> None:
-        """Registers a callback to receive state change notifications when changesets are persisted."""
+        """Register a callback to receive state change notifications when changesets are
+        persisted.
+        """
         if listener not in self._listeners:
             self._listeners.append(listener)
 
@@ -276,9 +277,8 @@ class Storage:
                     remove_dirty(name)
 
     async def load_state(self, state: Optional[AppState] = None) -> AppState:
-        """
-        Loads persistent state from the database into the AppState model.
-        If no AppState instance is provided, a new one is created.
+        """Load persistent state from the database into the AppState model. If no
+        AppState instance is provided, a new one is created.
         """
         if state is None:
             state = AppState()
@@ -341,13 +341,15 @@ class Storage:
         return state
 
     async def save_players(self, players_data: list[dict[str, str]]) -> int:
-        """Saves player data to the database via player repository within a transaction."""
+        """Save player data to the database via player repository within a transaction."""
         async with self.transaction() as session:
             res = await self.player_repo.save_players(session, players_data)
             return int(res)
 
     async def get_all_players(self) -> list[dict[str, str]]:
-        """Retrieves all known players from the database via player repository within a transaction."""
+        """Return all known players from the database via player repository within a
+        transaction.
+        """
         async with self.transaction() as session:
             res = await self.player_repo.get_all_players(session)
             return list(res)

@@ -1,23 +1,5 @@
 # bedrock_server_manager/api/application.py
-"""Provides API functions for application-wide information and actions.
-
-This module offers endpoints to retrieve general details about the Bedrock
-Server Manager application itself and to perform operations that span across
-multiple server instances.
-
-Key functionalities include:
-    - Retrieving application metadata (name, version, OS, key directories) via
-      :func:`~.get_application_info_api`.
-    - Listing globally available content like world templates
-      (:func:`~.list_available_worlds`) and addons
-      (:func:`~.list_available_addons_api`).
-    - Aggregating status and version information for all detected server instances
-      using :func:`~.get_all_servers_data`.
-
-These functions are exposed to the plugin system via
-:func:`~bedrock_server_manager.plugins.api_bridge.api_method` and are
-intended for use by UIs, CLIs, or other high-level components.
-"""
+"""Provide API functions for application-wide information and actions."""
 
 import logging
 
@@ -47,11 +29,7 @@ logger = logging.getLogger(__name__)
 async def list_available_worlds(
     request: ListAvailableWorldsRequest, *, app_context: AppContext
 ) -> ListAvailableWorldsResponse:
-    """Lists available .mcworld files from the content directory.
-
-    Accepts ListAvailableWorldsRequest and returns ListAvailableWorldsResponse.
-    Invalid requests fail validation before side effects; operation failures raise application exceptions.
-    """
+    """Lists available .mcworld files from the content directory."""
     logger.debug("Requesting list of available worlds.")
     try:
         content_dir = app_context.settings.get("paths.content")
@@ -70,11 +48,7 @@ async def list_available_worlds(
 async def get_all_servers_data(
     request: GetAllServersDataRequest, *, app_context: AppContext
 ) -> GetAllServersDataResponse:
-    """Retrieves status and version for all detected servers.
-
-    Accepts GetAllServersDataRequest and returns GetAllServersDataResponse.
-    Invalid requests fail validation before side effects; operation failures raise application exceptions.
-    """
+    """Return status and version for all detected servers."""
     logger.debug("Getting status for all servers...")
     from ..utils import server as server_utils
 
@@ -111,11 +85,7 @@ async def get_all_servers_data(
 def get_system_and_app_info(
     request: GetSystemAndAppInfoRequest, *, app_context: AppContext
 ) -> GetSystemAndAppInfoResponse:
-    """Retrieves basic system and application information.
-
-    Accepts GetSystemAndAppInfoRequest and returns GetSystemAndAppInfoResponse.
-    Invalid requests fail validation before side effects; operation failures raise application exceptions.
-    """
+    """Return basic system and application information."""
     import platform
 
     logger.debug("Requesting system and app info.")
@@ -139,11 +109,7 @@ def get_system_and_app_info(
 async def update_server_statuses(
     request: UpdateServerStatusesRequest, *, app_context: AppContext
 ) -> UpdateServerStatusesResponse:
-    """Reconciles the status in config files with the runtime state for all servers.
-
-    Accepts UpdateServerStatusesRequest and returns UpdateServerStatusesResponse.
-    Invalid requests fail validation before side effects; operation failures raise application exceptions.
-    """
+    """Reconciles the status in config files with the runtime state for all servers."""
     from ..utils import server as server_utils
 
     servers_data, errors = await server_utils.get_servers_data(app_context=app_context)

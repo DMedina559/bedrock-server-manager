@@ -32,8 +32,7 @@ class Base(DeclarativeBase):
 
 
 class Database:
-    """
-    Manages asynchronous database connections and sessions.
+    """Manage asynchronous database connections and sessions.
 
     Attributes:
         db_url (str): The database connection URL.
@@ -43,8 +42,7 @@ class Database:
     """
 
     def __init__(self, db_url: str):
-        """
-        Initializes the Database instance.
+        """Initialize the Database instance.
 
         Args:
             db_url (str): The database connection URL.
@@ -64,7 +62,7 @@ class Database:
         return True
 
     def _get_db_url(self) -> str:
-        """Converts the standard database URL into an async-compatible URL."""
+        """Convert the standard database URL into an async-compatible URL."""
         if self.db_url.startswith("sqlite://"):
             return self.db_url.replace("sqlite://", "sqlite+aiosqlite://", 1)
         if self.db_url.startswith("postgresql://"):
@@ -74,7 +72,7 @@ class Database:
         return self.db_url
 
     def _get_sync_db_url(self) -> str:
-        """Converts an async database URL back into a standard sync URL (for Alembic)."""
+        """Convert an async database URL back into a standard sync URL (for Alembic)."""
         url = self.db_url
         url = url.replace("sqlite+aiosqlite://", "sqlite://", 1)
         url = url.replace("postgresql+asyncpg://", "postgresql://", 1)
@@ -83,9 +81,8 @@ class Database:
         return url
 
     def initialize(self) -> None:
-        """
-        Initializes the async database engine and session factory.
-        This method is idempotent.
+        """Initialize the async database engine and session factory. This method is
+        idempotent.
         """
         if self.engine:
             return
@@ -140,7 +137,7 @@ class Database:
         sync_engine.dispose()
 
     def _get_head_revision(self) -> str | None:
-        """Retrieves the current head revision from Alembic script directory."""
+        """Return the current head revision from Alembic script directory."""
         try:
             alembic_ini_path = files("bedrock_server_manager").joinpath(
                 "db/alembic.ini"
@@ -178,8 +175,8 @@ class Database:
         sync_engine.dispose()
 
     async def _ensure_tables_created(self) -> None:
-        """
-        Ensures that the database tables are created asynchronously and auto-upgraded if out of date.
+        """Ensure that the database tables are created asynchronously and auto-upgraded
+        if out of date.
         """
         if not self._tables_created:
             if not self.engine:

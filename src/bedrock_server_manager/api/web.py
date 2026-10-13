@@ -1,38 +1,15 @@
-# bedrock_server_manager/api/web.py
-"""Provides API functions for managing the application's own web user interface.
+"""Typed API operations for web system-service configuration.
 
-This module contains the logic for controlling the lifecycle and querying the
-status of the built-in web UI, which is powered by FastAPI. It handles:
-
-    - Starting the web server in 'direct' (blocking) or 'detached' (background) modes
-      (:func:`~.start_web_server`).
-    - Stopping the detached web server process (:func:`~.stop_web_server`).
-    - Checking the runtime status of the web server (:func:`~.get_web_server_status`).
-    - Managing the system service for the Web UI (create, enable, disable, remove, get status)
-      via functions like :func:`~.create_web_ui_service` and :func:`~.get_web_ui_service_status`.
-
-These functions are intended for programmatic control of the application's web server,
-often used by CLI commands or service management scripts.
+Hosting process control belongs to bedrock_server_manager.web, not AppAPI.
 """
 
-import asyncio
 import logging
-import os
 from typing import Any, Dict
 
 from ..context import AppContext
 from ..core import service
-from ..core.system import process as system_process_utils
 from ..core.system.base import can_manage_services
-from ..error import (
-    BSMError,
-    DependencyUnavailableError,
-    FileOperationError,
-    OperationConflictError,
-    ServerProcessError,
-    SystemError,
-    UserInputError,
-)
+from ..error import BSMError, DependencyUnavailableError
 from ..logging import log_operation_error
 from ..plugins.api_contract import validate_contract
 from .models.web import (
@@ -42,281 +19,20 @@ from .models.web import (
     DisableWebUiServiceResponse,
     EnableWebUiServiceRequest,
     EnableWebUiServiceResponse,
-    GetWebServerStatusRequest,
-    GetWebServerStatusResponse,
     GetWebUiServiceStatusRequest,
     GetWebUiServiceStatusResponse,
     RemoveWebUiServiceRequest,
     RemoveWebUiServiceResponse,
-    StartWebServerRequest,
-    StartWebServerResponse,
-    StopWebServerRequest,
-    StopWebServerResponse,
 )
 
-try:
-    import psutil  # noqa: F401
-
-    PSUTIL_AVAILABLE = True
-except ImportError:
-    PSUTIL_AVAILABLE = False
-
-
 logger = logging.getLogger(__name__)
-
-
-@validate_contract
-def start_web_server(
-    request: StartWebServerRequest, *, app_context: AppContext
-) -> StartWebServerResponse:
-    """Starts the application's web server.
-
-    Accepts StartWebServerRequest and returns StartWebServerResponse.
-    Invalid requests fail validation before side effects; operation failures raise application exceptions.
-    """
-    host = request.host
-    port = request.port
-    debug = request.debug
-    mode = request.mode
-    try:
-        if mode not in ["direct", "detached"]:
-            raise UserInputError("Invalid mode. Must be 'direct' or 'detached'.")
-        logger.debug("Attempting to start web server in '%s' mode...", mode)
-        if mode == "direct":
-            logger.debug("Starting web application in direct mode (blocking)...")
-            try:
-                from ..web.main import run_web_server as run_bsm_web_application
-
-                run_bsm_web_application(
-                    app_context=app_context, host=host, port=port, debug=debug
-                )
-                logger.info("Web application (direct mode) shut down.")
-            except (RuntimeError, ImportError) as e:
-                logger.critical(
-                    "Failed to start web application directly: %s", e, exc_info=True
-                )
-                raise
-            return StartWebServerResponse(
-                status="success", message="Web server (direct mode) shut down."
-            )
-        elif mode == "detached":
-            if not PSUTIL_AVAILABLE:
-                raise SystemError(
-                    "Cannot start in detached mode: 'psutil' is required."
-                )
-            logger.debug("Starting web server in detached mode...")
-            import sys
-
-            pid_file_path = os.path.join(
-                app_context.settings.config_dir, "web_server.pid"
-            )
-            existing_pid = None
-            try:
-                existing_pid = asyncio.run(
-                    system_process_utils.read_pid_from_file(pid_file_path)
-                )
-            except FileOperationError:
-                asyncio.run(
-                    system_process_utils.remove_pid_file_if_exists(pid_file_path)
-                )
-            if existing_pid and asyncio.run(
-                system_process_utils.is_process_running(existing_pid)
-            ):
-                try:
-                    asyncio.run(
-                        system_process_utils.verify_process_identity(
-                            pid=existing_pid, expected_command_args=["web", "start"]
-                        )
-                    )
-                except ServerProcessError:
-                    asyncio.run(
-                        system_process_utils.remove_pid_file_if_exists(pid_file_path)
-                    )
-                else:
-                    raise OperationConflictError(
-                        f"Web server already running (PID: {existing_pid})."
-                    )
-            else:
-                asyncio.run(
-                    system_process_utils.remove_pid_file_if_exists(pid_file_path)
-                )
-            command = [
-                sys.executable,
-                "-m",
-                "bedrock_server_manager",
-                "--config-dir",
-                app_context.config_dir,
-                "--data-dir",
-                app_context.data_dir,
-                "--db-url",
-                app_context.db_url,
-                "web",
-                "start",
-                "--mode",
-                "direct",
-            ]
-            if host:
-                command.extend(["--host", host])
-            if port is not None:
-                command.extend(["--port", str(port)])
-            if debug:
-                command.append("--debug")
-            new_pid = asyncio.run(
-                system_process_utils.launch_detached_process(command, pid_file_path)
-            )
-            return StartWebServerResponse.model_validate(
-                {
-                    "status": "success",
-                    "pid": new_pid,
-                    "message": f"Web server started (PID: {new_pid}).",
-                }
-            )
-    except BSMError as e:
-        log_operation_error(logger, "Handled error starting web server: %s", e, error=e)
-        raise
-    except Exception as e:
-        log_operation_error(
-            logger, "Unexpected error starting web server: %s", e, error=e
-        )
-        raise
-    raise RuntimeError("Unsupported web server mode")
-
-
-@validate_contract
-def stop_web_server(
-    request: StopWebServerRequest, *, app_context: AppContext
-) -> StopWebServerResponse:
-    """Stops the detached web server process.
-
-    Accepts StopWebServerRequest and returns StopWebServerResponse.
-    Invalid requests fail validation before side effects; operation failures raise application exceptions.
-    """
-    try:
-        logger.debug("Attempting to stop detached web server...")
-        if not PSUTIL_AVAILABLE:
-            raise SystemError("'psutil' not installed. Cannot manage processes.")
-        pid_file_path = os.path.join(app_context.settings.config_dir, "web_server.pid")
-        pid = asyncio.run(system_process_utils.read_pid_from_file(pid_file_path))
-        if pid is None:
-            asyncio.run(system_process_utils.remove_pid_file_if_exists(pid_file_path))
-            return StopWebServerResponse(
-                status="success", message="Web server not running (no valid PID file)."
-            )
-        if not asyncio.run(system_process_utils.is_process_running(pid)):
-            asyncio.run(system_process_utils.remove_pid_file_if_exists(pid_file_path))
-            return StopWebServerResponse(
-                status="success", message=f"Web server not running (stale PID {pid})."
-            )
-        asyncio.run(
-            system_process_utils.verify_process_identity(
-                pid=pid, expected_command_args=["web", "start"]
-            )
-        )
-        asyncio.run(system_process_utils.terminate_process_by_pid(pid))
-        asyncio.run(system_process_utils.remove_pid_file_if_exists(pid_file_path))
-        return StopWebServerResponse(
-            status="success", message=f"Web server (PID: {pid}) stopped."
-        )
-    except (FileOperationError, ServerProcessError) as e:
-        asyncio.run(
-            system_process_utils.remove_pid_file_if_exists(
-                os.path.join(app_context.settings.config_dir, "web_server.pid")
-            )
-        )
-        (
-            "PID file error"
-            if isinstance(e, FileOperationError)
-            else "Process verification failed"
-        )
-        raise
-    except Exception as e:
-        log_operation_error(
-            logger, "Unexpected error stopping web server: %s", e, error=e
-        )
-        raise
-
-
-@validate_contract
-def get_web_server_status(
-    request: GetWebServerStatusRequest, *, app_context: AppContext
-) -> GetWebServerStatusResponse:
-    """Checks the status of the web server process.
-
-    Accepts GetWebServerStatusRequest and returns GetWebServerStatusResponse.
-    Invalid requests fail validation before side effects; operation failures raise application exceptions.
-    """
-    logger.debug("Getting web server status...")
-    if not PSUTIL_AVAILABLE:
-        raise BSMError("'psutil' not installed. Cannot get process status.")
-    pid = None
-    try:
-        pid_file_path = os.path.join(app_context.settings.config_dir, "web_server.pid")
-        expected_arg = ["web", "start"]
-        try:
-            pid = asyncio.run(system_process_utils.read_pid_from_file(pid_file_path))
-        except FileOperationError:
-            asyncio.run(system_process_utils.remove_pid_file_if_exists(pid_file_path))
-            return GetWebServerStatusResponse.model_validate(
-                {
-                    "status": "STOPPED",
-                    "pid": None,
-                    "message": "Corrupt PID file removed.",
-                }
-            )
-        if pid is None:
-            if os.path.exists(pid_file_path):
-                asyncio.run(
-                    system_process_utils.remove_pid_file_if_exists(pid_file_path)
-                )
-            return GetWebServerStatusResponse.model_validate(
-                {
-                    "status": "STOPPED",
-                    "pid": None,
-                    "message": "Web server not running (no PID file).",
-                }
-            )
-        if not asyncio.run(system_process_utils.is_process_running(pid)):
-            asyncio.run(system_process_utils.remove_pid_file_if_exists(pid_file_path))
-            return GetWebServerStatusResponse.model_validate(
-                {
-                    "status": "STOPPED",
-                    "pid": pid,
-                    "message": f"Stale PID {pid}, process not running.",
-                }
-            )
-        try:
-            asyncio.run(
-                system_process_utils.verify_process_identity(
-                    pid=pid, expected_command_args=expected_arg
-                )
-            )
-            return GetWebServerStatusResponse.model_validate(
-                {
-                    "status": "RUNNING",
-                    "pid": pid,
-                    "message": f"Web server running with PID {pid}.",
-                }
-            )
-        except ServerProcessError as e:
-            return GetWebServerStatusResponse.model_validate(
-                {"status": "MISMATCHED_PROCESS", "pid": pid, "message": str(e)}
-            )
-    except Exception as e:
-        log_operation_error(
-            logger, "Unexpected error getting web server status: %s", e, error=e
-        )
-        raise
 
 
 @validate_contract
 def create_web_ui_service(
     request: CreateWebUiServiceRequest, *, app_context: AppContext
 ) -> CreateWebUiServiceResponse:
-    """Creates (or updates) a system service for the Web UI.
-
-    Accepts CreateWebUiServiceRequest and returns CreateWebUiServiceResponse.
-    Invalid requests fail validation before side effects; operation failures raise application exceptions.
-    """
+    """Create (or updates) a system service for the Web UI."""
     autostart = request.autostart
     system = request.system
     username = request.username
@@ -330,6 +46,7 @@ def create_web_ui_service(
             )
         service.create_web_service_file(
             app_data_dir=app_context.data_dir,
+            config_dir=app_context.config_dir,
             system=system,
             username=username,
             password=password,
@@ -360,11 +77,7 @@ def create_web_ui_service(
 def enable_web_ui_service(
     request: EnableWebUiServiceRequest, *, app_context: AppContext
 ) -> EnableWebUiServiceResponse:
-    """Enables the Web UI system service for autostart.
-
-    Accepts EnableWebUiServiceRequest and returns EnableWebUiServiceResponse.
-    Invalid requests fail validation before side effects; operation failures raise application exceptions.
-    """
+    """Enables the Web UI system service for autostart."""
     system = request.system
     try:
         if not can_manage_services():
@@ -391,11 +104,7 @@ def enable_web_ui_service(
 def disable_web_ui_service(
     request: DisableWebUiServiceRequest, *, app_context: AppContext
 ) -> DisableWebUiServiceResponse:
-    """Disables the Web UI system service from autostarting.
-
-    Accepts DisableWebUiServiceRequest and returns DisableWebUiServiceResponse.
-    Invalid requests fail validation before side effects; operation failures raise application exceptions.
-    """
+    """Disables the Web UI system service from autostarting."""
     system = request.system
     try:
         if not can_manage_services():
@@ -422,11 +131,7 @@ def disable_web_ui_service(
 def remove_web_ui_service(
     request: RemoveWebUiServiceRequest, *, app_context: AppContext
 ) -> RemoveWebUiServiceResponse:
-    """Removes the Web UI system service.
-
-    Accepts RemoveWebUiServiceRequest and returns RemoveWebUiServiceResponse.
-    Invalid requests fail validation before side effects; operation failures raise application exceptions.
-    """
+    """Remove the Web UI system service."""
     system = request.system
     try:
         if not can_manage_services():
@@ -456,11 +161,7 @@ def remove_web_ui_service(
 def get_web_ui_service_status(
     request: GetWebUiServiceStatusRequest, *, app_context: AppContext
 ) -> GetWebUiServiceStatusResponse:
-    """Gets the current status of the Web UI system service.
-
-    Accepts GetWebUiServiceStatusRequest and returns GetWebUiServiceStatusResponse.
-    Invalid requests fail validation before side effects; operation failures raise application exceptions.
-    """
+    """Return the current status of the Web UI system service."""
     system = request.system
     response_data: Dict[str, Any] = {
         "service_exists": False,

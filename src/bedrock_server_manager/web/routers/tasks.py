@@ -19,9 +19,7 @@ async def get_task_status(
     current_user: UserResponse = Depends(get_current_user),
     app_context: AppContext = Depends(get_app_context),
 ) -> TaskSnapshot:
-    """
-    Retrieves the status of a background task.
-    """
+    """Return the status of a background task."""
     task = await app_context.task_manager.get_task(
         task_id, username=current_user.username
     )
@@ -39,8 +37,6 @@ async def list_tasks(
     current_user: UserResponse = Depends(get_current_user),
     app_context: AppContext = Depends(get_app_context),
 ) -> list[TaskSnapshot]:
-    """
-    Retrieves all background tasks.
-    """
+    """Return all background tasks."""
     tasks = await app_context.task_manager.get_all_tasks(username=current_user.username)
     return list(tasks.values())

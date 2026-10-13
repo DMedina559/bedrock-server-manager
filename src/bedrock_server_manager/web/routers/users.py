@@ -31,9 +31,7 @@ async def list_users_api(
     current_user: UserSchema = Depends(get_moderator_user),
     app_context: AppContext = Depends(get_app_context),
 ) -> List[UserSchema]:
-    """
-    Retrieves the list of users as JSON.
-    """
+    """Return the list of users as JSON."""
     async with app_context.storage.transaction() as session:
         users = await app_context.storage.user_repo.get_all_users(session)
         return [UserSchema.model_validate(user, from_attributes=True) for user in users]
@@ -47,9 +45,7 @@ async def delete_user(
     current_user: UserSchema = Depends(get_admin_user),
     app_context: AppContext = Depends(get_app_context),
 ) -> BaseApiResponse:
-    """
-    Deletes a user.
-    """
+    """Delete a user."""
     result = await app_context.user_service.update_account(
         action="delete", user_id=user_id, actor_id=current_user.id
     )

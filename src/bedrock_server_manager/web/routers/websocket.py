@@ -62,19 +62,9 @@ async def _call_data_provider(
 async def websocket_endpoint(  # noqa: C901
     websocket: WebSocket,
 ):
-    """
-    Handles WebSocket connections.
+    """Authenticate a WebSocket and dispatch validated subscription/provider frames.
 
-    Authentication is performed manually on the first message via `authenticate_websocket_token`.
-    Clients must send an authentication message within 5 seconds of connecting:
-    `{"action": "authenticate", "token": "<your_jwt_token>"}`
-
-    After authentication, clients can send JSON messages to subscribe, unsubscribe, or request data from topics.
-
-    Example messages:
-    - `{"action": "subscribe", "topic": "some_topic"}`
-    - `{"action": "unsubscribe", "topic": "some_topic"}`
-    - `{"action": "request", "topic": "server-status", "data": {}, "request_id": "req-1"}`
+    Reject missing authentication, unsupported actions and unauthorized topics.
     """
     await websocket.accept()
     app_context: AppContext = websocket.app.state.app_context

@@ -30,11 +30,7 @@ logger = logging.getLogger(__name__)
 async def install_new_server(
     request: InstallNewServerRequest, *, app_context: AppContext
 ) -> InstallNewServerResponse:
-    """Installs a new server instance.
-
-    Accepts InstallNewServerRequest and returns InstallNewServerResponse.
-    Invalid requests fail validation before side effects; operation failures raise application exceptions.
-    """
+    """Installs a new server instance."""
     server_name = request.server_name
     target_version = request.target_version
     server_zip_path = request.server_zip_path
@@ -105,11 +101,7 @@ async def install_new_server(
 async def update_server(
     request: UpdateServerRequest, *, app_context: AppContext
 ) -> UpdateServerResponse:
-    """Updates an existing server instance.
-
-    Accepts UpdateServerRequest and returns UpdateServerResponse.
-    Invalid requests fail validation before side effects; operation failures raise application exceptions.
-    """
+    """Updates an existing server instance."""
     server_name = request.server_name
     send_message = request.send_message
     try:

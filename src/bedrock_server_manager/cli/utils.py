@@ -1,31 +1,5 @@
 # bedrock_server_manager/cli/utils.py
-"""
-Command-Line Interface (CLI) Utilities.
-
-This module provides shared helper functions and standalone utility commands
-for the Bedrock Server Manager CLI. It includes:
-
-    - Decorators:
-        - :func:`~.linux_only`: Restricts a Click command to run only on Linux.
-
-    - Shared Helper Functions:
-        - :func:`~.handle_api_response`: Standardized way to process and display
-          success/error messages from API calls.
-        - :func:`~.get_server_name_interactively`: Prompts user to select an existing server.
-
-    - Custom `questionary.Validator` Classes:
-        - :class:`~.ServerNameValidator`: Validates server name format.
-        - :class:`~.ServerExistsValidator`: Checks if a server name corresponds to an
-          existing server.
-        - :class:`~.PropertyValidator`: Validates values for specific server properties.
-
-    - Standalone Click Commands:
-        - ``bsm list-servers`` (from :func:`~.list_servers`): Lists all configured
-          servers and their current status, with an optional live refresh loop.
-
-These utilities aim to promote code reuse and provide a consistent user
-experience across different parts of the CLI.
-"""
+"""Command-Line Interface (CLI) Utilities."""
 
 import logging
 

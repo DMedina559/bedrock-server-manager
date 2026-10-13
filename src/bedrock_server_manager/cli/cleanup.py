@@ -1,18 +1,5 @@
 # bedrock_server_manager/cli/cleanup.py
-"""
-Defines the `bsm cleanup` command for removing generated application files.
-
-This module provides a utility command for project and application maintenance.
-It allows for the targeted removal of:
--   Python bytecode cache directories (``__pycache__``).
--   Application log files (``.log`` files from the configured log directory).
-
-The log cleanup functionality is designed to retain the most recent log file
-while deleting older ones, helping to manage disk space without losing the
-very latest logging information. The project root for pycache cleanup is
-determined dynamically. The log directory can be specified via an option or
-taken from application settings.
-"""
+"""Define the ``bsm cleanup`` command for removing generated application files."""
 
 import logging
 import os
@@ -95,25 +82,7 @@ def _cleanup_log_files(log_dir_path: Path) -> CleanupResult:
 def cleanup(
     ctx: click.Context, cache: bool, logs: bool, log_dir_override: Optional[Path]
 ):
-    """
-    Cleans up generated application files, such as logs and Python bytecode cache.
-
-    This maintenance command helps keep the project directory and application
-    data areas tidy by removing temporary or accumulated files. At least one
-    of the cleanup flags (`--cache` or `--logs`) must be provided for the
-    command to perform an action.
-
-    Log Cleanup Behavior:
-        When `--logs` is specified, this command will delete ``.log`` files from
-        the configured log directory. **Crucially, it preserves the single
-        most recent log file**, ensuring that the latest operational logs are
-        not accidentally deleted.
-
-    Raises:
-        click.Abort: If log cleaning (`--logs`) is requested but no valid log
-                     directory can be determined (neither specified via
-                     `--log-dir` nor found in settings).
-    """
+    """Cleans up generated application files, such as logs and Python bytecode cache."""
     logger.info("Running cleanup command...")
     app_context: AppContext = ctx.obj["app_context"]
 

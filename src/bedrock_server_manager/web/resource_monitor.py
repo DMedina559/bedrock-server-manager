@@ -25,8 +25,7 @@ class ResourceMonitor:
         server_provider: Callable[[str], "BedrockServer"] | None = None,
         interval_provider: Callable[[], float] | None = None,
     ):
-        """
-        Initializes the ResourceMonitor with explicit dependencies.
+        """Initialize the ResourceMonitor with explicit dependencies.
 
         Args:
             connection_manager: The WebSocket connection manager.
@@ -83,13 +82,13 @@ class ResourceMonitor:
             await asyncio.sleep(self.interval_provider())
 
     def start(self):
-        """Starts the background monitoring task."""
+        """Start the background monitoring task."""
         if self._task is None or self._task.done():
             self._task = asyncio.create_task(self._monitor_loop())
             logger.debug("Resource monitor background task started.")
 
     def stop(self):
-        """Stops the background monitoring task."""
+        """Stop the background monitoring task."""
         if self._task and not self._task.done():
             self._task.cancel()
             self._task = None

@@ -55,9 +55,7 @@ async def get_addons(
     current_user: UserResponse = Depends(get_moderator_user),
     app_context: AppContext = Depends(get_app_context),
 ) -> ListAvailableAddonsResponse:
-    """
-    Retrieves a list of available .mcaddon or .mcpack template files.
-    """
+    """Return a list of available .mcaddon or .mcpack template files."""
     identity = current_user.username
     logger.debug("List available addons request by user '%s'.", identity)
     api_result = await addon_api.list_available_addons(
@@ -78,9 +76,7 @@ async def get_server_addons(
     current_user: UserResponse = Depends(get_admin_user),
     app_context: AppContext = Depends(get_app_context),
 ) -> AddonListResponse:
-    """
-    Retrieves a list of addons installed on a server's active world.
-    """
+    """Return a list of addons installed on a server's active world."""
     identity = current_user.username
     logger.debug(
         "List world addons for '%s' requested by user '%s'.", server_name, identity

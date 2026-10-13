@@ -20,14 +20,14 @@ logger = logging.getLogger(__name__)
 
 
 class TaskManager:
-    """Manages background tasks using asyncio."""
+    """Manage background tasks using asyncio."""
 
     def __init__(
         self,
         connection_manager: ConnectionManager | None,
         max_workers: Optional[int] = None,
     ):
-        """Initializes the TaskManager with explicit dependencies."""
+        """Initialize the TaskManager with explicit dependencies."""
         self.connection_manager = connection_manager
         self._tasks: Dict[str, TaskRecord] = {}
         self.futures: Dict[str, asyncio.Task] = {}
@@ -167,20 +167,7 @@ class TaskManager:
         _plugin_owner: str | None = None,
         **kwargs: Any,
     ) -> str:
-        """
-        Submits a function to be run in the background.
-        Supports both asynchronous functions (scheduled directly)
-        and synchronous functions (run in an executor via asyncio.to_thread).
-
-        Args:
-            target_function: The function to execute.
-            username: The user associated with the task for WebSocket notifications.
-            *args: Positional arguments for the target function.
-            **kwargs: Keyword arguments for the target function.
-
-        Returns:
-            The ID of the created task.
-        """
+        """Submit owned sync or async work and return its task ID."""
         if self._shutdown_started:
             raise RuntimeError(
                 "Cannot start new tasks after shutdown has been initiated."

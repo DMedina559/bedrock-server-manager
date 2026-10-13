@@ -20,7 +20,7 @@ class AuditEntry(PersistentRecord):
 
 
 class AuditLogRepository:
-    """Handles database persistence for audit log records."""
+    """Handle database persistence for audit log records."""
 
     def __init__(self, db: Database | None = None):
         self.db = db
@@ -32,14 +32,14 @@ class AuditLogRepository:
         action: str,
         details: dict[str, JsonValue] | None = None,
     ) -> AuditLog:
-        """Creates and adds an audit log entry to the session."""
+        """Create and adds an audit log entry to the session."""
         entry = AuditEntry(user_id=user_id, action=action, details=details)
         log = AuditLog(**entry.model_dump(mode="json"))
         session.add(log)
         return log
 
     async def get_all_logs(self, session: AsyncSession) -> List[AuditLog]:
-        """Retrieves all audit logs ordered by timestamp descending."""
+        """Return all audit logs ordered by timestamp descending."""
         result = await session.execute(
             select(AuditLog).order_by(AuditLog.timestamp.desc())
         )

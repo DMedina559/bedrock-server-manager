@@ -34,9 +34,7 @@ async def get_server_settings(
     current_user: UserResponse = Depends(get_current_user),
     app_context: AppContext = Depends(get_app_context),
 ) -> ServerSettingsResponse:
-    """
-    Retrieves all settings for a specific server.
-    """
+    """Return all settings for a specific server."""
     identity = current_user.username
     logger.debug("Get settings for server '%s' request by '%s'.", server_name, identity)
     result = await server_api.get_all_server_settings(
@@ -62,9 +60,7 @@ async def post_set_server_setting(
     current_user: UserResponse = Depends(get_admin_user),
     app_context: AppContext = Depends(get_app_context),
 ) -> ServerSettingsResponse:
-    """
-    Sets a specific setting for a server.
-    """
+    """Set a specific setting for a server."""
     identity = current_user.username
     logger.info(
         "Set setting for server '%s' request for key '%s' by '%s'.",

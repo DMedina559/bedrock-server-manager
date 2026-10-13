@@ -28,7 +28,7 @@ class ServerProperties:
         )
 
     async def get_server_properties(self) -> Dict[str, str]:
-        """Reads the `server.properties` file asynchronously and returns its contents."""
+        """Reads the ``server.properties`` file asynchronously and returns its contents."""
         server_properties_path = self.server.paths.server_properties_path
         if not await aiofiles.ospath.isfile(server_properties_path):
             raise AppFileNotFoundError(server_properties_path, "Server properties file")
@@ -58,7 +58,7 @@ class ServerProperties:
         return properties
 
     async def set_server_property(self, property_key: str, property_value: Any) -> None:
-        """Updates a specific property in `server.properties` asynchronously."""
+        """Updates a specific property in ``server.properties`` asynchronously."""
         async with self.server.get_file_lock(self.server.paths.server_properties_path):
             if not isinstance(property_key, str) or not property_key:
                 raise MissingArgumentError(

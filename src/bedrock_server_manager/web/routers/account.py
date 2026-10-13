@@ -36,9 +36,7 @@ router = APIRouter(tags=["Account Management"])
 async def get_account_api(
     user: UserResponse = Depends(get_current_user),
 ) -> UserResponse:
-    """
-    Retrieves the current user's account details.
-    """
+    """Return the current user's account details."""
     return user
 
 

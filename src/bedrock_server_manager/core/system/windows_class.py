@@ -1,20 +1,5 @@
 # bedrock_server_manager/core/system/windows_class.py
-"""Provides Windows-specific implementations for system interactions.
-
-This module includes functions for:
-
-    - Starting the Bedrock server process directly in the foreground.
-    - Managing a named pipe server for inter-process communication (IPC) to send
-      commands to the running Bedrock server.
-    - Handling OS signals for graceful shutdown of the foreground server.
-    - Sending commands to the server via the named pipe.
-    - Stopping the server process by PID.
-    - Creating, managing, and deleting Windows Services to run the server in the
-      background, which requires Administrator privileges.
-
-It relies on the pywin32 package for named pipe and service
-functionality.
-"""
+"""Host the web runtime as a Windows SCM service using pywin32."""
 
 import logging
 import os
@@ -45,9 +30,7 @@ logger = logging.getLogger(__name__)
 
 
 class WebServerWindowsService(win32serviceutil.ServiceFramework):
-    """
-    Manages the application's Web UI as a self-sufficient Windows Service.
-    """
+    """Manage the application's Web UI as a self-sufficient Windows Service."""
 
     # These are placeholders; the CLI wrapper will set the real names.
     _svc_name_ = "BSMWebUIService"
@@ -56,12 +39,14 @@ class WebServerWindowsService(win32serviceutil.ServiceFramework):
     app_context = None
 
     def __init__(self, args):
-        """
-        Constructor is simple. It only gets the service name from `args`.
-        All other configuration is loaded internally.
+        """Constructor is simple. It only gets the service name from ``args``. All other
+        configuration is loaded internally.
         """
         win32serviceutil.ServiceFramework.__init__(self, args)
         self.shutdown_event = threading.Event()
+        from ...web.runtime import WebRuntime
+
+        self.runtime = WebRuntime()
         self.logger = logging.getLogger(__name__)
 
         # The first arg from HandleCommandLine is always the service name.
@@ -75,11 +60,7 @@ class WebServerWindowsService(win32serviceutil.ServiceFramework):
         self.logger.info("Web Service '%s': Stop request received.", self._svc_name_)
         self.ReportServiceStatus(win32service.SERVICE_STOP_PENDING)
         try:
-            if getattr(self.app_context, "_web_server", None) is not None:
-                self.logger.debug("Instructing Uvicorn to exit gracefully...")
-                self.app_context._web_server.should_exit = True
-            else:
-                self.logger.warning("Web server instance not found on app_context.")
+            self.runtime.request_shutdown("service")
         except Exception as e:
             log_operation_error(self.logger, "Error sending stop: %s", e, error=e)
         self.shutdown_event.set()  # Signal the main loop to exit
@@ -88,6 +69,7 @@ class WebServerWindowsService(win32serviceutil.ServiceFramework):
         """The main service entry point."""
         self.ReportServiceStatus(win32service.SERVICE_START_PENDING)
 
+        failed = False
         try:
             from ...web.main import run_web_server
 
@@ -106,12 +88,19 @@ class WebServerWindowsService(win32serviceutil.ServiceFramework):
             # --- The service runs the web app DIRECTLY in a thread ---
             self.logger.debug("Starting web server logic in a background thread.")
 
+            failures = []
+
+            def serve():
+                try:
+                    run_web_server(self.app_context, runtime=self.runtime)
+                except BaseException as error:
+                    failures.append(error)
+                finally:
+                    self.shutdown_event.set()
+
             web_thread = threading.Thread(
-                target=run_web_server,
-                kwargs={
-                    "app_context": self.app_context,
-                },  # Run in production mode
-                daemon=True,
+                target=serve,
+                daemon=False,
             )
             web_thread.start()
 
@@ -131,15 +120,22 @@ class WebServerWindowsService(win32serviceutil.ServiceFramework):
                 "Web Service '%s': Shutdown event processed. Waiting for web thread to close...",
                 self._svc_name_,
             )
-            # Give Uvicorn up to 45 seconds to finish open requests and shutdown hooks gracefully
+            # Give request draining and application cleanup the same deadline as systemd.
             wait_time = 0
-            while web_thread.is_alive() and wait_time < 120:
+            while web_thread.is_alive() and wait_time < 180:
                 # Keep reporting STOP_PENDING so the SCM doesn't kill us
                 self.ReportServiceStatus(win32service.SERVICE_STOP_PENDING)
                 web_thread.join(timeout=1.0)
                 wait_time += 1
+            if web_thread.is_alive():
+                raise RuntimeError(
+                    "Web runtime did not stop within the service deadline"
+                )
+            if failures:
+                raise RuntimeError("Web runtime failed") from failures[0]
 
         except Exception as e:
+            failed = True
             log_operation_error(
                 self.logger,
                 "Web Service '%s': FATAL ERROR in SvcDoRun: %s",
@@ -155,7 +151,11 @@ class WebServerWindowsService(win32serviceutil.ServiceFramework):
                 except Exception:
                     pass
         finally:
-            self.ReportServiceStatus(win32service.SERVICE_STOPPED)
+            self.ReportServiceStatus(
+                win32service.SERVICE_STOPPED,
+                win32ExitCode=1066 if failed else 0,
+                svcExitCode=1 if failed else 0,
+            )
             self.logger.debug(
                 "Web Service '%s': Status reported as STOPPED.", self._svc_name_
             )

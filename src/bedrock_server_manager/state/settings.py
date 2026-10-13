@@ -51,6 +51,7 @@ class MonitoringSettings(SettingsRecord):
 
 
 class WebSettings(SettingsRecord):
+    forwarded_allow_ips: str = "127.0.0.1"
     host: str = "127.0.0.1"
     port: int = Field(default=11325, ge=1, le=65535)
     token_expires_weeks: int = Field(default=4, gt=0)
@@ -131,7 +132,7 @@ class SettingsState(BaseModel):
 
     @classmethod
     def create_defaults(cls, data_dir: str) -> "SettingsState":
-        """Creates a default SettingsState instance configured for a given data directory."""
+        """Create a default SettingsState instance configured for a given data directory."""
         return cls(
             paths=PathsSettings(
                 servers=os.path.join(data_dir, "servers"),
@@ -149,7 +150,7 @@ class SettingsState(BaseModel):
         )
 
     def get(self, key: str, default: Any = None) -> Any:
-        """Retrieves a setting value using dot-notation for nested access."""
+        """Return a setting value using dot-notation for nested access."""
         parts = key.split(".")
         for part in parts:
             if part.startswith("_") or "__" in part:
@@ -237,7 +238,7 @@ class SettingsState(BaseModel):
         return True
 
     def to_dict(self) -> Dict[str, Any]:
-        """Exports settings state into a dictionary matching database key/value structure."""
+        """Export settings state into a dictionary matching database key/value structure."""
         return {
             "paths": self.paths.model_dump(),
             "retention": self.retention.model_dump(),

@@ -40,10 +40,10 @@ async def serve_custom_panorama_api(
 ):
     """Serves a custom panorama background image if available, otherwise a default.
 
-    This endpoint attempts to locate a `panorama.(jpeg|jpg|png|webp)` file in the application's
-    configuration directory. If found, it's served. If not, or if the config
-    directory isn't set, it falls back to serving a default panorama image
-    from the static assets.
+    This endpoint attempts to locate a ``panorama.(jpeg|jpg|png|webp)`` file in the
+    application's configuration directory. If found, it's served. If not, or if the
+    config directory isn't set, it falls back to serving a default panorama image from
+    the static assets.
     """
     logger.debug("Request received to serve custom panorama background.")
     config_dir = app_context.settings.config_dir

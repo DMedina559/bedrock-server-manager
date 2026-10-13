@@ -1,11 +1,9 @@
 # bedrock_server_manager/config/blocked_commands.py
-"""
-Defines a blacklist of commands that should not be sent to the Bedrock server
-via certain application interfaces, typically the API or web UI.
+"""Define a blacklist of commands that should not be sent to the Bedrock server via
+certain application interfaces, typically the API or web UI.
 
-This helps prevent accidental or malicious use of sensitive commands
-that could disrupt server operation or compromise security if exposed
-without proper controls.
+This helps prevent accidental or malicious use of sensitive commands that could
+disrupt server operation or compromise security if exposed without proper controls.
 """
 
 API_COMMAND_BLACKLIST: list[str] = [

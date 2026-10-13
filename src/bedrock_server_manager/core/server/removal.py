@@ -23,7 +23,9 @@ if TYPE_CHECKING:
 
 
 async def set_filesystem_permissions(server: "BedrockServer") -> None:
-    """Sets appropriate filesystem permissions for the server's installation directory asynchronously."""
+    """Set appropriate filesystem permissions for the server's installation directory
+    asynchronously.
+    """
     if not await server.is_installed():
         raise AppFileNotFoundError(
             server.paths.server_dir,
@@ -66,7 +68,7 @@ async def delete_server_files(
     server: "BedrockServer",
     item_description_prefix: str = "server installation files for",
 ) -> bool:
-    """Deletes the server's entire installation directory asynchronously."""
+    """Delete the server's entire installation directory asynchronously."""
     if not await aiofiles.ospath.exists(server.paths.server_dir):
         logger.debug(
             "Server directory '%s' for '%s' does not exist. Nothing to delete.",

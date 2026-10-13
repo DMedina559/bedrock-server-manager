@@ -13,7 +13,7 @@ from ..models import Plugin
 
 
 class PluginRepository:
-    """Handles database persistence for plugin configurations."""
+    """Handle database persistence for plugin configurations."""
 
     def __init__(self, db: Database | None = None):
         self.db = db
@@ -22,7 +22,7 @@ class PluginRepository:
         self,
         session: AsyncSession,
     ) -> List[PluginInfoState]:
-        """Retrieves all plugins from the database as PluginInfoState models."""
+        """Return all plugins from the database as PluginInfoState models."""
         result = await session.execute(select(Plugin))
         plugins = []
         for p in result.scalars().all():

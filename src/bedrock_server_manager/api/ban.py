@@ -26,11 +26,7 @@ logger = logging.getLogger(__name__)
 async def add_server_ban(
     request: AddServerBanRequest, *, app_context: AppContext
 ) -> AddServerBanResponse:
-    """Adds a player to the server ban list.
-
-    Accepts AddServerBanRequest and returns AddServerBanResponse.
-    Invalid requests fail validation before side effects; operation failures raise application exceptions.
-    """
+    """Adds a player to the server ban list."""
     server_name = request.server_name
     player_name = request.player_name
     xuid = request.xuid
@@ -62,11 +58,7 @@ async def add_server_ban(
 async def remove_server_ban(
     request: RemoveServerBanRequest, *, app_context: AppContext
 ) -> RemoveServerBanResponse:
-    """Removes a player from the server ban list.
-
-    Accepts RemoveServerBanRequest and returns RemoveServerBanResponse.
-    Invalid requests fail validation before side effects; operation failures raise application exceptions.
-    """
+    """Remove a player from the server ban list."""
     server_name = request.server_name
     xuid = request.xuid
     if not server_name or not xuid:
@@ -86,11 +78,7 @@ async def remove_server_ban(
 async def get_server_bans(
     request: GetServerBansRequest, *, app_context: AppContext
 ) -> GetServerBansResponse:
-    """Retrieves all bans for a specific server.
-
-    Accepts GetServerBansRequest and returns GetServerBansResponse.
-    Invalid requests fail validation before side effects; operation failures raise application exceptions.
-    """
+    """Return all bans for a specific server."""
     server_name = request.server_name
     if not getattr(app_context, "_storage", None):
         raise BSMError("Database is not initialized.")

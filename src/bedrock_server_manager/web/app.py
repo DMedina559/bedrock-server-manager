@@ -15,14 +15,18 @@ from ..api.models.common import APIErrorResponse, ErrorEnvelope
 from ..config import get_installed_version
 from ..context import AppContext
 from ..logging import log_operation_error
+from ..services.lifecycle import LifecyclePhase
 from . import routers
 from .openapi_tags import OPENAPI_TAGS
+from .runtime import WebRuntime
 
 mimetypes.add_type("application/javascript", ".js")
 
 
-def create_web_app(app_context: AppContext) -> FastAPI:  # noqa: C901
-    """Creates and configures the web application."""
+def create_web_app(
+    app_context: AppContext, runtime: WebRuntime | None = None
+) -> FastAPI:  # noqa: C901
+    """Create and configures the web application."""
     logger = logging.getLogger(__name__)
 
     settings = app_context.settings
@@ -33,9 +37,19 @@ def create_web_app(app_context: AppContext) -> FastAPI:  # noqa: C901
         context = app.state.app_context
         await context.startup()
         try:
+            if runtime is not None:
+                runtime.ready()
             yield
         finally:
-            await context.shutdown()
+            try:
+                await context.shutdown()
+            except BaseException:
+                if runtime is not None:
+                    runtime.finish(failed=True)
+                raise
+            else:
+                if runtime is not None:
+                    runtime.finish()
 
     version = get_installed_version()
 
@@ -96,6 +110,34 @@ def create_web_app(app_context: AppContext) -> FastAPI:  # noqa: C901
         app.add_exception_handler(exception_type, api_error_handler)
 
     app.state.app_context = app_context
+    app.state.web_runtime = runtime
+
+    @app.middleware("http")
+    async def reject_new_mutations(request, call_next):
+        control = getattr(app.state, "web_runtime", None)
+        path = request.scope.get("path", "")
+        root = request.scope.get("root_path", "")
+        if root and path.startswith(root):
+            path = path[len(root) :]  # noqa: E203
+        if (
+            isinstance(control, WebRuntime)
+            and control.snapshot().phase == LifecyclePhase.STOPPING
+            and request.method in {"POST", "PUT", "PATCH", "DELETE"}
+            and path.startswith("/api/")
+            and path != "/api/runtime/shutdown"
+        ):
+            from ..error import DependencyUnavailableError
+
+            failure = classify_failure(
+                DependencyUnavailableError("Web runtime is shutting down")
+            )
+            return JSONResponse(
+                status_code=503,
+                content=ErrorEnvelope(
+                    error=APIErrorResponse.model_validate(failure.error.model_dump())
+                ).model_dump(mode="json"),
+            )
+        return await call_next(request)
 
     # --- CORS Middleware ---
     # Allow configured origins or default to localhost for development/remote usage

@@ -1,7 +1,7 @@
-"""Manages plugin discovery, loading, configuration, lifecycle, and event dispatch.
+"""Manage plugin discovery, loading, configuration, lifecycle, and event dispatch.
 
-This module is central to the plugin architecture of the Bedrock Server Manager.
-The :class:`.PluginManager` class handles all aspects of plugin interaction.
+This module is central to the plugin architecture of the Bedrock Server Manager. The
+:class:`.PluginManager` class handles all aspects of plugin interaction.
 """
 
 import asyncio
@@ -55,7 +55,7 @@ logger = logging.getLogger(__name__)
 
 
 class PluginManager:
-    """Manages the discovery, loading, configuration, and lifecycle of all plugins."""
+    """Manage the discovery, loading, configuration, and lifecycle of all plugins."""
 
     def __init__(
         self,
@@ -134,7 +134,7 @@ class PluginManager:
         logger.debug("PluginManager initialized.")
 
     async def _load_config(self) -> Dict[str, Dict[str, Any]]:
-        """Loads plugin configurations asynchronously via AppState."""
+        """Load plugin configurations asynchronously via AppState."""
         return {
             name: {
                 "enabled": p.enabled,
@@ -146,7 +146,7 @@ class PluginManager:
         }
 
     async def _save_config(self) -> None:
-        """Saves current plugin configuration asynchronously via AppState and Storage."""
+        """Save current plugin configuration asynchronously via AppState and Storage."""
         from ..state.models import PluginInfoState
 
         for plugin_name, config in self.plugin_config.items():
@@ -268,7 +268,7 @@ class PluginManager:
         await self.unload_plugins()
 
     def get_native_ui_routes(self) -> List[Dict[str, str]]:
-        """Returns a list of routes that are tagged for native UI rendering."""
+        """Return a list of routes that are tagged for native UI rendering."""
         ui_routes = []
         for router in self.plugin_fastapi_routers:
             for route in router.routes:
@@ -362,9 +362,11 @@ class PluginManager:
         await self.trigger_event(event, *args, **kwargs)
 
     async def start_plugin_tasks(self) -> None:
-        """Starts background tasks for all plugins that have methods decorated with @task_loop.
+        """Start background tasks for all plugins that have methods decorated with
+        @task_loop.
 
-        Includes idempotency checks to prevent duplicate task loops if called multiple times.
+        Includes idempotency checks to prevent duplicate task loops if called multiple
+        times.
         """
         self._check_lifecycle_task()
         async with self._lifecycle_lock:
@@ -953,7 +955,9 @@ class PluginManager:
         return PluginRuntime.model_validate(data)
 
     def get_plugin_status(self, plugin_name: str) -> PluginStatus:
-        """Returns the runtime status of a given plugin ('LOADED', 'DISABLED', 'ERROR', or 'UNLOADED')."""
+        """Return the runtime status of a given plugin ('LOADED', 'DISABLED', 'ERROR', or
+        'UNLOADED').
+        """
         cfg = self.plugin_config.get(plugin_name)
         is_loaded = any(
             p.name == plugin_name
@@ -1097,7 +1101,7 @@ class PluginManager:
         return True
 
     async def load_plugin_by_name(self, plugin_name: str) -> bool:
-        """Loads and initializes a single plugin by name if discoverable."""
+        """Load and initializes a single plugin by name if discoverable."""
         self._check_lifecycle_task()
         async with self._lifecycle_lock:
             if self._shutdown_started:

@@ -27,11 +27,7 @@ logger = logging.getLogger(__name__)
 async def set_permissions(
     request: SetPermissionsRequest, *, app_context: AppContext
 ) -> SetPermissionsResponse:
-    """Sets a player's permission level for a given server.
-
-    Accepts SetPermissionsRequest and returns SetPermissionsResponse.
-    Invalid requests fail validation before side effects; operation failures raise application exceptions.
-    """
+    """Set a player's permission level for a given server."""
     server_name = request.server_name
     xuid = request.xuid
     player_name = request.player_name
@@ -68,11 +64,7 @@ async def set_permissions(
 async def get_permissions(
     request: GetPermissionsRequest, *, app_context: AppContext
 ) -> GetPermissionsResponse:
-    """Retrieves the permissions configuration for a server, formatted with player names.
-
-    Accepts GetPermissionsRequest and returns GetPermissionsResponse.
-    Invalid requests fail validation before side effects; operation failures raise application exceptions.
-    """
+    """Return the permissions configuration for a server, formatted with player names."""
     server_name = request.server_name
     try:
         server = app_context.get_server(server_name)

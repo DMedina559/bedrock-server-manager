@@ -3,7 +3,7 @@
 Bedrock Downloader Core Documentation
 =====================================
 
-.. autoclass:: bedrock_server_manager.BedrockDownloader
+.. autoclass:: bedrock_server_manager.core.downloader.BedrockDownloader
    :members:
    :undoc-members:
    :show-inheritance:

@@ -1,31 +1,5 @@
 # bedrock_server_manager/core/downloader.py
-"""Manages downloading, extracting, and maintaining Minecraft Bedrock Server files.
-
-This module is central to acquiring the necessary files for running a Minecraft
-Bedrock server. It provides functionalities to:
-
-    - Fetch the latest or specific versions of the Bedrock Server software for
-      Linux and Windows.
-    - Download the server software from official sources, using the Minecraft
-      download API as the primary method.
-    - Extract the downloaded server files into a designated server directory, with
-      options for preserving existing configuration, worlds, and data during updates.
-    - Manage a local cache of downloaded server ZIP files, including pruning old
-      versions to save disk space.
-
-Key Components:
-
-    - :class:`BedrockDownloader`: A class that orchestrates the download and setup
-      process for a single server instance. It handles version resolution,
-      downloading, extraction, and local cache pruning related to its operation.
-    - :func:`prune_old_downloads`: A standalone utility function to clean up
-      old downloaded server ZIP files from a specified directory, independent
-      of a specific `BedrockDownloader` instance.
-
-The module aims to provide a robust and error-handled way to obtain server files,
-dealing with potential network issues, file system operations, and changes in
-download URLs or API responses.
-"""
+"""Resolve Bedrock downloads, prepare server files and prune cached archives."""
 
 import asyncio
 import json
@@ -104,38 +78,9 @@ async def prune_old_downloads(download_dir: str, download_keep: int) -> CleanupR
 
 
 class BedrockDownloader:
-    """Manages the download, extraction, and setup of a Bedrock Server instance.
+    """Prepare Bedrock files for a release target or a custom archive.
 
-    This class orchestrates the process of obtaining and preparing Minecraft
-    Bedrock server files for a specific server instance. It handles:
-
-        - **Version Targeting**: Allows specifying "LATEST" (stable), "PREVIEW", or a
-          concrete version number (e.g., "1.20.10.01", "1.20.10.01-PREVIEW").
-        - **URL Resolution**: Primarily uses the official Minecraft download API to find
-          the correct download URL for the target version and operating system (Linux/Windows).
-        - **Downloading**: Downloads the server ZIP archive from the resolved URL,
-          saving it to a version-specific (stable/preview) subdirectory within the
-          configured global downloads path. It skips downloading if the file already exists.
-        - **Extraction**: Extracts the contents of the downloaded ZIP archive into the
-          specified server directory. It supports "fresh install" and "update" modes,
-          where the latter preserves user data like worlds, properties, and allowlists.
-        - **Cache Pruning**: After a download, it can trigger pruning of older ZIP files
-          within its specific download subdirectory (stable or preview) based on retention settings.
-
-    An instance of this class is typically created when a new server needs to be
-    installed or an existing one updated.
-
-    Attributes:
-        settings (Settings): The application settings object.
-        server_dir (str): The absolute path to the target server directory.
-        input_target_version (str): The user-provided version string.
-        os_name (str): The name of the current operating system (e.g., "Linux", "Windows").
-        base_download_dir (Optional[str]): The root directory for all downloads.
-        resolved_download_url (Optional[str]): The final URL used for downloading.
-        actual_version (Optional[str]): The specific version number resolved (e.g., "1.20.10.01").
-        zip_file_path (Optional[str]): Full path to the downloaded server ZIP file.
-        specific_download_dir (Optional[str]): Path to the subdirectory within
-            `base_download_dir` used for this instance's downloads (e.g., ".../downloads/stable").
+    Supported targets are stable, preview, explicit versions and ``CUSTOM``.
     """
 
     PRESERVED_ITEMS_ON_UPDATE: Set[str] = {
@@ -154,23 +99,9 @@ class BedrockDownloader:
         target_version: str = "LATEST",
         server_zip_path: Optional[str] = None,
     ):
-        """Initializes the BedrockDownloader.
+        """Bind settings, destination and version target for a server download.
 
-        Args:
-            settings_obj (Settings): The application's ``Settings`` object,
-                providing access to configuration like download paths.
-            server_dir (str): The target directory where the server files will be
-                installed or updated. This path will be converted to an absolute path.
-            target_version (str, optional): The version identifier for the server
-                to download. Defaults to "LATEST".
-                Examples: "LATEST", "PREVIEW", "CUSTOM", "1.20.10.01", "1.20.10.01-PREVIEW".
-            server_zip_path (str, optional): Absolute path to a custom server ZIP file.
-                Required if `target_version` is "CUSTOM".
-        Raises:
-            MissingArgumentError: If `settings_obj`, `server_dir`, or
-                `target_version` are not provided or are empty.
-            ConfigurationError: If the `paths.downloads` setting is missing or
-                empty in the provided `settings_obj`.
+        ``CUSTOM`` requires ``server_zip_path``; download paths come from settings.
         """
         if not settings_obj:
             raise MissingArgumentError(
@@ -227,20 +158,7 @@ class BedrockDownloader:
         self._determine_version_parameters()
 
     def _determine_version_parameters(self):
-        """Parses the ``input_target_version`` string to set internal parameters.
-
-        This method analyzes the ``self.input_target_version`` attribute to
-        determine if the target is "LATEST" (stable), "PREVIEW", a specific
-        stable version number (e.g., "1.20.10.01"), or a specific preview
-        version number (e.g., "1.20.10.01-PREVIEW").
-
-        It populates the following internal attributes:
-
-            - ``self._version_type``: Set to "LATEST" or "PREVIEW".
-            - ``self._custom_version_number``: Set to the version number string
-              (e.g., "1.20.10.01") if a specific version is targeted, otherwise empty.
-
-        """
+        """Resolve stable, preview and explicit version selectors into instance fields."""
         target_upper = self.input_target_version.upper()
         if target_upper == "CUSTOM":
             self._version_type = "CUSTOM"
@@ -277,18 +195,10 @@ class BedrockDownloader:
             )
 
     async def _lookup_bedrock_download_url(self) -> str:  # noqa: C901
-        """Asynchronously finds the download URL by querying the official Minecraft download API.
+        """Resolve the requested release URL through the Bedrock download API.
 
-        This is the most reliable method as it does not rely on web scraping.
-
-        Returns:
-            The resolved download URL for the specified version and OS.
-
-        Raises:
-            SystemError: If the operating system is not supported.
-            InternetConnectivityError: If the API cannot be reached.
-            DownloadError: If the API response is invalid or does not contain
-                the required URL.
+        Connectivity and invalid-response failures propagate as application
+        exceptions.
         """
         self.logger.debug(
             "Asynchronously looking up download URL for target: '%s'",
@@ -393,7 +303,7 @@ class BedrockDownloader:
 
     def _get_version_from_url(self) -> str:
         """Extracts the version number from the resolved download URL or custom zip path.
-        This method populates `self.actual_version`.
+        This method populates ``self.actual_version``.
         Returns:
             The extracted version string (e.g., "1.20.10.01").
         Raises:
@@ -539,15 +449,9 @@ class BedrockDownloader:
             raise FileOperationError(f"Unexpected error during download: {e}") from e
 
     async def _execute_instance_pruning(self):
-        """Executes download cache pruning for this downloader instance.
+        """Prune the selected download cache using the configured retention count.
 
-        This method calls the global :func:`prune_old_downloads` function,
-        passing the instance's specific download directory (e.g.,
-        ``.../downloads/stable`` or ``.../downloads/preview``) and the
-        configured retention policy from settings (``retention.downloads``).
-
-        Pruning failures are logged as warnings and do not interrupt the main
-        download or setup operations, as pruning is a non-critical maintenance task.
+        Pruning failures are logged without interrupting installation.
         """
         if self._version_type == "CUSTOM":
             self.logger.debug("Skipping pruning for CUSTOM version.")
@@ -692,7 +596,7 @@ class BedrockDownloader:
             raise
 
     def get_actual_version(self) -> Optional[str]:
-        """Returns the resolved actual version string of the server.
+        """Return the resolved actual version string of the server.
 
         This value is populated after :meth:`.get_version_for_target_spec` or
         :meth:`.prepare_download_assets` has been successfully called.
@@ -704,7 +608,7 @@ class BedrockDownloader:
         return self.actual_version
 
     def get_zip_file_path(self) -> Optional[str]:
-        """Returns the absolute path to the downloaded (or identified) server ZIP file.
+        """Return the absolute path to the downloaded (or identified) server ZIP file.
 
         This value is populated after :meth:`.prepare_download_assets` has
         successfully identified or downloaded the ZIP file.
@@ -716,20 +620,11 @@ class BedrockDownloader:
         return self.zip_file_path
 
     def get_specific_download_dir(self) -> Optional[str]:
-        """Returns the specific download directory used for this instance's downloads.
-
-        This is typically a subdirectory like 'stable' or 'preview' within the
-        main download directory. It's populated by :meth:`.prepare_download_assets`.
-
-        Returns:
-            Optional[str]: The absolute path to the instance's specific download
-            directory (e.g., ``/path/to/downloads/stable``), or ``None`` if not
-            yet determined.
-        """
+        """Return the selected cache directory, or ``None`` before preparation."""
         return self.specific_download_dir
 
     def get_resolved_download_url(self) -> Optional[str]:
-        """Returns the fully resolved download URL for the server archive.
+        """Return the fully resolved download URL for the server archive.
 
         This value is populated after :meth:`.get_version_for_target_spec` or
         :meth:`.prepare_download_assets` (which calls the former) has successfully

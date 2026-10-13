@@ -22,7 +22,7 @@ if TYPE_CHECKING:
 
 
 class UserService:
-    """Handles domain logic and mutations for user state."""
+    """Handle domain logic and mutations for user state."""
 
     def __init__(
         self,
@@ -35,7 +35,7 @@ class UserService:
         self.revoke_connections = revoke_connections
 
     def get_user_state(self, username: str) -> Optional[UserInfoState]:
-        """Retrieves a user state snapshot."""
+        """Return a user state snapshot."""
         user = self.state.users.get(username)
         if user:
             res: UserInfoState = user.model_copy()
@@ -52,7 +52,7 @@ class UserService:
         email: str | None | Unset = UNSET,
         user_id: Optional[int] = None,
     ) -> UserInfoState:
-        """Registers or updates a user state record and marks dirty state."""
+        """Register or updates a user state record and marks dirty state."""
         values: dict[str, object] = {"username": username}
         for name, value in (
             ("role", role),

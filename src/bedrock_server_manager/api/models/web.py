@@ -1,39 +1,8 @@
 """Serializable web API request and response contracts."""
 
-from typing import Annotated, Literal
-
 from pydantic import Field, SecretStr
 
-from .common import ActionResponse, APIRequest, APIResponse, SuccessResponse
-
-
-class StartWebServerRequest(APIRequest):
-    host: str | None = None
-    port: Annotated[int, Field(ge=1, le=65535)] | None = None
-    debug: bool = False
-    mode: Literal["direct", "detached"] = "direct"
-
-
-class StartWebServerResponse(ActionResponse):
-    pid: int | None = None
-
-
-class StopWebServerRequest(APIRequest):
-    pass
-
-
-class StopWebServerResponse(ActionResponse):
-    pass
-
-
-class GetWebServerStatusRequest(APIRequest):
-    pass
-
-
-class GetWebServerStatusResponse(APIResponse):
-    status: Literal["STOPPED", "RUNNING", "MISMATCHED_PROCESS"]
-    pid: int | None = None
-    message: str
+from .common import ActionResponse, APIRequest, SuccessResponse
 
 
 class CreateWebUiServiceRequest(APIRequest):
