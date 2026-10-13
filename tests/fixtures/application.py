@@ -1,4 +1,6 @@
 import json
+import sqlite3
+from contextlib import closing
 
 import pytest
 import pytest_asyncio
@@ -50,14 +52,33 @@ def isolated_bcm_config(monkeypatch, tmp_path):
     bcm_config.set_custom_log_level(None)
 
 
-@pytest_asyncio.fixture
-async def db(isolated_bcm_config, tmp_path):
-    database = Database(f"sqlite+aiosqlite:///{tmp_path / 'test_data' / 'test.db'}")
+@pytest_asyncio.fixture(scope="session", loop_scope="session")
+async def migrated_database(tmp_path_factory):
+    """Migrate an empty SQLite template once; share no engines or live state."""
+    path = tmp_path_factory.mktemp("database-schema") / "empty.db"
+    database = Database(f"sqlite+aiosqlite:///{path}")
     database.initialize()
-    # Exercise the production migration path before any repository uses the DB.
-    async with database.session_manager():
-        pass
     try:
+        async with database.session_manager():
+            pass
+    finally:
+        await database.shutdown()
+    return path
+
+
+@pytest_asyncio.fixture
+async def db(isolated_bcm_config, tmp_path, migrated_database):
+    """Give each test its own migrated database, engine and event-loop resources."""
+    path = tmp_path / "test_data" / "test.db"
+    with closing(sqlite3.connect(migrated_database)) as source:
+        with closing(sqlite3.connect(path)) as destination:
+            source.backup(destination)
+    database = Database(f"sqlite+aiosqlite:///{path}")
+    database.initialize()
+    try:
+        # Retain the production revision check for the independent database.
+        async with database.session_manager():
+            pass
         yield database
     finally:
         await database.shutdown()
@@ -65,14 +86,14 @@ async def db(isolated_bcm_config, tmp_path):
 
 @pytest_asyncio.fixture
 async def storage(db, isolated_bcm_config):
-    """Provides a fresh Storage instance bound to the isolated data directory."""
+    """Provide a fresh Storage instance bound to the isolated data directory."""
     test_data_dir = bcm_config.load_config().get("data_dir")
     return Storage(db=db, data_dir=str(test_data_dir))
 
 
 @pytest_asyncio.fixture
 async def state(storage):
-    """Provides a fresh AppState instance loaded via Storage."""
+    """Provide a fresh AppState instance loaded via Storage."""
     app_state = AppState()
     await storage.load_state(app_state)
     return app_state
@@ -80,7 +101,7 @@ async def state(storage):
 
 @pytest_asyncio.fixture
 async def app_context(db, isolated_bcm_config, tmp_path):
-    """Provides a real AppContext instance natively configured with AppState and Storage."""
+    """Provide a real AppContext instance natively configured with AppState and Storage."""
     context = AppContext()
     context._db = db
     await context.load()
@@ -137,14 +158,14 @@ async def db_session(db):
 
 @pytest.fixture
 def test_app(app_context):
-    """Provides a FastAPI application instance for testing."""
+    """Provide a FastAPI application instance for testing."""
     app = create_web_app(app_context)
     return app
 
 
 @pytest_asyncio.fixture
 async def test_admin_user(db_session, password_hashes):
-    """Creates a test admin user in the database."""
+    """Create a test admin user in the database."""
     user = UserModel(
         username="adminuser",
         hashed_password=password_hashes["admin"],
@@ -158,7 +179,7 @@ async def test_admin_user(db_session, password_hashes):
 
 @pytest_asyncio.fixture
 async def test_user(db_session, test_admin_user, password_hashes):
-    """Creates a test user in the database, also ensuring an admin user exists."""
+    """Create a test user in the database, also ensuring an admin user exists."""
     user = UserModel(
         username="testuser",
         hashed_password=password_hashes["user"],
@@ -188,7 +209,7 @@ async def unauth_client(running_app):
 
 @pytest_asyncio.fixture
 async def settings(app_context):
-    """Provides a fresh Settings instance bound to AppContext."""
+    """Provide a fresh Settings instance bound to AppContext."""
     return app_context.settings
 
 
