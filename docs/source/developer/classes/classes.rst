@@ -3,7 +3,9 @@
 Core Class Documentation
 ==========================
 
-These are the backend core classes used in the Bedrock Server Manager, used by the higher level API functions :doc:`../api/api`. Each class is documented with its methods and properties.
+These classes own application resources and server state. They support the
+operation layer documented in :doc:`../api/api`; plugin authors should use
+``PluginBase`` and typed capabilities instead of depending on internal classes.
 
 
 .. toctree::

@@ -68,12 +68,10 @@ class PluginBase(ABC):
     async def get_plugin_setting(self, key: str, default: Any = None) -> Any:
         """Return a setting specific to this plugin.
 
-        Args:
-            key (str): The setting key.
-            default (Any): The default value to return if the setting is not found.
+        :param key: The setting key.
+        :param default: The default value to return if the setting is not found.
 
-        Returns:
-            Any: The setting value or the default.
+        :returns: The setting value or the default.
         """
         result = await self.api.plugins.get_plugin_setting(request={"key": key})
         if result and result.status == "success":
@@ -87,12 +85,10 @@ class PluginBase(ABC):
     ) -> SetPluginSettingResponse:
         """Save a setting specific to this plugin.
 
-        Args:
-            key (str): The setting key.
-            value (Any): The value to save.
+        :param key: The setting key.
+        :param value: The value to save.
 
-        Returns:
-            SetPluginSettingResponse: The validated result of the save operation.
+        :returns: The validated result of the save operation.
         """
         return cast(
             SetPluginSettingResponse,
@@ -104,15 +100,13 @@ class PluginBase(ABC):
     # --- Plugin Extension Hooks ---
 
     def get_fastapi_routers(self) -> List[Any]:
-        """
-        Called by the PluginManager after the plugin is loaded to retrieve
+        """Called by the PluginManager after the plugin is loaded to retrieve
         any custom FastAPI routers (fastapi.APIRouter instances)
         the plugin wishes to register with the main web application.
 
         Plugins should override this method to return a list of APIRouter objects.
 
-        Returns:
-            List[Any]: A list of fastapi.APIRouter objects. Defaults to an empty list.
+        :returns: A list of fastapi.APIRouter objects. Defaults to an empty list.
         """
         return []
 

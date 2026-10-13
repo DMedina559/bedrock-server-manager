@@ -238,14 +238,11 @@ class TaskManager:
         return task_id
 
     async def cancel_task(self, task_id: str) -> bool:
-        """
-        Attempts to cancel a running task.
+        """Attempts to cancel a running task.
 
-        Args:
-            task_id (str): The ID of the task to cancel.
+        :param task_id: The ID of the task to cancel.
 
-        Returns:
-            bool: True if the task was found and cancellation was requested, False otherwise.
+        :returns: True if the task was found and cancellation was requested, False otherwise.
         """
         if task_id not in self.futures:
             return False

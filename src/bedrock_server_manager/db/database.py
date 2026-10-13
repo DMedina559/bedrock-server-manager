@@ -34,18 +34,19 @@ class Base(DeclarativeBase):
 class Database:
     """Manage asynchronous database connections and sessions.
 
-    Attributes:
-        db_url (str): The database connection URL.
-        engine (AsyncEngine): The SQLAlchemy async engine.
-        SessionLocal (async_sessionmaker): The async session factory.
-        _tables_created (bool): Flag indicating if tables have been created.
+    :ivar db_url: The database connection URL.
+
+    :ivar engine: The SQLAlchemy async engine.
+
+    :ivar SessionLocal: The async session factory.
+
+    :ivar _tables_created: Flag indicating if tables have been created.
     """
 
     def __init__(self, db_url: str):
         """Initialize the Database instance.
 
-        Args:
-            db_url (str): The database connection URL.
+        :param db_url: The database connection URL.
         """
         self.db_url = db_url
         self.engine: AsyncEngine | None = None
@@ -213,12 +214,9 @@ class Database:
 
     @asynccontextmanager
     async def session_manager(self) -> AsyncGenerator[AsyncSession, None]:
-        """
-        Async context manager for database sessions.
+        """Async context manager for database sessions.
 
-        Yields:
-            AsyncSession: An async database session.
-        """
+        :Yields: *AsyncSession* -- An async database session."""
         if not self.SessionLocal:
             self.initialize()
         await self._ensure_tables_created()

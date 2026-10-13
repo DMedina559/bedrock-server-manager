@@ -6,7 +6,8 @@ Core Documentation
 .. warning::
    The modules documented below are the internal engine of the Bedrock Server Manager. They are **not** part of the public API, are subject to change without notice, and **must not** be used directly by plugins. Functionality may be changed at any time.
 
-This documentation is provided mostly for contributors working on the core application, or curious into its underlying functions not listed else where.
+Use these references when contributing to process control, platform support or
+server internals. Plugins should use the supported capability and event guides.
 
 .. toctree::
    :maxdepth: 2

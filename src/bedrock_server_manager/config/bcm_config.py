@@ -179,8 +179,7 @@ def save_config(data: Dict[str, Any]):
     It ensures the configuration directory exists and writes the data with an indent
     for readability.
 
-    Args:
-        data (Dict[str, Any]): The configuration data to save.
+    :param data: The configuration data to save.
     """
     # Validate the raw file independently of CLI/environment overrides. Keep
     # absent fields absent so saving never freezes resolved default values.

@@ -1,27 +1,24 @@
-# CLI Usage
+# Command-line tools
 
-<div style="text-align: left;">
-    <img src="https://raw.githubusercontent.com/DMedina559/bedrock-server-manager/main/docs/images/cli_menu.png" alt="CLI Menu" width="300" height="200"/>
-</div>
+BSM's local command manages the web host and its installation. The separate `bsm-cli` client performs server-management operations against the HTTP API.
 
-For a complete list of commands, see [CLI Commands](./commands.rst).
+## Local hosting
 
->[!note]
-> As of BSM 3.6.0, CLI commands have been migrated to the [`bsm-api-client[cli]`](https://github.com/DMedina559/bsm-api-client) package.
-> Install with:
->
-> `pip install --upgrade bsm-api-client[cli]`
-
-## Examples:
-
-### Start the server:
-
-```bash
+```sh
+bedrock-server-manager --help
 bedrock-server-manager web start
+bedrock-server-manager web stop --timeout 180
 ```
 
-### Generate password hash interactively
+Place global configuration options before `web`. Keep the same configuration directory when starting, stopping or configuring a service. See the [local command reference](commands.rst) and [runtime guide](../extras/web_runtime.md).
 
-```bash
-bedrock-server-manager generate-password
+## Remote management
+
+Install the supported client with:
+
+```sh
+python -m pip install --upgrade 'bedrock-server-manager[cli]'
+bsm-cli --help
 ```
+
+Consult the [client command reference](api_client_commands.rst) for connection, authentication and server commands. Client compatibility follows the HTTP contract; update clients when upgrading across a contract-changing release.

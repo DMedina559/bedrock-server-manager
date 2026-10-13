@@ -27,9 +27,8 @@ class ResourceMonitor:
     ):
         """Initialize the ResourceMonitor with explicit dependencies.
 
-        Args:
-            connection_manager: The WebSocket connection manager.
-            server_provider: Optional callable returning a BedrockServer instance by name.
+        :param connection_manager: The WebSocket connection manager.
+        :param server_provider: Optional callable returning a BedrockServer instance by name.
         """
         self.connection_manager = connection_manager
         self.server_provider = server_provider

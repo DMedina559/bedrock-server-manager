@@ -55,10 +55,11 @@ class Setting(Base):
 
     Settings are global configurations for the application.
 
-    Attributes:
-        id (int): The primary key.
-        key (str): The configuration key (dot-notation).
-        value (JSON): The configuration value, stored as JSON.
+    :ivar id: The primary key.
+
+    :ivar key: The configuration key (dot-notation).
+
+    :ivar value: The configuration value, stored as JSON.
     """
 
     __tablename__ = "settings"
@@ -155,11 +156,13 @@ class Plugin(Base):
 class RegistrationToken(Base):
     """Represent a token used for user registration.
 
-    Attributes:
-        id (int): The primary key.
-        token (str): The unique registration token string.
-        role (str): The role that will be assigned to the user who registers with this token.
-        expires (int): Timestamp (unix epoch?) indicating when the token expires.
+    :ivar id: The primary key.
+
+    :ivar token: The unique registration token string.
+
+    :ivar role: The role that will be assigned to the user who registers with this token.
+
+    :ivar expires: Timestamp (unix epoch?) indicating when the token expires.
     """
 
     __tablename__ = "registration_tokens"
@@ -177,10 +180,11 @@ class RegistrationToken(Base):
 class Player(Base):
     """Represent a known player.
 
-    Attributes:
-        id (int): The primary key.
-        player_name (str): The player's gamertag/name.
-        xuid (str): The player's unique Xbox User ID.
+    :ivar id: The primary key.
+
+    :ivar player_name: The player's gamertag/name.
+
+    :ivar xuid: The player's unique Xbox User ID.
     """
 
     __tablename__ = "players"

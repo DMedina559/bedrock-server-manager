@@ -49,9 +49,8 @@ class GuardedProcess:
     def __init__(self, command: Sequence[Union[str, os.PathLike]]):
         """Initialize the GuardedProcess with the command to be run.
 
-        Args:
-            command (Sequence[Union[str, os.PathLike]]): A list representing the
-                command and its arguments (e.g., ``['python', 'app.py', '--start-server']``).
+        :param command: A list representing the
+                        command and its arguments (e.g., ``['python', 'app.py', '--start-server']``).
         """
         self.command = command
         self.guard_env = self._create_guarded_environment()
@@ -62,8 +61,7 @@ class GuardedProcess:
         The guard variable is defined by
         :const:`~bedrock_server_manager.config.const.GUARD_VARIABLE`.
 
-        Returns:
-            Dict[str, str]: A new dictionary representing the modified environment.
+        :returns: A new dictionary representing the modified environment.
         """
         child_env = os.environ.copy()
         child_env[GUARD_VARIABLE] = "1"
@@ -84,12 +82,11 @@ class GuardedProcess:
     async def create_subprocess_exec(self, **kwargs: Any) -> asyncio.subprocess.Process:
         """Wrap ``asyncio.create_subprocess_exec``, injecting the guarded environment.
 
-        Args:
-            **kwargs (Any): Keyword arguments to pass directly.
-                If ``env`` is provided in ``kwargs``, it will be overwritten.
+        :param kwargs: Keyword arguments to pass directly.
+                           If ``env`` is provided in ``kwargs``, it will be overwritten.
+        :type kwargs: Any
 
-        Returns:
-            asyncio.subprocess.Process: The asynchronous process object.
+        :returns: The asynchronous process object.
         """
         kwargs["env"] = self.guard_env
         return await asyncio.create_subprocess_exec(*self.command, **kwargs)
@@ -99,12 +96,11 @@ class GuardedProcess:
     ) -> asyncio.subprocess.Process:
         """Wrap ``asyncio.create_subprocess_shell``, injecting the guarded environment.
 
-        Args:
-            **kwargs (Any): Keyword arguments to pass directly.
-                If ``env`` is provided in ``kwargs``, it will be overwritten.
+        :param kwargs: Keyword arguments to pass directly.
+                           If ``env`` is provided in ``kwargs``, it will be overwritten.
+        :type kwargs: Any
 
-        Returns:
-            asyncio.subprocess.Process: The asynchronous process object.
+        :returns: The asynchronous process object.
         """
         kwargs["env"] = self.guard_env
         import shlex
