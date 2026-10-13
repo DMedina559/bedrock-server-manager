@@ -18,6 +18,8 @@ class ControlRecord(BaseModel):
     model_config = ConfigDict(extra="forbid", hide_input_in_errors=True)
     instance_id: str
     pid: int = Field(gt=0)
+    config_dir: str | None = None
+    created_at: float | None = Field(default=None, gt=0)
     host: str
     port: int = Field(ge=1, le=65535)
     token: SecretStr
@@ -76,9 +78,17 @@ class ControlFiles:
                 )
 
     def publish(self, host: str, port: int) -> None:
+        try:
+            created_at = psutil.Process().create_time()
+        except psutil.Error:
+            # Graceful credential control remains available without introspection.
+            # Forced termination requires a verified creation time and will refuse.
+            created_at = None
         record = ControlRecord(
             instance_id=self.runtime.instance_id,
             pid=os.getpid(),
+            config_dir=str(self.directory.resolve()),
+            created_at=created_at,
             host="127.0.0.1" if host == "0.0.0.0" else "::1" if host == "::" else host,
             port=port,
             token=self.runtime._token,

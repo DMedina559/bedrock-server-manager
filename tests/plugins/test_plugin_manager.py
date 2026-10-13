@@ -362,12 +362,10 @@ async def test_example_listener_logs_metadata_without_payload(
     from pathlib import Path
 
     source = Path(__file__).resolve().parents[2] / "plugins" / "pong_plugin.py"
-    await plugin_factory("pong_example", source.read_text())
+    plugin = await plugin_factory("pong_example", source.read_text())
     caplog.clear()
     with caplog.at_level(logging.DEBUG):
-        await app_context.plugin_manager.trigger_event(
-            "pingplugin:ping",
-            "private positional data",
+        await plugin.received(
             server_name="example",
             data={"message": "private payload data"},
             _triggering_plugin="example_sender",
@@ -375,3 +373,22 @@ async def test_example_listener_logs_metadata_without_payload(
     assert "private positional data" not in caplog.text
     assert "private payload data" not in caplog.text
     assert "example_sender" in caplog.text
+
+
+async def test_download_ui_propagates_listing_errors_and_validates_type(
+    plugin_factory, admin_auth_client
+):
+    from pathlib import Path
+
+    from bedrock_server_manager.plugins import default
+
+    source = Path(default.__file__).parent / "download_page_plugin.py"
+    await plugin_factory("download_page_plugin", source.read_text())
+    response = await admin_auth_client.get(
+        "/api/download_page/ui", params={"server": "missing_server", "type": "backups"}
+    )
+    assert response.status_code == 404
+    response = await admin_auth_client.get(
+        "/api/download_page/ui", params={"server": "missing_server", "type": "invalid"}
+    )
+    assert response.status_code == 422

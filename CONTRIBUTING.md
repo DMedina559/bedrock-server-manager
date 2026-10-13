@@ -279,3 +279,12 @@ To ensure Bedrock Server Manager is maintained effectively, we have an updated i
 If you have any questions about the contribution process, feel free to open a [discussions thread](https://github.com/DMedina559/bedrock-server-manager/discussions).
 
 Thank you for contributing to Bedrock Server Manager!
+
+### Documentation validation
+
+Regenerate references with `python scripts/generate_plugin_docs.py`; use
+`--check` to detect drift without writing files. Build all pages with
+`python -m sphinx -W --keep-going -b html docs/source /tmp/bsm-docs`.
+Release notes link to the canonical release history, so builds require no
+GitHub token or remote changelog fetch. Runnable plugin examples belong in
+`plugins/`; fault injection and recursive-operation diagnostics belong in tests.

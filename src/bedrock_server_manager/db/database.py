@@ -74,11 +74,11 @@ class Database:
 
     def _get_sync_db_url(self) -> str:
         """Convert an async database URL back into a standard sync URL (for Alembic)."""
-        url = self.db_url
+        url = self._get_db_url()
         url = url.replace("sqlite+aiosqlite://", "sqlite://", 1)
-        url = url.replace("postgresql+asyncpg://", "postgresql://", 1)
-        url = url.replace("mysql+aiomysql://", "mysql://", 1)
-        url = url.replace("mariadb+aiomysql://", "mariadb://", 1)
+        url = url.replace("postgresql+asyncpg://", "postgresql+psycopg://", 1)
+        url = url.replace("mysql+aiomysql://", "mysql+pymysql://", 1)
+        url = url.replace("mariadb+aiomysql://", "mariadb+pymysql://", 1)
         return url
 
     def initialize(self) -> None:

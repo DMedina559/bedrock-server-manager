@@ -1,17 +1,7 @@
-# Changelog
+# Release notes
 
-```{image} https://raw.githubusercontent.com/DMedina559/bsm-frontend/main/frontend/public/image/icon/favicon.svg
-:alt: Bedrock Server Manager Icon
-:width: 200px
-:align: center
-```
----
+The [GitHub release history](https://github.com/DMedina559/bedrock-server-manager/releases) is the authoritative changelog, including prereleases. [PyPI release history](https://pypi.org/project/bedrock-server-manager/#history) lists published package versions.
 
----
+Select the notes for your installed and target versions. Development documentation can include features not yet available in a published release. Review breaking changes before upgrading databases, plugins or generated clients.
 
-```{changelog}
-:changelog-url: https://bedrock-server-manager.readthedocs.io/en/latest/changelog.html
-:github: https://github.com/DMedina559/bedrock-server-manager/releases/
-:pypi: https://pypi.org/project/bedrock-server-manager/
-```
----
+See [upgrade an installation](general/upgrading.md) for backups, service migration, compatibility checks and rollback considerations.

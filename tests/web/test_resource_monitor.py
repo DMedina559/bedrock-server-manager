@@ -1,6 +1,13 @@
 import asyncio
 import json
 
+import pytest
+
+
+@pytest.fixture(autouse=True)
+def fast_sampling(app_context):
+    app_context.resource_monitor.interval_provider = lambda: 0.02
+
 
 async def test_resource_monitor_start_stop(app_context):
     monitor = app_context.resource_monitor

@@ -78,3 +78,19 @@ async def test_unreadable_migration_head_does_not_mark_schema_ready(
         assert database._tables_created
     finally:
         await database.shutdown()
+
+
+def test_migration_urls_select_declared_sync_drivers():
+    from sqlalchemy.engine import make_url
+
+    cases = {
+        "sqlite:///test.db": "sqlite:///test.db",
+        "postgresql://localhost/test": "postgresql+psycopg://localhost/test",
+        "postgresql+asyncpg://localhost/test": "postgresql+psycopg://localhost/test",
+        "mysql://localhost/test": "mysql+pymysql://localhost/test",
+        "mariadb+aiomysql://localhost/test": "mariadb+pymysql://localhost/test",
+    }
+    for source, expected in cases.items():
+        actual = Database(source)._get_sync_db_url()
+        assert actual == expected
+        assert not make_url(actual).get_dialect().is_async

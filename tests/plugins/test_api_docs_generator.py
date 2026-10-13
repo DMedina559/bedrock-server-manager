@@ -54,3 +54,24 @@ def test_generated_docs_include_lifecycle_contract_and_usable_example():
     assert "AddToAllowlistRequest" in fields["request"]["type_obj"]
     assert "RemoveFromAllowlistRequest" in fields["request"]["type_obj"]
     assert "new_players_data=None" in generator._format_event_markdown([allowlist])
+
+
+async def test_ping_pong_examples_use_typed_owned_events(plugin_factory, caplog):
+    import logging
+
+    from bedrock_server_manager.api.models import StartServerResponse
+
+    root = Path(__file__).parents[2] / "plugins"
+    ping = await plugin_factory("ping_plugin", (root / "ping_plugin.py").read_text())
+    await plugin_factory("pong_plugin", (root / "pong_plugin.py").read_text())
+    with caplog.at_level(logging.INFO):
+        await ping.send_ping_event(
+            "example",
+            StartServerResponse(
+                server_name="example",
+                status="success",
+                outcome="started",
+                message="Started",
+            ),
+        )
+    assert "Received ping for example" in caplog.text

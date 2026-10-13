@@ -83,9 +83,8 @@ that subscription. Listeners and definitions are removed automatically on unload
 A saved API from an unloaded plugin cannot register or emit after reload.
 Plugins and external callers may emit custom events; core before, after, and
 lifecycle events are reserved for the application. Legacy `send_event()` and
-`listen_for_event()` remain supported through the same bus. Undeclared custom
-events remain JSON-only through legacy `send_event()` for compatibility.
-Native `events.emit()` requires a declaration owned by the emitting plugin.
+`listen_for_event()` remain supported through the same bus. Both `send_event()` and `events.emit()` require a declaration owned by the
+emitting plugin. Undeclared emission is rejected in 4.0.
 
 For a private custom event, pass `public=False` to `events.define()`. Public
 events keep the WebSocket topic `event:<name>` and the existing `type`, `topic`,

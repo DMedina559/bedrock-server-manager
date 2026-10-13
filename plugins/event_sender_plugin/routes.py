@@ -1,22 +1,35 @@
 import json
 
-from fastapi import APIRouter, Request
+from fastapi import APIRouter, Depends, Request
 from fastapi.responses import JSONResponse
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, ConfigDict, Field, JsonValue
+
+from bedrock_server_manager.web import get_admin_user
+
+
+class CustomPayload(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    args: list[JsonValue]
+    data: dict[str, JsonValue]
 
 
 class EventPayload(BaseModel):
+    model_config = ConfigDict(extra="forbid")
     event_name: str = Field(
-        ..., description="The name of the event to send (e.g. namespace:event_name)"
+        ..., description="The name of the event to send (event_sender_plugin:message)"
     )
     args_json: str = Field("[]", description="A JSON array of positional arguments")
     kwargs_json: str = Field("{}", description="A JSON object of keyword arguments")
 
 
 def define_routes(router: APIRouter, plugin_instance):
+    plugin_instance.api.events.define("event_sender_plugin:message", CustomPayload)
+
     @router.get(
         "/ui",
         response_class=JSONResponse,
+        operation_id="event_sender_ui",
+        dependencies=[Depends(get_admin_user)],
         name="Event Sender",
         tags=["plugin-json-ui"],
     )
@@ -56,7 +69,8 @@ def define_routes(router: APIRouter, plugin_instance):
                                         "props": {
                                             "name": "event_name",
                                             "label": "Event Name",
-                                            "placeholder": "e.g., myplugin:custom_event",
+                                            "placeholder": "event_sender_plugin:message",
+                                            "defaultValue": "event_sender_plugin:message",
                                             "required": True,
                                         },
                                     },
@@ -86,7 +100,7 @@ def define_routes(router: APIRouter, plugin_instance):
                                             "variant": "primary",
                                             "onClickAction": {
                                                 "type": "api_call",
-                                                "endpoint": "/api/plugins/event_sender/trigger",
+                                                "endpoint": "/event_sender/trigger",
                                                 "includeFormState": True,
                                                 "refresh": False,
                                             },
@@ -100,7 +114,11 @@ def define_routes(router: APIRouter, plugin_instance):
             }
         )
 
-    @router.post("/trigger")
+    @router.post(
+        "/trigger",
+        operation_id="event_sender_trigger",
+        dependencies=[Depends(get_admin_user)],
+    )
     async def trigger_event(payload: EventPayload):
         plugin_instance.logger.debug(
             "Received request to trigger event: %s", payload.event_name
@@ -119,7 +137,14 @@ def define_routes(router: APIRouter, plugin_instance):
                     content={"error": "kwargs_json must be a JSON object"},
                 )
 
-            await plugin_instance.api.send_event(payload.event_name, *args, **kwargs)
+            if payload.event_name != "event_sender_plugin:message":
+                return JSONResponse(
+                    status_code=400,
+                    content={"error": "Only event_sender_plugin:message is supported"},
+                )
+            await plugin_instance.api.events.emit(
+                payload.event_name, args=args, data=kwargs
+            )
             return JSONResponse(
                 content={
                     "message": f"Successfully triggered event '{payload.event_name}'"

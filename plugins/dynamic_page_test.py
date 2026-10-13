@@ -1,11 +1,11 @@
 from json import JSONDecodeError
-from typing import Any, Dict
 
 from fastapi import APIRouter, Depends, Request
 from fastapi.responses import JSONResponse
 
 from bedrock_server_manager import PluginBase, app_event
 from bedrock_server_manager.web import get_admin_user
+from bedrock_server_manager.web.schemas import UserResponse
 
 
 class DynamicPageTestPlugin(PluginBase):
@@ -33,7 +33,7 @@ class DynamicPageTestPlugin(PluginBase):
             tags=["plugin-json-ui"],
         )
         async def get_test_ui(
-            request: Request, current_user: Dict[str, Any] = Depends(get_admin_user)
+            request: Request, current_user: UserResponse = Depends(get_admin_user)
         ):
             return JSONResponse(
                 content={
@@ -349,7 +349,7 @@ class DynamicPageTestPlugin(PluginBase):
             summary="Echo Submit",
         )
         async def submit_test_form(
-            request: Request, current_user: Dict[str, Any] = Depends(get_admin_user)
+            request: Request, current_user: UserResponse = Depends(get_admin_user)
         ):
             try:
                 data = await request.json()

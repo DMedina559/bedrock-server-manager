@@ -91,6 +91,7 @@ def _read_raw_config() -> Dict[str, Any]:
                 e,
                 error=e,
             )
+            raise ConfigurationError("Could not read startup configuration.") from e
     return {}
 
 

@@ -131,10 +131,13 @@ def test_load_config_invalid_json(clean_env, tmp_path, caplog):
     with open(config_file, "w") as f:
         f.write("{invalid json}")
 
-    config = bcm_config.load_config()
+    from bedrock_server_manager.error import ConfigurationError
 
-    # It should fall back to generating defaults
-    assert "data_dir" in config
+    with pytest.raises(ConfigurationError):
+        bcm_config.load_config()
+    with pytest.raises(ConfigurationError):
+        bcm_config.set_config_value("logging_level", "DEBUG")
+    assert config_file.read_text() == "{invalid json}"
     assert "Failed to load configuration file" in caplog.text
 
 

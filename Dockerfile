@@ -18,10 +18,10 @@ RUN python -m build
 FROM python:3.14-slim
 WORKDIR /app
 # Install system dependencies and upgrade to patch vulnerabilities
-# gcc and libmariadb-dev-compat are often needed for mysqlclient/mariadb driver compilation if binaries aren't available
+# gcc supports dependencies without prebuilt wheels; database extras use pure-Python/binary drivers.
 RUN apt-get update && \
     DEBIAN_FRONTEND=noninteractive apt-get full-upgrade -y && \
-    DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends pkg-config libmariadb-dev-compat gcc libcurl4 && \
+    DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends gcc libcurl4 && \
     apt-get clean && \
     rm -rf /var/lib/apt/lists/*
 

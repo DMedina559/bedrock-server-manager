@@ -10,6 +10,7 @@ on:
     paths:
       - 'src/bedrock_server_manager/**'
       - 'tests/**'
+      - 'plugins/**'
       - 'scripts/**'
       - 'pyproject.toml'
       - '.github/workflows/build-test.yml'
@@ -60,6 +61,26 @@ jobs:
       run: |
         python scripts/check_api_callers.py
         python scripts/generate_plugin_api.py --check
+
+    - name: Smoke-test the production wheel
+      shell: bash
+      run: |
+        python -m build --wheel
+        python -m venv production-smoke
+        if [ -f production-smoke/Scripts/python.exe ]; then
+          smoke_python=production-smoke/Scripts/python.exe
+        else
+          smoke_python=production-smoke/bin/python
+        fi
+        "$smoke_python" -m pip install dist/*.whl
+        "$smoke_python" -m bedrock_server_manager --help
+        "$smoke_python" -m bedrock_server_manager --config-dir "$RUNNER_TEMP/bsm-smoke-config" web --help
+        for wheel in dist/*.whl; do
+          "$smoke_python" -m pip install "$wheel[mysql,mariadb,postgresql]"
+        done
+        "$smoke_python" scripts/check_database_drivers.py
+        "$smoke_python" -m pip check
+        rm -rf production-smoke
 
     - name: Run Pytest
       run: python -m pytest --durations=25

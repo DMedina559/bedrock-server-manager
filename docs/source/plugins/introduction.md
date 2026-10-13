@@ -15,3 +15,11 @@ Change the plugin's declared settings through the management interface. Enable o
 If unload cannot drain synchronous work, replacement loading can remain blocked until that work finishes. Investigate the callback and avoid repeated reload attempts. Custom router availability follows plugin lifecycle; plugin authors must unregister resources on unload.
 
 See [bundled plugins](../features/default_plugins.md) for built-in behavior and the [author guide](../developer/plugins/introduction.md) for APIs, event ownership and lifecycle responsibilities.
+
+## Repository examples
+
+The repository's `plugins/ping_plugin.py` and `pong_plugin.py` demonstrate typed,
+owned custom events. Enable ping before pong. The event-sender example exposes
+only its own declared message event and requires administrator authentication.
+Recursive and server-restarting diagnostic plugins were removed; automated event
+and lifecycle tests cover those behaviors without deploying them to a live host.
