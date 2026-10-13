@@ -80,8 +80,8 @@ class APIDocsGenerator(PluginBase):
         for definition in builtin_events.catalog().events:
             if definition.phase not in {"before", "after"}:
                 continue
-            parameters = {}
-            occurrences = {}
+            parameters: dict[str, dict[str, Any]] = {}
+            occurrences: dict[str, int] = {}
             models = builtin_events.payload_models(definition.name)
             for model in models:
                 for name, field in model.model_fields.items():

@@ -219,7 +219,9 @@ async def test_plugin_target_event_retains_listener_fields_and_identity(
     assert received[0]["plugin_name"] == "observer"
     assert received[0]["enabled"] is False
     assert "target_plugin_name" not in received[0]
-    assert app_context.events.registry.definition("before_set_plugin_status").identity_keys == ("plugin_name", "enabled")
+    assert app_context.events.registry.definition(
+        "before_set_plugin_status"
+    ).identity_keys == ("plugin_name", "enabled")
 
 
 @pytest.mark.parametrize("count", [0, 2])
