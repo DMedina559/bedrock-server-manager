@@ -285,6 +285,9 @@ Thank you for contributing to Bedrock Server Manager!
 Regenerate references with `python scripts/generate_plugin_docs.py`; use
 `--check` to detect drift without writing files. Build all pages with
 `python -m sphinx -W --keep-going -b html docs/source /tmp/bsm-docs`.
-Release notes link to the canonical release history, so builds require no
-GitHub token or remote changelog fetch. Runnable plugin examples belong in
+The Sphinx changelog extension fetches release history. Set `GITHUB_TOKEN` or
+`SPHINX_GITHUB_CHANGELOG_TOKEN` when building the complete documentation.
+Offline checks should exclude the network-backed changelog in a temporary
+validation copy; keep the published changelog integration enabled.
+Runnable plugin examples belong in
 `plugins/`; fault injection and recursive-operation diagnostics belong in tests.

@@ -6,6 +6,9 @@
 import os
 import sys
 
+import sphinx_github_changelog
+import sphinx_github_changelog.changelog
+
 sys.path.insert(0, os.path.abspath("../../src"))
 sys.path.insert(0, os.path.abspath("."))
 
@@ -27,6 +30,7 @@ extensions = [
     "sphinx_click",
     "sphinx.ext.autodoc",
     "myst_parser",
+    "sphinx_github_changelog",
 ]
 
 templates_path = ["_templates"]
@@ -53,3 +57,25 @@ html_theme_options = {
     "includehidden": True,
     "titles_only": False,
 }
+
+sphinx_github_changelog_token = os.environ.get(
+    "SPHINX_GITHUB_CHANGELOG_TOKEN"
+) or os.environ.get("GITHUB_TOKEN")
+
+# MonkeyPatch sphinx_github_changelog to ignore pre-releases
+original_node_for_release = sphinx_github_changelog.changelog.node_for_release
+
+
+def node_for_release_ignore_prerelease(release, pypi_name=None):
+    is_pre = False
+    if isinstance(release, dict):
+        is_pre = release.get("isPrerelease", False) or release.get("prerelease", False)
+    else:
+        is_pre = getattr(release, "is_prerelease", False)
+
+    if is_pre:
+        return None
+    return original_node_for_release(release, pypi_name)
+
+
+sphinx_github_changelog.changelog.node_for_release = node_for_release_ignore_prerelease
