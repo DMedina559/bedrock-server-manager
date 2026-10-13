@@ -11,6 +11,7 @@ import time
 from datetime import datetime
 from logging.handlers import RotatingFileHandler
 from typing import Optional
+from uuid import uuid4
 
 from .failures import classify_failure
 
@@ -274,10 +275,11 @@ def setup_logging(
     try:
         os.makedirs(log_dir, exist_ok=True)
         _prune_old_logs(log_dir, keep=DEFAULT_LOG_KEEP)
-        # Separate simultaneous sessions and immediate reconfiguration on Windows.
+        # Windows clock resolution can repeat even with microseconds displayed.
         timestamp = datetime.now().strftime("%Y%m%d_%H%M%S_%f")
         path = os.path.join(
-            log_dir, f"bedrock_server_manager_{timestamp}_{os.getpid()}.log"
+            log_dir,
+            f"bedrock_server_manager_{timestamp}_{os.getpid()}_{uuid4().hex}.log",
         )
         file_handler = RotatingFileHandler(
             path, maxBytes=MAX_LOG_BYTES, backupCount=LOG_BACKUP_COUNT, encoding="utf-8"

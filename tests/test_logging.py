@@ -127,8 +127,17 @@ def test_repeated_setup_updates_handler_levels(isolated_bcm_config, capsys):
 
 def test_reconfigure_preserves_host_handler_and_creates_distinct_files(
     isolated_bcm_config,
+    monkeypatch,
 ):
     import io
+    from datetime import datetime
+    from types import SimpleNamespace
+
+    # Reproduce Windows returning the same wall-clock time for both setups.
+    fixed_time = datetime(2026, 10, 12, 22, 55, 4, 30724)
+    monkeypatch.setattr(
+        bsm_logging, "datetime", SimpleNamespace(now=lambda: fixed_time)
+    )
 
     root = logging.getLogger()
     output = io.StringIO()
