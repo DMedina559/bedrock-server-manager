@@ -54,24 +54,7 @@ class ServerWorlds:
         return os.path.join(self.server.paths.server_dir, "worlds")
 
     async def _get_active_world_directory_path(self) -> str:
-        """Determines the full path to the directory of the currently active world.
-
-        This path is constructed by joining the base worlds directory
-        (:attr:`._worlds_base_dir_in_server`) with the active world's name,
-        which is obtained by calling ``await self.get_world_name()``. This method
-        is expected to be provided by :class:`~.core.bedrock_server.BedrockServer`.
-
-        Returns:
-            str: The absolute path to the active world's directory.
-
-        Raises:
-            AttributeError: If the ``get_world_name`` method is not available on
-                the instance (indicating a missing required mixin).
-            AppFileNotFoundError: If ``server.properties`` (used by `get_world_name`)
-                is not found.
-            ConfigParseError: If ``level-name`` is missing from ``server.properties``
-                or the file is malformed.
-        """
+        """Resolve the active world directory from the server properties."""
         active_world_name: str = await self.server.get_world_name()
         if not active_world_name or not isinstance(active_world_name, str):
             raise ConfigParseError(
@@ -82,35 +65,9 @@ class ServerWorlds:
     async def extract_mcworld(
         self, mcworld_file_path: str, target_world_dir_name: str
     ) -> str:
-        """Extracts a ``.mcworld`` archive file into a specified world directory name asynchronously.
+        """Validate and extract a world archive, returning its installed directory.
 
-        The extraction target is a subdirectory named `target_world_dir_name`
-        within the server's main "worlds" folder (see :attr:`._worlds_base_dir_in_server`).
-
-        Existing content is replaced after the archive has been extracted and
-        validated. Failed extraction preserves the previous world.
-
-        Args:
-            mcworld_file_path (str): The absolute path to the ``.mcworld`` file
-                to be extracted.
-            target_world_dir_name (str): The desired name for the world directory
-                that will be created inside the server's "worlds" folder to
-                contain the extracted content.
-
-        Returns:
-            str: The absolute path to the directory where the world was extracted
-            (e.g., ``<server_dir>/worlds/<target_world_dir_name>``).
-
-        Raises:
-            MissingArgumentError: If `mcworld_file_path` or `target_world_dir_name`
-                are empty or not strings.
-            AppFileNotFoundError: If the source `mcworld_file_path` does not exist
-                or is not a file.
-            FileOperationError: If creating the target directory structure or
-                clearing a pre-existing target directory fails (e.g., due to
-                permissions or other ``OSError``).
-            ExtractError: If the ``.mcworld`` file is not a valid ZIP archive or
-                if an error occurs during the extraction process itself.
+        Stage the new world before replacing an existing target.
         """
         async with self.server.operation_lock:
             if not isinstance(mcworld_file_path, str) or not mcworld_file_path:
@@ -315,38 +272,10 @@ class ServerWorlds:
     async def export_world(
         self, world_dir_name: str, target_mcworld_file_path: str
     ) -> None:
-        """Exports a specified world directory into a ``.mcworld`` archive file asynchronously.
+        """Export a world to the requested ``.mcworld`` path.
 
-        This method takes the name of a world directory (located within the server's
-        "worlds" folder), archives its entire contents into a ZIP file, and then
-        renames this ZIP file to have a ``.mcworld`` extension, saving it to
-        `target_mcworld_file_path`.
-
-        If the server is running and the specified world is currently active, a live
-        backup using `save hold` / `save query` / `save resume` is performed.
-
-        The parent directory for `target_mcworld_file_path` will be created if
-        it does not exist. If `target_mcworld_file_path` itself already exists,
-        it will be overwritten. A temporary ``.zip`` file is created during the
-        process and is cleaned up.
-
-        Args:
-            world_dir_name (str): The name of the world directory to export,
-                relative to the server's "worlds" folder (e.g., "MyFavoriteWorld").
-            target_mcworld_file_path (str): The absolute path where the resulting
-                ``.mcworld`` archive file should be saved.
-
-        Raises:
-            MissingArgumentError: If `world_dir_name` or `target_mcworld_file_path`
-                are empty or not strings.
-            AppFileNotFoundError: If the source world directory
-                (``<server_dir>/worlds/<world_dir_name>``) does not exist or is not a directory.
-            FileOperationError: If creating the parent directory for the
-                `target_mcworld_file_path` fails due to an ``OSError``.
-            BackupRestoreError: If creating the ZIP archive (via ``shutil.make_archive``)
-                or renaming it to ``.mcworld`` fails, or for other unexpected errors
-                during the export process. This can wrap underlying ``OSError`` or
-                other exceptions.
+        Use save hold/query/resume for a running active world. Replace an existing
+        export and clean temporary archive files.
         """
         async with self.server.operation_lock:
             if not isinstance(world_dir_name, str) or not world_dir_name:
@@ -398,34 +327,9 @@ class ServerWorlds:
                 ) from error
 
     async def import_world(self, mcworld_backup_file_path: str) -> str:
-        """Imports a ``.mcworld`` file asynchronously, replacing the server's currently active world.
+        """Replace the active world from a validated archive and return its name.
 
-        The active world is replaced only after the new archive is extracted and
-        validated. Extraction failure preserves the existing world.
-
-        This method first determines the name of the server's active world by
-        calling ``await self.get_world_name()`` (expected from
-        :class:`~.core.bedrock_server.BedrockServer`). It then uses
-        :meth:`.extract_mcworld` to extract the contents of the
-        provided `mcworld_backup_file_path` into a directory with that active
-        world name, effectively replacing it.
-
-        Args:
-            mcworld_backup_file_path (str): The absolute path to the source
-                ``.mcworld`` file that contains the world data to import.
-
-        Returns:
-            str: The name of the world directory (which is the active world name)
-            that the ``.mcworld`` file was imported into.
-
-        Raises:
-            MissingArgumentError: If `mcworld_backup_file_path` is empty or not a string.
-            AppFileNotFoundError: If the source `mcworld_backup_file_path` does not exist.
-            BackupRestoreError: If any part of the import process fails, including
-                failure to determine the active world name, or errors during
-                extraction (which can wrap :class:`~.error.ExtractError`,
-                :class:`~.error.FileOperationError`, etc.).
-            AttributeError: If ``get_world_name()`` is missing.
+        Extraction failure preserves the existing world.
         """
         async with self.server.operation_lock:
             if (
@@ -479,34 +383,9 @@ class ServerWorlds:
                 ) from e_extract
 
     async def delete_world(self) -> bool:
-        """Deletes the server's currently active world directory asynchronously.
+        """Permanently delete the active world; absence also counts as success.
 
-        .. warning::
-            This is a **DESTRUCTIVE** operation. The active world's data will be
-            permanently removed. The server will typically generate a new world
-            with the same name on its next startup if the ``level-name`` in
-            ``server.properties`` is not changed.
-
-        This method determines the active world's directory path using
-        :meth:`._get_active_world_directory_path` and then uses the robust
-        deletion utility :func:`~.core.system.base.delete_path_robustly`
-        to remove it.
-
-        Returns:
-            bool: ``True`` if the active world directory was successfully deleted
-            or if it did not exist initially.
-
-        Raises:
-            FileOperationError: If determining the world path fails (e.g., due to
-                issues with ``server.properties`` or if the path is not a directory),
-                or if the deletion itself fails critically (though
-                `delete_path_robustly` attempts to handle many common issues).
-            AppFileNotFoundError: If ``server.properties`` is missing (propagated
-                from :meth:`._get_active_world_directory_path` via `get_world_name`).
-            ConfigParseError: If ``level-name`` is missing from ``server.properties``
-                (propagated).
-            AttributeError: If ``get_world_name()`` method (from StateMixin)
-                is not available.
+        The server normally regenerates that world at its next start.
         """
         async with self.server.operation_lock:
             try:
@@ -554,16 +433,7 @@ class ServerWorlds:
             return success
 
     async def has_world_icon(self) -> bool:
-        """Checks if the standard world icon file (``world_icon.jpeg``) exists for the active world asynchronously.
-
-        This method uses :attr:`.world_icon_filesystem_path` to determine the
-        expected location of the icon and checks if a file exists at that path.
-
-        Returns:
-            bool: ``True`` if the world icon file exists and is a regular file,
-            ``False`` otherwise (e.g., path cannot be determined, file does not
-            exist, or is not a file).
-        """
+        """Return whether the active world has a regular ``world_icon.jpeg`` file."""
         icon_path = await self.get_world_icon_filesystem_path()
         if icon_path and await aiofiles.ospath.isfile(icon_path):
             self.logger.debug(

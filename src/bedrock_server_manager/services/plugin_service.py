@@ -33,7 +33,7 @@ def _json_settings(value):
 
 
 class PluginService:
-    """Handles domain logic and mutations for application plugins."""
+    """Handle domain logic and mutations for application plugins."""
 
     def __init__(
         self,
@@ -109,7 +109,7 @@ class PluginService:
         await self.storage.commit_settings(self.state, changeset, mutate)
 
     def get_plugin_state(self, plugin_name: str) -> Optional[PluginInfoState]:
-        """Retrieves a plugin state model snapshot."""
+        """Return a plugin state model snapshot."""
         plugin = self.state.plugins.get(plugin_name)
         if plugin:
             res: PluginInfoState = plugin.model_copy()
@@ -125,7 +125,7 @@ class PluginService:
         description: str | None | Unset = UNSET,
         settings: Optional[Dict[str, JsonValue]] = None,
     ) -> PluginInfoState:
-        """Registers or updates a plugin state record and marks dirty state."""
+        """Register or updates a plugin state record and marks dirty state."""
         values: dict[str, object] = {"plugin_name": plugin_name}
         if enabled is not None:
             values["enabled"] = enabled

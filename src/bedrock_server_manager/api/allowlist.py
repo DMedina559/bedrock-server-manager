@@ -26,11 +26,7 @@ logger = logging.getLogger(__name__)
 async def add_to_allowlist(
     request: AddToAllowlistRequest, *, app_context: AppContext
 ) -> AddToAllowlistResponse:
-    """Adds a list of players to the server's allowlist.
-
-    Accepts AddToAllowlistRequest and returns AddToAllowlistResponse.
-    Invalid requests fail validation before side effects; operation failures raise application exceptions.
-    """
+    """Adds a list of players to the server's allowlist."""
     server_name = request.server_name
     new_players_data = request.model_dump(mode="python")["new_players_data"]
     logger.info(
@@ -66,11 +62,7 @@ async def add_to_allowlist(
 async def get_allowlist(
     request: GetAllowlistRequest, *, app_context: AppContext
 ) -> GetAllowlistResponse:
-    """Retrieves the current allowlist for a given server.
-
-    Accepts GetAllowlistRequest and returns GetAllowlistResponse.
-    Invalid requests fail validation before side effects; operation failures raise application exceptions.
-    """
+    """Return the current allowlist for a given server."""
     server_name = request.server_name
     try:
         server = app_context.get_server(server_name)
@@ -103,11 +95,7 @@ async def get_allowlist(
 async def remove_from_allowlist(
     request: RemoveFromAllowlistRequest, *, app_context: AppContext
 ) -> RemoveFromAllowlistResponse:
-    """Removes a list of players from the server's allowlist.
-
-    Accepts RemoveFromAllowlistRequest and returns RemoveFromAllowlistResponse.
-    Invalid requests fail validation before side effects; operation failures raise application exceptions.
-    """
+    """Remove a list of players from the server's allowlist."""
     server_name = request.server_name
     player_names = request.player_names
     try:

@@ -26,7 +26,7 @@ mimetypes.add_type("application/javascript", ".js")
 def create_web_app(
     app_context: AppContext, runtime: WebRuntime | None = None
 ) -> FastAPI:  # noqa: C901
-    """Creates and configures the web application."""
+    """Create and configures the web application."""
     logger = logging.getLogger(__name__)
 
     settings = app_context.settings

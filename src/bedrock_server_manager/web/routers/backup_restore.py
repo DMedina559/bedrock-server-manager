@@ -1,20 +1,5 @@
 # bedrock_server_manager/web/routers/backup_restore.py
-"""
-FastAPI router for server backup, restore, and pruning operations.
-
-This module defines API endpoints for managing backups of Bedrock server instances.
-Functionalities include:
-
-- Triggering backup operations (full, world-only, specific config file).
-- Triggering restore operations (from latest, specific world backup, specific config backup).
-- Listing available backups for different components.
-- Initiating pruning of old backups based on retention policies.
-
-Most backup and restore actions are performed as background tasks to provide
-immediate API responses. Operations are typically authenticated and target a
-specific server validated by a dependency. It relies on the underlying
-functionality provided by :mod:`~bedrock_server_manager.api.backup_restore`.
-"""
+"""FastAPI router for server backup, restore, and pruning operations."""
 
 import logging
 import os
@@ -157,10 +142,9 @@ async def post_backup_action(
     current_user: UserResponse = Depends(get_moderator_user),
     app_context: AppContext = Depends(get_app_context),
 ) -> TaskAcceptedResponse:
-    """
-    Initiates a background task to perform a backup action for a specific server.
+    """Initiates a background task to perform a backup action for a specific server.
 
-    Valid backup types are "world", "config" (requires `file_to_backup` in payload),
+    Valid backup types are "world", "config" (requires ``file_to_backup`` in payload),
     and "all".
     """
     identity = current_user.username
@@ -226,12 +210,11 @@ async def post_restore_action(  # noqa: C901
     current_user: UserResponse = Depends(get_moderator_user),
     app_context: AppContext = Depends(get_app_context),
 ) -> TaskAcceptedResponse:
-    """
-    Initiates a background task to perform a restore action for a specific server.
+    """Initiates a background task to perform a restore action for a specific server.
 
-    Valid restore types include "all", "world", "properties", "allowlist",
-    and "permissions". If not restoring "all", a `backup_file` (basename)
-    must be provided in the payload.
+    Valid restore types include "all", "world", "properties", "allowlist", and
+    "permissions". If not restoring "all", a ``backup_file`` (basename) must be
+    provided in the payload.
     """
     identity = current_user.username
     logger.info(

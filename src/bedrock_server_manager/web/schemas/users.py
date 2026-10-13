@@ -6,17 +6,7 @@ from ...state.types import UserRole
 
 
 class UserResponse(APIResponse):
-    """
-    Pydantic model representing a user.
-
-    Attributes:
-        id (int): The user's ID.
-        username (str): The user's username.
-        identity_type (str): The type of identity (e.g., "local").
-        role (str): The user's role.
-        is_active (bool): Whether the user is active.
-        theme (str): The user's preferred theme. Defaults to "default".
-    """
+    """Pydantic model representing a user."""
 
     id: int
     username: str

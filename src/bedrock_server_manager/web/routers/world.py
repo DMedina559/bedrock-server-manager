@@ -45,9 +45,7 @@ async def get_worlds_list(
     current_user: UserResponse = Depends(get_moderator_user),
     app_context: AppContext = Depends(get_app_context),
 ) -> ContentListResponse:
-    """
-    Retrieves a list of available .mcworld template files.
-    """
+    """Return a list of available .mcworld template files."""
     identity = current_user.username
     logger.debug("List available worlds request by user '%s'.", identity)
     api_result = await app_api.list_available_worlds(
@@ -222,7 +220,7 @@ async def get_world_icon(
     server_name: str = Depends(validate_server_exists),
     app_context: AppContext = Depends(get_app_context),
 ):
-    """Serves the `world_icon.jpeg` for a server, or a default icon if not found."""
+    """Serves the ``world_icon.jpeg`` for a server, or a default icon if not found."""
     logger.debug("Request to serve world icon for server '%s'.", server_name)
     try:
         server = app_context.get_server(server_name)

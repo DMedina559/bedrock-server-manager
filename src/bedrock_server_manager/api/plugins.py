@@ -1,23 +1,5 @@
 # bedrock_server_manager/api/plugins.py
-"""
-Provides API functions for interacting with the application's plugin system.
-
-This module serves as an interface to the global plugin manager instance,
-which is an object of
-:class:`~bedrock_server_manager.plugins.plugin_manager.PluginManager`.
-It allows for retrieving plugin statuses, enabling or disabling plugins,
-reloading the plugin system, and triggering custom plugin events from
-external sources.
-
-Key functionalities include:
-- Getting statuses and metadata of all discovered plugins (:func:`~.get_plugin_statuses`).
-- Setting the enabled/disabled state of a specific plugin (:func:`~.set_plugin_status`).
-- Reloading all plugins (:func:`~.reload_plugins`).
-- Triggering custom plugin events externally (:func:`~.trigger_external_app_event`).
-
-These functions facilitate management and interaction with plugins, primarily
-for use by administrative interfaces like a web UI or CLI.
-"""
+"""Provide API functions for interacting with the application's plugin system."""
 
 import logging
 
@@ -57,11 +39,7 @@ logger = logging.getLogger(__name__)
 async def get_plugin_statuses(
     request: GetPluginStatusesRequest, *, app_context: AppContext
 ) -> GetPluginStatusesResponse:
-    """Retrieves the statuses and metadata of all discovered plugins.
-
-    Accepts GetPluginStatusesRequest and returns GetPluginStatusesResponse.
-    Invalid requests fail validation before side effects; operation failures raise application exceptions.
-    """
+    """Return the statuses and metadata of all discovered plugins."""
     logger.debug("Attempting to get plugin statuses.")
     try:
         pm = app_context.plugin_manager
@@ -100,11 +78,7 @@ async def get_plugin_statuses(
 async def set_plugin_status(
     request: SetPluginStatusRequest, *, app_context: AppContext
 ) -> SetPluginStatusResponse:
-    """Sets the enabled/disabled status for a specific plugin.
-
-    Accepts SetPluginStatusRequest and returns SetPluginStatusResponse.
-    Invalid requests fail validation before side effects; operation failures raise application exceptions.
-    """
+    """Set the enabled/disabled status for a specific plugin."""
     plugin_name = request.target_plugin_name
     enabled = request.enabled
     logger.debug("Setting status for plugin '%s' to %s.", plugin_name, enabled)
@@ -145,11 +119,7 @@ async def set_plugin_status(
 async def reload_single_plugin(
     request: ReloadSinglePluginRequest, *, app_context: AppContext
 ) -> ReloadSinglePluginResponse:
-    """Reloads a single plugin by name.
-
-    Accepts ReloadSinglePluginRequest and returns ReloadSinglePluginResponse.
-    Invalid requests fail validation before side effects; operation failures raise application exceptions.
-    """
+    """Reloads a single plugin by name."""
     plugin_name = request.target_plugin_name
     logger.debug("Attempting to reload plugin '%s'.", plugin_name)
     try:
@@ -174,11 +144,7 @@ async def reload_single_plugin(
 async def reload_plugins(
     request: ReloadPluginsRequest, *, app_context: AppContext
 ) -> ReloadPluginsResponse:
-    """Triggers the plugin manager to unload all active plugins and
-
-    Accepts ReloadPluginsRequest and returns ReloadPluginsResponse.
-    Invalid requests fail validation before side effects; operation failures raise application exceptions.
-    """
+    """Triggers the plugin manager to unload all active plugins and"""
     logger.debug("Attempting to reload all plugins.")
     try:
         pm = app_context.plugin_manager
@@ -196,10 +162,8 @@ async def reload_plugins(
 async def trigger_external_app_event(
     request: TriggerExternalAppEventRequest, *, app_context: AppContext
 ) -> TriggerExternalAppEventResponse:
-    """Allows an external source (like a web route or CLI) to trigger a custom plugin event.
-
-    Accepts TriggerExternalAppEventRequest and returns TriggerExternalAppEventResponse.
-    Invalid requests fail validation before side effects; operation failures raise application exceptions.
+    """Allows an external source (like a web route or CLI) to trigger a custom plugin
+    event.
     """
     event_name = request.event_name
     payload = request.payload

@@ -1,16 +1,5 @@
 # bedrock_server_manager/api/settings.py
-"""Provides an API for interacting with global application settings.
-
-This module offers functions to read, write, and reload application-wide
-configuration values. These settings are managed by the
-:class:`~bedrock_server_manager.config.settings.Settings` class and are
-typically stored in the main ``bedrock_server_manager.json`` configuration file.
-
-The functions provided here allow other parts of the application, including
-plugins (via methods exposed by
-:func:`~bedrock_server_manager.plugins.api_bridge.api_method`), to
-programmatically access and modify these global settings.
-"""
+"""Provide an API for interacting with global application settings."""
 
 import logging
 
@@ -42,11 +31,7 @@ logger = logging.getLogger(__name__)
 async def get_global_setting(
     request: GetGlobalSettingRequest, *, app_context: AppContext
 ) -> GetGlobalSettingResponse:
-    """Reads a single value from the global application settings.
-
-    Accepts GetGlobalSettingRequest and returns GetGlobalSettingResponse.
-    Invalid requests fail validation before side effects; operation failures raise application exceptions.
-    """
+    """Reads a single value from the global application settings."""
     key = request.key
     logger.debug("Reading global setting '%s'.", key)
     try:
@@ -67,11 +52,7 @@ async def get_global_setting(
 async def get_all_global_settings(
     request: GetAllGlobalSettingsRequest, *, app_context: AppContext
 ) -> GetAllGlobalSettingsResponse:
-    """Reads the entire global application settings configuration.
-
-    Accepts GetAllGlobalSettingsRequest and returns GetAllGlobalSettingsResponse.
-    Invalid requests fail validation before side effects; operation failures raise application exceptions.
-    """
+    """Reads the entire global application settings configuration."""
     logger.debug("Reading all global settings.")
     try:
         settings = app_context.settings
@@ -94,11 +75,7 @@ async def get_all_global_settings(
 async def set_global_setting(
     request: SetGlobalSettingRequest, *, app_context: AppContext
 ) -> SetGlobalSettingResponse:
-    """Writes a value to the global application settings.
-
-    Accepts SetGlobalSettingRequest and returns SetGlobalSettingResponse.
-    Invalid requests fail validation before side effects; operation failures raise application exceptions.
-    """
+    """Writes a value to the global application settings."""
     key = request.key
     value = request.value
     logger.debug("Updating global setting '%s'.", key)
@@ -127,11 +104,7 @@ async def set_global_setting(
 async def set_custom_global_setting(
     request: SetCustomGlobalSettingRequest, *, app_context: AppContext
 ) -> SetCustomGlobalSettingResponse:
-    """Writes a custom value to the global application settings.
-
-    Accepts SetCustomGlobalSettingRequest and returns SetCustomGlobalSettingResponse.
-    Invalid requests fail validation before side effects; operation failures raise application exceptions.
-    """
+    """Writes a custom value to the global application settings."""
     key = request.key
     value = request.value
     key = "custom." + key.strip()
@@ -161,11 +134,7 @@ async def set_custom_global_setting(
 async def reload_global_settings(
     request: ReloadGlobalSettingsRequest, *, app_context: AppContext
 ) -> ReloadGlobalSettingsResponse:
-    """Forces a reload of settings and logging config from the file.
-
-    Accepts ReloadGlobalSettingsRequest and returns ReloadGlobalSettingsResponse.
-    Invalid requests fail validation before side effects; operation failures raise application exceptions.
-    """
+    """Forces a reload of settings and logging config from the file."""
     logger.debug("Received request to reload global settings and logging.")
     try:
         await app_context.reload()

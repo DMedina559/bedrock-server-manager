@@ -1,16 +1,6 @@
 # bedrock_server_manager/web/routers/api_info.py
-"""
-FastAPI router for retrieving various informational data about servers and the application.
-
-This module defines API endpoints that provide read-only access to:
-- Specific server details: running status, configured status, installed version,
-  process information, and validation of existence.
-- Global application data: list of all servers, general application info (version, OS, paths).
-- Player database information.
-- Global actions like scanning for players or pruning download caches.
-
-Endpoints typically require authentication and often use path parameters to specify
-a server. Responses are generally structured using the :class:`.BaseApiResponse` model.
+"""FastAPI router for retrieving various informational data about servers and the
+application.
 """
 
 import asyncio
@@ -84,9 +74,7 @@ async def get_server_running_status(
     current_user: UserResponse = Depends(get_current_user),
     app_context: AppContext = Depends(get_app_context),
 ) -> ServerRunningStatusResponse:
-    """
-    Checks if a specific server's process is currently running.
-    """
+    """Check if a specific server's process is currently running."""
     identity = current_user.username
     logger.debug(
         "Request for running status for server '%s' by user '%s'.",
@@ -148,9 +136,7 @@ async def get_server_process_info(
     current_user: UserResponse = Depends(get_current_user),
     app_context: AppContext = Depends(get_app_context),
 ) -> ServerProcessInfoResponse:
-    """
-    Retrieves resource usage information for a running server process.
-    """
+    """Return resource usage information for a running server process."""
     identity = current_user.username
     logger.debug("Process info request for '%s' by user '%s'.", server_name, identity)
     result = await system_api.get_bedrock_process_info(
@@ -202,9 +188,7 @@ async def get_all_players(
     current_user: UserResponse = Depends(get_moderator_user),
     app_context: AppContext = Depends(get_app_context),
 ) -> PlayerListResponse:
-    """
-    Retrieves the list of all known players from the central player database.
-    """
+    """Return the list of all known players from the central player database."""
     identity = current_user.username
     logger.debug("Request to retrieve all players by user '%s'.", identity)
     result_dict = await player_api.get_all_known_players(
@@ -296,9 +280,7 @@ async def get_servers_list(
     current_user: UserResponse = Depends(get_current_user),
     app_context: AppContext = Depends(get_app_context),
 ) -> ServersListResponse:
-    """
-    Retrieves a list of all detected server instances with their status and version.
-    """
+    """Return a list of all detected server instances with their status and version."""
     identity = current_user.username
     logger.debug("Request for all servers list by user '%s'.", identity)
     result = await app_api.get_all_servers_data(
@@ -323,9 +305,7 @@ async def get_servers_list(
 async def get_system_info(
     app_context: AppContext = Depends(get_app_context),
 ) -> AppInfoResponse:
-    """
-    Retrieves general system and application information.
-    """
+    """Return general system and application information."""
     logger.debug("Request for system and app info.")
     from ...api.application import get_system_and_app_info
 
@@ -355,9 +335,7 @@ async def get_system_info(
 async def get_themes(
     app_context: AppContext = Depends(get_app_context),
 ) -> ThemeListResponse:
-    """
-    Retrieves a list of available themes (standard and custom).
-    """
+    """Return a list of available themes (standard and custom)."""
     logger.debug("Request for available themes.")
     STANDARD_THEMES = [
         "default",

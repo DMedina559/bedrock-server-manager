@@ -24,9 +24,7 @@ async def create_audit_log(
     action: str,
     details: dict[str, JsonValue] | None = None,
 ):
-    """
-    Creates an audit log entry.
-    """
+    """Create an audit log entry."""
     async with app_context.storage.transaction() as session:
         await app_context.storage.audit_log_repo.create_audit_log(
             session, user_id=user_id, action=action, details=details
@@ -40,9 +38,7 @@ async def list_audit_logs_api(
     current_user: UserResponse = Depends(get_admin_user),
     app_context: AppContext = Depends(get_app_context),
 ) -> List[AuditLogResponse]:
-    """
-    Retrieves audit logs as JSON.
-    """
+    """Return audit logs as JSON."""
     async with app_context.storage.transaction() as session:
         logs = await app_context.storage.audit_log_repo.get_all_logs(session)
         return [

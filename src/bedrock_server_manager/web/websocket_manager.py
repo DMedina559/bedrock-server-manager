@@ -19,7 +19,7 @@ logger = logging.getLogger(__name__)
 
 @dataclass
 class Client:
-    """Represents a connected WebSocket client."""
+    """Represent a connected WebSocket client."""
 
     id: str
     user: UserResponse
@@ -28,14 +28,14 @@ class Client:
 
 @dataclass
 class DataProvider:
-    """Represents a registered topic data provider."""
+    """Represent a registered topic data provider."""
 
     handler: Callable[..., Any]
     plugin_name: Optional[str] = None
 
 
 class ConnectionManager:
-    """Manages WebSocket connections, topic-based subscriptions, and data providers."""
+    """Manage WebSocket connections, topic-based subscriptions, and data providers."""
 
     def __init__(
         self, user_provider: Callable[[str], UserInfoState | None] | None = None
@@ -59,7 +59,7 @@ class ConnectionManager:
         return client_id
 
     async def disconnect(self, client_id: str):
-        """Removes a client's connection and all their subscriptions."""
+        """Remove a client's connection and all their subscriptions."""
         if client_id in self.active_connections:
             del self.active_connections[client_id]
 
@@ -157,7 +157,7 @@ class ConnectionManager:
     def register_data_provider(
         self, topic: str, handler: Callable[..., Any], plugin_name: Optional[str] = None
     ):
-        """Registers a data provider handler for a given topic."""
+        """Register a data provider handler for a given topic."""
         self.data_providers[topic] = DataProvider(
             handler=handler, plugin_name=plugin_name
         )
@@ -192,7 +192,7 @@ class ConnectionManager:
             )
 
     def get_data_provider(self, topic: str) -> Optional[Callable[..., Any]]:
-        """Returns the handler function for a topic data provider, if registered."""
+        """Return the handler function for a topic data provider, if registered."""
         provider = self.data_providers.get(topic)
         return provider.handler if provider else None
 

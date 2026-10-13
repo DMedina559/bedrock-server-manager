@@ -13,27 +13,7 @@ async def validate_server_exists(
     server_name: str = Path(..., title="The name of the server", min_length=1),
     app_context: AppContext = Depends(get_app_context),
 ) -> str:
-    """
-    FastAPI dependency to validate if a server identified by `server_name` exists.
-
-    This dependency calls :func:`~bedrock_server_manager.utils.server.validate_server`.
-    If the server does not exist or its name format is invalid, it raises an
-    :class:`~fastapi.HTTPException` (status 404 or 400 respectively).
-    Otherwise, it allows the request to proceed.
-
-    Args:
-        server_name (str): The name of the server, typically extracted from the
-            URL path by FastAPI using :func:`~fastapi.Path`.
-
-    Returns:
-        str: The validated server name if found and valid.
-
-    Raises:
-        fastapi.HTTPException: With status code 404 if the server is not found
-            or the installation is invalid.
-        fastapi.HTTPException: With status code 400 if the `server_name`
-            has an invalid format.
-    """
+    """Resolve a registered server or respond with HTTP 404."""
     logger.debug("Dependency: Validating existence of server '%s'.", server_name)
     from ...utils import server as server_utils
 

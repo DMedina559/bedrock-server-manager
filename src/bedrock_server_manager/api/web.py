@@ -32,11 +32,7 @@ logger = logging.getLogger(__name__)
 def create_web_ui_service(
     request: CreateWebUiServiceRequest, *, app_context: AppContext
 ) -> CreateWebUiServiceResponse:
-    """Creates (or updates) a system service for the Web UI.
-
-    Accepts CreateWebUiServiceRequest and returns CreateWebUiServiceResponse.
-    Invalid requests fail validation before side effects; operation failures raise application exceptions.
-    """
+    """Create (or updates) a system service for the Web UI."""
     autostart = request.autostart
     system = request.system
     username = request.username
@@ -81,11 +77,7 @@ def create_web_ui_service(
 def enable_web_ui_service(
     request: EnableWebUiServiceRequest, *, app_context: AppContext
 ) -> EnableWebUiServiceResponse:
-    """Enables the Web UI system service for autostart.
-
-    Accepts EnableWebUiServiceRequest and returns EnableWebUiServiceResponse.
-    Invalid requests fail validation before side effects; operation failures raise application exceptions.
-    """
+    """Enables the Web UI system service for autostart."""
     system = request.system
     try:
         if not can_manage_services():
@@ -112,11 +104,7 @@ def enable_web_ui_service(
 def disable_web_ui_service(
     request: DisableWebUiServiceRequest, *, app_context: AppContext
 ) -> DisableWebUiServiceResponse:
-    """Disables the Web UI system service from autostarting.
-
-    Accepts DisableWebUiServiceRequest and returns DisableWebUiServiceResponse.
-    Invalid requests fail validation before side effects; operation failures raise application exceptions.
-    """
+    """Disables the Web UI system service from autostarting."""
     system = request.system
     try:
         if not can_manage_services():
@@ -143,11 +131,7 @@ def disable_web_ui_service(
 def remove_web_ui_service(
     request: RemoveWebUiServiceRequest, *, app_context: AppContext
 ) -> RemoveWebUiServiceResponse:
-    """Removes the Web UI system service.
-
-    Accepts RemoveWebUiServiceRequest and returns RemoveWebUiServiceResponse.
-    Invalid requests fail validation before side effects; operation failures raise application exceptions.
-    """
+    """Remove the Web UI system service."""
     system = request.system
     try:
         if not can_manage_services():
@@ -177,11 +161,7 @@ def remove_web_ui_service(
 def get_web_ui_service_status(
     request: GetWebUiServiceStatusRequest, *, app_context: AppContext
 ) -> GetWebUiServiceStatusResponse:
-    """Gets the current status of the Web UI system service.
-
-    Accepts GetWebUiServiceStatusRequest and returns GetWebUiServiceStatusResponse.
-    Invalid requests fail validation before side effects; operation failures raise application exceptions.
-    """
+    """Return the current status of the Web UI system service."""
     system = request.system
     response_data: Dict[str, Any] = {
         "service_exists": False,

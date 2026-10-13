@@ -1,28 +1,5 @@
 # bedrock_server_manager/api/backup_restore.py
-"""Provides API functions for server backup, restore, and pruning operations.
-
-This module offers a high-level interface for managing the backup and restoration
-of Bedrock server data. It orchestrates calls to methods of the
-:class:`~bedrock_server_manager.core.bedrock_server.BedrockServer` class,
-primarily those provided by the
-:class:`~bedrock_server_manager.core.server.backup_restore.ServerBackups`.
-
-Key functionalities include:
-    - Listing available backup files (:func:`~.list_backup_files`).
-    - Backing up individual components like the server world (:func:`~.backup_world`)
-      or specific configuration files (:func:`~.backup_config_file`).
-    - Performing a comprehensive backup of all standard server data (:func:`~.backup_all`).
-    - Restoring all server data from the latest available backups (:func:`~.restore_all`).
-    - Restoring the server world from a specific ``.mcworld`` file (:func:`~.restore_world`).
-    - Restoring a specific configuration file from its backup (:func:`~.restore_config_file`).
-    - Pruning old backups based on retention policies (:func:`~.prune_old_backups`).
-
-Operations involving file modifications are thread-safe using a per-server operation lock
-(``server.operation_lock``). For actions requiring the server to be offline,
-this module utilizes the
-:func:`~bedrock_server_manager.api.server.server_lifecycle_manager`
-to safely stop and restart the server. All functions are exposed to the plugin system.
-"""
+"""Provide API functions for server backup, restore, and pruning operations."""
 
 import asyncio
 import logging
@@ -68,11 +45,7 @@ logger = logging.getLogger(__name__)
 async def list_backup_files(
     request: ListBackupFilesRequest, *, app_context: AppContext
 ) -> ListBackupFilesResponse:
-    """Lists available backup files for a given server and type.
-
-    Accepts ListBackupFilesRequest and returns ListBackupFilesResponse.
-    Invalid requests fail validation before side effects; operation failures raise application exceptions.
-    """
+    """Lists available backup files for a given server and type."""
     server_name = request.server_name
     backup_type = request.backup_type
     try:
@@ -106,11 +79,7 @@ async def list_backup_files(
 async def backup_world(
     request: BackupWorldRequest, *, app_context: AppContext
 ) -> BackupWorldResponse:
-    """Creates a backup of the server's world directory.
-
-    Accepts BackupWorldRequest and returns BackupWorldResponse.
-    Invalid requests fail validation before side effects; operation failures raise application exceptions.
-    """
+    """Create a backup of the server's world directory."""
     server_name = request.server_name
     server = app_context.get_server(server_name)
     try:
@@ -161,11 +130,7 @@ async def backup_world(
 async def backup_config_file(
     request: BackupConfigFileRequest, *, app_context: AppContext
 ) -> BackupConfigFileResponse:
-    """Creates a backup of a specific server configuration file.
-
-    Accepts BackupConfigFileRequest and returns BackupConfigFileResponse.
-    Invalid requests fail validation before side effects; operation failures raise application exceptions.
-    """
+    """Create a backup of a specific server configuration file."""
     server_name = request.server_name
     file_to_backup = request.file_to_backup
     server = app_context.get_server(server_name)
@@ -229,11 +194,7 @@ async def backup_config_file(
 async def backup_all(
     request: BackupAllRequest, *, app_context: AppContext
 ) -> BackupAllResponse:
-    """Performs a full backup of the server's world and configuration files.
-
-    Accepts BackupAllRequest and returns BackupAllResponse.
-    Invalid requests fail validation before side effects; operation failures raise application exceptions.
-    """
+    """Performs a full backup of the server's world and configuration files."""
     server_name = request.server_name
     server = app_context.get_server(server_name)
     try:
@@ -285,11 +246,7 @@ async def backup_all(
 async def restore_all(
     request: RestoreAllRequest, *, app_context: AppContext
 ) -> RestoreAllResponse:
-    """Restores the server from the latest available backups.
-
-    Accepts RestoreAllRequest and returns RestoreAllResponse.
-    Invalid requests fail validation before side effects; operation failures raise application exceptions.
-    """
+    """Restores the server from the latest available backups."""
     server_name = request.server_name
     stop_start_server = request.stop_start_server
     server = app_context.get_server(server_name, require_installation=False)
@@ -352,11 +309,7 @@ async def restore_all(
 async def restore_world(
     request: RestoreWorldRequest, *, app_context: AppContext
 ) -> RestoreWorldResponse:
-    """Restores a server's world from a specific backup file.
-
-    Accepts RestoreWorldRequest and returns RestoreWorldResponse.
-    Invalid requests fail validation before side effects; operation failures raise application exceptions.
-    """
+    """Restores a server's world from a specific backup file."""
     server_name = request.server_name
     backup_file_path = request.backup_file_path
     stop_start_server = request.stop_start_server
@@ -423,11 +376,7 @@ async def restore_world(
 async def restore_config_file(
     request: RestoreConfigFileRequest, *, app_context: AppContext
 ) -> RestoreConfigFileResponse:
-    """Restores a specific config file from a backup.
-
-    Accepts RestoreConfigFileRequest and returns RestoreConfigFileResponse.
-    Invalid requests fail validation before side effects; operation failures raise application exceptions.
-    """
+    """Restores a specific config file from a backup."""
     server_name = request.server_name
     backup_file_path = request.backup_file_path
     stop_start_server = request.stop_start_server
@@ -498,11 +447,7 @@ async def restore_config_file(
 async def prune_old_backups(
     request: PruneOldBackupsRequest, *, app_context: AppContext
 ) -> PruneOldBackupsResponse:
-    """Prunes old backups for a server based on retention settings.
-
-    Accepts PruneOldBackupsRequest and returns PruneOldBackupsResponse.
-    Invalid requests fail validation before side effects; operation failures raise application exceptions.
-    """
+    """Prunes old backups for a server based on retention settings."""
     server_name = request.server_name
     server = app_context.get_server(server_name, require_installation=False)
     try:

@@ -24,17 +24,9 @@ async def run_task(
     plugin_name: str | None = None,
     **kwargs: Any,
 ) -> str:
-    """Submits a function to be run in the background by the TaskManager.
+    """Submit owned background work and return its task ID.
 
-    Args:
-        target_function (Callable): The function to execute.
-        app_context (AppContext): The application context.
-        username (Optional[str], optional): The user associated with the task for WebSocket notifications.
-        *args (Any): Positional arguments for the target function.
-        **kwargs (Any): Keyword arguments for the target function.
-
-    Returns:
-        str: The ID of the created task.
+    Pass positional and keyword arguments through to the target function.
     """
     if "_plugin_owner" in kwargs:
         raise TypeError("Plugin ownership is injected by the runtime.")
@@ -148,18 +140,7 @@ async def register_data_provider(
     app_context: AppContext,
     plugin_name: Optional[str] = None,
 ) -> None:
-    """
-    Registers a data provider handler for a WebSocket topic.
-
-    Args:
-        topic (str): The topic name (e.g. 'server-status').
-        handler (Callable): Async or sync function to handle requests for this topic.
-        app_context (AppContext): Application context.
-        plugin_name (Optional[str]): Name of registering plugin.
-
-    Returns:
-        Dict[str, Any]: Standard operation result.
-    """
+    """Register an owner-scoped WebSocket topic provider."""
     if not topic:
         raise UserInputError("Topic name cannot be empty.")
     if not callable(handler):

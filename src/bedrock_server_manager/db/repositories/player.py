@@ -13,13 +13,13 @@ from ..models import Player
 
 
 class PlayerRepository:
-    """Handles database persistence for Minecraft players."""
+    """Handle database persistence for Minecraft players."""
 
     def __init__(self, db: Database | None = None):
         self.db = db
 
     async def get_all_players(self, session: AsyncSession) -> List[Dict[str, str]]:
-        """Retrieves all known players as a list of dicts with 'name' and 'xuid' keys."""
+        """Return all known players as a list of dicts with 'name' and 'xuid' keys."""
         result = await session.execute(select(Player))
         players = result.scalars().all()
         return [{"name": str(p.player_name), "xuid": str(p.xuid)} for p in players]
@@ -27,7 +27,7 @@ class PlayerRepository:
     async def save_players(
         self, session: AsyncSession, players_data: List[Dict[str, str]]
     ) -> int:
-        """Saves or updates player records in the database."""
+        """Save or updates player records in the database."""
         if not isinstance(players_data, list):
             raise UserInputError("players_data must be a list.")
 

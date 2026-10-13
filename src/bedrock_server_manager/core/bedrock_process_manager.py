@@ -1,11 +1,10 @@
 # src/bedrock_server_manager/core/bedrock_process_manager.py
-"""
-Manages the lifecycle and monitoring of Bedrock server processes.
+"""Manage the lifecycle and monitoring of Bedrock server processes.
 
 This module provides the :class:`~.BedrockProcessManager` class, which is responsible
 for monitoring running Bedrock server instances. It detects crashes or unexpected
-shutdowns and attempts to restart servers based on configuration policies.
-It also handles periodic tasks like player scanning from logs.
+shutdowns and attempts to restart servers based on configuration policies. It also
+handles periodic tasks like player scanning from logs.
 """
 
 import asyncio
@@ -25,21 +24,9 @@ if TYPE_CHECKING:
 
 
 class BedrockProcessManager:
-    """
-    Manages Bedrock server processes, including monitoring and restarting.
+    """Monitor owned server processes and restart unintended stops asynchronously.
 
-    The ``BedrockProcessManager`` runs a background monitoring thread that checks
-    the status of registered servers at regular intervals. If a server is found
-    to be stopped without being intentionally stopped (crashed), it attempts
-    to restart it. It also periodically queries server status to update
-    player counts and scan logs for player activity.
-
-    Attributes:
-        servers (Dict[str, BedrockServer]): A dictionary mapping server names
-            to :class:`~.core.bedrock_server.BedrockServer` instances currently being managed.
-        logger (logging.Logger): Logger for the process manager.
-        events (EventPublisher): Publication capability for player observations.
-        settings (Settings): The application settings.
+    Publish player observations through the injected event publisher.
     """
 
     def __init__(
@@ -52,7 +39,7 @@ class BedrockProcessManager:
         stop_server: Callable[[str], Awaitable[None]] | None = None,
         get_bans: Callable[[str], Awaitable[list["BanItem"]]] | None = None,
     ):
-        """Initializes the BedrockProcessManager with explicit dependencies."""
+        """Initialize the BedrockProcessManager with explicit dependencies."""
         self.settings = settings
         self.storage = storage
         self.server_provider = server_provider
@@ -106,10 +93,10 @@ class BedrockProcessManager:
         self.servers[server.server_name] = server
 
     async def remove_server(self, server_name: str):
-        """Removes a server from the process manager.
+        """Remove a server from the process manager.
 
-        This stops the manager from monitoring the server, but does not stop
-        the server process itself.
+        This stops the manager from monitoring the server, but does not stop the
+        server process itself.
 
         Args:
             server_name (str): The name of the server to remove.

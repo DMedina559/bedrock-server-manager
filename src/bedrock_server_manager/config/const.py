@@ -1,9 +1,8 @@
 # bedrock_server_manager/config/const.py
-"""
-Defines application-wide constants and utility functions for accessing them.
+"""Define application-wide constants and utility functions for accessing them.
 
-This module centralizes common identifiers, names, paths, and version information
-used throughout the Bedrock Server Manager application.
+This module centralizes common identifiers, names, paths, and version information used
+throughout the Bedrock Server Manager application.
 """
 
 import os
@@ -58,12 +57,11 @@ _MISSING_PARAM_PLACEHOLDER = "<PARAM_UNSPECIFIED>"
 
 # --- Version Information ---
 def get_installed_version() -> str:
-    """
-    Retrieves the installed version of the application package.
+    """Return the installed version of the application package.
 
-    Uses `importlib.metadata.version` to get the version. If the package
-    is not found (e.g., in a development environment without installation),
-    it defaults to "0.0.0".
+    Uses ``importlib.metadata.version`` to get the version. If the package is not
+    found (e.g., in a development environment without installation), it defaults to
+    "0.0.0".
 
     Returns:
         The installed package version string, or "0.0.0" if not found.

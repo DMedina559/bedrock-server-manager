@@ -1,9 +1,9 @@
 # bedrock_server_manager/api/misc.py
-"""Provides API functions for miscellaneous or global operations.
+"""Provide API functions for miscellaneous or global operations.
 
-This module contains functions that are not tied to a specific server
-instance, such as managing the global download cache for server executables.
-Operations are designed to be thread-safe.
+This module contains functions that are not tied to a specific server instance, such
+as managing the global download cache for server executables. Operations are designed
+to be thread-safe.
 """
 
 import asyncio
@@ -41,11 +41,7 @@ _misc_lock = ReentrantAsyncLock()
 async def prune_download_cache(
     request: PruneDownloadCacheRequest, *, app_context: Optional[AppContext] = None
 ) -> PruneDownloadCacheResponse:
-    """Prunes old downloaded server archives (.zip) in a directory.
-
-    Accepts PruneDownloadCacheRequest and returns PruneDownloadCacheResponse.
-    Invalid requests fail validation before side effects; operation failures raise application exceptions.
-    """
+    """Prunes old downloaded server archives (.zip) in a directory."""
     download_dir = request.download_dir
     keep_count = request.keep_count
     try:

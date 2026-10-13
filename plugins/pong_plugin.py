@@ -38,18 +38,7 @@ class PongPlugin(PluginBase):
 
     @app_event("pingplugin:ping")
     async def handle_ping_event(self, *args, **kwargs):
-        """
-        Callback method for the 'pingplugin:ping' custom event.
-
-        This method is executed whenever the 'pingplugin:ping' event is triggered
-        by any plugin (e.g., PingPlugin).
-
-        It receives any positional (*args) and keyword (**kwargs) arguments
-        that were passed when the event was sent.
-
-        Additionally, the PluginManager automatically injects a `_triggering_plugin`
-        keyword argument, which contains the name of the plugin that sent the event.
-        """
+        """Log an incoming ping and its optional payload."""
         # It's good practice to extract _triggering_plugin first.
         # The .pop() method retrieves it and removes it from kwargs,
         # so it doesn't interfere with your expected payload.
@@ -65,13 +54,12 @@ class PongPlugin(PluginBase):
 
     @app_event("on_unload")
     async def plugin_unloaded(self, **kwargs):
-        """
-        Called by the PluginManager when this plugin is being unloaded
-        (e.g., during a reload or application shutdown).
+        """Called by the PluginManager when this plugin is being unloaded (e.g., during a
+        reload or application shutdown).
 
-        For custom event listeners registered via `self.api.listen_for_event()`,
-        explicit unregistration in `on_unload` is generally not required because
-        the PluginManager clears all custom event listeners when plugins are reloaded.
+        For custom event listeners registered via ``self.api.listen_for_event()``,
+        explicit unregistration in ``on_unload`` is generally not required because the
+        PluginManager clears all custom event listeners when plugins are reloaded.
         However, if a plugin manages resources that need specific cleanup related to
         its event handling, this would be the place to do it.
         """

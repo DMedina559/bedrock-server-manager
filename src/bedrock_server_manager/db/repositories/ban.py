@@ -15,7 +15,7 @@ from ..models import Server, ServerBan
 
 
 class ServerBanRepository:
-    """Handles database operations for server bans."""
+    """Handle database operations for server bans."""
 
     def __init__(self, db: Database | None = None):
         self.db = db
@@ -63,7 +63,7 @@ class ServerBanRepository:
     async def remove_ban(
         self, session: AsyncSession, server_name: str, xuid: str
     ) -> BanMutation:
-        """Removes a server ban record by XUID in the given session."""
+        """Remove a server ban record by XUID in the given session."""
         result = await session.execute(
             select(Server).filter(Server.server_name == server_name)
         )
@@ -87,7 +87,7 @@ class ServerBanRepository:
         return BanMutation(outcome="removed", message="Ban removed successfully.")
 
     async def get_bans(self, session: AsyncSession, server_name: str) -> list[BanItem]:
-        """Retrieves all bans for a specific server in the given session."""
+        """Return all bans for a specific server in the given session."""
         result = await session.execute(
             select(Server).filter(Server.server_name == server_name)
         )

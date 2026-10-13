@@ -37,18 +37,7 @@ class PingPlugin(PluginBase):
 
     @app_event("after_server_start")
     async def send_ping_event(self, **kwargs: Any):
-        """
-        An application event hook, called by the PluginManager after a server
-        start attempt.
-
-        If the server start was successful, this plugin will construct and send
-        a custom 'pingplugin:ping' event.
-
-        Args:
-            server_name (str): The name of the server that was started.
-            result (dict): A dictionary containing the outcome of the start operation.
-                           Expected to have a "status" key (e.g., "success").
-        """
+        """Publish a ping after a successful server start."""
         server_name = str(kwargs.get("server_name"))
         result: Dict[str, Any] = kwargs.get("result", {})
 

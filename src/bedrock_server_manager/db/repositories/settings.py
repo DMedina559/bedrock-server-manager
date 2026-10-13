@@ -15,14 +15,14 @@ from .plugin_settings import PluginSettingsRepository
 
 
 class SettingsRepository:
-    """Handles database persistence for application settings."""
+    """Handle database persistence for application settings."""
 
     def __init__(self, db: Database | None = None):
         self.db = db
         self.plugin_settings = PluginSettingsRepository()
 
     async def get_all_settings(self, session: AsyncSession) -> Dict[str, Any]:
-        """Retrieves all settings as a dictionary of key-value pairs."""
+        """Return all settings as a dictionary of key-value pairs."""
         result = await session.execute(select(Setting))
         settings_records = result.scalars().all()
         values: Dict[str, Any] = {

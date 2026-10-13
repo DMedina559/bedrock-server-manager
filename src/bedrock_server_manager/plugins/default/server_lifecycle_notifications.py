@@ -59,7 +59,7 @@ class ServerLifecycleNotificationsPlugin(PluginBase):
         )
 
     async def _is_server_running(self, server_name: str) -> bool:
-        """Checks if a server is currently running via the API."""
+        """Check if a server is currently running via the API."""
         try:
             response = await self.api.system.get_server_running_status(
                 request={"server_name": server_name}

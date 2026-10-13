@@ -24,20 +24,7 @@ from .database import Base
 
 
 class User(Base):
-    """
-    Represents a user in the system.
-
-    Attributes:
-        id (int): The primary key.
-        username (str): The unique username of the user.
-        hashed_password (str): The hashed password.
-        role (str): The user's role (e.g., 'user', 'admin'). Defaults to 'user'.
-        last_seen (datetime): The timestamp when the user was last active.
-        theme (str): The user's preferred UI theme. Defaults to 'default'.
-        is_active (bool): Whether the user account is active. Defaults to True.
-        full_name (str, optional): The user's full name.
-        email (str, optional): The user's email address.
-    """
+    """Represent a user in the system."""
 
     __tablename__ = "users"
 
@@ -64,8 +51,7 @@ class User(Base):
 
 
 class Setting(Base):
-    """
-    Represents a configuration setting.
+    """Represent a configuration setting.
 
     Settings are global configurations for the application.
 
@@ -94,19 +80,7 @@ class PluginSetting(Base):
 
 
 class Server(Base):
-    """
-    Represents a registered Bedrock server.
-
-    Attributes:
-        id (int): The primary key.
-        server_name (str): The unique name of the server.
-        installed_version (str): The currently installed version of the server.
-        status (str): The current status of the server.
-        autoupdate (bool): Whether the server should automatically update.
-        autostart (bool): Whether the server should automatically start.
-        target_version (str): The target version to install/update to.
-        custom (JSON): Stores custom server-specific configuration.
-    """
+    """Represent a registered Bedrock server."""
 
     __tablename__ = "servers"
 
@@ -137,18 +111,7 @@ class Server(Base):
 
 
 class ServerBan(Base):
-    """
-    Represents a player banned from a specific Bedrock server.
-
-    Attributes:
-        id (int): The primary key.
-        server_id (int): Foreign key to the :class:`Server` table.
-        player_name (str): The name of the banned player.
-        xuid (str): The Xbox User ID of the banned player.
-        reason (str): The reason for the ban.
-        banned_at (datetime): The date and time when the ban was issued.
-        server (Server): Relationship to the associated server.
-    """
+    """Represent a player banned from a specific Bedrock server."""
 
     __tablename__ = "server_bans"
 
@@ -173,17 +136,7 @@ class ServerBan(Base):
 
 
 class Plugin(Base):
-    """
-    Represents a registered plugin.
-
-    Attributes:
-        id (int): The primary key.
-        plugin_name (str): The unique name of the plugin.
-        enabled (bool): Whether the plugin is enabled.
-        version (str): The plugin's version.
-        author (str): The plugin's author.
-        description (str): The plugin's description.
-    """
+    """Represent a registered plugin."""
 
     __tablename__ = "plugins"
 
@@ -200,8 +153,7 @@ class Plugin(Base):
 
 
 class RegistrationToken(Base):
-    """
-    Represents a token used for user registration.
+    """Represent a token used for user registration.
 
     Attributes:
         id (int): The primary key.
@@ -223,8 +175,7 @@ class RegistrationToken(Base):
 
 
 class Player(Base):
-    """
-    Represents a known player.
+    """Represent a known player.
 
     Attributes:
         id (int): The primary key.
@@ -246,19 +197,7 @@ class Player(Base):
 
 
 class AuditLog(Base):
-    """
-    Represents an entry in the audit log.
-
-    Records significant actions taken by users within the system.
-
-    Attributes:
-        id (int): The primary key.
-        timestamp (datetime): When the action occurred.
-        user_id (int): Foreign key to the :class:`User` who performed the action.
-        action (str): A string describing the action type (e.g., "server_start").
-        details (JSON): Additional details about the action (e.g., specific parameters).
-        user (User): Relationship to the user who performed the action.
-    """
+    """Represent an entry in the audit log."""
 
     __tablename__ = "audit_logs"
 

@@ -93,18 +93,7 @@ class ServerResources:
         )
 
     def get_file_lock(self, filepath: str) -> ReentrantAsyncLock:
-        """Retrieves or creates a ReentrantAsyncLock for the specified filepath.
-
-        This ensures that asynchronous operations (like atomic JSON writes)
-        do not concurrently collide when targeting the same configuration file,
-        while allowing re-entrant locks within the same task.
-
-        Args:
-            filepath (str): The absolute path to the file.
-
-        Returns:
-            ReentrantAsyncLock: The re-entrant lock associated with the given file.
-        """
+        """Return the shared reentrant async lock for a filesystem path."""
         filepath = os.path.normcase(os.path.realpath(filepath))
         if filepath not in self._file_locks:
             self._file_locks[filepath] = ReentrantAsyncLock()

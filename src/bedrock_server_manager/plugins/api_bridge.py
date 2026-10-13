@@ -441,7 +441,7 @@ class AppAPI:
     def list_available_apis(
         self, include_internal: Optional[bool] = None
     ) -> List[Dict[str, Any]]:
-        """Returns details of all registered APIs from allowed modules."""
+        """Return details of all registered APIs from allowed modules."""
         if include_internal is None:
             include_internal = self._is_core
         include_internal = include_internal and self._is_core

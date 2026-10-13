@@ -24,7 +24,9 @@ from bedrock_server_manager.state import (
 
 @pytest.fixture
 async def file_db(tmp_path):
-    """Creates a real file-backed SQLite database with tables created to test real file locking and transaction semantics."""
+    """Create a real file-backed SQLite database with tables created to test real file
+    locking and transaction semantics.
+    """
     db_file = tmp_path / "stress_test.db"
     db_url = f"sqlite+aiosqlite:///{db_file}"
     database = Database(db_url)

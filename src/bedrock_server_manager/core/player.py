@@ -38,13 +38,13 @@ def parse_player_string(player_string: str) -> List[Dict[str, str]]:
 
 
 async def save_player_data(storage: Any, players_data: List[Dict[str, str]]) -> int:
-    """Saves or updates player data in the database asynchronously via Storage."""
+    """Save or updates player data in the database asynchronously via Storage."""
     res = await storage.save_players(players_data)
     return int(res)
 
 
 async def get_known_players(storage: Any) -> List[Dict[str, str]]:
-    """Retrieves all known players from the database asynchronously via Storage."""
+    """Return all known players from the database asynchronously via Storage."""
     res = await storage.get_all_players()
     return list(res)
 

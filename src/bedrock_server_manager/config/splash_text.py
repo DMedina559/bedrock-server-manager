@@ -1,10 +1,9 @@
 # bedrock_server_manager/config/splash_text.py
-"""
-Defines collections of splash text messages for the application.
+"""Define collections of splash text messages for the application.
 
-These messages are typically displayed in the UI to add a bit of flavor
-and humor, often related to Minecraft, server management, or the application itself.
-The texts are categorized for potential varied use.
+These messages are typically displayed in the UI to add a bit of flavor and humor,
+often related to Minecraft, server management, or the application itself. The texts
+are categorized for potential varied use.
 """
 
 # --- User Interface (UI) Related ---

@@ -1,24 +1,5 @@
 # bedrock_server_manager/api/system.py
-"""Provides API functions for system-level server interactions and information.
-
-This module serves as an interface for querying system-related information about
-server processes and for managing their integration with the host operating system's
-service management capabilities. It primarily orchestrates calls to the
-:class:`~bedrock_server_manager.core.bedrock_server.BedrockServer` class.
-
-Key functionalities include:
-    - Querying server process resource usage (e.g., PID, CPU, memory) via
-      :func:`~.get_bedrock_process_info`.
-    - Managing OS-level services (systemd on Linux, Windows Services on Windows)
-      for servers, including creation (:func:`~.create_server_service`),
-      enabling (:func:`~.enable_server_service`), and disabling
-      (:func:`~.disable_server_service`) auto-start.
-    - Configuring server-specific settings like autoupdate behavior via
-      :func:`~.set_autoupdate`.
-
-These functions are designed for use by higher-level application components,
-such as the web UI or CLI, to provide system-level control and monitoring.
-"""
+"""Provide API functions for system-level server interactions and information."""
 
 import logging
 import time
@@ -50,11 +31,7 @@ logger = logging.getLogger(__name__)
 async def get_server_running_status(
     request: GetServerRunningStatusRequest, *, app_context: AppContext
 ) -> GetServerRunningStatusResponse:
-    """Checks if the server process is currently running.
-
-    Accepts GetServerRunningStatusRequest and returns GetServerRunningStatusResponse.
-    Invalid requests fail validation before side effects; operation failures raise application exceptions.
-    """
+    """Check if the server process is currently running."""
     server_name = request.server_name
     logger.debug("Checking running status for server '%s'...", server_name)
     try:
@@ -91,11 +68,7 @@ async def get_server_running_status(
 async def get_bedrock_process_info(
     request: GetBedrockProcessInfoRequest, *, app_context: AppContext
 ) -> GetBedrockProcessInfoResponse:
-    """Retrieves resource usage for a running Bedrock server process.
-
-    Accepts GetBedrockProcessInfoRequest and returns GetBedrockProcessInfoResponse.
-    Invalid requests fail validation before side effects; operation failures raise application exceptions.
-    """
+    """Return resource usage for a running Bedrock server process."""
     server_name = request.server_name
     logger.debug("Getting process info for server '%s'...", server_name)
     try:

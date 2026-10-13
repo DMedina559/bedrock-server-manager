@@ -1,6 +1,5 @@
 # src/bedrock_server_manager/core/system/__init__.py
-"""
-Provides access to common system-level utilities, including process management,
+"""Provide access to common system-level utilities, including process management,
 resource monitoring, filesystem operations, and task scheduling abstractions.
 """
 

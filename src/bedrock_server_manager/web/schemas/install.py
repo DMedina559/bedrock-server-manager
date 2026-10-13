@@ -86,7 +86,7 @@ class AllowlistRemovePayload(APIRequest):
 
 
 class PlayerPermissionPayload(APIRequest):
-    """Represents a single player's permission data sent from the client."""
+    """Represent a single player's permission data sent from the client."""
 
     xuid: str
     name: str

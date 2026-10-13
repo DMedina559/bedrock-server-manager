@@ -1,19 +1,5 @@
 # bedrock_server_manager/web/routers/plugin.py
-"""
-FastAPI router for managing the application's plugin system.
-
-This module defines endpoints for interacting with and controlling plugins.
-It provides:
-
-- API endpoints to:
-    - Get the status of all discovered plugins (:func:`~.get_plugins_status_api_route`).
-    - Enable or disable a specific plugin (:func:`~.set_plugin_status_api_route`).
-    - Trigger a full reload of the plugin system (:func:`~.reload_plugins_api_route`).
-    - Allow external triggering of custom plugin events (:func:`~.trigger_event_api_route`).
-
-These routes interface with the underlying plugin management logic in
-:mod:`~bedrock_server_manager.api.plugins` and require user authentication.
-"""
+"""FastAPI router for managing the application's plugin system."""
 
 import logging
 
@@ -56,9 +42,7 @@ async def get_plugin_pages(
     current_user: UserResponse = Depends(get_current_user),
     app_context: AppContext = Depends(get_app_context),
 ) -> PluginPagesResponse:
-    """
-    Retrieves a list of custom native UI pages registered by plugins.
-    """
+    """Return a list of custom native UI pages registered by plugins."""
     pages = app_context.plugin_manager.get_native_ui_routes()
     return PluginPagesResponse.model_validate({"status": "success", "pages": pages})
 
@@ -72,9 +56,7 @@ async def get_plugins_status(
     current_user: UserResponse = Depends(get_admin_user),
     app_context: AppContext = Depends(get_app_context),
 ) -> PluginStatusesResponse:
-    """
-    Retrieves the statuses and metadata of all discovered plugins.
-    """
+    """Return the statuses and metadata of all discovered plugins."""
     identity = current_user.username
     logger.debug("Get plugin statuses request by '%s'.", identity)
     result = await plugins_api.get_plugin_statuses(
@@ -126,9 +108,7 @@ async def post_set_plugin_status(
     current_user: UserResponse = Depends(get_admin_user),
     app_context: AppContext = Depends(get_app_context),
 ) -> ActionResponse:
-    """
-    Sets the enabled or disabled status for a specific plugin.
-    """
+    """Set the enabled or disabled status for a specific plugin."""
     identity = current_user.username
     action = "enable" if payload.enabled else "disable"
     logger.info(

@@ -33,9 +33,7 @@ router = APIRouter(prefix="/api/setup", tags=["Application Setup"])
 async def get_setup_status(
     app_context: AppContext = Depends(get_app_context),
 ) -> SetupStatusResponse:
-    """
-    Returns whether the application needs initial setup.
-    """
+    """Return whether the application needs initial setup."""
     return SetupStatusResponse(needs_setup=await app_context.check_setup())
 
 
@@ -48,9 +46,7 @@ async def create_first_user(
     data: UserLoginPayload,
     app_context: AppContext = Depends(get_app_context),
 ):
-    """
-    Creates the first user (admin) in the database.
-    """
+    """Create the first user (admin) in the database."""
     if not await app_context.check_setup():
         # If an admin user already exists, prevent creating another first user
         raise HTTPException(

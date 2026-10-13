@@ -1,17 +1,5 @@
 # bedrock_server_manager/utils/server.py
-"""
-Provides low-level core utility functions for server management.
-
-This module contains a collection of helper functions that perform specific,
-atomic tasks related to server management. These utilities are designed to be
-used by higher-level components like the :class:`~.core.bedrock_server.BedrockServer`
-or API endpoints.
-
-Key functions include:
-
-    - :func:`core_validate_server_name_format`: Validates server names against a regex.
-
-"""
+"""Server naming, discovery and persistent player-directory helpers."""
 
 import logging
 import os
@@ -37,20 +25,7 @@ logger = logging.getLogger(__name__)
 
 
 def core_validate_server_name_format(server_name: str) -> None:
-    """
-    Validates the format of a server name against a specific pattern.
-
-    The function checks that the server name is not empty and contains only
-    alphanumeric characters (a-z, A-Z, 0-9), hyphens (-), and underscores (_).
-    This helps prevent issues with file paths and system commands.
-
-    Args:
-        server_name (str): The server name string to validate.
-
-    Raises:
-        :class:`~.error.InvalidServerNameError`: If the server name is empty or
-            contains invalid characters.
-    """
+    """Validate the server identifier or raise ``InvalidServerNameError``."""
     if not isinstance(server_name, str) or not server_name:
         raise InvalidServerNameError("Server name must be a non-empty string.")
     if not re.fullmatch(r"^[a-zA-Z0-9_-]+$", server_name):

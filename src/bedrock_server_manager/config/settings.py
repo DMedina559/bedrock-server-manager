@@ -1,20 +1,5 @@
 # bedrock_server_manager/config/settings.py
-"""Manages application-wide configuration settings.
-
-This module provides the `Settings` class, which is responsible for loading
-settings from a database, providing default values for missing keys, saving
-changes back to the database, and determining the appropriate application data and
-configuration directories based on the environment.
-
-The configuration is stored in a key-value format in the database. Settings are accessed
-programmatically using dot-notation (e.g., :meth:`Settings.get('paths.servers')`).
-
-Key components:
-
-    - :class:`Settings`: The main class for managing configuration.
-    - `settings`: A global instance of the :class:`Settings` class.
-
-"""
+"""Application settings backed by typed state and durable storage."""
 
 import collections.abc
 import logging
@@ -31,32 +16,9 @@ logger = logging.getLogger(__name__)
 def deep_merge(
     source: Dict[Any, Any] | collections.abc.Mapping, destination: Dict[Any, Any]
 ) -> Dict[Any, Any]:
-    """Recursively merges the ``source`` dictionary into the ``destination`` dictionary.
+    """Merge source values recursively into destination and return destination.
 
-    This function iterates through the ``source`` dictionary. If a value is itself
-    a dictionary (mapping), it recursively calls ``deep_merge`` for that nested
-    dictionary. Otherwise, the value from ``source`` directly overwrites the
-    corresponding value in ``destination``. The ``destination`` dictionary is
-    modified in place.
-
-    Example:
-
-        >>> s = {'a': 1, 'b': {'c': 2, 'd': 3}}
-        >>> d = {'b': {'c': 5, 'e': 6}, 'f': 7}
-        >>> deep_merge(s, d)
-        {'b': {'c': 2, 'd': 3, 'e': 6}, 'f': 7, 'a': 1}
-        >>> d # d is modified in place
-        {'b': {'c': 2, 'd': 3, 'e': 6}, 'f': 7, 'a': 1}
-
-    Args:
-        source (Dict[Any, Any]): The dictionary providing new or updated values.
-            Its values will take precedence in case of conflicts.
-        destination (Dict[Any, Any]): The dictionary to be updated. This dictionary
-            is modified in place.
-
-    Returns:
-        Dict[Any, Any]: The merged dictionary (which is the modified ``destination``
-        dictionary).
+    Conflicting source values take precedence; destination is modified in place.
     """
     for key, value in source.items():
         if isinstance(value, dict):
@@ -67,27 +29,9 @@ def deep_merge(
 
 
 class Settings:
-    """Manages loading, accessing, and saving application settings.
+    """Read and persist application settings through typed state.
 
-    This class acts as a single source of truth for all configuration data.
-    It handles:
-
-        - Determining appropriate application data and configuration directories
-          based on the environment (respecting ``BSM_DATA_DIR``).
-        - Loading settings from a database.
-        - Providing sensible default values for missing settings.
-
-        - Saving changes back to the database.
-        - Ensuring critical directories (e.g., for servers, backups, logs) exist.
-
-    Settings are stored in a key-value format in the database and can be accessed
-    programmatically using dot-notation via the :meth:`get` and :meth:`set` methods
-    (e.g., ``settings.get('paths.servers')``).
-
-    A global instance of this class, named `settings`, is typically used throughout
-    the application.
-
-    Attributes:
+    Use dotted keys with :meth:`get` and :meth:`set`.
     """
 
     def __init__(
@@ -96,7 +40,7 @@ class Settings:
         data_dir: str,
         app_context: Optional[Any] = None,
     ):
-        """Initializes the Settings object."""
+        """Initialize the Settings object."""
         logger.debug("Initializing Settings")
         self.data_dir = data_dir
         self.config_dir = config_dir
@@ -131,82 +75,25 @@ class Settings:
 
     @property
     def default_config(self) -> dict:
-        """Provides the default configuration values for the application.
-
-        These defaults are used when a configuration file is not found or when a
-        specific setting is missing from an existing configuration file. Paths
-        are constructed dynamically based on the determined application data
-        directory (see :meth:`_determine_app_data_dir`).
-
-        The structure of the default configuration is as follows:
-
-        .. code-block:: text
-
-            {
-                "paths": {
-                    "servers": "<app_data_dir>/servers",
-                    "content": "<app_data_dir>/content",
-                    "downloads": "<app_data_dir>/.downloads",
-                    "backups": "<app_data_dir>/backups",
-                    "plugins": "<app_data_dir>/plugins",
-                },
-                "retention": {
-                    "backups": 3,
-                    "downloads": 3,
-                },
-                "web": {
-                    "forwarded_allow_ips": "127.0.0.1",
-                    "host": "127.0.0.1",
-                    "jwt_secret_key": "randomly_generated_key",
-                    "port": 11325,
-                    "token_expires_weeks": 4,
-                },
-                "monitoring": {
-                    "max_retries": 3,
-                    "process_interval_sec": 10,
-                    "player_interval_sec": 10,
-                    "app_metrics_interval_sec": 3,
-                    "bedrock_metrics_interval_sec": 3,
-                },
-                "events": {
-                    "history_limit": 200,
-                    "max_active": 256,
-                    "max_depth": 32,
-                    "listener_timeout_seconds": 30.0,
-                    "hook_timeout_seconds": 120.0,
-                    "max_workers": None,
-                    "max_workers_per_owner": None,
-                },
-                "lifecycle": {
-                    "startup_timeout_seconds": 30.0,
-                    "shutdown_timeout_seconds": 15.0,
-                    "task_drain_timeout_seconds": 30.0,
-                    "plugin_timeout_seconds": 10.0,
-                    "cancellation_grace_seconds": 2.0,
-                    "request_drain_timeout_seconds": 10.0,
-                },
-                "custom": {}
-            }
-
-        Returns:
-            dict: A dictionary of default settings with a nested structure.
-        """
+        """Return default settings with paths rooted in the application data directory."""
 
         from ..state.settings import SettingsState
 
         return SettingsState.create_defaults(self.data_dir).to_dict()
 
     def get(self, key: str, default: Any = None) -> Any:
-        """Retrieves a setting value using dot-notation for nested access."""
+        """Return a setting value using dot-notation for nested access."""
         val = self.state.settings.get(key, default)
         return val if val is not None else default
 
     async def load(self) -> None:
-        """Loads settings from the database asynchronously."""
+        """Load settings from the database asynchronously."""
         await self.storage.load_state(self.state)
 
     async def set(self, key: str, value: Any) -> None:
-        """Sets a configuration value using dot-notation asynchronously via SettingsService."""
+        """Set a configuration value using dot-notation asynchronously via
+        SettingsService.
+        """
         if self.app_context is None:
             from ..error import BSMError
 

@@ -26,7 +26,7 @@ _jwt_key_lock = asyncio.Lock()
 
 
 async def get_jwt_secret_key(settings: Settings) -> str:
-    """Gets the JWT secret key from the database, or creates one if it doesn't exist."""
+    """Return the JWT secret key from the database, or creates one if it doesn't exist."""
     jwt_secret_key = settings.get("web.jwt_secret_key")
 
     if not jwt_secret_key:
@@ -49,19 +49,9 @@ async def create_access_token(
     data: dict,
     expires_delta: Optional[datetime.timedelta] = None,
 ) -> str:
-    """Creates a JSON Web Token (JWT) for access.
+    """Encode a JWT with a user payload and UTC expiration.
 
-    The token includes the provided `data` (typically user identifier) and
-    an expiration time. Uses :func:`jose.jwt.encode`.
-
-    Args:
-        data (dict): The data to encode in the token (e.g., ``{"sub": username}``).
-        expires_delta (Optional[datetime.timedelta], optional): The lifespan
-            of the token. If ``None``, defaults to the duration specified by
-            the global ``ACCESS_TOKEN_EXPIRE_MINUTES``. Defaults to ``None``.
-
-    Returns:
-        str: The encoded JWT string.
+    An omitted lifetime uses ``web.token_expires_weeks`` from application settings.
     """
     to_encode = data.copy()
 

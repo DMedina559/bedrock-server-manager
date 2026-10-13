@@ -20,7 +20,7 @@ class ChangeSet:
     users_changed: Set[str] = field(default_factory=set)
 
     def is_empty(self) -> bool:
-        """Returns True if no entity changes are recorded."""
+        """Return True if no entity changes are recorded."""
         return not (
             self.settings_changed
             or self.servers_changed

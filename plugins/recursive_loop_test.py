@@ -1,39 +1,5 @@
 # <PLUGIN_DIR>/recursive_loop_test.py
-"""
-Plugin to test the PluginManager's event re-entrancy guard.
-
-Purpose:
-This plugin is designed to intentionally create a scenario where plugin events
-could lead to an infinite recursive loop if not for the PluginManager's
-thread-local event stack protection.
-
-Test Flow (A -> B -> A'):
-1. Event A ('before_server_start'):
-   - This plugin's `before_server_start` handler is called.
-   - It then calls `self.api.backup_restore.backup_all()`.
-
-2. Event B ('before_backup'):
-   - The `self.api.backup_restore.backup_all()` call internally triggers the 'before_backup' event.
-   - This plugin's `before_backup` handler is called.
-   - It then attempts to call `self.api.server.start()` for the same server.
-
-3. Event A' ('before_server_start' - Recursive Attempt):
-   - The `self.api.server.start()` call from Event B would normally try to
-     trigger the 'before_server_start' event again.
-   - **Expected Behavior:** The PluginManager should detect that 'before_server_start'
-     is already in the current thread's event stack and will *skip dispatching
-     the event handlers* for this second, recursive attempt. The `api.server.start()`
-     function itself will continue its execution (and might report "server already
-     running" or attempt to start another instance depending on system state,
-     which is separate from the event guard test).
-
-What to look for in the logs:
-- The "--- LOOP TEST ---" messages from this plugin.
-- A DEBUG message from `bedrock_server_manager.plugins.plugin_manager` similar to:
-  "Skipping recursive event trigger for 'before_server_start'."
-- The "--- LOOP TEST (B): Recursive self.api.server.start() call completed..." message,
-  indicating the API call didn't crash due to an event stack overflow.
-"""
+"""Demonstrate cancellation of a recursive start hook for the same server."""
 
 from typing import Any
 

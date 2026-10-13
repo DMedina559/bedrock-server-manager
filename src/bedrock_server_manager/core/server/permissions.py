@@ -33,7 +33,7 @@ class ServerPermissions:
     async def set_player_permission(
         self, xuid: str, permission_level: str, player_name: Optional[str] = None
     ) -> None:
-        """Sets the permission level for a player asynchronously."""
+        """Set the permission level for a player asynchronously."""
         async with self.server.get_file_lock(self.server.paths.permissions_json_path):
             if not await aiofiles.ospath.isdir(self.server.paths.server_dir):
                 raise AppFileNotFoundError(
@@ -123,7 +123,7 @@ class ServerPermissions:
                 )
 
     async def get_formatted_permissions(self, storage: Any) -> List[Dict[str, Any]]:
-        """Retrieves permissions and maps XUIDs to known player names asynchronously."""
+        """Return permissions and maps XUIDs to known player names asynchronously."""
         if not await aiofiles.ospath.isdir(self.server.paths.server_dir):
             raise AppFileNotFoundError(self.server.paths.server_dir, "Server directory")
         if not await aiofiles.ospath.isfile(self.server.paths.permissions_json_path):

@@ -1,51 +1,5 @@
 # <PLUGIN_DIR>/nested_seperate_server_test.py
-"""
-Plugin: NestedDifferentServerStartPlugin
-
-Purpose:
-Tests the PluginManager's GRANULAR event re-entrancy guard.
-Specifically, it verifies that if `before_server_start` for Server A triggers
-a `start_server` call for a DIFFERENT Server B, the `before_server_start`
-event handlers for Server B ARE correctly dispatched (not skipped).
-
-Test Flow:
-1. Initial Trigger:
-   - Manually start a server (e.g., "server1") via CLI or Web UI.
-   - This triggers `before_server_start` for "server1".
-
-2. Event A (`before_server_start` for "server1"):
-   - This plugin's `before_server_start` handler is invoked for "server1".
-   - It logs this and then calls `self.api.server.start(server_name="server2", ...)`.
-     (Ensure "server2" is a different, validly configured server name).
-
-3. Event B (Expected `before_server_start` for "server2"):
-   - The `self.api.server.start(server_name="server2")` call should trigger
-     `before_server_start` for "server2".
-   - **Expected Behavior (Granular Guard):** The PluginManager should generate a
-     key like `('before_server_start', 'server2')`. This key should NOT match
-     `('before_server_start', 'server1')` already on the stack.
-     Thus, event handlers for `before_server_start` (including this plugin's)
-     SHOULD be dispatched for "server2".
-
-4. Verification:
-   - This plugin's `before_server_start` handler will be called again, this
-     time with `server_name="server2"`.
-   - The plugin logs this second call, confirming the dispatch for Server B.
-   - The handler for "server2" will not trigger further starts to keep the test simple.
-
-Setup for Testing:
-- Ensure you have at least two servers configured, e.g., "server1" and "server2".
-- Place this plugin in your user plugin directory and ensure it's enabled.
-- Set logging level for 'bedrock_server_manager.plugins.plugin_manager' to DEBUG.
-- Start "server1" (e.g., `bsm server start server1`).
-
-What to Look For in the Logs:
-- Log messages from this plugin for both "server1" and "server2" within `before_server_start`.
-- DEBUG logs from `PluginManager` showing:
-  - `Dispatching standard event 'before_server_start' (key: ('before_server_start', 'server1')) ...`
-  - Later, inside that, `Dispatching standard event 'before_server_start' (key: ('before_server_start', 'server2')) ...`
-  - Crucially, NO "Skipping recursive trigger..." message for the "server2" event.
-"""
+"""Demonstrate nested start hooks for different servers without suppressing valid work."""
 
 from typing import Any
 

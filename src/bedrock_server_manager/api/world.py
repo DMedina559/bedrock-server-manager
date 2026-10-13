@@ -58,11 +58,7 @@ logger = logging.getLogger(__name__)
 async def get_world_name(
     request: GetWorldNameRequest, *, app_context: AppContext
 ) -> GetWorldNameResponse:
-    """Retrieves the configured world name (`level-name`) for a server.
-
-    Accepts GetWorldNameRequest and returns GetWorldNameResponse.
-    Invalid requests fail validation before side effects; operation failures raise application exceptions.
-    """
+    """Return the configured world name (``level-name``) for a server."""
     server_name = request.server_name
     logger.debug("Attempting to get world name for server '%s'...", server_name)
     try:
@@ -97,11 +93,7 @@ async def get_world_name(
 async def export_world(
     request: ExportWorldRequest, *, app_context: AppContext
 ) -> ExportWorldResponse:
-    """Exports the server's currently active world to a .mcworld archive.
-
-    Accepts ExportWorldRequest and returns ExportWorldResponse.
-    Invalid requests fail validation before side effects; operation failures raise application exceptions.
-    """
+    """Export the server's currently active world to a .mcworld archive."""
     server_name = request.server_name
     export_dir = request.export_dir
     server = app_context.get_server(server_name)
@@ -177,11 +169,7 @@ async def export_world(
 async def import_world(
     request: ImportWorldRequest, *, app_context: AppContext
 ) -> ImportWorldResponse:
-    """Imports a world from a .mcworld file, replacing the active world.
-
-    Accepts ImportWorldRequest and returns ImportWorldResponse.
-    Invalid requests fail validation before side effects; operation failures raise application exceptions.
-    """
+    """Import a world from a .mcworld file, replacing the active world."""
     server_name = request.server_name
     selected_file_path = request.selected_file_path
     stop_start_server = request.stop_start_server
@@ -260,11 +248,7 @@ async def import_world(
 async def reset_world(
     request: ResetWorldRequest, *, app_context: AppContext
 ) -> ResetWorldResponse:
-    """Resets the server's world by deleting the active world directory.
-
-    Accepts ResetWorldRequest and returns ResetWorldResponse.
-    Invalid requests fail validation before side effects; operation failures raise application exceptions.
-    """
+    """Resets the server's world by deleting the active world directory."""
     server_name = request.server_name
     server = app_context.get_server(server_name)
     try:

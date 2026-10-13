@@ -30,11 +30,7 @@ logger = logging.getLogger(__name__)
 async def get_properties(
     request: GetPropertiesRequest, *, app_context: AppContext
 ) -> GetPropertiesResponse:
-    """Retrieves the current server properties for a given server.
-
-    Accepts GetPropertiesRequest and returns GetPropertiesResponse.
-    Invalid requests fail validation before side effects; operation failures raise application exceptions.
-    """
+    """Return the current server properties for a given server."""
     server_name = request.server_name
     import aiofiles
 
@@ -86,11 +82,7 @@ async def get_raw_properties(
 def validate_property_value(
     request: ValidatePropertyValueRequest,
 ) -> ValidatePropertyValueResponse:
-    """Validates a specific server property value before it gets applied.
-
-    Accepts ValidatePropertyValueRequest and returns ValidatePropertyValueResponse.
-    Invalid requests fail validation before side effects; operation failures raise application exceptions.
-    """
+    """Validates a specific server property value before it gets applied."""
     property_name = request.property_name
     value = request.value
     logger.debug("Validating server property '%s'.", property_name)
@@ -359,11 +351,7 @@ def validate_property_value(
 async def set_properties(
     request: SetPropertiesRequest, *, app_context: AppContext
 ) -> SetPropertiesResponse:
-    """Sets one or multiple server properties for a given server.
-
-    Accepts SetPropertiesRequest and returns SetPropertiesResponse.
-    Invalid requests fail validation before side effects; operation failures raise application exceptions.
-    """
+    """Set one or multiple server properties for a given server."""
     server_name = request.server_name
     properties_to_update = request.properties_to_update
     restart_after_modify = request.restart_after_modify

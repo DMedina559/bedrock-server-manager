@@ -22,8 +22,8 @@ class ServerPaths:
 
     @property
     def bedrock_executable_path(self) -> str:
-        """str: The full, absolute path to this server's Bedrock executable.
-        Constructed by joining `self.server_dir` and `self.bedrock_executable_name`.
+        """str: The full, absolute path to this server's Bedrock executable. Constructed
+        by joining ``self.server_dir`` and ``self.bedrock_executable_name``.
         """
         return os.path.join(self.server_dir, self.bedrock_executable_name)
 

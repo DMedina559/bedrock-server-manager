@@ -14,13 +14,13 @@ from ..models import RegistrationToken, User
 
 
 class UserRepository:
-    """Handles database persistence for user accounts and registration tokens."""
+    """Handle database persistence for user accounts and registration tokens."""
 
     def __init__(self, db: Database | None = None):
         self.db = db
 
     async def get_all_users(self, session: AsyncSession) -> List[UserInfoState]:
-        """Retrieves all users from the database as UserInfoState models."""
+        """Return all users from the database as UserInfoState models."""
         result = await session.execute(select(User))
         users = []
         for u in result.scalars().all():
@@ -42,14 +42,14 @@ class UserRepository:
     async def get_user_by_username(
         self, session: AsyncSession, username: str
     ) -> Optional[User]:
-        """Retrieves a User SQLAlchemy model by username."""
+        """Return a User SQLAlchemy model by username."""
         result = await session.execute(select(User).filter(User.username == username))
         return cast(Optional[User], result.scalar_one_or_none())
 
     async def get_user_by_id(
         self, session: AsyncSession, user_id: int
     ) -> Optional[User]:
-        """Retrieves a User SQLAlchemy model by user_id."""
+        """Return a User SQLAlchemy model by user_id."""
         result = await session.execute(select(User).filter(User.id == user_id))
         return cast(Optional[User], result.scalar_one_or_none())
 
@@ -74,13 +74,13 @@ class UserRepository:
             session.add(user_record)
 
     async def delete_user(self, session: AsyncSession, user: User) -> None:
-        """Deletes a User record from the database."""
+        """Delete a User record from the database."""
         await session.delete(user)
 
     async def get_registration_token(
         self, session: AsyncSession, token: str
     ) -> Optional[RegistrationToken]:
-        """Retrieves a RegistrationToken record by token string."""
+        """Return a RegistrationToken record by token string."""
         result = await session.execute(
             select(RegistrationToken).filter(RegistrationToken.token == token)
         )
@@ -89,7 +89,7 @@ class UserRepository:
     async def create_registration_token(
         self, session: AsyncSession, token: str, role: str, expires: int
     ) -> RegistrationToken:
-        """Creates and adds a new RegistrationToken record."""
+        """Create and adds a new RegistrationToken record."""
         token_record = RegistrationToken(token=token, role=role, expires=expires)
         session.add(token_record)
         return token_record
@@ -97,7 +97,7 @@ class UserRepository:
     async def create_user(
         self, session: AsyncSession, username: str, hashed_password: str, role: str
     ) -> User:
-        """Creates and adds a new User record."""
+        """Create and adds a new User record."""
         user = User(username=username, hashed_password=hashed_password, role=role)
         session.add(user)
         return user
@@ -105,7 +105,7 @@ class UserRepository:
     async def delete_registration_token(
         self, session: AsyncSession, token_record: RegistrationToken
     ) -> None:
-        """Deletes a RegistrationToken record from the database."""
+        """Delete a RegistrationToken record from the database."""
         await session.delete(token_record)
 
     async def update_password(

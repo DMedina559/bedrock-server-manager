@@ -1,20 +1,5 @@
 # bedrock_server_manager/api/server.py
-"""Provides API functions for managing Bedrock server instances.
-
-This module serves as a key interface layer for server-specific operations within
-the Bedrock Server Manager. It leverages the
-:class:`~bedrock_server_manager.core.bedrock_server.BedrockServer` core class
-to perform a variety of actions such as server lifecycle management (starting,
-stopping, restarting), configuration (getting/setting server-specific properties),
-and command execution.
-
-All operations use Pydantic request and response contracts. These operations
-are suitable for consumption by web API routes, command-line
-interface (CLI) commands, or other parts of the application. This module also
-integrates with the plugin system by exposing many of its functions as callable
-APIs for plugins (via :func:`~bedrock_server_manager.plugins.api_bridge.api_method`)
-and by triggering various plugin events during server operations.
-"""
+"""Provide API functions for managing Bedrock server instances."""
 
 import logging
 import os
@@ -78,11 +63,7 @@ logger = logging.getLogger(__name__)
 async def get_server_setting(
     request: GetServerSettingRequest, *, app_context: AppContext
 ) -> GetServerSettingResponse:
-    """Reads any value from a server's specific persisted configuration
-
-    Accepts GetServerSettingRequest and returns GetServerSettingResponse.
-    Invalid requests fail validation before side effects; operation failures raise application exceptions.
-    """
+    """Reads any value from a server's specific persisted configuration"""
     server_name = request.server_name
     key = request.key
     logger.debug("Reading server setting for '%s': Key='%s'", server_name, key)
@@ -121,11 +102,7 @@ async def get_server_setting(
 async def set_server_setting(
     request: SetServerSettingRequest, *, app_context: AppContext
 ) -> SetServerSettingResponse:
-    """Writes any value to a server's specific persisted configuration
-
-    Accepts SetServerSettingRequest and returns SetServerSettingResponse.
-    Invalid requests fail validation before side effects; operation failures raise application exceptions.
-    """
+    """Writes any value to a server's specific persisted configuration"""
     server_name = request.server_name
     key = request.key
     value = request.value
@@ -165,11 +142,7 @@ async def set_server_setting(
 async def set_server_custom_value(
     request: SetServerCustomValueRequest, *, app_context: AppContext
 ) -> SetServerCustomValueResponse:
-    """Writes a key-value pair to the 'custom' section of a server's specific
-
-    Accepts SetServerCustomValueRequest and returns SetServerCustomValueResponse.
-    Invalid requests fail validation before side effects; operation failures raise application exceptions.
-    """
+    """Writes a key-value pair to the 'custom' section of a server's specific"""
     server_name = request.server_name
     key = request.key
     value = request.value
@@ -201,11 +174,7 @@ async def set_server_custom_value(
 async def get_all_server_settings(
     request: GetAllServerSettingsRequest, *, app_context: AppContext
 ) -> GetAllServerSettingsResponse:
-    """Reads the entire persisted configurationuration for a specific server from its
-
-    Accepts GetAllServerSettingsRequest and returns GetAllServerSettingsResponse.
-    Invalid requests fail validation before side effects; operation failures raise application exceptions.
-    """
+    """Reads the entire persisted configurationuration for a specific server from its"""
     server_name = request.server_name
     logger.debug("Reading all settings for server '%s'.", server_name)
     try:
@@ -240,11 +209,7 @@ async def get_all_server_settings(
 async def get_server_summary(
     request: GetServerSummaryRequest, *, app_context: AppContext
 ) -> GetServerSummaryResponse:
-    """Retrieves the summary information for a specific server.
-
-    Accepts GetServerSummaryRequest and returns GetServerSummaryResponse.
-    Invalid requests fail validation before side effects; operation failures raise application exceptions.
-    """
+    """Return the summary information for a specific server."""
     server_name = request.server_name
     logger.debug("Requesting summary info for server '%s'.", server_name)
     try:
@@ -395,11 +360,7 @@ async def restart_server(
 async def send_command(
     request: SendCommandRequest, *, app_context: AppContext
 ) -> SendCommandResponse:
-    """Sends a command to a running Bedrock server.
-
-    Accepts SendCommandRequest and returns SendCommandResponse.
-    Invalid requests fail validation before side effects; operation failures raise application exceptions.
-    """
+    """Sends a command to a running Bedrock server."""
     server_name = request.server_name
     command = request.command
     if not command or not command.strip():
@@ -451,11 +412,7 @@ async def send_command(
 async def delete_server_data(
     request: DeleteServerDataRequest, *, app_context: AppContext
 ) -> DeleteServerDataResponse:
-    """Deletes all data associated with a Bedrock server.
-
-    Accepts DeleteServerDataRequest and returns DeleteServerDataResponse.
-    Invalid requests fail validation before side effects; operation failures raise application exceptions.
-    """
+    """Delete all data associated with a Bedrock server."""
     server_name = request.server_name
     stop_if_running = request.stop_if_running
     server = app_context.get_server(server_name, require_installation=False)
@@ -520,11 +477,7 @@ async def delete_server_data(
 async def set_server_status(
     request: SetServerStatusRequest, *, app_context: AppContext
 ) -> SetServerStatusResponse:
-    """Internal API to set server status and trigger events.
-
-    Accepts SetServerStatusRequest and returns SetServerStatusResponse.
-    Invalid requests fail validation before side effects; operation failures raise application exceptions.
-    """
+    """Internal API to set server status and trigger events."""
     server = app_context.get_server(request.server_name)
     result = await server.configuration.set_status(request.status, app_context.events)
     return SetServerStatusResponse.model_validate(result.model_dump())
@@ -537,11 +490,7 @@ async def set_server_status(
 async def update_server_player_stats(
     request: UpdateServerPlayerStatsRequest, *, app_context: AppContext
 ) -> UpdateServerPlayerStatsResponse:
-    """Internal API to trigger player stat updates for websockets/plugins.
-
-    Accepts UpdateServerPlayerStatsRequest and returns UpdateServerPlayerStatsResponse.
-    Invalid requests fail validation before side effects; operation failures raise application exceptions.
-    """
+    """Internal API to trigger player stat updates for websockets/plugins."""
     server_name = request.server_name
     player_count = request.player_count
     players = request.model_dump(mode="python")["players"]

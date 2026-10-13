@@ -1,7 +1,5 @@
 # bedrock_server_manager/bedrock_server_manager/utils/get_utils.py
-"""
-Provides utility helper functions for gettings various variables.
-"""
+"""Provide utility helper functions for gettings various variables."""
 
 import logging
 import platform
@@ -78,8 +76,7 @@ def _get_splash_text() -> str:  # noqa: C901
 
 
 def get_operating_system_type() -> str:
-    """
-    Retrieves the operating system type.
+    """Return the operating system type.
 
     Returns:
         A string representing the OS type (e.g., "Linux", "Windows", "Darwin").

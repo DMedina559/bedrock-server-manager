@@ -23,8 +23,7 @@ class PluginSettings(BaseModel):
 
 
 class AutoReloadPlugin(PluginBase):
-    """
-    Automatically sends a `reload` command to a running server after its
+    """Automatically sends a ``reload`` command to a running server after its
     configuration files (e.g., allowlist.json, permissions.json) are modified,
     ensuring changes take effect immediately without manual intervention.
     """
@@ -44,7 +43,7 @@ class AutoReloadPlugin(PluginBase):
         )
 
     async def _is_server_running(self, server_name: str) -> bool:
-        """Checks if a server is currently running via the API."""
+        """Check if a server is currently running via the API."""
         try:
             response = await self.api.system.get_server_running_status(
                 request={"server_name": server_name}
@@ -104,7 +103,7 @@ class AutoReloadPlugin(PluginBase):
 
     @app_event("after_allowlist_change")
     async def send_allowlist_reload_command(self, **kwargs: Any):
-        """Triggers an `allowlist reload` if the allowlist was successfully modified."""
+        """Triggers an ``allowlist reload`` if the allowlist was successfully modified."""
 
         server_name = str(kwargs.get("server_name"))
         result = kwargs.get("result")
@@ -140,7 +139,7 @@ class AutoReloadPlugin(PluginBase):
 
     @app_event("after_permission_change")
     async def send_permission_reload_command(self, **kwargs: Any):
-        """Triggers a `permission reload` if permissions were successfully modified."""
+        """Triggers a ``permission reload`` if permissions were successfully modified."""
 
         server_name = str(kwargs.get("server_name"))
         result = kwargs.get("result")

@@ -1,17 +1,5 @@
 # bedrock_server_manager/web/routers/server_actions.py
-"""
-FastAPI router for server lifecycle actions and command execution.
-
-This module defines API endpoints for managing the operational state of
-Bedrock server instances, including starting, stopping, restarting, updating,
-and deleting servers. It also provides an endpoint for sending commands to
-a running server.
-
-Process lifecycle operations are awaited directly and return their operation
-results. Updates and deletions use tracked background tasks.
-User authentication and server existence are typically verified using
-FastAPI dependencies.
-"""
+"""FastAPI router for server lifecycle actions and command execution."""
 
 import logging
 
@@ -62,9 +50,7 @@ async def get_server_summary(
     current_user: UserResponse = Depends(get_moderator_user),
     app_context: AppContext = Depends(get_app_context),
 ) -> ServerSchemaResponse:
-    """
-    Retrieves the basic summary information for a specific server instance.
-    """
+    """Return the basic summary information for a specific server instance."""
     identity = current_user.username
     logger.debug(
         "Get server summary request for '%s' by user '%s'.", server_name, identity

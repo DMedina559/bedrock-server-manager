@@ -17,13 +17,13 @@ from ..models import Server, ServerBan
 
 
 class ServerRepository:
-    """Handles database persistence for server configurations."""
+    """Handle database persistence for server configurations."""
 
     def __init__(self, db: Database | None = None):
         self.db = db
 
     async def get_all_servers(self, session: AsyncSession) -> List[ServerConfigState]:
-        """Retrieves all servers from the database as ServerConfigState models."""
+        """Return all servers from the database as ServerConfigState models."""
         result = await session.execute(select(Server))
         servers = []
         for s in result.scalars().all():
@@ -46,7 +46,7 @@ class ServerRepository:
     async def get_server_by_name(
         self, session: AsyncSession, server_name: str
     ) -> Optional[Server]:
-        """Retrieves a Server SQLAlchemy model record by server_name."""
+        """Return a Server SQLAlchemy model record by server_name."""
         result = await session.execute(
             select(Server).filter(Server.server_name == server_name)
         )
@@ -77,7 +77,7 @@ class ServerRepository:
             session.add(server_record)
 
     async def delete_server(self, session: AsyncSession, server_name: str) -> bool:
-        """Deletes a server record and its associated bans from the database."""
+        """Delete a server record and its associated bans from the database."""
         db_server = await self.get_server_by_name(session, server_name)
         if db_server:
             await session.execute(

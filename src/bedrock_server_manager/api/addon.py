@@ -1,22 +1,5 @@
 # bedrock_server_manager/api/addon.py
-"""API functions for managing addons on Bedrock servers.
-
-This module provides a high-level interface for installing and managing addons
-(e.g., ``.mcpack``, ``.mcaddon`` files) for specific Bedrock server instances.
-It primarily orchestrates calls to the addon processing methods of the
-:class:`~bedrock_server_manager.core.bedrock_server.BedrockServer` class.
-
-Currently, the main functionality offered is:
-    - Importing and installing addon files into a server's behavior packs and
-      resource packs directories via :func:`~.import_addon`.
-
-Operations that modify server files, like addon installation, are designed to be
-thread-safe using a per-server operation lock (``server.operation_lock``). The module also utilizes the
-:func:`~bedrock_server_manager.api.server.server_lifecycle_manager` to
-optionally manage the server's state (stopping and restarting) during these
-operations to ensure data integrity. All primary functions are exposed to the
-plugin system.
-"""
+"""API functions for managing addons on Bedrock servers."""
 
 import asyncio
 import logging
@@ -62,11 +45,7 @@ logger = logging.getLogger(__name__)
 async def list_available_addons(
     request: ListAvailableAddonsRequest, *, app_context: AppContext
 ) -> ListAvailableAddonsResponse:
-    """Lists available .mcaddon and .mcpack files from the content directory.
-
-    Accepts ListAvailableAddonsRequest and returns ListAvailableAddonsResponse.
-    Invalid requests fail validation before side effects; operation failures raise application exceptions.
-    """
+    """Lists available .mcaddon and .mcpack files from the content directory."""
     logger.debug("Requesting list of available addons.")
     try:
         content_dir = app_context.settings.get("paths.content")
@@ -92,11 +71,7 @@ async def list_available_addons(
 async def import_addon(
     request: ImportAddonRequest, *, app_context: AppContext
 ) -> ImportAddonResponse:
-    """Installs an addon to a specified Bedrock server.
-
-    Accepts ImportAddonRequest and returns ImportAddonResponse.
-    Invalid requests fail validation before side effects; operation failures raise application exceptions.
-    """
+    """Installs an addon to a specified Bedrock server."""
     server_name = request.server_name
     addon_file_path = request.addon_file_path
     stop_start_server = request.stop_start_server
@@ -186,11 +161,7 @@ async def import_addon(
 async def list_installed_addons(
     request: ListInstalledAddonsRequest, *, app_context: AppContext
 ) -> ListInstalledAddonsResponse:
-    """Lists all addons for a server's active world.
-
-    Accepts ListInstalledAddonsRequest and returns ListInstalledAddonsResponse.
-    Invalid requests fail validation before side effects; operation failures raise application exceptions.
-    """
+    """Lists all addons for a server's active world."""
     server_name = request.server_name
     server = app_context.get_server(server_name)
     return ListInstalledAddonsResponse.model_validate(
@@ -207,11 +178,7 @@ async def list_installed_addons(
 async def enable_addon(
     request: EnableAddonRequest, *, app_context: AppContext
 ) -> EnableAddonResponse:
-    """Enables a disabled addon for a server's active world.
-
-    Accepts EnableAddonRequest and returns EnableAddonResponse.
-    Invalid requests fail validation before side effects; operation failures raise application exceptions.
-    """
+    """Enables a disabled addon for a server's active world."""
     server_name = request.server_name
     pack_uuid = request.pack_uuid
     pack_type = request.pack_type
@@ -271,11 +238,7 @@ async def enable_addon(
 async def disable_addon(
     request: DisableAddonRequest, *, app_context: AppContext
 ) -> DisableAddonResponse:
-    """Disables an active addon for a server's active world, preserving files.
-
-    Accepts DisableAddonRequest and returns DisableAddonResponse.
-    Invalid requests fail validation before side effects; operation failures raise application exceptions.
-    """
+    """Disables an active addon for a server's active world, preserving files."""
     server_name = request.server_name
     pack_uuid = request.pack_uuid
     pack_type = request.pack_type
@@ -335,11 +298,7 @@ async def disable_addon(
 async def update_subpack(
     request: UpdateSubpackRequest, *, app_context: AppContext
 ) -> UpdateSubpackResponse:
-    """Updates the active subpack for an addon on a server's active world.
-
-    Accepts UpdateSubpackRequest and returns UpdateSubpackResponse.
-    Invalid requests fail validation before side effects; operation failures raise application exceptions.
-    """
+    """Updates the active subpack for an addon on a server's active world."""
     server_name = request.server_name
     pack_uuid = request.pack_uuid
     pack_type = request.pack_type
@@ -402,11 +361,7 @@ async def update_subpack(
 async def uninstall_addon(
     request: UninstallAddonRequest, *, app_context: AppContext
 ) -> UninstallAddonResponse:
-    """Uninstalls an addon for a server's active world, deleting its files.
-
-    Accepts UninstallAddonRequest and returns UninstallAddonResponse.
-    Invalid requests fail validation before side effects; operation failures raise application exceptions.
-    """
+    """Uninstalls an addon for a server's active world, deleting its files."""
     server_name = request.server_name
     pack_uuid = request.pack_uuid
     pack_type = request.pack_type
@@ -466,11 +421,7 @@ async def uninstall_addon(
 async def reorder_addons(
     request: ReorderAddonsRequest, *, app_context: AppContext
 ) -> ReorderAddonsResponse:
-    """Reorders the active addons for a server's active world.
-
-    Accepts ReorderAddonsRequest and returns ReorderAddonsResponse.
-    Invalid requests fail validation before side effects; operation failures raise application exceptions.
-    """
+    """Reorder the active addons for a server's active world."""
     server_name = request.server_name
     uuids = request.uuids
     pack_type = request.pack_type

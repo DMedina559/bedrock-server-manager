@@ -1,21 +1,5 @@
 # bedrock_server_manager/web/routers/auth.py
-"""
-FastAPI router for user authentication and session management.
-
-This module defines endpoints related to user login and logout for the
-Bedrock Server Manager web interface. It handles:
-
-- Processing API login requests (typically form submissions) to authenticate users
-  against environment variable credentials and issue JWT access tokens
-  (:func:`~.api_login_for_access_token`). Tokens are set as HTTP-only cookies.
-- Handling user logout by clearing the authentication cookie
-  (:func:`~.logout`).
-
-It uses utilities from :mod:`~bedrock_server_manager.web.auth_utils` for
-password verification, token creation, and user retrieval from tokens.
-Authentication is required for most parts of the application, and these routes
-facilitate that access control.
-"""
+"""FastAPI router for user authentication and session management."""
 
 import datetime
 import logging
@@ -51,9 +35,7 @@ async def api_login_for_access_token(
     remember_me: Annotated[bool, Form()] = False,
     app_context: AppContext = Depends(get_app_context),
 ) -> TokenResponse:
-    """
-    Handles API user login and returns a JWT access token.
-    """
+    """Handle API user login and returns a JWT access token."""
     if not form_data.username or not form_data.password:
         raise HTTPException(
             status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,

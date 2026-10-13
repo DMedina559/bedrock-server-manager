@@ -1,20 +1,5 @@
 # bedrock_server_manager/api/player.py
-"""Provides API functions for managing the central player database.
-
-This module offers an interface to interact with the application's central
-player database, typically stored in the database. It leverages the
-application context to perform operations such as:
-
-- Manually adding or updating player entries (gamertag and XUID) via
-  :func:`~.add_players_manually`.
-- Retrieving all known player entries from the database using
-  :func:`~.get_all_known_players`.
-- Discovering players by scanning server logs and updating the database via
-  :func:`~.scan_and_update_player_db`.
-
-These functions are exposed to the plugin system and provide a structured way
-to manage player data globally across all server instances.
-"""
+"""Provide API functions for managing the central player database."""
 
 import logging
 
@@ -46,11 +31,7 @@ logger = logging.getLogger(__name__)
 async def add_players_manually(
     request: AddPlayersManuallyRequest, *, app_context: AppContext
 ) -> AddPlayersManuallyResponse:
-    """Adds or updates player data in the database.
-
-    Accepts AddPlayersManuallyRequest and returns AddPlayersManuallyResponse.
-    Invalid requests fail validation before side effects; operation failures raise application exceptions.
-    """
+    """Adds or updates player data in the database."""
     player_strings = request.player_strings
     logger.debug("Registering %s player entries.", len(player_strings))
     storage = app_context.storage
@@ -84,11 +65,7 @@ async def add_players_manually(
 async def get_all_known_players(
     request: GetAllKnownPlayersRequest, *, app_context: AppContext
 ) -> GetAllKnownPlayersResponse:
-    """Retrieves all player data from the database.
-
-    Accepts GetAllKnownPlayersRequest and returns GetAllKnownPlayersResponse.
-    Invalid requests fail validation before side effects; operation failures raise application exceptions.
-    """
+    """Return all player data from the database."""
     logger.debug("Request to get all known players.")
     storage = app_context.storage
     if storage is None:
@@ -110,11 +87,7 @@ async def get_all_known_players(
 async def scan_and_update_player_db(
     request: ScanAndUpdatePlayerDbRequest, *, app_context: AppContext
 ) -> ScanAndUpdatePlayerDbResponse:
-    """Scans all server logs to discover and save player data.
-
-    Accepts ScanAndUpdatePlayerDbRequest and returns ScanAndUpdatePlayerDbResponse.
-    Invalid requests fail validation before side effects; operation failures raise application exceptions.
-    """
+    """Scans all server logs to discover and save player data."""
     logger.debug("Request to scan all server logs and update player DB.")
     storage = app_context.storage
     if storage is None:

@@ -41,7 +41,7 @@ logger = logging.getLogger(__name__)
 
 
 def _ensure_linux_for_web_service(operation_name: str) -> None:
-    """Ensures the current OS is Linux before proceeding with a Web UI systemd operation."""
+    """Ensure the current OS is Linux before proceeding with a Web UI systemd operation."""
     if platform.system() != "Linux":
         msg = f"Web UI Systemd operation '{operation_name}' is only supported on Linux. Current OS: {platform.system()}"
         logger.warning(msg)
@@ -49,7 +49,9 @@ def _ensure_linux_for_web_service(operation_name: str) -> None:
 
 
 def _ensure_windows_for_web_service(operation_name: str) -> None:
-    """Ensures the current OS is Windows before proceeding with a Web UI service operation."""
+    """Ensure the current OS is Windows before proceeding with a Web UI service
+    operation.
+    """
     if platform.system() != "Windows":
         msg = f"Web UI Windows Service operation '{operation_name}' is only supported on Windows. Current OS: {platform.system()}"
         logger.warning(msg)
@@ -77,7 +79,7 @@ def create_web_service_file(  # noqa: C901
     password: Optional[str] = None,
     config_dir: str | None = None,
 ) -> None:
-    """Creates or updates the system service file/entry for the Web UI."""
+    """Create or updates the system service file/entry for the Web UI."""
     os_type = platform.system()
     start_command = _web_service_command(config_dir, app_data_dir)
 
@@ -181,7 +183,7 @@ def create_web_service_file(  # noqa: C901
 
 
 def check_web_service_exists(system: bool = False) -> bool:
-    """Checks if the system service for the Web UI has been created."""
+    """Check if the system service for the Web UI has been created."""
     os_type = platform.system()
     if os_type == "Linux":
         _ensure_linux_for_web_service("check_web_service_exists")
@@ -247,7 +249,7 @@ def disable_web_service(system: bool = False) -> None:
 
 
 def remove_web_service_file(system: bool = False) -> bool:
-    """Removes the Web UI system service definition."""
+    """Remove the Web UI system service definition."""
     os_type = platform.system()
     if os_type == "Linux":
         _ensure_linux_for_web_service("remove_web_service_file")

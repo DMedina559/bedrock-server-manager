@@ -45,7 +45,9 @@ class ServerInstallation:
         return True
 
     async def is_installed(self) -> bool:
-        """Checks if the server installation is valid asynchronously, without raising exceptions."""
+        """Check if the server installation is valid asynchronously, without raising
+        exceptions.
+        """
         try:
             return await self.validate_installation()
         except AppFileNotFoundError:

@@ -54,7 +54,9 @@ class ServerProcess:
     _log_file_handle: BufferedWriter | None
 
     async def is_running(self) -> bool:
-        """Checks if the Bedrock server process is currently running and verified asynchronously."""
+        """Check if the Bedrock server process is currently running and verified
+        asynchronously.
+        """
         self.logger.debug(
             "Checking if server '%s' is running.", self.server.server_name
         )
@@ -123,7 +125,7 @@ class ServerProcess:
             ) from e_unexp
 
     async def start(self) -> None:
-        """Starts the Bedrock server process asynchronously."""
+        """Start the Bedrock server process asynchronously."""
         async with self.server.operation_lock:
             is_inst = await self.server.is_installed()
             if not is_inst:
@@ -358,22 +360,9 @@ class ServerProcess:
             self.logger.info("Server '%s' stopped.", self.server.server_name)
 
     async def get_process_info(self) -> Optional[Dict[str, Any]]:
-        """Gets resource usage information (PID, CPU, Memory, Uptime) for the running server process asynchronously.
+        """Return PID, CPU percentage, memory in MiB and uptime for the running process.
 
-        This method first uses
-        :func:`~.core.system.process.get_verified_bedrock_process` to locate and
-        verify the Bedrock server process associated with this server instance.
-        If a valid process is found, it then uses the :attr:`._resource_monitor`
-        (an instance of :class:`~.core.system.base.ResourceMonitor` from the base
-        mixin) to calculate its current resource statistics.
-
-        Returns:
-            Optional[Dict[str, Any]]: A dictionary containing process information
-            if the server is running, verified, and ``psutil`` is available.
-            The dictionary has keys: "pid", "cpu_percent", "memory_mb", "uptime".
-            Returns ``None`` if the server is not running, cannot be verified,
-            or ``psutil`` is unavailable. Retrieval failures propagate to the caller.
-            Example: ``{"pid": 1234, "cpu_percent": 15.2, "memory_mb": 256.5, "uptime": "0:10:30"}``
+        Return ``None`` when no verified running process is available.
         """
         try:
             process_obj = await system_process.get_verified_bedrock_process(

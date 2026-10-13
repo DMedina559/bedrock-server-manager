@@ -1,20 +1,5 @@
 # bedrock_server_manager/core/system/windows_class.py
-"""Provides Windows-specific implementations for system interactions.
-
-This module includes functions for:
-
-    - Starting the Bedrock server process directly in the foreground.
-    - Managing a named pipe server for inter-process communication (IPC) to send
-      commands to the running Bedrock server.
-    - Handling OS signals for graceful shutdown of the foreground server.
-    - Sending commands to the server via the named pipe.
-    - Stopping the server process by PID.
-    - Creating, managing, and deleting Windows Services to run the server in the
-      background, which requires Administrator privileges.
-
-It relies on the pywin32 package for named pipe and service
-functionality.
-"""
+"""Host the web runtime as a Windows SCM service using pywin32."""
 
 import logging
 import os
@@ -45,9 +30,7 @@ logger = logging.getLogger(__name__)
 
 
 class WebServerWindowsService(win32serviceutil.ServiceFramework):
-    """
-    Manages the application's Web UI as a self-sufficient Windows Service.
-    """
+    """Manage the application's Web UI as a self-sufficient Windows Service."""
 
     # These are placeholders; the CLI wrapper will set the real names.
     _svc_name_ = "BSMWebUIService"
@@ -56,9 +39,8 @@ class WebServerWindowsService(win32serviceutil.ServiceFramework):
     app_context = None
 
     def __init__(self, args):
-        """
-        Constructor is simple. It only gets the service name from `args`.
-        All other configuration is loaded internally.
+        """Constructor is simple. It only gets the service name from ``args``. All other
+        configuration is loaded internally.
         """
         win32serviceutil.ServiceFramework.__init__(self, args)
         self.shutdown_event = threading.Event()
