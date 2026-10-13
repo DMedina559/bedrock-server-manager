@@ -15,11 +15,9 @@ class SetupStatusResponse(APIResponse):
 
 
 class FileNamePayload(APIRequest):
-    """
-    Payload for file-based operations.
+    """Payload for file-based operations.
 
-    Attributes:
-        filename (str): The name of the file to operate on.
+    :ivar filename: The name of the file to operate on.
     """
 
     filename: NonEmptyStr
@@ -77,11 +75,9 @@ class PruneDownloadsResponse(BaseApiResponse):
 
 
 class ContentListResponse(BaseApiResponse):
-    """
-    Response model for content listing endpoints.
+    """Response model for content listing endpoints.
 
-    Attributes:
-        files (Optional[List[str]]): A list of filenames found.
+    :ivar files: A list of filenames found.
     """
 
     files: Optional[List[str]] = None

@@ -221,3 +221,83 @@ async def test_shutdown_drains_inflight_request_before_lifespan_cleanup(app_cont
         if pending is not None:
             await asyncio.gather(pending, return_exceptions=True)
         await asyncio.wait_for(serving, 10)
+
+
+async def test_force_identity_rejects_reused_pid_and_other_configuration(
+    tmp_path, monkeypatch
+):
+    from bedrock_server_manager.error import ServerProcessError
+    from bedrock_server_manager.web.control import ControlRecord
+    from bedrock_server_manager.web.process import verify_web_owner
+
+    paths = WebProcessPaths(
+        config_dir=str(tmp_path), data_dir=str(tmp_path), db_url="sqlite://"
+    )
+
+    class Process:
+        def cmdline(self):
+            return ["python", "-m", "bedrock_server_manager", "web", "start"]
+
+        def create_time(self):
+            return 100.0
+
+    monkeypatch.setattr(
+        "bedrock_server_manager.web.process.psutil.Process", lambda _: Process()
+    )
+    record = ControlRecord(
+        instance_id="test",
+        pid=123,
+        host="127.0.0.1",
+        port=11325,
+        token="test",
+        config_dir=str(tmp_path),
+        created_at=100,
+    )
+    await verify_web_owner(paths, record.pid, record)
+    for updates in (
+        {"created_at": 101},
+        {"config_dir": str(tmp_path / "other")},
+        {"created_at": None},
+    ):
+        with pytest.raises(ServerProcessError):
+            await verify_web_owner(paths, record.pid, record.model_copy(update=updates))
+
+    class Unrelated(Process):
+        def cmdline(self):
+            return ["python", "unrelated.py", "web", "start"]
+
+    monkeypatch.setattr(
+        "bedrock_server_manager.web.process.psutil.Process", lambda _: Unrelated()
+    )
+    with pytest.raises(ServerProcessError):
+        await verify_web_owner(paths, record.pid, record)
+
+
+async def test_invalid_shutdown_receipt_preserves_control_record(tmp_path, monkeypatch):
+    from httpx2 import AsyncClient, MockTransport, Response
+
+    from bedrock_server_manager.error import ServerStopError
+    from bedrock_server_manager.web.control import ControlRecord
+    from bedrock_server_manager.web.process import stop_local
+
+    paths = WebProcessPaths(
+        config_dir=str(tmp_path), data_dir=str(tmp_path), db_url="sqlite://"
+    )
+    record = ControlRecord(
+        instance_id="test", pid=123, host="127.0.0.1", port=11325, token="test"
+    )
+    data = record.model_dump(mode="json")
+    data["token"] = "test"
+    import json
+
+    paths.control_file.write_text(json.dumps(data))
+    transport = MockTransport(
+        lambda request: Response(202, json={"unexpected": "response"})
+    )
+    monkeypatch.setattr(
+        "bedrock_server_manager.web.process.AsyncClient",
+        lambda **kwargs: AsyncClient(transport=transport, **kwargs),
+    )
+    with pytest.raises(ServerStopError, match="Invalid shutdown response"):
+        await stop_local(paths)
+    assert paths.control_file.exists()

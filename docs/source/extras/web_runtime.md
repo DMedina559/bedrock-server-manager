@@ -72,3 +72,12 @@ BSM does not change external supervisor policies. Docker `restart: always` or
 `unless-stopped` can restart a process after an HTTP shutdown: stop the container
 through Docker when you want it to remain stopped. Other external process managers
 must likewise distinguish intentional clean exits from failure restarts.
+
+## Forced-stop identity
+
+New control records include the resolved configuration directory and process
+creation time. Forced stops verify those values and the BSM host command before
+termination. If process introspection is unavailable or an older control record
+lacks generation information, graceful shutdown still works but forced
+termination is refused. Legacy PID-only processes require an explicit matching
+configuration argument; a PID alone is insufficient.

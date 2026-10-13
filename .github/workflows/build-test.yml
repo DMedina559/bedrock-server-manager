@@ -10,6 +10,7 @@ on:
     paths:
       - 'src/bedrock_server_manager/**'
       - 'tests/**'
+      - 'plugins/**'
       - 'scripts/**'
       - 'pyproject.toml'
       - '.github/workflows/build-test.yml'

@@ -304,13 +304,11 @@ class BedrockDownloader:
     def _get_version_from_url(self) -> str:
         """Extracts the version number from the resolved download URL or custom zip path.
         This method populates ``self.actual_version``.
-        Returns:
-            The extracted version string (e.g., "1.20.10.01").
-        Raises:
-            MissingArgumentError: If the download URL has not been resolved yet.
-            DownloadError: If the URL format is unexpected and the version
-                cannot be parsed.
-        """
+        :returns: The extracted version string (e.g., "1.20.10.01").
+
+        :raises MissingArgumentError: If the download URL has not been resolved yet.
+        :raises DownloadError: If the URL format is unexpected and the version
+            cannot be parsed."""
         source_path = (
             self.server_zip_path
             if self._version_type == "CUSTOM"
@@ -366,12 +364,10 @@ class BedrockDownloader:
     async def _download_server_zip_file(self):  # noqa: C901
         """Asynchronously downloads the server ZIP file from the resolved URL.
 
-        Raises:
-            MissingArgumentError: If the URL or target file path are not set.
-            FileOperationError: If directories cannot be created or the file
-                cannot be written.
-            InternetConnectivityError: If the download request fails.
-        """
+        :raises MissingArgumentError: If the URL or target file path are not set.
+        :raises FileOperationError: If directories cannot be created or the file
+            cannot be written.
+        :raises InternetConnectivityError: If the download request fails."""
         if not self.resolved_download_url or not self.zip_file_path:
             raise MissingArgumentError(
                 "Download URL or ZIP file path not set. Cannot download."
@@ -511,8 +507,7 @@ class BedrockDownloader:
         """Updates the server.properties file by applying existing user values
         on top of the fresh file from the zip archive.
 
-        Args:
-            zip_ref (zipfile.ZipFile): The opened ZIP file containing the new server files.
+        :param zip_ref: The opened ZIP file containing the new server files.
         """
         server_properties_path = os.path.join(self.server_dir, "server.properties")
 
@@ -601,9 +596,8 @@ class BedrockDownloader:
         This value is populated after :meth:`.get_version_for_target_spec` or
         :meth:`.prepare_download_assets` has been successfully called.
 
-        Returns:
-            Optional[str]: The actual version string (e.g., "1.20.10.01"),
-            or ``None`` if the version has not been resolved yet.
+        :returns: The actual version string (e.g., "1.20.10.01"),
+                  or ``None`` if the version has not been resolved yet.
         """
         return self.actual_version
 
@@ -613,9 +607,8 @@ class BedrockDownloader:
         This value is populated after :meth:`.prepare_download_assets` has
         successfully identified or downloaded the ZIP file.
 
-        Returns:
-            Optional[str]: The full path to the server ZIP file, or ``None`` if
-            not yet determined.
+        :returns: The full path to the server ZIP file, or ``None`` if
+                  not yet determined.
         """
         return self.zip_file_path
 
@@ -630,8 +623,7 @@ class BedrockDownloader:
         :meth:`.prepare_download_assets` (which calls the former) has successfully
         resolved the URL.
 
-        Returns:
-            Optional[str]: The complete download URL, or ``None`` if not yet resolved.
+        :returns: The complete download URL, or ``None`` if not yet resolved.
         """
         return self.resolved_download_url
 

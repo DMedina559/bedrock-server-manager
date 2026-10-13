@@ -17,34 +17,29 @@ class UserResponse(APIResponse):
 
 
 class UpdateUserRolePayload(APIRequest):
-    """
-    Request payload for updating a user's role.
+    """Request payload for updating a user's role.
 
-    Attributes:
-        role (str): The new role.
+    :ivar role: The new role.
     """
 
     role: UserRole
 
 
 class ThemeUpdatePayload(APIRequest):
-    """
-    Request payload for updating the user's theme.
+    """Request payload for updating the user's theme.
 
-    Attributes:
-        theme (str): The new theme name.
+    :ivar theme: The new theme name.
     """
 
     theme: str
 
 
 class ProfileUpdatePayload(APIRequest):
-    """
-    Request payload for updating user profile details.
+    """Request payload for updating user profile details.
 
-    Attributes:
-        full_name (str): The user's full name.
-        email (str): The user's email address.
+    :ivar full_name: The user's full name.
+
+    :ivar email: The user's email address.
     """
 
     full_name: str
@@ -52,12 +47,11 @@ class ProfileUpdatePayload(APIRequest):
 
 
 class ChangePasswordPayload(APIRequest):
-    """
-    Request payload for changing the user's password.
+    """Request payload for changing the user's password.
 
-    Attributes:
-        current_password (str): The current password for verification.
-        new_password (str): The new password.
+    :ivar current_password: The current password for verification.
+
+    :ivar new_password: The new password.
     """
 
     current_password: Password

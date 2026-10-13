@@ -26,7 +26,7 @@ from .utils.general import startup_checks
 
 
 def create_cli_app():
-    """Create and configures the CLI application."""
+    """Create and configure the CLI application."""
 
     @click.group(
         invoke_without_command=True,

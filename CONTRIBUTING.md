@@ -20,7 +20,7 @@ We welcome all contributions, including bug reports, feature requests, documenta
     *   [Keeping Your Fork Synced](#keeping-your-fork-synced)
 4.  [Coding Standards](#coding-standards)
     *   [Code Formatting (Black)](#code-formatting-black)
-    *   [Docstrings (Google Python Format)](#docstrings-google-python-format)
+    *   [Docstrings (Native Sphinx Format)](#docstrings-native-sphinx-format)
     *   [Understanding Existing Code](#understanding-existing-code)
     *   [Explaining Your Code](#explaining-your-code)
 5.  [Project Architecture (UI > API > Core)](#project-architecture-ui--api--core)
@@ -132,16 +132,16 @@ We use [Black](https://github.com/psf/black) for uncompromising Python code form
     ```
     You can also set up Black to run as a pre-commit hook to automatically format files before each commit. (See Black's documentation for pre-commit setup).
 
-### Docstrings (Google Python Format for Sphinx)
+### Docstrings (Native Sphinx Format)
 
-Keep docstrings short and compatible with Sphinx Napoleon. Public modules,
+Keep docstrings short and written in native Sphinx/reStructuredText. Public modules,
 classes, functions and methods should explain their purpose in one summary
 sentence. Add a short paragraph only for behavior a caller cannot infer from the
 signature: units, ownership, side effects, cancellation, atomicity or failure
 semantics.
 
-Use Google-style `Args:`, `Returns:`, `Yields:` and `Raises:` sections when they
-clarify a contract. Do not repeat annotated types, model field lists, defaults,
+Use native `:param name:`, `:returns:`, `:yields:` and `:raises Error:`
+fields when they clarify a contract. Use `:ivar name:` for public attributes. Do not repeat annotated types, model field lists, defaults,
 implementation steps or the same validation boilerplate on every API method.
 Use double backticks for literals and Sphinx roles such as `:class:` and
 `:meth:` for references. Keep destructive effects and important error conditions
@@ -279,3 +279,15 @@ To ensure Bedrock Server Manager is maintained effectively, we have an updated i
 If you have any questions about the contribution process, feel free to open a [discussions thread](https://github.com/DMedina559/bedrock-server-manager/discussions).
 
 Thank you for contributing to Bedrock Server Manager!
+
+### Documentation validation
+
+Regenerate references with `python scripts/generate_plugin_docs.py`; use
+`--check` to detect drift without writing files. Build all pages with
+`python -m sphinx -W --keep-going -b html docs/source /tmp/bsm-docs`.
+The Sphinx changelog extension fetches release history. Set `GITHUB_TOKEN` or
+`SPHINX_GITHUB_CHANGELOG_TOKEN` when building the complete documentation.
+Offline checks should exclude the network-backed changelog in a temporary
+validation copy; keep the published changelog integration enabled.
+Runnable plugin examples belong in
+`plugins/`; fault injection and recursive-operation diagnostics belong in tests.

@@ -7,6 +7,7 @@ import sys
 from pathlib import Path
 from uuid import uuid4
 
+import psutil
 from httpx2 import AsyncClient, TransportError
 from pydantic import BaseModel, ConfigDict, ValidationError
 
@@ -39,8 +40,84 @@ def read_control(paths: WebProcessPaths) -> ControlRecord | None:
         return ControlRecord.model_validate_json(paths.control_file.read_text())
     except FileNotFoundError:
         return None
-    except (ValueError, ValidationError) as error:
+    except (OSError, UnicodeError, ValueError) as error:
         raise ServerProcessError("Invalid web runtime control file") from error
+
+
+async def verify_web_owner(
+    paths: WebProcessPaths, pid: int, record: ControlRecord | None = None
+) -> psutil.Process:
+    """Verify the host command, configuration and recorded process generation."""
+
+    def verify():
+        process = psutil.Process(pid)
+        arguments = process.cmdline()
+        command = any(
+            Path(arg).name.lower()
+            in {"bedrock-server-manager", "bedrock-server-manager.exe"}
+            for arg in arguments
+        ) or any(
+            pair == ("-m", "bedrock_server_manager")
+            for pair in zip(arguments, arguments[1:])
+        )
+        if not command or not any(
+            pair == ("web", "start") for pair in zip(arguments, arguments[1:])
+        ):
+            raise ServerProcessError("PID does not identify a BSM web host")
+        if record is not None:
+            if record.created_at is None or record.config_dir is None:
+                raise ServerProcessError(
+                    "Control record lacks process-generation identity; refusing forced termination"
+                )
+            if (
+                Path(record.config_dir).resolve() != Path(paths.config_dir).resolve()
+                or abs(process.create_time() - record.created_at) > 0.001
+            ):
+                raise ServerProcessError(
+                    "Web process generation or configuration differs"
+                )
+        else:
+            if "--config-dir" not in arguments:
+                raise ServerProcessError(
+                    "Legacy process configuration cannot be verified"
+                )
+            index = arguments.index("--config-dir")
+            if (
+                index + 1 >= len(arguments)
+                or Path(arguments[index + 1]).resolve()
+                != Path(paths.config_dir).resolve()
+            ):
+                raise ServerProcessError("Legacy process configuration differs")
+        return process
+
+    try:
+        return await asyncio.to_thread(verify)
+    except (psutil.Error, OSError) as error:
+        raise ServerProcessError("Could not verify web process identity") from error
+
+
+async def force_stop_verified(
+    paths: WebProcessPaths, pid: int, record: ControlRecord | None = None
+) -> None:
+    """Terminate the verified process object, retaining its PID-reuse protection."""
+    process = await verify_web_owner(paths, pid, record)
+
+    def terminate():
+        try:
+            process.terminate()
+            try:
+                process.wait(timeout=5)
+            except psutil.TimeoutExpired:
+                process.kill()
+                process.wait(timeout=2)
+        except psutil.NoSuchProcess:
+            return
+        except (psutil.Error, OSError) as error:
+            raise ServerStopError(
+                "Verified web process could not be stopped"
+            ) from error
+
+    await asyncio.to_thread(terminate)
 
 
 async def start_detached(
@@ -141,10 +218,7 @@ async def stop_local(
         if pid is None or not await processes.is_process_running(pid):
             pid_file.unlink(missing_ok=True)
             return "Web server not running (stale PID removed)."
-        await processes.verify_process_identity(
-            pid, expected_command_args=["web", "start"]
-        )
-        await processes.terminate_process_by_pid(pid)
+        await force_stop_verified(paths, pid)
         pid_file.unlink(missing_ok=True)
         return "Web server stopped by forced termination."
     try:
@@ -156,7 +230,12 @@ async def stop_local(
             )
         if response.status_code != 202:
             raise ServerStopError(f"Shutdown rejected (HTTP {response.status_code})")
-        receipt = ShutdownResponse.model_validate(response.json())
+        try:
+            receipt = ShutdownResponse.model_validate(response.json())
+        except (ValueError, ValidationError) as error:
+            raise ServerStopError(
+                "Invalid shutdown response; runtime records retained"
+            ) from error
         if receipt.instance_id != record.instance_id or receipt.pid != record.pid:
             raise ServerStopError("Shutdown response belongs to another runtime")
         async with asyncio.timeout(timeout):
@@ -172,10 +251,7 @@ async def stop_local(
             ) from error
         if record.pid == os.getpid():
             raise ServerProcessError("Refusing to terminate the current process")
-        await processes.verify_process_identity(
-            record.pid, expected_command_args=["web", "start"]
-        )
-        await processes.terminate_process_by_pid(record.pid)
+        await force_stop_verified(paths, record.pid, record)
         current = read_control(paths)
         if current is not None and current.instance_id == record.instance_id:
             paths.control_file.unlink(missing_ok=True)

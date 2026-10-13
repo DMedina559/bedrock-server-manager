@@ -8,11 +8,9 @@ from ...state.types import UserRole
 
 
 class GenerateTokenPayload(APIRequest):
-    """
-    Request payload for generating a registration token.
+    """Request payload for generating a registration token.
 
-    Attributes:
-        role (str): The role to assign to the user registering with this token.
+    :ivar role: The role to assign to the user registering with this token.
     """
 
     role: UserRole

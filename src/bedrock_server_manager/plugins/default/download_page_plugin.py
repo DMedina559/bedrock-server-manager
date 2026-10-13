@@ -1,16 +1,33 @@
 import os
 import re
 from pathlib import Path
-from typing import Any, Dict, List, Optional
+from typing import Annotated, Any, List, Literal, Optional
 
 from fastapi import APIRouter, Depends, HTTPException, Query
 from fastapi.responses import FileResponse, JSONResponse
+from pydantic import BaseModel, ConfigDict, Field
 
 from bedrock_server_manager import PluginBase, app_event
 from bedrock_server_manager.error import InvalidServerNameError
 from bedrock_server_manager.logging import log_operation_error
 from bedrock_server_manager.utils.server import core_validate_server_name_format
 from bedrock_server_manager.web import get_admin_user
+from bedrock_server_manager.web.schemas import UserResponse
+
+
+class DownloadPageQuery(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    server: str | None = None
+    type: Literal["backups", "content"] = "backups"
+
+
+class DownloadFileQuery(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    file_type: Literal[
+        "backup_world", "backup_config", "content_world", "content_addon"
+    ]
+    filename: str = Field(min_length=1, max_length=255, pattern=r"^[A-Za-z0-9._\- ]+$")
+    server: str | None = None
 
 
 class DownloadPagePlugin(PluginBase):
@@ -33,15 +50,17 @@ class DownloadPagePlugin(PluginBase):
         @self.router.get(
             "/api/download_page/ui",
             response_class=JSONResponse,
+            operation_id="download_page_ui",
             name="Download Page UI",
             summary="Download Page UI",
             tags=["plugin-json-ui"],
         )
         async def get_download_page_ui(
-            server: Optional[str] = Query(None),
-            type: str = Query("backups"),
-            current_user: Dict[str, Any] = Depends(get_admin_user),
+            query: Annotated[DownloadPageQuery, Query()],
+            current_user: UserResponse = Depends(get_admin_user),
         ):
+            server = query.server
+            type = query.type
             if not server:
                 return JSONResponse(
                     content={
@@ -111,6 +130,7 @@ class DownloadPagePlugin(PluginBase):
                     log_operation_error(
                         self.logger, "Error listing backups: %s", e, error=e
                     )
+                    raise
 
                 tabs_children = [
                     {
@@ -172,6 +192,7 @@ class DownloadPagePlugin(PluginBase):
                     log_operation_error(
                         self.logger, "Error listing content: %s", e, error=e
                     )
+                    raise
 
                 tabs_children = [
                     {
@@ -241,13 +262,16 @@ class DownloadPagePlugin(PluginBase):
                 }
             )
 
-        @self.router.get("/api/download_page/download")
+        @self.router.get(
+            "/api/download_page/download", operation_id="download_page_file"
+        )
         async def download_file(
-            file_type: str,
-            filename: str,
-            server: Optional[str] = None,
-            current_user: Dict[str, Any] = Depends(get_admin_user),
+            query: Annotated[DownloadFileQuery, Query()],
+            current_user: UserResponse = Depends(get_admin_user),
         ):
+            file_type = query.file_type
+            filename = query.filename
+            server = query.server
             # Strict validation of user-controlled inputs to avoid path traversal
             # Allow alphanumeric, dot, underscore, dash, and space
             safe_name_pattern = re.compile(r"^[A-Za-z0-9._\- ]+$")
@@ -337,8 +361,13 @@ class DownloadPagePlugin(PluginBase):
                 raise HTTPException(500, "Internal server error during download")
 
     def _create_file_list_table(
-        self, files: List[str], file_type: str, server: Optional[str]
-    ) -> Dict:
+        self,
+        files: List[str],
+        file_type: Literal[
+            "backup_world", "backup_config", "content_world", "content_addon"
+        ],
+        server: Optional[str],
+    ) -> dict:
         if not files:
             return {
                 "type": "Text",

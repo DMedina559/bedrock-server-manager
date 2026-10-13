@@ -1,124 +1,27 @@
 # Troubleshooting
 
-```{image} https://raw.githubusercontent.com/DMedina559/bsm-frontend/main/frontend/public/image/icon/favicon.svg
-:alt: Bedrock Server Manager Icon
-:width: 200px
-:align: center
-```
+Identify whether the failure belongs to the manager, a Bedrock server, a plugin or a client before changing configuration. Record the failing action and its error; restart or upgrade only after preserving the information needed to diagnose it.
 
-When you encounter an issue, please follow these steps to diagnose and resolve the problem. Following this guide helps you solve the issue quickly and ensures you have all the necessary information if you need to file a bug report.
+## Startup or connection fails
 
-## Initial Checks & Common Fixes
+Check the command's output, the active Python environment, selected configuration directory and operating-system account. A service can use different paths or permissions from an interactive terminal. Confirm the configured web address and port, and check whether another process owns the port or the same BSM configuration.
 
-Start with these simple steps, as they resolve many common problems.
+For Minecraft connections, check the Bedrock process and its UDP game ports separately from BSM's HTTP port. Inspect server logs for startup failure before changing network settings.
 
-### 1. Update to the Latest Version
+## Logs and background tasks
 
-The issue you're facing may have already been fixed in a newer release. Ensure both the Bedrock Server Manager and the `bsm-cli` (if you use it) are up to date.
+Inspect the task result when an operation was accepted but failed later. Manager log files have per-run names; locate the configured log directory rather than assuming a fixed filename. Use the local command's logging options shown by `bedrock-server-manager --help` to reproduce with more detail.
 
-You can check your version in the BSM web UI and compare it with the [latest release on GitHub](https://github.com/DMedina559/bedrock-server-manager/releases/latest).
+An HTTP 503 during shutdown indicates the host is stopping. Shutdown acceptance does not mean cleanup has completed. See [runtime control](../extras/web_runtime.md) for deadlines and service restart behavior.
 
-### 1.1. Check the Changelog for Breaking Changes
+## Plugin problems
 
-**If you recently upated your BSM instance, read the changelog!**
+Record the plugin name, version and event or task that failed. Disable the suspected plugin to isolate the issue, then re-enable it after correction. A timed-out synchronous callback can remain running; reload may be blocked until the old generation drains. Repeated reload attempts do not stop Python worker threads.
 
-Major updates can introduce "breaking changes" that alter how BSM works. Before going further, review the changelog for the version you just installed.
+## Problems after upgrading
 
-```{tip}
-The changelog often contains important warnings and instructions on how to migrate your setup or fix issues caused by an update. Look for BREAKING CHANGE notices relevant to your setup (e.g., Web UI, CLI, Plugins).
-```
+Check the release notes and verify that the frontend, API client and external plugins support the backend contract. Recreate service definitions when the runtime guide calls for it. Back up storage before changing versions or running migrations; database upgrades are not necessarily reversible by reinstalling an older package.
 
-### 2. Clear Caches
+## Report an issue
 
-Sometimes, outdated cache files can cause unexpected behavior. Run the cleanup command to clear the `__pycache__` directories.
-
-```bash
-bedrock-server-manager cleanup --cache
-```
-
-### 3. Isolate the Problem: Disable Plugins
-
-A plugin could be the source of the issue. To check if a plugin is causing the problem, disable all plugins through the BSM web UI, restart the manager, and see if the issue persists. If the problem disappears, re-enable plugins one by one until you find the one causing the conflict.
-
-## Gathering More Information
-
-If the initial steps don't resolve the issue, the next step is to gather more detailed logs.
-
-### 4. Set Log Level to Debug
-
-Enabling `DEBUG` level logging provides detailed operational information that is crucial for diagnosing complex problems.
-
-1.  Go to **Settings** in the BSM web UI.
-2.  Find the **Log Level** setting and change it to `DEBUG`.
-3.  Save the settings and restart the Bedrock Server Manager.
-4.  Reproduce the issue. The `.logs/bedrock_server_manager.log` file will now contain detailed trace information.
-
-## Reporting an Issue
-
-If you've followed the steps above and are confident you've found a new bug, we encourage you to report it.
-
-### 5. Search for Open Issues
-
-Before creating a new report, please [**search the open issues**](https://github.com/DMedina559/bedrock-server-manager/issues) on GitHub to see if someone has already reported the same problem. If you find a similar issue, you can add any additional information you've gathered to the existing thread.
-
-### 6. Create a New Bug Report
-
-If no existing issue describes your problem, please [**open a new bug report**](https://github.com/DMedina559/bedrock-server-manager/issues/new/choose).
-
-**Important Issue Reporting Guidelines:**
-
-*   **Strict Template Usage:** You **must** use the provided templates (Bug Report or Feature Request). Issues opened without a template or with deleted sections will be **closed without review**.
-*   **Fill All Fields:** We cannot debug issues without your **Environment Details** (OS, BSM Version) and **Logs**. If a section isn't relevant, mark it as "N/A" rather than removing it.
-*   **CLI Issues:** If your issue is related to the Command Line Interface, please post it in the [**bsm-api-client repository**](https://github.com/DMedina559/bsm-api-client/issues).
-*   **Attach Logs:** Copy and paste the debug logs gathered in Step 4. Please remove any sensitive information before posting.
-
-## For Developers
-
-### Consider Contributing a Fix
-
-If you are a developer and have identified the source of the bug, consider contributing a fix! Pull requests are always welcome. Fork the repository, create a new branch for your fix, and submit a pull request for review.
-
----
-
-## Common Issues & Important Notes
-
-This section contains solutions for common problems, often related to major updates.
-
-*   **Updates and Graceful Shutdowns**: As of version 3.6.0, BSM automatically attempts to shut down all running servers and unload plugins gracefully when the main application stops. While the old advice to "stop servers before updating" is less critical now, it remains a good practice, especially if upgrading from a version before 3.6.0.
-*   **Bedrock Updates**: Sometimes Mojang releases new versions of the server that requires new server properties. Before BSM version 3.10.0 BSM would preserve the original server properties file when updating the server. As of version 3.10.0, BSM will now **merge any new server properties with your existing ones**. This means that if Mojang adds a new property, it will be added to your existing `server.properties` file instead of being overwritten. If you updated your servers before 3.10.0, you may need to manually update your `server.properties` file to include any new properties introduced in the latest Bedrock server version using the Web UI.
-*   **Web UI Login Fails After v3.5.0 Update**: The migration from Flask to FastAPI in v3.5.0 required a new password hashing system (`bcrypt`). If you updated from a version prior to 3.5.0, **you must regenerate your password hash and auth tokens** to log in.
-*   **CLI Commands Don't Work After v3.10.0 Update**: In v3.10.0, most CLI commands were moved to the `bsm-cli` package. The core `bedrock-server-manager` package no longer handles most command-line actions directly.
-    *   Install the new CLI with: `pip install bedrock-server-manager[cli]`
-    *   Use the new command: `bsm-cli <command>`
-*   **Slow Web UI (3.6+)**: Using the default database has been observed to cause slow loadding times for the web server on some systems, if you experience this issue, consider using an external database such as `MySQL` or `PostgreSQL`.
-
-## Platform Information
-
-### Windows Service Integration
-
-Running BSM as a service on Windows has specific requirements:
-
-*   **Administrator Privileges**: You must run your Command Prompt or PowerShell session **as an Administrator** to create, configure, or manage Windows services.
-*   **Alternative to Services (No Admin)**: If you don't have administrative rights, you can manually create a task in the **Windows Task Scheduler** to launch the BSM web server on startup.
-*   **Use Python from python.org**: It is **highly recommended** to use a Python installer from [python.org](https://www.python.org/downloads/windows/). The version from the Microsoft Store is known to cause critical file-locking issues that can prevent BSM and other Python Environments from working correctly.
-~~*   **Set the "Log On As" Account**: A common reason services fail to start is incorrect permissions. After creating a service, go to the Services app (`services.msc`), find the service, and in its **Properties**, go to the **Log On** tab. Change "Log on as:" from "Local System account" to **"This account"** and enter your local Windows username and password. This ensures the service can access server files, backups, and content in your user directory.~~ (As of v3.6.0, this is no longer required as credentials are entered at creation.)
-
-### Linux Service Integration
-
-*   **Enable Startup on Boot (`linger`)**: Services are created with the `--user` flag by default which only run while you are logged in. To enable your BSM service to start automatically on boot and stay running, you must enable lingering for your user account:
-    ```bash
-    sudo loginctl enable-linger $(whoami)
-    ```
-~~*   **Environment Variables**: `systemd` user services do not inherit environment variables from your shell (`~/.bashrc`, etc.). You must handle them manually:
-    1.  Create a separate environment file (e.g., `~/.config/bsm/bsm.env`) containing your `BEDROCK_SERVER_MANAGER_*` variables.
-    2.  **Secure the file.** Since this file contains sensitive credentials, restrict its permissions so that only your user account can read and write to it:
-        ```bash
-        chmod 600 ~/.config/bsm/bsm.env
-        ```
-    3.  Add the `EnvironmentFile=` directive to your `systemd` service file to load the variables.~~ (As of v3.6.0, a database is used to store various configuration, including environment variables, so this is no longer necessary.)
-
-### Tested Systems
-- Debian 12 (Bookworm)
-- Ubuntu 24.04
-- Windows 11 24H2
-- Windows Subsystem for Linux (WSL2)
+Search the [issue tracker](https://github.com/DMedina559/bedrock-server-manager/issues), then use the appropriate report template. Include BSM/Python/OS versions, installation method, the action that failed, reproduction steps and relevant error output. Remove passwords, tokens and private connection strings from logs before sharing them.

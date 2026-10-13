@@ -84,8 +84,7 @@ class BedrockProcessManager:
     async def add_server(self, server: "BedrockServer"):
         """Adds a server to be managed by the process manager.
 
-        Args:
-            server (BedrockServer): The server instance to monitor.
+        :param server: The server instance to monitor.
         """
         self.logger.debug(
             "Adding server '%s' to process manager for monitoring.", server.server_name
@@ -98,8 +97,7 @@ class BedrockProcessManager:
         This stops the manager from monitoring the server, but does not stop the
         server process itself.
 
-        Args:
-            server_name (str): The name of the server to remove.
+        :param server_name: The name of the server to remove.
         """
         if server_name in self.servers:
             self.logger.debug("Removing server '%s' from process manager.", server_name)
@@ -178,8 +176,7 @@ class BedrockProcessManager:
         Checks the restart retry limit before attempting to restart. If the
         limit is reached, marks the server status as 'ERROR' and stops monitoring.
 
-        Args:
-            server (BedrockServer): The server instance to restart.
+        :param server: The server instance to restart.
         """
         max_retries = self.settings.get("monitoring.max_retries", 3)
 
@@ -215,11 +212,9 @@ class BedrockProcessManager:
     async def write_error_status(self, server_name: str):
         """Writes 'ERROR' to server config status asynchronously.
 
-        Args:
-            server_name (str): The name of the server.
+        :param server_name: The name of the server.
 
-        Raises:
-            FileOperationError: If writing to the config file fails.
+        :raises FileOperationError: If writing to the config file fails.
         """
         if not callable(self.server_provider):
             return

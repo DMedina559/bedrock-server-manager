@@ -148,9 +148,12 @@ async def test_detached_web_cli_serves_requested_port_and_cleans_pid(
         assert not pid_file.exists()
 
         async with asyncio.timeout(10):
-            while psutil.pid_exists(pid):
-                process = psutil.Process(pid)
-                if process.status() == psutil.STATUS_ZOMBIE:
+            while True:
+                try:
+                    if psutil.Process(pid).status() == psutil.STATUS_ZOMBIE:
+                        break
+                except psutil.NoSuchProcess:
+                    # Exit can race either process construction or the status read.
                     break
                 await asyncio.sleep(0.05)
     finally:

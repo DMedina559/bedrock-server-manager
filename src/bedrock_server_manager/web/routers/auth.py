@@ -35,7 +35,7 @@ async def api_login_for_access_token(
     remember_me: Annotated[bool, Form()] = False,
     app_context: AppContext = Depends(get_app_context),
 ) -> TokenResponse:
-    """Handle API user login and returns a JWT access token."""
+    """Handle API user login and return a JWT access token."""
     if not form_data.username or not form_data.password:
         raise HTTPException(
             status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,

@@ -20,15 +20,12 @@ logger = logging.getLogger(__name__)
 def startup_checks(
     settings: Any,
 ) -> None:
-    """
-    Performs initial checks and setup when the application starts.
+    """Performs initial checks and setup when the application starts.
 
     - Verifies Python version compatibility (>= 3.11).
     - Creates essential application directories based on settings.
 
-    Args:
-        settings: Settings instance or object providing paths configuration.
-    """
+    :param settings: Settings instance or object providing paths configuration."""
     # Python Version Check
     if sys.version_info < (3, 11):
         message = "Python version 3.11 or later is required. You are running {}.{}.{}.".format(
@@ -181,11 +178,9 @@ class ReentrantAsyncLock:
 
 
 def get_timestamp() -> str:
-    """
-    Generates a timestamp string suitable for filenames or logging.
+    """Generates a timestamp string suitable for filenames or logging.
 
-    Returns:
-        str: The current timestamp in YYYYMMDD_HHMMSS format.
+    :returns: The current timestamp in YYYYMMDD_HHMMSS format.
     """
     timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
     return timestamp

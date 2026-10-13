@@ -1,54 +1,25 @@
-# Backup & Restore
+# Back up and restore
 
-Data loss prevention is a critical aspect of server management. Bedrock Server Manager includes a robust backup and restore system that allows you to protect your worlds and configuration files.
+Create backups before importing content, resetting a world, updating a server or restoring older data. Keep another copy outside the BSM host; backups on the same disk cannot protect against disk loss.
 
-## Creating Backups
+## Choose the backup scope
 
-You can create backups manually at any time from the web interface.
+| Scope | Contents |
+|---|---|
+| World | The active server world |
+| Configuration | Selected properties, allowlist or permissions file |
+| All | World and supported configuration categories |
 
-### Types of Backups
+A server backup is not a complete BSM installation backup. Preserve the application's configuration, database, plugin files and other required content separately when migrating the host.
 
-*   **World Backup**: Archives the `worlds/` directory, saving all map data, player inventories, and structures.
-*   **Full Backup**: Archives both the world data and all configuration files (`server.properties`, `allowlist.json`, `permissions.json`).
-*   **Config Backup**: Backs up specific configuration files individually.
+Use your server's backup page to create a backup and confirm it appears in the appropriate category. The configured backup root contains per-server backups; it need not be inside the server directory.
 
-### How to Create a Backup
+## Restore carefully
 
-1.  Navigate to the **Backups** page for your server.
-2.  **For a World Backup**: Click **+ New World Backup**.
-3.  **For a Full Backup**: Click **Backup All Now**.
-4.  **For Config Backups**:
-    *   Same as world backup, but select the specific config type (Properties, Allowlist, Permissions) to backup.
+Restore replaces the selected current data. Create a fresh backup first, select the intended category and timestamp, and allow BSM's maintenance operation to finish before restarting or changing that server.
 
-**Note**: Backups are stored in the server's `backups/` directory, organized by date and type.
+Restore-all selects backups across categories. The most recent world and configuration backups can have different timestamps; it does not guarantee a single historical snapshot. Verify the resulting world, properties and player permissions after restoration.
 
-## Restoring Backups
+## Automate and retain
 
-If something goes wrong, you can easily restore your server to a previous state.
-
-### Restore Process
-
-1.  Navigate to the **Backups** page.
-4.  BSM will display a list of available backups sorted by date and type.
-5.  Find the desired backup and click the **Restore** button next to it.
-6.  **Confirm the warning**: Restoring will **overwrite** the current files on the server. This action cannot be undone unless you made a fresh backup just before restoring.
-
-### Restore All
-
-The **Restore All** function attempts to restore the most recent backup for *all* categories (World, Properties, Allowlist, Permissions). Use this with caution when performing a full server rollback.
-
-## Automated Backups
-
-BSM supports automated backups to ensure you never lose progress.
-
-
-1.  Default behavior often includes a "Backup on Start" option to ensure a safe point before a new session begins.
-2.  Another option "Backup before Update" is enabled to create a backup before applying server updates.
-
-## Managing Backups
-
-While the web interface allows you to create and restore backups, you may occasionally need to manage the backup files themselves (e.g., to free up disk space).
-
-*   Backups are standard `.mcworld` or plain `json`/`properties` files.
-*   They are located in the `backups/<server_name>` folder.
-*   You can manually delete old backup files using a file manager or the command line if the default pruning options are insufficient.
+Review the installed backup-on-start plugin and its settings before relying on automatic backups. Check that the plugin is enabled and inspect failed operations in the logs. Choose retention limits that match available disk space, and periodically test restoration using a separate server.

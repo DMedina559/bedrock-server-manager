@@ -63,9 +63,7 @@ def get_installed_version() -> str:
     found (e.g., in a development environment without installation), it defaults to
     "0.0.0".
 
-    Returns:
-        The installed package version string, or "0.0.0" if not found.
-    """
+    :returns: The installed package version string, or "0.0.0" if not found."""
     try:
         installed_version = version(package_name)
         return installed_version

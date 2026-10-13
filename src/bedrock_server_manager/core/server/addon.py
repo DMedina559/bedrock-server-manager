@@ -118,10 +118,9 @@ class ServerAddons:
     ) -> None:
         """Enables a physically installed addon in a world asynchronously.
 
-        Args:
-            pack_uuid (str): The UUID of the pack to enable.
-            pack_type (str): The type of pack; must be either ``"behavior"`` or ``"resource"``.
-            world_name (Optional[str]): The name of the world.
+        :param pack_uuid: The UUID of the pack to enable.
+        :param pack_type: The type of pack; must be either ``"behavior"`` or ``"resource"``.
+        :param world_name: The name of the world.
         """
         async with self.server.operation_lock:
             if not pack_uuid or not pack_type:
@@ -160,11 +159,10 @@ class ServerAddons:
     ) -> None:
         """Updates the active subpack for an already enabled addon asynchronously.
 
-        Args:
-            pack_uuid (str): The UUID of the active pack.
-            pack_type (str): The type of pack; must be either ``"behavior"`` or ``"resource"``.
-            subpack_name (str): The new subpack folder name to set.
-            world_name (Optional[str]): The name of the world.
+        :param pack_uuid: The UUID of the active pack.
+        :param pack_type: The type of pack; must be either ``"behavior"`` or ``"resource"``.
+        :param subpack_name: The new subpack folder name to set.
+        :param world_name: The name of the world.
         """
         async with self.server.operation_lock:
             if not pack_uuid or not pack_type or (not subpack_name):
@@ -228,10 +226,9 @@ class ServerAddons:
     ) -> None:
         """Disables an addon by removing it from the world's activation list asynchronously, preserving files.
 
-        Args:
-            pack_uuid (str): The UUID of the pack to disable.
-            pack_type (str): The type of pack; must be either ``"behavior"`` or ``"resource"``.
-            world_name (Optional[str]): The name of the world.
+        :param pack_uuid: The UUID of the pack to disable.
+        :param pack_type: The type of pack; must be either ``"behavior"`` or ``"resource"``.
+        :param world_name: The name of the world.
         """
         async with self.server.operation_lock:
             if not pack_uuid or not pack_type:

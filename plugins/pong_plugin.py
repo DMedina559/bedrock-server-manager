@@ -1,66 +1,18 @@
-# <PLUGIN_DIR>/pong_plugin.py
-"""
-Example plugin: PongPlugin - Demonstrates listening for custom plugin events.
+"""Listen for the ping example's typed event."""
 
-This plugin listens for a specific custom event, 'pingplugin:ping', and logs
-receipt without logging the event payload. It's designed to work in conjunction with PingPlugin,
-which sends this event.
-"""
-
-from bedrock_server_manager import PluginBase
-from bedrock_server_manager.plugins import app_event
+from bedrock_server_manager import PluginBase, app_event
 
 
 class PongPlugin(PluginBase):
-    """
-    A plugin that demonstrates how to listen for and handle custom events
-    sent by other plugins. It specifically listens for 'pingplugin:ping'.
-    """
+    version = "2.0.0"
+    name = "Pong Example"
+    description = "Log server pings from the ping example."
+    dependencies = ["ping_plugin"]
 
-    version = "1.2.0"
-    author = "dmedina559"
-    description = "A plugin that demonstrates how to listen for and handle custom events sent by other plugins. It specifically listens for 'pingplugin:ping'."
-    name = "Pong Test"
-
-    @app_event("on_load")
-    async def plugin_loaded(self, **kwargs):
-        """
-        Called by the PluginManager when this plugin is loaded.
-
-        This method is the ideal place to register listeners for any custom events
-        this plugin is interested in.
-        """
-        self.logger.debug(
-            "'%s' v%s loaded. Registering listener for 'pingplugin:ping' event.",
-            self.name,
-            self.version,
+    @app_event("ping_plugin:ping")
+    async def received(self, server_name: str, **kwargs):
+        self.logger.info(
+            "Received ping for %s from %s",
+            server_name,
+            kwargs.get("_triggering_plugin", "unknown"),
         )
-
-    @app_event("pingplugin:ping")
-    async def handle_ping_event(self, *args, **kwargs):
-        """Log an incoming ping and its optional payload."""
-        # It's good practice to extract _triggering_plugin first.
-        # The .pop() method retrieves it and removes it from kwargs,
-        # so it doesn't interfere with your expected payload.
-        triggering_plugin_name = kwargs.pop("_triggering_plugin", "UnknownPlugin")
-
-        self.logger.debug(
-            "Received 'pingplugin:ping' from '%s' for server '%s' (%s positional arguments, %s keyword arguments).",
-            triggering_plugin_name,
-            kwargs.get("server_name", "N/A"),
-            len(args),
-            len(kwargs),
-        )
-
-    @app_event("on_unload")
-    async def plugin_unloaded(self, **kwargs):
-        """Called by the PluginManager when this plugin is being unloaded (e.g., during a
-        reload or application shutdown).
-
-        For custom event listeners registered via ``self.api.listen_for_event()``,
-        explicit unregistration in ``on_unload`` is generally not required because the
-        PluginManager clears all custom event listeners when plugins are reloaded.
-        However, if a plugin manages resources that need specific cleanup related to
-        its event handling, this would be the place to do it.
-        """
-        self.logger.debug("'%s' v%s is unloading.", self.name, self.version)

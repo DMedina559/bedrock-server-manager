@@ -315,4 +315,6 @@ async def test_native_custom_emission_requires_own_declaration():
     bus.define(EventDefinition(name="other:changed", owner="plugin:other"), Payload)
     with pytest.raises(ValueError, match="own declared"):
         dispatch("emit", "other:changed", count=1)
-    assert (await legacy("legacy_event", count=1)).status == "completed"
+    with pytest.raises(ValueError, match="own declared"):
+        await legacy("legacy_event", count=1)
+    assert (await legacy("owner:changed", count=1)).status == "completed"

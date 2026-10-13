@@ -31,10 +31,16 @@ async def test_plugin_api_delivers_actual_events(app_context, plugin_factory):
     async def listener(*args, **kwargs):
         received.append((args, kwargs))
 
-    api.listen_for_event("integration_event", listener)
-    await api.send_event("integration_event", 1, key="value")
+    from pydantic import BaseModel
+
+    class Payload(BaseModel):
+        key: str
+
+    api.events.define("listener:integration_event", Payload)
+    api.listen_for_event("listener:integration_event", listener)
+    await api.send_event("listener:integration_event", key="value")
     assert len(received) == 1
-    assert received[0][0] == (1,)
+    assert received[0][0] == ()
     assert received[0][1]["key"] == "value"
     assert received[0][1]["_triggering_plugin"] == "listener"
 

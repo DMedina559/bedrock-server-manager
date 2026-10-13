@@ -44,10 +44,10 @@ def create_event_capabilities(
             raise RuntimeError("Event bus is unavailable")
         kwargs["_triggering_plugin"] = plugin_name
         definition = bus.registry.definition(event_name)
-        if (
-            not is_core
-            and bus.registry.declared(event_name)
-            and (definition.phase != "custom" or definition.owner != event_owner)
+        if not is_core and (
+            not bus.registry.declared(event_name)
+            or definition.phase != "custom"
+            or definition.owner != event_owner
         ):
             raise ValueError("Plugins may only emit their own declared custom events")
         return await bus.emit(event_name, kwargs, *args, source=event_owner)

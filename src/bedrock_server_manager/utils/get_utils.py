@@ -15,15 +15,13 @@ logger = logging.getLogger(__name__)
 
 
 def _get_splash_text() -> str:  # noqa: C901
-    """
-    Selects and returns a random splash text message.
+    """Selects and returns a random splash text message.
 
     Pulls from the SPLASH_TEXTS constant defined in 'splash_text.py'.
     Handles cases where SPLASH_TEXTS might be a dictionary of lists, a simple list/tuple,
     empty, or not defined.
 
-    Returns:
-        A randomly chosen splash text string, or a fallback message if none can be selected.
+    :returns: A randomly chosen splash text string, or a fallback message if none can be selected.
     """
     fallback_splash: str = "Amazing Error Handling!"
     chosen_splash: str = fallback_splash
@@ -78,12 +76,9 @@ def _get_splash_text() -> str:  # noqa: C901
 def get_operating_system_type() -> str:
     """Return the operating system type.
 
-    Returns:
-        A string representing the OS type (e.g., "Linux", "Windows", "Darwin").
+    :returns: A string representing the OS type (e.g., "Linux", "Windows", "Darwin").
 
-    Raises:
-        SystemError: If the OS type cannot be determined (highly unlikely).
-    """
+    :raises SystemError: If the OS type cannot be determined (highly unlikely)."""
     try:
         os_type = platform.system()
         if not os_type:

@@ -1,58 +1,25 @@
-# Introduction to Plugins
+# Install and manage plugins
 
-```{image} https://raw.githubusercontent.com/DMedina559/bsm-frontend/main/frontend/public/image/icon/favicon.svg
-:alt: Bedrock Server Manager Logo
-:width: 150px
-:align: center
-```
+Plugins run in BSM's process and can access host resources. Review their source, compatibility and settings before enabling them.
 
-This guide explains how to manage and create plugins to extend and customize the Bedrock Server Manager. Plugins can add new features, notifications, and automation to your server management workflow.
+## Install
 
----
+Place the plugin's Python file or supported package in the plugin directory under the selected data directory. Follow the plugin author's installation instructions for additional dependencies. Use the same Python environment and operating-system account as the manager.
 
-## How Plugins Work
+Refresh discovery or restart as appropriate, then inspect the plugin management view. Confirm the plugin's internal name, version and status before enabling it. A discovered plugin is not necessarily enabled.
 
-Plugins are small Python scripts that "hook into" the Bedrock Server Manager to add functionality. You don't need to know how to code to use them. You can simply download a plugin and activate it.
+## Configure and reload
 
-### Finding Plugins
+Change the plugin's declared settings through the management interface. Enable or disable it deliberately, then check logs for initialization or cleanup failures. Reload unloads the old instance before loading a replacement; it is not a way to bypass outstanding callbacks.
 
-1.  **Locate the `plugins` directory:** Find the application's data directory. Inside, there will be a `plugins` folder. If it doesn't exist, the application will create it on its first run.
-2.  **Install a plugin:** To install a new plugin, simply place its Python file (e.g., `some_plugin.py`) inside this `plugins` directory.
+If unload cannot drain synchronous work, replacement loading can remain blocked until that work finishes. Investigate the callback and avoid repeated reload attempts. Custom router availability follows plugin lifecycle; plugin authors must unregister resources on unload.
 
----
+See [bundled plugins](../features/default_plugins.md) for built-in behavior and the [author guide](../developer/plugins/introduction.md) for APIs, event ownership and lifecycle responsibilities.
 
-## Managing Plugins with the Web Server
+## Repository examples
 
-You can easily control which plugins are active from the Web Server.
-
-Changes made are saved immediately and will be applied the next time the application starts or reload.
-
-```{note}
-If you're changing the status of a FASTAPI plugin you must fully restart the web server
-```
-
----
-
-## Configuration Storage
-
-Plugin statuses, versions, and descriptions are stored in the database.
-
-*   **Location:** The database is located in your application's configuration directory (typically `~/.bedrock-server-manager/.config/`).
-*   **Functionality:** It stores a list of all known plugins and whether they are enabled (`true`) or disabled (`false`), their version, and description, and author.
-*   **Discovery:** When the application starts, it scans the `plugins` directory. Any new `.py` files found will be automatically added as `disabled`. You can then enable them through the web ui.
-
-### Default Plugins
-A few essential built-in plugins are included in BSM to provide core functionality. You can enable/disable them if you wish. The current list includes:
-*   `server_lifecycle_notifications` (enabled by default)
-*   `world_operation_notifications` (enabled by default)
-*   `auto_reload_config` (enabled by default)
-*   `autostart_plugin` (enabled by default)
-*   `update_before_start` (enabled by default)
-*   `backup_on_start` (disabled by default)
-*   `content_uploader_plugin` (disabled by default)
-*   `download_page_plugin` (disabled by default)
-
----
-
-## Creating Your Own Plugins
-Check out the [Plugin Developer Guide](../developer/plugins/introduction.md) for detailed instructions on how to create your own plugins. This guide covers everything from using the `PluginBase` class to using event hooks, and the plugin API.
+The repository's `plugins/ping_plugin.py` and `pong_plugin.py` demonstrate typed,
+owned custom events. Enable ping before pong. The event-sender example exposes
+only its own declared message event and requires administrator authentication.
+Recursive and server-restarting diagnostic plugins were removed; automated event
+and lifecycle tests cover those behaviors without deploying them to a live host.

@@ -29,7 +29,6 @@ version = release
 extensions = [
     "sphinx_click",
     "sphinx.ext.autodoc",
-    "sphinx.ext.napoleon",
     "myst_parser",
     "sphinx_github_changelog",
 ]
