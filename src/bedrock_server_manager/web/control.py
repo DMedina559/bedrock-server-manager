@@ -49,7 +49,7 @@ class ControlFiles:
                 self._file.seek(0)
                 msvcrt.locking(fd, msvcrt.LK_NBLCK, 1)
             else:
-                import fcntl
+                fcntl: Any = import_module("fcntl")
 
                 fcntl.flock(fd, fcntl.LOCK_EX | fcntl.LOCK_NB)
         except OSError as error:
