@@ -1,7 +1,8 @@
 import inspect
 import json
 import os
-from typing import Any, Dict, List
+from types import UnionType
+from typing import Annotated, Any, Dict, List, Literal, Union, get_args, get_origin
 
 from bedrock_server_manager import PluginBase, app_event
 from bedrock_server_manager.events import server as status_events  # noqa: F401
@@ -111,20 +112,41 @@ class APIDocsGenerator(PluginBase):
         return events
 
     def _format_type_hint(self, annotation: Any) -> str:
-        """
-        Cleans up the string representation of a type hint for display.
-        """
-        if annotation == inspect.Parameter.empty:
+        """Render logical types without version-dependent validation metadata."""
+        if annotation is inspect.Parameter.empty or annotation is Any:
             return "Any"
-
-        # Get the string representation
-        s = str(annotation)
-
-        # Clean up common Python cruft
-        s = s.replace("typing.", "")
-        s = s.replace("<class '", "").replace("'>", "")
-
-        return s
+        if annotation is None or annotation is type(None):
+            return "None"
+        if isinstance(annotation, list):
+            return (
+                "["
+                + ", ".join(self._format_type_hint(item) for item in annotation)
+                + "]"
+            )
+        origin = get_origin(annotation)
+        arguments = get_args(annotation)
+        if origin is Annotated:
+            return self._format_type_hint(arguments[0])
+        if origin in (Union, UnionType):
+            return " | ".join(self._format_type_hint(item) for item in arguments)
+        if origin is Literal:
+            return "Literal[" + ", ".join(repr(item) for item in arguments) + "]"
+        if origin is not None:
+            name = getattr(origin, "__name__", str(origin))
+            return (
+                name
+                + "["
+                + ", ".join(self._format_type_hint(item) for item in arguments)
+                + "]"
+            )
+        if annotation is Ellipsis:
+            return "..."
+        return (
+            str(annotation)
+            .replace("typing.", "")
+            .replace("<class '", "")
+            .replace("'>", "")
+        )
 
     def _format_api_markdown(self, api_list: list) -> str:
         """

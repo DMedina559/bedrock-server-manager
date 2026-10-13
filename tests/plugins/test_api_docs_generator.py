@@ -75,3 +75,26 @@ async def test_ping_pong_examples_use_typed_owned_events(plugin_factory, caplog)
             ),
         )
     assert "Received ping for example" in caplog.text
+
+
+def test_type_labels_ignore_validation_repr_and_normalize_union_syntax():
+    from typing import Annotated, Optional, Union
+
+    from pydantic import Field
+
+    spec = importlib.util.spec_from_file_location(
+        "api_docs_generator",
+        Path(__file__).parents[2] / "plugins/api_docs_generator.py",
+    )
+    module = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(module)
+    generator = module.APIDocsGenerator.__new__(module.APIDocsGenerator)
+    for metadata in (Field(min_length=1), Field(min_length=2, strict=True)):
+        assert (
+            generator._format_type_hint(list[Annotated[str, metadata]]) == "list[str]"
+        )
+    for annotation in (Optional[str], str | None):
+        assert generator._format_type_hint(annotation) == "str | None"
+    assert generator._format_type_hint(Union[int, str]) == generator._format_type_hint(
+        int | str
+    )

@@ -121,7 +121,7 @@ async def some_function(self, request, server_name, uuids, pack_type, result, **
 |----------|------|
 | `request` | `ReorderAddonsRequest` |
 | `server_name` | `str` |
-| `uuids` | `list[Annotated[str, FieldInfo(annotation=NoneType, required=True, metadata=[Strict(strict=True), MinLen(min_length=1), _PydanticGeneralMetadata(pattern='.*\\S.*')])]]` |
+| `uuids` | `list[str]` |
 | `pack_type` | `Literal['behavior', 'resource']` |
 | `result` | `ReorderAddonsResponse` |
 | `_triggering_plugin` | `str` (core, or plugin name) |
@@ -196,7 +196,7 @@ async def some_function(self, *, request, server_name, new_players_data=None, re
 | `server_name` | `str` |
 | `new_players_data` | `list[bedrock_server_manager.api.models.allowlist.AllowlistPlayer]` |
 | `result` | `AddToAllowlistResponse | RemoveFromAllowlistResponse` |
-| `player_names` | `list[Annotated[str, FieldInfo(annotation=NoneType, required=True, metadata=[Strict(strict=True), MinLen(min_length=1), _PydanticGeneralMetadata(pattern='.*\\S.*')])]]` |
+| `player_names` | `list[str]` |
 | `_triggering_plugin` | `str` (core, or plugin name) |
 
 ---
@@ -288,7 +288,7 @@ async def some_function(self, request, server_name, xuid, player_name, permissio
 | `request` | `SetPermissionsRequest` |
 | `server_name` | `str` |
 | `xuid` | `str` |
-| `player_name` | `Optional[Annotated[str, FieldInfo(annotation=NoneType, required=True, metadata=[Strict(strict=True), MinLen(min_length=1), _PydanticGeneralMetadata(pattern='.*\\S.*')])]]` |
+| `player_name` | `str | None` |
 | `permission` | `Literal['visitor', 'member', 'operator']` |
 | `result` | `SetPermissionsResponse` |
 | `_triggering_plugin` | `str` (core, or plugin name) |
@@ -330,7 +330,7 @@ async def some_function(self, request, player_strings, result, **kwargs):
 | Key Name | Type |
 |----------|------|
 | `request` | `AddPlayersManuallyRequest` |
-| `player_strings` | `list[Annotated[str, FieldInfo(annotation=NoneType, required=True, metadata=[Strict(strict=True), MinLen(min_length=1), _PydanticGeneralMetadata(pattern='.*\\S.*')])]]` |
+| `player_strings` | `list[str]` |
 | `result` | `AddPlayersManuallyResponse` |
 | `_triggering_plugin` | `str` (core, or plugin name) |
 
@@ -423,7 +423,7 @@ async def some_function(self, request, download_dir, keep_count, result, **kwarg
 |----------|------|
 | `request` | `PruneDownloadCacheRequest` |
 | `download_dir` | `str` |
-| `keep_count` | `Optional[Annotated[int, FieldInfo(annotation=NoneType, required=True, metadata=[Ge(ge=0)])]]` |
+| `keep_count` | `int | None` |
 | `result` | `PruneDownloadCacheResponse` |
 | `_triggering_plugin` | `str` (core, or plugin name) |
 
@@ -867,7 +867,7 @@ async def some_function(self, request, server_name, uuids, pack_type, event, **k
 |----------|------|
 | `request` | `ReorderAddonsRequest` |
 | `server_name` | `str` |
-| `uuids` | `list[Annotated[str, FieldInfo(annotation=NoneType, required=True, metadata=[Strict(strict=True), MinLen(min_length=1), _PydanticGeneralMetadata(pattern='.*\\S.*')])]]` |
+| `uuids` | `list[str]` |
 | `pack_type` | `Literal['behavior', 'resource']` |
 | `event` | `CancellableEvent` |
 | `_triggering_plugin` | `str` (core, or plugin name) |
@@ -941,7 +941,7 @@ async def some_function(self, *, request, server_name, new_players_data=None, pl
 | `request` | `AddToAllowlistRequest | RemoveFromAllowlistRequest` |
 | `server_name` | `str` |
 | `new_players_data` | `list[bedrock_server_manager.api.models.allowlist.AllowlistPlayer]` |
-| `player_names` | `list[Annotated[str, FieldInfo(annotation=NoneType, required=True, metadata=[Strict(strict=True), MinLen(min_length=1), _PydanticGeneralMetadata(pattern='.*\\S.*')])]]` |
+| `player_names` | `list[str]` |
 | `event` | `CancellableEvent` |
 | `_triggering_plugin` | `str` (core, or plugin name) |
 
@@ -1034,7 +1034,7 @@ async def some_function(self, request, server_name, xuid, player_name, permissio
 | `request` | `SetPermissionsRequest` |
 | `server_name` | `str` |
 | `xuid` | `str` |
-| `player_name` | `Optional[Annotated[str, FieldInfo(annotation=NoneType, required=True, metadata=[Strict(strict=True), MinLen(min_length=1), _PydanticGeneralMetadata(pattern='.*\\S.*')])]]` |
+| `player_name` | `str | None` |
 | `permission` | `Literal['visitor', 'member', 'operator']` |
 | `event` | `CancellableEvent` |
 | `_triggering_plugin` | `str` (core, or plugin name) |
@@ -1076,7 +1076,7 @@ async def some_function(self, request, player_strings, event, **kwargs):
 | Key Name | Type |
 |----------|------|
 | `request` | `AddPlayersManuallyRequest` |
-| `player_strings` | `list[Annotated[str, FieldInfo(annotation=NoneType, required=True, metadata=[Strict(strict=True), MinLen(min_length=1), _PydanticGeneralMetadata(pattern='.*\\S.*')])]]` |
+| `player_strings` | `list[str]` |
 | `event` | `CancellableEvent` |
 | `_triggering_plugin` | `str` (core, or plugin name) |
 
@@ -1145,7 +1145,7 @@ async def some_function(self, request, download_dir, keep_count, event, **kwargs
 |----------|------|
 | `request` | `PruneDownloadCacheRequest` |
 | `download_dir` | `str` |
-| `keep_count` | `Optional[Annotated[int, FieldInfo(annotation=NoneType, required=True, metadata=[Ge(ge=0)])]]` |
+| `keep_count` | `int | None` |
 | `event` | `CancellableEvent` |
 | `_triggering_plugin` | `str` (core, or plugin name) |
 
