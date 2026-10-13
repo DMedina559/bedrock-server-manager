@@ -3,7 +3,7 @@
 from fastapi import APIRouter, Depends
 
 from ...context import AppContext
-from ...events.models import EventCatalog, EventDiagnostics
+from ...events.models import EventActivityQuery, EventCatalog, EventDiagnostics
 from ..deps import get_admin_user, get_app_context
 
 router = APIRouter(tags=["Application Events"], dependencies=[Depends(get_admin_user)])
@@ -24,6 +24,7 @@ async def list_application_events(
     response_model=EventDiagnostics,
 )
 async def get_event_activity(
+    query: EventActivityQuery = Depends(),
     app_context: AppContext = Depends(get_app_context),
 ) -> EventDiagnostics:
-    return app_context.events.diagnostics()
+    return app_context.events.diagnostics(query)

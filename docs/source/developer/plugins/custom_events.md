@@ -100,7 +100,8 @@ For transport-only topic data and live dashboards, use
 ## Diagnostics and limits
 
 `events.diagnostics()` returns copied metadata for current and recent dispatches,
-including duration, listener failures, delivery counts, and correlation IDs.
+including per-listener subscription IDs, callback names, durations, outcomes,
+listener failures, delivery counts, and correlation IDs.
 Payloads and exception messages are not retained. History is bounded and held in
 memory; it is not a replay log and does not survive a restart.
 
@@ -115,3 +116,67 @@ Duplicate recursive dispatches with the same identity are suppressed. Capacity
 and depth exhaustion produce a partial receipt and cancel before hooks. During
 shutdown, plugin listeners drain before unload and the bus drains before the
 WebSocket transport closes.
+
+## Filtered activity
+
+The activity route accepts `name`, `owner`, `correlation_id`, `status`, and `limit`.
+Owners use the bus namespace, such as `plugin:dashboard` or `transport:websocket`.
+An owner matches the producer source or any listener involved in a dispatch.
+The limit bounds each returned list; recent history keeps its chronological order
+and includes the newest matching records. Counters remain totals for the bus.
+
+```text
+GET /api/events/activity?owner=plugin:dashboard&status=partial&limit=20
+```
+
+Plugins can apply the same validated filters:
+
+```python
+from bedrock_server_manager.events import EventActivityQuery
+
+activity = self.api.events.diagnostics(
+    EventActivityQuery(name="dashboard:refresh", limit=20)
+)
+```
+
+Receipts include `rejection_reason`: `recursion`, `depth_limit`, `capacity`, or
+`shutdown`. Depth/capacity receipts carry distinct failure codes and cancel
+before-operation controls. Rejected dispatches do not increment the listener
+failure counter. Emitting into a closed bus raises `EventDispatchRejected`, a
+`RuntimeError` subclass whose `record` holds the shutdown rejection metadata.
+
+## One-shot listeners and event waits
+
+Use `once()` for a callback that should run for its first matching dispatch. The
+subscription is consumed before the callback starts, including when that callback
+fails or another emission overlaps it. A persistent and a one-shot registration
+of the same callback are distinct subscriptions.
+
+```python
+self.api.events.once("dashboard:refresh", self.refreshed)
+
+payload = await self.api.events.wait_for(
+    "dashboard:refresh",
+    predicate=lambda **data: data["server_name"] == "example",
+    timeout=30,
+)
+```
+
+`wait_for()` returns a copy of the listener keyword payload, preserving typed
+request/result objects. Predicates receive the ordinary listener arguments, must
+be synchronous and quick, and may reject unmatched events by returning false.
+A predicate exception reaches the waiting caller without failing the emitter.
+The timeout must be finite and positive. The temporary subscription is removed
+on a match, timeout, exception, or caller cancellation. Plugin unload and bus
+shutdown cancel pending waits. Helpers receive private events too.
+
+A wait subscribes when its coroutine starts running, so start it before triggering
+the operation whose event you expect; it does not replay prior emissions.
+
+The registry caches Pydantic validators and synchronizes declaration, lookup, and
+removal across worker threads. Owner, phase, identity, and visibility conflicts
+are rejected. Multiple payload variants require explicit registration; core
+shared event declarations opt into this, while plugin `define()` rejects accidental
+contract replacement. Event envelopes require epoch/revision together and
+positive JavaScript-safe revisions; transport counts reuse the shared delivery
+invariant that every targeted recipient has an outcome.

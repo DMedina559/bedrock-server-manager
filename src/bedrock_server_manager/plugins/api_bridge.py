@@ -260,7 +260,9 @@ def create_app_api(
             raise RuntimeError("AppContext is unavailable")
         app_context.events.check_owner(event_owner, event_generation)
 
-    def event_listener(event_name: str, callback: Callable[..., None]):
+    def event_listener(
+        event_name: str, callback: Callable[..., None], *, once: bool = False
+    ):
         require_event_owner()
         if app_context is None:
             raise RuntimeError("AppContext is unavailable")
@@ -270,6 +272,7 @@ def create_app_api(
             owner=event_owner,
             active=is_core,
             generation=event_generation,
+            once=once,
         )
 
     async def event_sender(event_name: str, *args: Any, **kwargs: Any):
@@ -295,10 +298,20 @@ def create_app_api(
         bus = app_context.events
         if action == "listen":
             return event_listener(*args, **kwargs)
+        if action == "once":
+            return event_listener(*args, once=True, **kwargs)
+        if action == "wait_for":
+            return bus.wait_for(
+                *args,
+                owner=event_owner,
+                generation=event_generation,
+                active=is_core,
+                **kwargs,
+            )
         if action == "emit":
             return event_sender(*args, **kwargs)
         if action == "diagnostics":
-            return bus.diagnostics()
+            return bus.diagnostics(*args, **kwargs)
         if action == "unsubscribe":
             bus.unsubscribe(args[0], owner=event_owner)
             return None

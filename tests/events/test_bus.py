@@ -145,11 +145,16 @@ async def test_typed_events_validate_before_delivery_and_mask_secrets():
     seen = []
     bus.subscribe("*", lambda event: seen.append(event), observer=True)
     with pytest.raises(ValidationError):
-        await bus.emit("demo:typed", {"count": "invalid", "password": "secret"})
+        await bus.emit(
+            "demo:typed",
+            {"count": "invalid", "password": "payload-password-must-not-appear"},
+        )
     assert not seen
-    await bus.emit("demo:typed", {"count": 1, "password": "secret"})
-    assert seen[0].data["password"] != "secret"
-    assert "secret" not in bus.diagnostics().model_dump_json()
+    await bus.emit(
+        "demo:typed", {"count": 1, "password": "payload-password-must-not-appear"}
+    )
+    assert seen[0].data["password"] != "payload-password-must-not-appear"
+    assert "payload-password-must-not-appear" not in bus.diagnostics().model_dump_json()
 
 
 async def test_active_diagnostics_and_owner_drain():

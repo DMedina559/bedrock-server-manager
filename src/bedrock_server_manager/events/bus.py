@@ -17,6 +17,7 @@ from pydantic import BaseModel
 
 from .control import CancellableEvent
 from .models import (
+    EventActivityQuery,
     EventDefinition,
     EventDelivery,
     EventDiagnostics,
@@ -24,6 +25,7 @@ from .models import (
     EventOptions,
     EventRecord,
     ListenerFailure,
+    ListenerRecord,
 )
 from .registry import EventRegistry, builtin_events
 from .serialization import PRIVATE_FIELDS, sanitize
@@ -51,6 +53,7 @@ class Subscription:
     owner: str
     callback: Callable[..., Any]
     observer: bool = False
+    once: bool = False
 
 
 class EventBus:
@@ -74,6 +77,7 @@ class EventBus:
         self._inflight: dict[
             str, dict[asyncio.Future[None], asyncio.Task[Any] | None]
         ] = {}
+        self._waiters: dict[str, set[asyncio.Future[dict[str, Any]]]] = {}
         self.accepting = True
         self.emitted = self.suppressed = self.failed_listeners = 0
 
@@ -86,6 +90,7 @@ class EventBus:
         active: bool = True,
         observer: bool = False,
         generation: int | None = None,
+        once: bool = False,
     ) -> str:
         with self._lock:
             self.check_owner(owner, generation)
@@ -99,11 +104,12 @@ class EventBus:
                     subscription.owner,
                     subscription.callback,
                     subscription.observer,
-                ) == (name, owner, callback, observer):
+                    subscription.once,
+                ) == (name, owner, callback, observer, once):
                     return subscription.token
             token = uuid4().hex
             self._subscriptions[token] = Subscription(
-                token, name, owner, callback, observer
+                token, name, owner, callback, observer, once
             )
             return token
 
@@ -117,6 +123,58 @@ class EventBus:
         with self._lock:
             self.check_owner(definition.owner, generation)
             self.registry.register(definition, payload_model)
+
+    def once(self, name: str, callback: Callable[..., Any], **options: Any) -> str:
+        """Consume the subscription before invoking its first callback."""
+        return self.subscribe(name, callback, once=True, **options)
+
+    async def wait_for(
+        self,
+        name: str,
+        *,
+        predicate: Callable[..., bool] | None = None,
+        timeout: float = 30,
+        owner: str = "application",
+        generation: int | None = None,
+        active: bool = True,
+    ) -> dict[str, Any]:
+        """Await the next matching payload; always remove the temporary listener."""
+        if timeout <= 0 or not timeout < float("inf"):
+            raise ValueError("Event wait timeout must be finite and positive")
+        future: asyncio.Future[dict[str, Any]] = (
+            asyncio.get_running_loop().create_future()
+        )
+
+        async def receive(*args: Any, **data: Any) -> None:
+            if future.done():
+                return
+            try:
+                matched = predicate is None or predicate(*args, **data)
+                if inspect.isawaitable(matched):
+                    if inspect.iscoroutine(matched):
+                        matched.close()
+                    raise TypeError("Event predicates must be synchronous")
+                if matched:
+                    self.unsubscribe(token, owner=owner)
+                    future.set_result(data)
+            except Exception as error:
+                future.set_exception(error)
+                self.unsubscribe(token, owner=owner)
+
+        token = self.subscribe(
+            name, receive, owner=owner, generation=generation, active=active
+        )
+        self._waiters.setdefault(owner, set()).add(future)
+        try:
+            async with asyncio.timeout(timeout):
+                return await future
+        finally:
+            self.unsubscribe(token, owner=owner)
+            owned = self._waiters.get(owner)
+            if owned is not None:
+                owned.discard(future)
+                if not owned:
+                    self._waiters.pop(owner, None)
 
     def unsubscribe(self, token: str, *, owner: str | None = None) -> None:
         with self._lock:
@@ -163,6 +221,8 @@ class EventBus:
                 if subscription.owner == owner:
                     self.unsubscribe(token)
             self.registry.remove_owner(owner)
+            for future in self._waiters.pop(owner, set()):
+                future.cancel()
 
     async def drain_owner(self, owner: str, timeout: float) -> None:
         current = asyncio.current_task()
@@ -187,9 +247,13 @@ class EventBus:
     ) -> list[Subscription]:
         with self._lock:
             selected = []
-            seen: set[tuple[str, Callable[..., Any]]] = set()
+            seen: set[tuple[str, Callable[..., Any], bool]] = set()
             for subscription in self._subscriptions.values():
-                identity = (subscription.owner, subscription.callback)
+                identity = (
+                    subscription.owner,
+                    subscription.callback,
+                    subscription.once,
+                )
                 allowed = subscription.owner in (
                     owners if owners is not None else self._owners
                 )
@@ -261,6 +325,18 @@ class EventBus:
         owned[pending] = asyncio.current_task()
         record.listeners_called += 1
         definition = self.registry.definition(envelope.name)
+        listener = ListenerRecord(
+            subscription_id=subscription.token,
+            owner=subscription.owner,
+            observer=subscription.observer,
+            listener_name=getattr(
+                subscription.callback,
+                "__qualname__",
+                type(subscription.callback).__name__,
+            ),
+        )
+        record.listeners.append(listener)
+        started = monotonic()
         try:
             timeout = (
                 self.options.hook_timeout_seconds
@@ -275,19 +351,31 @@ class EventBus:
                 )
                 record.deliveries.append(delivery)
                 if delivery.failed:
+                    listener.status = "failed"
                     self._failure(
                         record,
                         subscription.owner,
                         RuntimeError("Observer delivery failed"),
                     )
+                    listener.failure = record.failures[-1]
+            if listener.status == "running":
+                listener.status = "completed"
+        except asyncio.CancelledError:
+            listener.status = "cancelled"
+            raise
         except Exception as error:
+            listener.status = (
+                "timed_out" if isinstance(error, TimeoutError) else "failed"
+            )
             self._failure(record, subscription.owner, error)
+            listener.failure = record.failures[-1]
             control = data.get("event")
             if definition.phase == "before" and isinstance(control, CancellableEvent):
                 control.cancel("A before-operation listener did not complete")
             if strict:
                 raise
         finally:
+            listener.duration_ms = (monotonic() - started) * 1000
             owned.pop(pending, None)
             pending.set_result(None)
             if not owned:
@@ -313,6 +401,8 @@ class EventBus:
                     owners is None and subscription.owner not in self._owners
                 ):
                     continue
+                if subscription.once:
+                    self.unsubscribe(subscription.token, owner=subscription.owner)
                 await self._deliver(subscription, envelope, record, args, data, strict)
 
     async def emit(
@@ -327,7 +417,17 @@ class EventBus:
         strict: bool = False,
     ) -> EventRecord:
         if not self.accepting:
-            raise RuntimeError("Event bus is closed")
+            record = EventRecord(
+                event_id=uuid4().hex,
+                correlation_id=_correlation.get() or uuid4().hex,
+                name=name,
+                source=source,
+                timestamp=time(),
+                status="cancelled",
+                rejection_reason="shutdown",
+            )
+            self._recent.append(record.model_copy(deep=True))
+            raise EventDispatchRejected(record)
         data = dict(payload or {})
         definition = self.registry.definition(name)
         public_data = {
@@ -336,7 +436,7 @@ class EventBus:
         prepared = self.registry.prepare(name, public_data)
         if isinstance(prepared, BaseModel):
             data = {
-                **data,
+                **{key: value for key, value in data.items() if key in PRIVATE_FIELDS},
                 **{key: getattr(prepared, key) for key in type(prepared).model_fields},
                 **(prepared.model_extra or {}),
             }
@@ -380,6 +480,7 @@ class EventBus:
         self.emitted += 1
         if any(key == identity for _, key, _ in stack):
             record.status = "suppressed"
+            record.rejection_reason = "recursion"
             self.suppressed += 1
             self._recent.append(record)
             return record.model_copy(deep=True)
@@ -388,11 +489,25 @@ class EventBus:
             or len(self._active) >= self.options.max_active
         ):
             record.status = "partial"
-            self._failure(
-                record, "event-bus", RuntimeError("Event dispatch capacity exceeded")
+            record.rejection_reason = (
+                "depth_limit" if len(stack) >= self.options.max_depth else "capacity"
+            )
+            record.failures.append(
+                ListenerFailure(
+                    owner="event-bus",
+                    error_type="EventDispatchRejected",
+                    code=(
+                        "event_depth_limit"
+                        if record.rejection_reason == "depth_limit"
+                        else "event_capacity"
+                    ),
+                )
             )
             if isinstance(data.get("event"), CancellableEvent):
-                data["event"].cancel("Event dispatch capacity exceeded")
+                data["event"].cancel(
+                    f"Event dispatch rejected: {record.rejection_reason}"
+                )
+                record.cancellation_reason = data["event"].cancel_reason
             self._recent.append(record)
             return record.model_copy(deep=True)
         self._active[record.event_id] = record
@@ -426,19 +541,44 @@ class EventBus:
             _stack.reset(token)
         return record.model_copy(deep=True)
 
-    def diagnostics(self) -> EventDiagnostics:
+    def diagnostics(self, query: EventActivityQuery | None = None) -> EventDiagnostics:
+        query = query or EventActivityQuery(limit=self.options.history_limit or 1)
+        limit = query.limit
+
+        def matches(record: EventRecord) -> bool:
+            return (
+                (query.name is None or record.name == query.name)
+                and (
+                    query.correlation_id is None
+                    or record.correlation_id == query.correlation_id
+                )
+                and (query.status is None or record.status == query.status)
+                and (
+                    query.owner is None
+                    or record.source == query.owner
+                    or any(item.owner == query.owner for item in record.listeners)
+                    or any(item.owner == query.owner for item in record.failures)
+                )
+            )
+
         return EventDiagnostics(
             accepting=self.accepting,
             emitted=self.emitted,
             suppressed=self.suppressed,
             failed_listeners=self.failed_listeners,
             subscriptions=len(self._subscriptions),
-            active=list(self._active.values()),
-            recent=list(self._recent),
+            active=[record for record in self._active.values() if matches(record)][
+                :limit
+            ],
+            recent=[record for record in self._recent if matches(record)][-limit:],
         ).model_copy(deep=True)
 
     async def close(self) -> None:
         self.accepting = False
+        for futures in self._waiters.values():
+            for future in futures:
+                future.cancel()
+        self._waiters.clear()
         tasks = self._tasks - {asyncio.current_task()}
         if tasks:
             _, pending = await asyncio.wait(
@@ -450,3 +590,9 @@ class EventBus:
                 await asyncio.wait(pending, timeout=1)
         self._subscriptions.clear()
         self._owners.clear()
+
+
+class EventDispatchRejected(RuntimeError):
+    def __init__(self, record: EventRecord):
+        self.record = record.model_copy(deep=True)
+        super().__init__(f"Event dispatch rejected: {record.rejection_reason}")

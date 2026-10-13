@@ -103,7 +103,7 @@ def trigger_event(
                 )
             )
             if func.__module__.startswith("bedrock_server_manager."):
-                builtin_events.register(*declarations[-1])
+                builtin_events.register(*declarations[-1], allow_variants=True)
 
         @functools.wraps(func)
         async def wrapped(*args: P.args, **kwargs: P.kwargs) -> R:
