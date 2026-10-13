@@ -165,3 +165,45 @@ async def test_detached_web_cli_serves_requested_port_and_cleans_pid(
                     await asyncio.to_thread(child.wait, timeout=10)
             except (psutil.NoSuchProcess, psutil.ZombieProcess):
                 pass
+
+
+async def test_foreground_runtime_shutdown_exits_cleanly(web_process_config, tmp_path):
+    from bedrock_server_manager.web.control import ControlRecord
+
+    config, command, environment, port = web_process_config
+    log = tmp_path / "graceful-web.log"
+    with log.open("wb") as output:
+        process = await asyncio.create_subprocess_exec(
+            *command,
+            "web",
+            "start",
+            "--host",
+            "127.0.0.1",
+            "--port",
+            str(port),
+            env=environment,
+            stdout=output,
+            stderr=asyncio.subprocess.STDOUT,
+        )
+        try:
+            await wait_for_http(port, process)
+            record = ControlRecord.model_validate_json(
+                (config / "web_server.control.json").read_text()
+            )
+            async with AsyncClient(timeout=5, trust_env=False) as client:
+                response = await client.post(
+                    record.url,
+                    json={},
+                    headers={"X-BSM-Shutdown-Token": record.token.get_secret_value()},
+                )
+                assert response.status_code == 202
+                assert response.json()["instance_id"] == record.instance_id
+            await asyncio.wait_for(process.wait(), 20)
+            assert process.returncode == 0, log.read_text(errors="replace")
+            assert "Application shutdown complete" in log.read_text()
+            assert not (config / "web_server.pid").exists()
+            assert not (config / "web_server.control.json").exists()
+        finally:
+            if process.returncode is None:
+                process.kill()
+                await process.wait()

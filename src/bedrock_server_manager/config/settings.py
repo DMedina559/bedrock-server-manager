@@ -155,6 +155,7 @@ class Settings:
                     "downloads": 3,
                 },
                 "web": {
+                    "forwarded_allow_ips": "127.0.0.1",
                     "host": "127.0.0.1",
                     "jwt_secret_key": "randomly_generated_key",
                     "port": 11325,

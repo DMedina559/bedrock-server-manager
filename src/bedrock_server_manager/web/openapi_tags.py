@@ -27,6 +27,7 @@ OPENAPI_TAGS = [
         ("Backup & Restore", "Create, list, prune, and restore server backups."),
         ("Downloads", "Downloaded Bedrock versions and cleanup."),
         ("Plugin Management", "Plugin discovery, configuration, events, and reloads."),
+        ("Runtime", "Hosting runtime status and graceful shutdown."),
         ("Background Tasks", "Managed operations and their outcomes."),
         ("Logs", "Application and server log history."),
         ("Audit Logs", "Administrative audit history."),

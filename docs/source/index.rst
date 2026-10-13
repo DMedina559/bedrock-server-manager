@@ -48,6 +48,7 @@ Browse through the sections below to find various information about Bedrock Serv
    extras/install_content.md
    extras/web_extras.md
    extras/websockets.md
+   extras/web_runtime.md
    web/theming.md
 
 .. toctree::

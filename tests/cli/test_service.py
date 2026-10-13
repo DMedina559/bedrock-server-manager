@@ -28,8 +28,12 @@ def test_configure_service_flags_write_real_unit(
     assert "configuration applied successfully" in result.output
     unit = systemd.path(system).read_text()
     assert f"WorkingDirectory={app_context.data_dir}" in unit
-    assert "-m bedrock_server_manager web start --mode direct" in unit
-    assert "-m bedrock_server_manager web stop" in unit
+    assert "web start --mode direct" in unit
+    assert f"--config-dir {app_context.config_dir}" in unit
+    assert f"--data-dir {app_context.data_dir}" in unit
+    assert "ExecStop=" not in unit
+    assert "Restart=on-failure" in unit
+    assert "TimeoutStopSec=180s" in unit
     assert "Type=simple" in unit
     assert systemd.enabled is autostart
     assert all(("--user" not in command) == system for command in systemd.commands)

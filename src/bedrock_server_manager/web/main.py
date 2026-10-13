@@ -1,135 +1,79 @@
-# bedrock_server_manager/web/main.py
-"""
-Provides the main function for configuring and running the Uvicorn web server.
+"""Compose one Uvicorn server and own its runtime/control-file lifetime."""
 
-This module contains the :func:`run_web_server` function, which is responsible
-for initializing and starting the Uvicorn server that serves the FastAPI application.
-The FastAPI application instance (`app`) itself is expected to be defined in
-:mod:`bedrock_server_manager.web.main`. This module handles parsing command-line
-arguments and application settings to correctly configure Uvicorn's host, port,
-debug mode, and worker processes.
-"""
-
-import ipaddress
 import logging
-from typing import Optional
 
 import uvicorn
 
 from ..context import AppContext
 from ..logging import configure_web_logging
+from ..services.lifecycle import LifecyclePhase
 from .app import create_web_app
+from .control import ControlFiles
+from .runtime import WebRunOptions, WebRuntime
 
 logger = logging.getLogger(__name__)
 
 
-def run_web_server(  # noqa: C901
-    app_context: "AppContext",
-    host: Optional[str] = None,
-    port: Optional[int] = None,
-    debug: bool = False,
-) -> None:
-    """
-    Configures and starts the Uvicorn web server to serve the FastAPI application.
-    """
+def create_server(
+    app_context: AppContext, options: WebRunOptions, runtime: WebRuntime
+) -> uvicorn.Server:
     settings = app_context.settings
-
-    # Determine port to use
-    final_port = 11325  # Default fallback
-    if port is not None:
-        logger.debug("Using port provided via command-line: %s", port)
-        final_port = port
-    else:
-        logger.debug("No port via command-line, using settings.")
-        port_setting_key = "web.port"
-        port_val = settings.get(port_setting_key, 11325)
-        try:
-            settings_port = int(port_val)
-            if not (0 < settings_port < 65536):
-                raise ValueError("Port out of range")
-            final_port = settings_port
-        except (ValueError, TypeError):
-            logger.warning("Invalid web port %r; using port %s.", port_val, final_port)
-    logger.debug("FastAPI server configured to run on port: %s", final_port)
-
-    hosts_to_use_cli: Optional[str] = None
-    if host:
-        logger.debug("Using host(s) provided via command-line: %s", host)
-        if not isinstance(host, str):
-            raise ValueError("Host must be a string, representing an IP or hostname.")
-        hosts_to_use_cli = host
-
-    final_host_to_bind = "127.0.0.1"
-
-    if hosts_to_use_cli:
-        final_host_to_bind = hosts_to_use_cli
-        logger.debug("Host from command-line: %s", final_host_to_bind)
-    else:
-        # Fallback to settings if no command-line host is given.
-        logger.debug("No host via command-line, using settings.")
-        settings_host = settings.get("web.host")
-
-        if isinstance(settings_host, str) and settings_host:
-            # Use the host from settings if it's a valid string.
-            final_host_to_bind = settings_host
-        else:
-            # Log a warning if the setting is invalid and use the default.
-            logger.warning(
-                "Host setting 'web.host' is invalid ('%s'). Defaulting to %s.",
-                settings_host,
-                final_host_to_bind,
-            )
-
-    try:
-        ipaddress.ip_address(final_host_to_bind)
-        logger.debug("Uvicorn will bind to IP: %s", final_host_to_bind)
-    except ValueError:
-        logger.debug("Uvicorn will bind to hostname: %s", final_host_to_bind)
-
-    reload_enabled = False
-
-    if debug:
-        logger.warning("Running FastAPI in DEBUG mode (Uvicorn reload enabled).")
-        reload_enabled = True
-    else:
-        logger.debug("Uvicorn production mode with 1 worker.")
-
-    server_mode = (
-        "DEBUG (Uvicorn with reload)" if reload_enabled else "PRODUCTION (Uvicorn)"
+    host = options.host or settings.get("web.host", "127.0.0.1")
+    port = options.port or settings.get("web.port", 11325)
+    app = create_web_app(app_context, runtime)
+    config = uvicorn.Config(
+        app,
+        host=host,
+        port=port,
+        log_config=None,
+        log_level="debug" if options.debug else None,
+        access_log=True,
+        workers=1,
+        forwarded_allow_ips=settings.get("web.forwarded_allow_ips", "127.0.0.1"),
+        proxy_headers=True,
+        timeout_graceful_shutdown=settings.get(
+            "lifecycle.request_drain_timeout_seconds", 10.0
+        ),
+        lifespan="on",
     )
-    logger.debug("Starting FastAPI web server in %s mode...", server_mode)
-    logger.info(
-        "Web server starting at http://%s:%s (%s mode).",
-        final_host_to_bind,
-        final_port,
-        "development" if debug else "production",
-    )
+    configure_web_logging()
+    server = uvicorn.Server(config)
+    runtime.attach(lambda: setattr(server, "should_exit", True))
+    return server
 
+
+def run_web_server(
+    app_context: AppContext,
+    host: str | None = None,
+    port: int | None = None,
+    debug: bool = False,
+    *,
+    runtime: WebRuntime | None = None,
+    instance_id: str | None = None,
+) -> None:
+    options = WebRunOptions(host=host, port=port, debug=debug, instance_id=instance_id)
+    runtime = runtime or WebRuntime(options.instance_id)
+    control = ControlFiles(app_context.config_dir, runtime)
+    control.acquire()
+    failed = False
     try:
-        # Create the FastAPI app
-        app = create_web_app(app_context)
-
-        config = uvicorn.Config(
-            app,
-            host=final_host_to_bind,
-            port=final_port,
-            log_config=None,
-            log_level=None,  # Inherit the configured application logging level.
-            access_log=True,  # Classify access records at DEBUG without clearing handlers.
-            reload=reload_enabled,
-            workers=1,  # workers if not reload_enabled and workers > 1 else None,
-            forwarded_allow_ips="*",
-            proxy_headers=True,
-            timeout_graceful_shutdown=settings.get(
-                "lifecycle.request_drain_timeout_seconds", 10.0
-            ),
-            lifespan="on",  # This application requires startup and shutdown hooks.
+        server = create_server(app_context, options, runtime)
+        runtime.on_ready = lambda: control.publish(
+            server.config.host, server.config.port
         )
-        configure_web_logging()
-        server = uvicorn.Server(config)
-        app_context._web_server = server
+        logger.info(
+            "Web server starting at http://%s:%s.",
+            server.config.host,
+            server.config.port,
+        )
         server.run()
-    except Exception as e:
-        logger.critical("Failed to start Uvicorn: %s", e, exc_info=True)
-
+        if not server.started and not runtime.snapshot().shutdown_requested:
+            raise RuntimeError("Web server failed to start")
+        if app_context.lifecycle_phase == LifecyclePhase.FAILED:
+            raise RuntimeError("Application lifecycle failed")
+    except BaseException:
+        failed = True
         raise
+    finally:
+        runtime.finish(failed=failed)
+        control.close()

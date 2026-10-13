@@ -74,7 +74,6 @@ class AppContext:
         self._events: EventBus | None = None
 
         self.loop: Optional["AbstractEventLoop"] = None
-        self._web_server: Optional[Any] = None
         self._shutdown_task: asyncio.Task[None] | None = None
         self.lifecycle_phase = LifecyclePhase.STOPPED
         self._startup_task: asyncio.Task[None] | None = None

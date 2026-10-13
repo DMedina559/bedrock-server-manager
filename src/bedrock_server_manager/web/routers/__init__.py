@@ -20,6 +20,7 @@ from .plugin import router as plugin_router
 from .properties import router as properties_router
 from .raw_properties import router as raw_properties_router
 from .register import router as register_router
+from .runtime import router as runtime_router
 from .server_actions import router as server_actions_router
 from .server_settings import router as server_settings_router
 from .settings import router as settings_router
@@ -31,6 +32,7 @@ from .websocket import router as websocket_router
 from .world import router as world_router
 
 all_routers = [
+    runtime_router,
     events_router,
     logs_router,
     setup_router,

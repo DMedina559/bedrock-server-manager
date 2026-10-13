@@ -1,8 +1,10 @@
 from unittest.mock import MagicMock
 
 import pytest
+from pydantic import ValidationError
 
-from bedrock_server_manager.web.main import run_web_server
+from bedrock_server_manager.web.main import create_server, run_web_server
+from bedrock_server_manager.web.runtime import WebRunOptions, WebRuntime
 
 
 def test_run_web_server_default_config(app_context, monkeypatch):
@@ -10,11 +12,10 @@ def test_run_web_server_default_config(app_context, monkeypatch):
     mock_run = MagicMock()
     monkeypatch.setattr("uvicorn.Server.run", mock_run)
 
-    run_web_server(app_context)
+    server_instance = create_server(app_context, WebRunOptions(), WebRuntime())
 
-    mock_run.assert_called_once()
+    mock_run.assert_not_called()
     # Check config that was passed to Server
-    server_instance = app_context._web_server
     assert server_instance.config.host == "127.0.0.1"
     assert server_instance.config.port == 11325
     assert server_instance.config.log_level is None
@@ -29,18 +30,21 @@ async def test_run_web_server_cli_args(app_context, monkeypatch):
     await app_context.settings.set("web.host", "10.0.0.1")
     await app_context.settings.set("web.port", 8080)
 
-    run_web_server(app_context, host="192.168.1.1", port=9000, debug=True)
+    server_instance = create_server(
+        app_context,
+        WebRunOptions(host="192.168.1.1", port=9000, debug=True),
+        WebRuntime(),
+    )
 
-    server_instance = app_context._web_server
     assert server_instance.config.host == "192.168.1.1"
     assert server_instance.config.port == 9000
-    assert server_instance.config.log_level is None
-    assert server_instance.config.reload is True
+    assert server_instance.config.log_level == "debug"
+    assert server_instance.config.reload is False
 
 
 def test_run_web_server_invalid_host_type(app_context, monkeypatch):
     """Test run_web_server raises ValueError for non-string host."""
-    with pytest.raises(ValueError, match="Host must be a string"):
+    with pytest.raises(ValidationError):
         run_web_server(app_context, host=123)
 
 
@@ -54,9 +58,8 @@ async def test_run_web_server_invalid_port_setting(app_context, monkeypatch):
     with pytest.raises(ValidationError):
         await app_context.settings.set("web.port", "invalid")
 
-    run_web_server(app_context)
+    server_instance = create_server(app_context, WebRunOptions(), WebRuntime())
 
-    server_instance = app_context._web_server
     assert server_instance.config.port == 11325
 
 
@@ -80,7 +83,7 @@ def test_web_logging_respects_verbosity_and_preserves_host_handlers(
     monkeypatch.setattr("uvicorn.Server.run", MagicMock())
     try:
         with caplog.at_level(logging.INFO):
-            run_web_server(app_context)
+            create_server(app_context, WebRunOptions(), WebRuntime())
             logger.info("GET /health 200")
             logging.getLogger("uvicorn.error").info("connection open")
             logging.getLogger("uvicorn.error").warning("WebSocket rejected")
@@ -90,7 +93,7 @@ def test_web_logging_respects_verbosity_and_preserves_host_handlers(
         )
         assert any(record.message == "WebSocket rejected" for record in caplog.records)
         with caplog.at_level(logging.DEBUG):
-            run_web_server(app_context)
+            create_server(app_context, WebRunOptions(), WebRuntime())
             logger.info("GET /health 200")
         assert handler in logger.handlers
         assert logger.propagate

@@ -134,6 +134,7 @@ def create_systemd_service_file(  # noqa: C901
     service_type: str = "forking",
     restart_policy: str = "on-failure",
     restart_sec: int = 10,
+    timeout_stop_sec: int | None = None,
     after_targets: str = "network.target",
     system: bool = False,
 ) -> None:
@@ -231,6 +232,7 @@ ExecStart={exec_start_command}
 {exec_stop_line}
 Restart={restart_policy}
 RestartSec={restart_sec}s
+{f"TimeoutStopSec={timeout_stop_sec}s" if timeout_stop_sec is not None else ""}
 
 [Install]
 WantedBy=default.target

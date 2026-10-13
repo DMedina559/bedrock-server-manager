@@ -9,6 +9,7 @@ import logging
 import os
 import platform
 import re
+import shlex
 import shutil
 import subprocess
 import sys
@@ -55,17 +56,18 @@ def _ensure_windows_for_web_service(operation_name: str) -> None:
         raise SystemError(msg)
 
 
-def _build_web_service_start_command() -> str:
-    """Builds the command string used to start the Web UI as a service."""
-    exe_path_to_use = sys.executable
-    if (
-        " " in exe_path_to_use
-        and not exe_path_to_use.startswith('"')
-        and not exe_path_to_use.endswith('"')
-    ):
-        exe_path_to_use = f'"{exe_path_to_use}"'
-
-    return f"{exe_path_to_use} -m bedrock_server_manager web start --mode direct"
+def _web_service_command(
+    config_dir: str | None, data_dir: str, *, windows: bool = False
+) -> str:
+    args = [sys.executable, "-m", "bedrock_server_manager"]
+    if config_dir is not None:
+        args.extend(["--config-dir", config_dir])
+    args.extend(["--data-dir", data_dir])
+    if windows:
+        args.extend(["service", "_run-web", WEB_SERVICE_WINDOWS_NAME_INTERNAL])
+        return subprocess.list2cmdline(args)
+    args.extend(["web", "start", "--mode", "direct"])
+    return shlex.join(args).replace("%", "%%")
 
 
 def create_web_service_file(  # noqa: C901
@@ -73,22 +75,14 @@ def create_web_service_file(  # noqa: C901
     system: bool = False,
     username: Optional[str] = None,
     password: Optional[str] = None,
+    config_dir: str | None = None,
 ) -> None:
     """Creates or updates the system service file/entry for the Web UI."""
     os_type = platform.system()
-    start_command = _build_web_service_start_command()
+    start_command = _web_service_command(config_dir, app_data_dir)
 
     if os_type == "Linux":
         _ensure_linux_for_web_service("create_web_service_file")
-        stop_command_exe_path = sys.executable
-        if (
-            " " in stop_command_exe_path
-            and not stop_command_exe_path.startswith('"')
-            and not stop_command_exe_path.endswith('"')
-        ):
-            stop_command_exe_path = f'"{stop_command_exe_path}"'
-        stop_command = f"{stop_command_exe_path} -m bedrock_server_manager web stop"
-
         description = f"{app_name_title} Web UI Service"
         working_dir = app_data_dir
         if not os.path.isdir(working_dir):
@@ -111,7 +105,7 @@ def create_web_service_file(  # noqa: C901
                 system=system,
                 working_directory=working_dir,
                 exec_start_command=start_command,
-                exec_stop_command=stop_command,
+                timeout_stop_sec=180,
                 service_type="simple",
                 restart_policy="on-failure",
                 restart_sec=10,
@@ -141,16 +135,9 @@ def create_web_service_file(  # noqa: C901
         _ensure_windows_for_web_service("create_web_service_file")
         description = f"Manages the {app_name_title} Web UI."
 
-        quoted_main_exepath = f"{sys.executable}"
-        if (
-            " " in quoted_main_exepath
-            and not quoted_main_exepath.startswith('"')
-            and not quoted_main_exepath.endswith('"')
-        ):
-            quoted_main_exepath = f'"{quoted_main_exepath}"'
-
-        actual_svc_name_arg = f'"{WEB_SERVICE_WINDOWS_NAME_INTERNAL}"'
-        windows_service_binpath_command = f"{quoted_main_exepath} -m bedrock_server_manager service _run-web {actual_svc_name_arg}"
+        windows_service_binpath_command = _web_service_command(
+            config_dir, app_data_dir, windows=True
+        )
 
         logger.debug(
             "Creating/updating Windows service '%s' for Web UI.",

@@ -51,6 +51,7 @@ class MonitoringSettings(SettingsRecord):
 
 
 class WebSettings(SettingsRecord):
+    forwarded_allow_ips: str = "127.0.0.1"
     host: str = "127.0.0.1"
     port: int = Field(default=11325, ge=1, le=65535)
     token_expires_weeks: int = Field(default=4, gt=0)
