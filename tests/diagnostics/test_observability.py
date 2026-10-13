@@ -507,3 +507,118 @@ async def test_periodic_health_records_and_recent_windows_are_bounded(db):
     assert service.collection.periodic_cycles == 2
     assert service.history.snapshot().last_success_at is not None
     await service.close()
+
+
+@pytest.mark.parametrize("finished_before_removal", [False, True])
+async def test_removed_provider_results_never_repopulate_cache(
+    db, finished_before_removal
+):
+    options = DiagnosticOptions()
+    service = Diagnostics(DiagnosticHistoryStore(db, options), options)
+    entered, blocked, release = asyncio.Event(), asyncio.Event(), asyncio.Event()
+    version = [1]
+
+    async def provider():
+        entered.set()
+        if not finished_before_removal:
+            try:
+                await release.wait()
+            except asyncio.CancelledError:
+                pass
+        return PluginValues(health="ok", values={"version": version[0]})
+
+    async def blocker():
+        blocked.set()
+        await release.wait()
+        return PluginValues(health="ok", values={"waiting": False})
+
+    service.register("plugin:probe:health", provider, owner="plugin:probe")
+    service.register("blocker", blocker)
+    collecting = asyncio.create_task(service.snapshot())
+    await entered.wait()
+    await blocked.wait()
+    service.remove_owner("plugin:probe")
+    release.set()
+    result = await collecting
+    assert [section.name for section in result.sections] == ["blocker"]
+    assert "plugin:probe:health" not in service._last_success
+    assert service._last_snapshot is None
+    version[0] = 2
+    service.register("plugin:probe:health", provider, owner="plugin:probe")
+    fresh = await service.snapshot()
+    assert (
+        next(
+            section.data.values["version"]
+            for section in fresh.sections
+            if section.name == "plugin:probe:health"
+        )
+        == 2
+    )
+    await service.close()
+
+
+async def test_diagnostic_self_health_aggregates_and_recovers(db, monkeypatch):
+    options = DiagnosticOptions()
+    service = Diagnostics(DiagnosticHistoryStore(db, options), options)
+
+    async def healthy():
+        return PluginValues(health="ok", values={"queued": 0})
+
+    service.register("plugin:probe:health", healthy, owner="plugin:probe")
+    service.history.last_error_type = "RuntimeError"
+    snapshot = await service.snapshot()
+    assert snapshot.summary.status == snapshot.collection.status == "degraded"
+    assert snapshot.summary.ready is None
+    assert any(
+        finding.subsystem == "diagnostics" for finding in snapshot.summary.findings
+    )
+    service.history.last_error_type = None
+    assert (await service.snapshot()).summary.status == "ok"
+    from bedrock_server_manager.diagnostics.models import DiagnosticHistory
+
+    async def unavailable():
+        return DiagnosticHistory(records=[], available=False, truncated=False)
+
+    monkeypatch.setattr(service.history, "read", unavailable)
+    report = await service.report()
+    assert not report.history.available and report.snapshot.summary.status == "degraded"
+    await service.close()
+
+
+async def test_sampler_states_observe_failures_recovery_and_shutdown(db):
+    options = DiagnosticOptions(snapshot_interval_seconds=10)
+    service = Diagnostics(DiagnosticHistoryStore(db, options), options)
+    assert service.collection_snapshot().periodic_status == "not_started"
+    service.start()
+    sampler = service._sampler
+    assert service.collection_snapshot().periodic_status == "running"
+    actual = sampler.collect
+
+    async def fail():
+        raise RuntimeError("PRIVATE")
+
+    sampler.collect = fail
+    with pytest.raises(RuntimeError):
+        await sampler.record_once()
+    observed = service.collection_snapshot()
+    assert (
+        observed.status == "degraded"
+        and observed.last_periodic_error_type == "RuntimeError"
+    )
+    sampler.collect = actual
+    await sampler.record_once()
+    observed = service.collection_snapshot()
+    assert (
+        observed.last_periodic_success_at is not None
+        and observed.last_periodic_error_type is None
+    )
+    assert observed.status == "ok"
+    sampler._task.cancel()
+    await asyncio.gather(sampler._task, return_exceptions=True)
+    await asyncio.sleep(0)
+    observed = service.collection_snapshot()
+    assert observed.periodic_status == "failed" and observed.status == "degraded"
+    assert observed.last_periodic_error_type == "CancelledError"
+    assert "PRIVATE" not in observed.model_dump_json()
+    await service.close()
+    assert service.collection_snapshot().periodic_status == "stopped"

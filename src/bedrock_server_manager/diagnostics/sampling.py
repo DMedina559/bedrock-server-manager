@@ -4,7 +4,7 @@ import asyncio
 import json
 import time
 from collections.abc import Callable, Coroutine
-from typing import Any
+from typing import Any, Literal
 from uuid import uuid4
 
 from .models import CollectionDiagnostics, DiagnosticHealthSample, DiagnosticSnapshot
@@ -29,13 +29,47 @@ class HealthSampler:
         self.telemetry = telemetry
         self._task: asyncio.Task | None = None
         self._signature: str | None = None
+        self._closed = False
+
+    @property
+    def status(
+        self,
+    ) -> Literal["disabled", "not_started", "running", "stopped", "failed"]:
+        if self.interval is None:
+            return "disabled"
+        if self._closed:
+            return "stopped"
+        if self._task is None:
+            return "not_started"
+        return "failed" if self._task.done() else "running"
+
+    def _finished(self, task: asyncio.Task) -> None:
+        error = None if task.cancelled() else task.exception()
+        if not self._closed:
+            self.telemetry.periodic_failures += 1
+            self.telemetry.last_periodic_error_type = (
+                "CancelledError"
+                if task.cancelled()
+                else type(error).__name__ if error else "RuntimeError"
+            )
 
     def start(self) -> None:
-        if self.interval is not None and self._task is None:
+        if not self._closed and self.interval is not None and self._task is None:
             self._task = asyncio.create_task(self._run(), name="diagnostics-periodic")
+            self._task.add_done_callback(self._finished)
 
     async def record_once(self) -> None:
-        """Persist one bounded health sample or transition without payloads."""
+        """Observe sample success/failure independently from journal write success."""
+        try:
+            await self._record_once()
+        except Exception as error:
+            self.telemetry.periodic_failures += 1
+            self.telemetry.last_periodic_error_type = type(error).__name__
+            raise
+        self.telemetry.last_periodic_success_at = time.time()
+        self.telemetry.last_periodic_error_type = None
+
+    async def _record_once(self) -> None:
         started = time.monotonic()
         snapshot = await self.collect()
         health = DiagnosticHealthSample(
@@ -72,9 +106,10 @@ class HealthSampler:
             try:
                 await self.record_once()
             except Exception:
-                self.telemetry.periodic_failures += 1
+                pass
 
     async def close(self) -> None:
+        self._closed = True
         if self._task is not None:
             self._task.cancel()
             await asyncio.gather(self._task, return_exceptions=True)

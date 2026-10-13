@@ -9,7 +9,7 @@ from typing import TYPE_CHECKING, Any, Dict, Optional
 
 from sqlalchemy import inspect, select
 
-from .services.lifecycle import LifecyclePhase, run_stage
+from .services.lifecycle import LifecyclePhase, is_application_ready, run_stage
 
 if TYPE_CHECKING:
     from asyncio import AbstractEventLoop
@@ -539,6 +539,19 @@ class AppContext:
         if self._diagnostics is None:
             raise RuntimeError("Diagnostics require a loaded application context")
         return self._diagnostics
+
+    @property
+    def is_ready(self) -> bool:
+        """Observe readiness using loaded state and existing runtimes only."""
+        return is_application_ready(
+            self.lifecycle_phase,
+            state_loaded=self.state_loaded,
+            web_phase=(
+                self._web_runtime.snapshot().phase
+                if self._web_runtime is not None
+                else None
+            ),
+        )
 
     @property
     def state_loaded(self) -> bool:

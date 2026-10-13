@@ -81,6 +81,8 @@ class Diagnostics:
         self.provider_rejections = 0
         self._last_success: dict[str, DiagnosticSection] = {}
         self._providers: dict[str, tuple[str, Provider]] = {}
+        self._registrations: dict[str, object] = {}
+        self._registration_revision = 0
         self._pending: dict[str, asyncio.Task] = {}
         self._pending_owners: dict[str, str] = {}
         self._lock = asyncio.Lock()
@@ -135,12 +137,16 @@ class Diagnostics:
         if name in self._providers:
             raise ValueError("Diagnostic provider already registered")
         self._providers[name] = owner, provider
+        self._registrations[name] = object()
+        self._registration_revision += 1
         self._last_snapshot = None
 
     def remove_owner(self, owner: str) -> None:
         for name, (registered, _) in list(self._providers.items()):
             if registered == owner:
                 del self._providers[name]
+                self._registrations.pop(name, None)
+                self._registration_revision += 1
                 self._last_success.pop(name, None)
                 self._last_snapshot = None
                 task = self._pending.get(name)
@@ -190,7 +196,7 @@ class Diagnostics:
         )
 
     def summary(self, sections: list[DiagnosticSection]) -> DiagnosticSummary:
-        return summarize_health(sections)
+        return summarize_health(sections, self.collection_snapshot())
 
     def _unavailable(
         self, name: str, owner: str, started: float, code: str
@@ -339,8 +345,10 @@ class Diagnostics:
             )
 
     async def _collect(
-        self, name: str, owner: str, provider: Provider
-    ) -> DiagnosticSection:
+        self, name: str, owner: str, provider: Provider, registration: object
+    ) -> DiagnosticSection | None:
+        if self._registrations.get(name) is not registration:
+            return None
         started = time.monotonic()
         task = self._pending.get(name)
         if task is not None and task.done():
@@ -363,6 +371,11 @@ class Diagnostics:
         done, _ = await asyncio.wait(
             {task}, timeout=self.options.provider_timeout_seconds
         )
+        if self._registrations.get(name) is not registration:
+            if task.done() and self._pending.get(name) is task:
+                self._pending.pop(name, None)
+                self._pending_owners.pop(name, None)
+            return None
         if not done:
             self._timed_out.add(task)
             task.cancel()
@@ -432,12 +445,15 @@ class Diagnostics:
         persistence = self.history.snapshot()
         result.active = self._lock.locked()
         result.periodic_enabled = self.options.snapshot_interval_seconds is not None
+        result.periodic_status = self._sampler.status
         if persistence.writer_status == "failed":
             result.status = "unavailable"
         elif (
             result.last_error_type
             or persistence.last_error_type
             or persistence.last_read_error_type
+            or result.last_periodic_error_type
+            or result.periodic_status == "failed"
         ):
             result.status = "degraded"
         return result
@@ -457,6 +473,7 @@ class Diagnostics:
                 )
             result.collection = self.collection_snapshot()
             result.recent = self.recent.snapshot()
+            result.summary = summarize_health(result.sections, result.collection)
             return result
         except Exception as error:
             self.collection.failures += 1
@@ -506,14 +523,20 @@ class Diagnostics:
         try:
             self.collection.collections += 1
             self.collection.cache_age_seconds = None
+            revision = self._registration_revision
             providers = [
-                (name, owner, provider)
+                (name, owner, provider, self._registrations[name])
                 for name, (owner, provider) in self._providers.items()
                 if subsystem is None or name == subsystem
             ]
-            sections = await asyncio.gather(
+            collected = await asyncio.gather(
                 *(self._collect(*item) for item in providers)
             )
+            sections = [
+                section
+                for section, entry in zip(collected, providers)
+                if section is not None and self._registrations.get(entry[0]) is entry[3]
+            ]
             snapshot = DiagnosticSnapshot(
                 instance_id=self.instance_id,
                 collected_at=time.time(),
@@ -523,7 +546,7 @@ class Diagnostics:
                 environment=self.environment.model_copy(deep=True),
                 persistence=self.history.snapshot(),
             )
-            if subsystem is None:
+            if subsystem is None and revision == self._registration_revision:
                 self._last_snapshot = snapshot.model_copy(deep=True)
             return snapshot
         finally:
@@ -607,6 +630,13 @@ class Diagnostics:
             self.history.read(),
             self.history.runs(current_instance=self.instance_id, limit=10),
         )
+        snapshot.persistence = self.history.snapshot()
+        snapshot.collection = self.collection_snapshot()
+        if snapshot.collection.status == "ok" and (
+            not history.available or not runs.available
+        ):
+            snapshot.collection.status = "degraded"
+        snapshot.summary = summarize_health(snapshot.sections, snapshot.collection)
         return DiagnosticReport(snapshot=snapshot, history=history, runs=runs)
 
     def start(self) -> None:

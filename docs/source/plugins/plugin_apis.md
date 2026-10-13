@@ -4438,6 +4438,30 @@ data = result.model_dump(mode="json")
           "default": null,
           "title": "Last Error Type"
         },
+        "last_periodic_error_type": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Last Periodic Error Type"
+        },
+        "last_periodic_success_at": {
+          "anyOf": [
+            {
+              "type": "number"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Last Periodic Success At"
+        },
         "last_success_at": {
           "anyOf": [
             {
@@ -4464,6 +4488,18 @@ data = result.model_dump(mode="json")
           "default": 0,
           "title": "Periodic Failures",
           "type": "integer"
+        },
+        "periodic_status": {
+          "default": "disabled",
+          "enum": [
+            "disabled",
+            "not_started",
+            "running",
+            "stopped",
+            "failed"
+          ],
+          "title": "Periodic Status",
+          "type": "string"
         },
         "requests": {
           "default": 0,
@@ -6932,6 +6968,30 @@ data = result.model_dump(mode="json")
           "default": null,
           "title": "Last Error Type"
         },
+        "last_periodic_error_type": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Last Periodic Error Type"
+        },
+        "last_periodic_success_at": {
+          "anyOf": [
+            {
+              "type": "number"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Last Periodic Success At"
+        },
         "last_success_at": {
           "anyOf": [
             {
@@ -6958,6 +7018,18 @@ data = result.model_dump(mode="json")
           "default": 0,
           "title": "Periodic Failures",
           "type": "integer"
+        },
+        "periodic_status": {
+          "default": "disabled",
+          "enum": [
+            "disabled",
+            "not_started",
+            "running",
+            "stopped",
+            "failed"
+          ],
+          "title": "Periodic Status",
+          "type": "string"
         },
         "requests": {
           "default": 0,
@@ -9719,6 +9791,30 @@ data = result.model_dump(mode="json")
           "default": null,
           "title": "Last Error Type"
         },
+        "last_periodic_error_type": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Last Periodic Error Type"
+        },
+        "last_periodic_success_at": {
+          "anyOf": [
+            {
+              "type": "number"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Last Periodic Success At"
+        },
         "last_success_at": {
           "anyOf": [
             {
@@ -9745,6 +9841,18 @@ data = result.model_dump(mode="json")
           "default": 0,
           "title": "Periodic Failures",
           "type": "integer"
+        },
+        "periodic_status": {
+          "default": "disabled",
+          "enum": [
+            "disabled",
+            "not_started",
+            "running",
+            "stopped",
+            "failed"
+          ],
+          "title": "Periodic Status",
+          "type": "string"
         },
         "requests": {
           "default": 0,
@@ -18115,6 +18223,10 @@ data = result.model_dump(mode="json")
       "default": null,
       "title": "Message"
     },
+    "ready": {
+      "title": "Ready",
+      "type": "boolean"
+    },
     "status": {
       "const": "success",
       "default": "success",
@@ -18123,6 +18235,7 @@ data = result.model_dump(mode="json")
     }
   },
   "required": [
+    "ready",
     "lifecycle",
     "health",
     "checks",

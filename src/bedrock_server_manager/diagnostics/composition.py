@@ -46,8 +46,7 @@ def configure_diagnostics(context: "AppContext") -> Diagnostics:
             else None
         )
         return RuntimeDiagnostics(
-            ready=context.lifecycle_phase == "ready"
-            and (web is None or web.phase == "ready"),
+            ready=context.is_ready,
             stage_started_at=service.stage_started_at,
             stage_elapsed_seconds=(
                 max(0, time.monotonic() - service.stage_started_monotonic)

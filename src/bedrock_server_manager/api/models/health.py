@@ -18,6 +18,7 @@ class HealthCheck(SuccessResponse):
 
 
 class GetApplicationHealthResponse(SuccessResponse):
+    ready: bool
     lifecycle: LifecyclePhase = Field(strict=False)
     health: Literal["healthy", "degraded"]
     checks: dict[str, HealthCheck]

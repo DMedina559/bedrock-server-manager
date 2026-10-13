@@ -22,6 +22,17 @@ class LifecyclePhase(StrEnum):
     FAILED = "failed"
 
 
+def is_application_ready(
+    phase: str, *, state_loaded: bool, web_phase: str | None = None
+) -> bool:
+    """Require loaded state and ready application/web runtimes without starting services."""
+    return (
+        state_loaded
+        and phase == LifecyclePhase.READY
+        and (web_phase is None or web_phase == LifecyclePhase.READY)
+    )
+
+
 def _consume(task: asyncio.Task) -> None:
     _pending.discard(task)
     if not task.cancelled():

@@ -4,6 +4,7 @@ from collections import Counter
 from typing import Literal
 
 from .models import (
+    CollectionDiagnostics,
     DiagnosticData,
     DiagnosticFinding,
     DiagnosticIssue,
@@ -212,7 +213,9 @@ def _state(
     return "ok", []
 
 
-def summarize_health(sections: list[DiagnosticSection]) -> DiagnosticSummary:
+def summarize_health(
+    sections: list[DiagnosticSection], collection: CollectionDiagnostics | None = None
+) -> DiagnosticSummary:
     """Aggregate observed health independently from application readiness."""
     counts = dict(Counter(section.status for section in sections))
     findings = [
@@ -253,6 +256,27 @@ def summarize_health(sections: list[DiagnosticSection]) -> DiagnosticSummary:
             )
         )
     )
+    if collection is not None and collection.status != "ok":
+        if collection.status == "unavailable" or status in {"ok", "unknown"}:
+            status = collection.status
+        findings.append(
+            DiagnosticFinding(
+                subsystem="diagnostics",
+                owner="application",
+                issue=DiagnosticIssue(
+                    code=f"diagnostic_collection_{collection.status}",
+                    message=(
+                        "Diagnostic collection or recording is unavailable."
+                        if collection.status == "unavailable"
+                        else "Diagnostic collection or recording is degraded."
+                    ),
+                    severity=(
+                        "error" if collection.status == "unavailable" else "warning"
+                    ),
+                    action="inspect_logs",
+                ),
+            )
+        )
     return DiagnosticSummary(
         status=status,
         ready=ready,

@@ -344,6 +344,11 @@ class CollectionDiagnostics(DiagnosticModel):
     last_success_at: float | None = None
     last_error_type: str | None = None
     periodic_enabled: bool = False
+    periodic_status: Literal[
+        "disabled", "not_started", "running", "stopped", "failed"
+    ] = "disabled"
+    last_periodic_success_at: float | None = None
+    last_periodic_error_type: str | None = None
     periodic_cycles: int = 0
     periodic_failures: int = 0
 
