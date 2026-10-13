@@ -35,10 +35,10 @@ from ..error import (
     ServerRunningError,
     UserInputError,
 )
+from ..events import trigger_event
 from ..logging import log_operation_error
 from ..plugins.api_bridge import api_method
 from ..plugins.api_contract import validate_contract
-from ..plugins.event_trigger import trigger_event
 from ..state_revision import revision_clock
 from .models import (
     RestartServerRequest,
@@ -517,11 +517,6 @@ async def delete_server_data(
 
 
 @api_method("set_server_status", expose_to_plugins=False)
-@trigger_event(
-    before="before_server_status_change",
-    after="after_server_status_change",
-    identity_keys=("server_name", "status"),
-)
 async def set_server_status(
     request: SetServerStatusRequest, *, app_context: AppContext
 ) -> SetServerStatusResponse:
@@ -530,25 +525,12 @@ async def set_server_status(
     Accepts SetServerStatusRequest and returns SetServerStatusResponse.
     Invalid requests fail validation before side effects; operation failures raise application exceptions.
     """
-    server_name = request.server_name
-    status = request.status
-    server = app_context.get_server(server_name)
-    previous_status = await server.get_status_from_config()
-    await server.configuration.update("server_info.status", status)
-    server.logger.debug(
-        "Status in persisted configuration for '%s' set to '%s'.",
-        server.server_name,
-        status,
+    from ..events.server import change_server_status
+
+    result = await change_server_status(
+        app_context.get_server(request.server_name), request.status
     )
-    return SetServerStatusResponse.model_validate(
-        {
-            "status": "success",
-            "message": f"Server status set to {status}.",
-            "server_name": server_name,
-            "previous_status": previous_status,
-            "new_status": status,
-        }
-    )
+    return SetServerStatusResponse.model_validate(result.model_dump())
 
 
 @api_method("update_server_player_stats", expose_to_plugins=False)

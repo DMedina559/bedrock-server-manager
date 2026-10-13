@@ -2,9 +2,9 @@ import logging
 
 from ..context import AppContext
 from ..error import BSMError, UserInputError
+from ..events import trigger_event
 from ..plugins.api_bridge import api_method
 from ..plugins.api_contract import validate_contract
-from ..plugins.event_trigger import trigger_event
 from .models.ban import (
     AddServerBanRequest,
     AddServerBanResponse,

@@ -167,6 +167,13 @@ class Settings:
                     "app_metrics_interval_sec": 3,
                     "bedrock_metrics_interval_sec": 3,
                 },
+                "events": {
+                    "history_limit": 200,
+                    "max_active": 256,
+                    "max_depth": 32,
+                    "listener_timeout_seconds": 30.0,
+                    "hook_timeout_seconds": 120.0,
+                },
                 "lifecycle": {
                     "startup_timeout_seconds": 30.0,
                     "shutdown_timeout_seconds": 15.0,

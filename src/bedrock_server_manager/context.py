@@ -21,6 +21,7 @@ if TYPE_CHECKING:
     from .core.bedrock_server import BedrockServer
     from .db.database import Database
     from .db.storage import Storage
+    from .events import EventBus
     from .plugins.api_bridge import AppAPI
     from .plugins.plugin_manager import PluginManager
     from .services.metrics_service import MetricsService
@@ -70,6 +71,7 @@ class AppContext:
         self._resource_monitor: Optional["ResourceMonitor"] = None
         self._log_streamer: Optional["LogStreamer"] = None
         self._api: Optional["AppAPI"] = None
+        self._events: EventBus | None = None
 
         self.loop: Optional["AbstractEventLoop"] = None
         self._web_server: Optional[Any] = None
@@ -116,6 +118,7 @@ class AppContext:
                 "_resource_monitor",
                 "_log_streamer",
                 "_connection_manager",
+                "_events",
                 "_api",
             ):
                 setattr(self, name, None)
@@ -205,6 +208,15 @@ class AppContext:
         self._started_components = set()
         timeout = self.settings.get("lifecycle.startup_timeout_seconds", 30.0)
         grace = self.settings.get("lifecycle.cancellation_grace_seconds", 2.0)
+
+        async def startup_hooks() -> None:
+            import os
+
+            from .config.const import GUARD_VARIABLE
+
+            if not os.environ.get(GUARD_VARIABLE):
+                await self.events.emit("on_manager_startup", public=False)
+
         steps = (
             ("plugins", lambda: self.plugin_manager.load_plugins()),
             ("servers", lambda: self.bedrock_process_manager.start()),
@@ -217,7 +229,7 @@ class AppContext:
             ("metrics readiness", lambda: self.metrics_service.snapshot()),
             (
                 "startup hooks",
-                lambda: self.plugin_manager.trigger_guarded_event("on_manager_startup"),
+                startup_hooks,
             ),
             ("plugin tasks", lambda: self.plugin_manager.start_plugin_tasks()),
             ("logs", lambda: self.log_streamer.start()),
@@ -334,6 +346,8 @@ class AppContext:
             started is None or "plugins" in started
         ):
             await stop("unload plugins", self._plugin_manager.shutdown)
+        if self._events is not None:
+            await stop("drain events", self._events.close)
         if self._connection_manager is not None:
             await stop("close websockets", self._connection_manager.shutdown)
         await stop("flush state", self.flush)
@@ -544,6 +558,23 @@ class AppContext:
         return self._settings
 
     @property
+    def events(self) -> EventBus:
+        """Application-owned events remain available without plugins or HTTP."""
+        if self._events is None:
+            from .events import EventBus, EventOptions
+
+            options = (
+                self.settings.get("events", {}) if self._settings is not None else {}
+            )
+            from .state_revision import revision_clock
+
+            self._events = EventBus(
+                EventOptions.model_validate(options),
+                revision_provider=revision_clock.capture,
+            )
+        return self._events
+
+    @property
     def plugin_manager(self) -> "PluginManager":
         """
         Lazily loads and returns the PluginManager instance.
@@ -583,6 +614,9 @@ class AppContext:
             self._connection_manager = ConnectionManager(
                 user_provider=self.state.users.get
             )
+            from .events.websocket import attach_websocket_observer
+
+            attach_websocket_observer(self.events, self._connection_manager)
         return self._connection_manager
 
     @property
@@ -751,6 +785,7 @@ class AppContext:
         if server_name not in self._servers:
             self._servers[server_name] = BedrockServer(
                 server_name=server_name,
+                app_context=self,
                 settings=self.settings,
                 state=self._state,
                 storage=self._storage,

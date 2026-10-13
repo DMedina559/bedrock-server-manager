@@ -1,3 +1,5 @@
+from .event_api import PluginEventAPI
+
 # bedrock_server_manager/plugins/api_bridge.py
 """A bridge to safely expose core application APIs to plugins."""
 
@@ -15,6 +17,8 @@ from typing import (
     TypeVar,
     cast,
 )
+
+from pydantic import BaseModel
 
 from .api_contract import get_contract, validate_contract
 from .api_types import API_METHODS
@@ -246,26 +250,79 @@ def create_app_api(
             setattr(sync_wrapper, "__signature__", public_signature)
             return sync_wrapper
 
+    event_owner = "application" if is_core else f"plugin:{plugin_name}"
+    event_generation = (
+        app_context.events.owner_generation(event_owner) if app_context else 0
+    )
+
+    def require_event_owner():
+        if app_context is None:
+            raise RuntimeError("AppContext is unavailable")
+        app_context.events.check_owner(event_owner, event_generation)
+
     def event_listener(event_name: str, callback: Callable[..., None]):
-        if app_context is None or app_context.plugin_manager is None:
-            raise RuntimeError("PluginManager was not found in AppContext!")
-        app_context.plugin_manager.register_app_event_listener(
-            event_name, callback, plugin_name
+        require_event_owner()
+        if app_context is None:
+            raise RuntimeError("AppContext is unavailable")
+        return app_context.events.subscribe(
+            event_name,
+            callback,
+            owner=event_owner,
+            active=is_core,
+            generation=event_generation,
         )
 
     async def event_sender(event_name: str, *args: Any, **kwargs: Any):
-        if app_context is None or app_context.plugin_manager is None:
-            raise RuntimeError("PluginManager was not found in AppContext!")
-
-        from .util import _sanitize_for_json
-
-        _sanitize_for_json(kwargs)
+        require_event_owner()
+        if app_context is None:
+            raise RuntimeError("AppContext is unavailable")
         kwargs["_triggering_plugin"] = plugin_name
-        await app_context.plugin_manager.trigger_event(event_name, *args, **kwargs)
+        definition = app_context.events.registry.definition(event_name)
+        if (
+            not is_core
+            and app_context.events.registry.declared(event_name)
+            and (definition.phase != "custom" or definition.owner != event_owner)
+        ):
+            raise ValueError("Plugins may only emit their own declared custom events")
+        return await app_context.events.emit(
+            event_name, kwargs, *args, source=f"plugin:{plugin_name}"
+        )
 
-        from bedrock_server_manager.plugins.util import broadcast_event
+    def event_dispatcher(action: str, *args: Any, **kwargs: Any):
+        require_event_owner()
+        if app_context is None:
+            raise RuntimeError("AppContext is unavailable")
+        bus = app_context.events
+        if action == "listen":
+            return event_listener(*args, **kwargs)
+        if action == "emit":
+            return event_sender(*args, **kwargs)
+        if action == "diagnostics":
+            return bus.diagnostics()
+        if action == "unsubscribe":
+            bus.unsubscribe(args[0], owner=event_owner)
+            return None
+        if action == "define":
+            from ..events.models import EventDefinition
 
-        await broadcast_event(app_context, event_name, kwargs)
+            name, model = args
+            if (
+                not name.startswith(f"{plugin_name}:")
+                or not isinstance(model, type)
+                or not issubclass(model, BaseModel)
+            ):
+                raise ValueError(
+                    "Declare a Pydantic payload under the plugin's namespace"
+                )
+            definition = EventDefinition(
+                name=name,
+                owner=event_owner,
+                description=kwargs.get("description", ""),
+                public=kwargs.get("public", True),
+            )
+            bus.define(definition, model, generation=event_generation)
+            return bus.registry.definition(name)
+        raise ValueError(f"Unknown event capability: {action}")
 
     return AppAPI(
         plugin_name,
@@ -274,6 +331,7 @@ def create_app_api(
         event_sender,
         is_core,
         runtime_dispatcher,
+        event_dispatcher,
     )
 
 
@@ -305,6 +363,13 @@ class CapabilityNamespace:
 
 class AppAPI:
     """Safe, dynamic, and decoupled interface for plugins to access core APIs."""
+
+    @property
+    def events(self) -> PluginEventAPI:
+        """Typed, owner-scoped event declaration, delivery, and diagnostics."""
+        if self._event_dispatcher is None:
+            raise RuntimeError("Event capabilities are unavailable")
+        return PluginEventAPI(self._event_dispatcher)
 
     @property
     def addon(self) -> "AddonAPI":
@@ -383,15 +448,17 @@ class AppAPI:
         self,
         plugin_name: str,
         api_dispatcher: Callable[[str], Callable[..., Any]],
-        event_listener: Callable[[str, Callable[..., None]], None],
+        event_listener: Callable[..., Any],
         event_sender: Callable[..., Awaitable[Any]],
         is_core: bool = False,
         runtime_dispatcher: Optional[Callable[[str], Callable[..., Any]]] = None,
+        event_dispatcher: Optional[Callable[..., Any]] = None,
     ):
         self._plugin_name: str = plugin_name
         self._api_dispatcher = api_dispatcher
         self._event_listener = event_listener
         self._event_sender = event_sender
+        self._event_dispatcher = event_dispatcher
         self._is_core: bool = is_core
         self._runtime_dispatcher = runtime_dispatcher
         self._namespaces: Dict[str, CapabilityNamespace] = {}

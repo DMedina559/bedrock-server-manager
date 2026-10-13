@@ -1,13 +1,12 @@
-import ast
 import datetime
 import inspect
 import json
 import os
 from typing import Any, Dict, List
 
-import bedrock_server_manager
 from bedrock_server_manager import PluginBase, __version__, app_event
-from bedrock_server_manager.api import models as api_models
+from bedrock_server_manager.events import server as status_events  # noqa: F401
+from bedrock_server_manager.events.registry import builtin_events
 from bedrock_server_manager.plugins.api_types import API_METHODS
 
 
@@ -76,176 +75,41 @@ class APIDocsGenerator(PluginBase):
             self.logger.error("Failed to generate documentation: %s", e, exc_info=True)
 
     def _scan_codebase_for_events(self) -> List[Dict[str, Any]]:
-        """
-        Scans the bedrock_server_manager source code statically to find
-        all @trigger_event usages and extract their documentation.
-        """
-        events_info = []
-
-        # Get the root path of the bedrock_server_manager package
-        base_dir = os.path.dirname(bedrock_server_manager.__file__)
-
-        for root, _, files in os.walk(base_dir):
-            for file in files:
-                if file.endswith(".py"):
-                    filepath = os.path.join(root, file)
-                    try:
-                        with open(filepath, "r", encoding="utf-8") as f:
-                            source = f.read()
-
-                        # Quick string check to avoid parsing AST for files without the decorator
-                        if "trigger_event" not in source:
-                            continue
-
-                        tree = ast.parse(source)
-
-                        for node in ast.walk(tree):
-                            if isinstance(
-                                node, (ast.FunctionDef, ast.AsyncFunctionDef)
-                            ):
-                                for decorator in node.decorator_list:
-                                    if (
-                                        isinstance(decorator, ast.Call)
-                                        and isinstance(decorator.func, ast.Name)
-                                        and decorator.func.id == "trigger_event"
-                                    ):
-                                        before_name = None
-                                        after_name = None
-                                        identity_keys = []
-
-                                        for kw in decorator.keywords:
-                                            if kw.arg == "before" and isinstance(
-                                                kw.value, ast.Constant
-                                            ):
-                                                before_name = kw.value.value
-                                            elif kw.arg == "after" and isinstance(
-                                                kw.value, ast.Constant
-                                            ):
-                                                after_name = kw.value.value
-                                            elif (
-                                                kw.arg == "identity_keys"
-                                                and isinstance(
-                                                    kw.value, (ast.Tuple, ast.List)
-                                                )
-                                            ):
-                                                identity_keys = [
-                                                    elt.value
-                                                    for elt in kw.value.elts
-                                                    if isinstance(elt, ast.Constant)
-                                                ]
-
-                                        docstring = (
-                                            ast.get_docstring(node) or "No description."
-                                        )
-                                        first_line_doc = docstring.split("\n")[0]
-
-                                        # Extract function parameters from AST
-                                        params: list[dict[str, Any]] = []
-
-                                        # Handle positional args
-                                        for arg in (
-                                            node.args.args + node.args.kwonlyargs
-                                        ):
-                                            p_name = arg.arg
-                                            # Simple heuristic: if it's 'self' or 'cls', skip it.
-                                            # We also hide 'app_context' since plugins don't usually need it directly from kwargs.
-                                            if p_name in ("self", "cls", "app_context"):
-                                                continue
-
-                                            if p_name == "request" and isinstance(
-                                                arg.annotation, ast.Name
-                                            ):
-                                                model = getattr(
-                                                    api_models, arg.annotation.id, None
-                                                )
-                                                if model is not None:
-                                                    params.append(
-                                                        {
-                                                            "name": "request",
-                                                            "type_obj": arg.annotation.id,
-                                                        }
-                                                    )
-                                                    params.extend(
-                                                        {
-                                                            "name": (
-                                                                "plugin_name"
-                                                                if field_name
-                                                                == "target_plugin_name"
-                                                                else field_name
-                                                            ),
-                                                            "type_obj": self._format_type_hint(
-                                                                field.annotation
-                                                            ),
-                                                        }
-                                                        for field_name, field in model.model_fields.items()
-                                                    )
-                                                    continue
-
-                                            # Determine type if annotated
-                                            p_type = "Any"
-                                            if arg.annotation:
-                                                p_type = ast.unparse(arg.annotation)
-
-                                            params.append(
-                                                {
-                                                    "name": p_name,
-                                                    "type_obj": p_type,
-                                                }
-                                            )
-
-                                        # Note: Default values are trickier via static AST and we only need names/types for the docs.
-
-                                        if before_name:
-                                            events_info.append(
-                                                {
-                                                    "name": before_name,
-                                                    "type": "before",
-                                                    "cancellable": True,
-                                                    "docstring": f"Triggered before '{node.name}'. {first_line_doc}",
-                                                    "parameters": params,
-                                                    "identity_keys": identity_keys,
-                                                }
-                                            )
-
-                                        if after_name:
-                                            after_params = params.copy()
-                                            return_type = "Any"
-                                            if node.returns:
-                                                return_type = ast.unparse(node.returns)
-                                                if isinstance(
-                                                    node.returns, ast.Name
-                                                ) and hasattr(
-                                                    api_models, node.returns.id
-                                                ):
-                                                    return_type = node.returns.id
-
-                                            after_params.append(
-                                                {
-                                                    "name": "result",
-                                                    "type_obj": return_type,
-                                                }
-                                            )
-                                            events_info.append(
-                                                {
-                                                    "name": after_name,
-                                                    "type": "after",
-                                                    "cancellable": False,
-                                                    "docstring": f"Triggered after '{node.name}'. {first_line_doc}",
-                                                    "parameters": after_params,
-                                                    "identity_keys": identity_keys,
-                                                }
-                                            )
-                    except Exception as e:
-                        self.logger.debug(
-                            "Could not parse source for %s: %s", filepath, e
-                        )
-
-        # Deduplicate and sort
-        unique_events = {}
-        for event in events_info:
-            unique_events[event["name"]] = event
-
-        return sorted(list(unique_events.values()), key=lambda x: x["name"])
+        """Document the live core event contracts, including non-API emitters."""
+        events = []
+        for definition in builtin_events.catalog().events:
+            if definition.phase not in {"before", "after"}:
+                continue
+            parameters = {}
+            occurrences = {}
+            models = builtin_events.payload_models(definition.name)
+            for model in models:
+                for name, field in model.model_fields.items():
+                    annotation = field.annotation
+                    type_name = (
+                        annotation.__name__ if isinstance(annotation, type) else None
+                    )
+                    if type_name is None:
+                        type_name = self._format_type_hint(annotation)
+                    occurrences[name] = occurrences.get(name, 0) + 1
+                    existing = parameters.get(name)
+                    if existing and type_name not in existing["type_obj"].split(" | "):
+                        type_name = existing["type_obj"] + " | " + type_name
+                    parameters[name] = {"name": name, "type_obj": type_name}
+            for name, parameter in parameters.items():
+                if occurrences[name] < len(models):
+                    parameter["optional"] = True
+            events.append(
+                {
+                    "name": definition.name,
+                    "type": definition.phase,
+                    "cancellable": definition.phase == "before",
+                    "docstring": definition.description,
+                    "parameters": list(parameters.values()),
+                    "identity_keys": definition.identity_keys,
+                }
+            )
+        return events
 
     def _format_type_hint(self, annotation: Any) -> str:
         """
@@ -415,7 +279,11 @@ class APIDocsGenerator(PluginBase):
             lines.append("")
 
             lines.append("### Listener Signature:")
-            param_str = ", ".join([f"{p['name']}" for p in params])
+            param_str = ", ".join(
+                p["name"] + ("=None" if p.get("optional") else "") for p in params
+            )
+            if any(p.get("optional") for p in params):
+                param_str = "*, " + param_str
             if is_cancellable:
                 if param_str:
                     param_str += ", "

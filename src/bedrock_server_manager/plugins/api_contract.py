@@ -6,11 +6,9 @@ from typing import Any, Callable, TypeVar, cast, get_type_hints
 
 from pydantic import BaseModel, ValidationError
 
+from ..error import APIResponseValidationError
+
 F = TypeVar("F", bound=Callable[..., Any])
-
-
-class APIResponseValidationError(RuntimeError):
-    """A declared API produced invalid output; never classify as bad input."""
 
 
 def get_contract(
@@ -59,7 +57,7 @@ def validate_contract(func: F) -> F:
     signature = inspect.signature(func)
 
     def validate_response(result: Any) -> BaseModel:
-        if getattr(func, "__validates_api_response__", False):
+        if getattr(func, "__validates_event_result__", False):
             return cast(BaseModel, result)
         try:
             return response_type.model_validate(result)

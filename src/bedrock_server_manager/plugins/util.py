@@ -1,25 +1,7 @@
 from typing import Any
 
-from pydantic import BaseModel, JsonValue, TypeAdapter
-
+from ..events.serialization import sanitize as _sanitize_for_json
 from ..state_revision import RevisionStamp, revision_clock
-
-_json_payload: TypeAdapter[JsonValue] = TypeAdapter(JsonValue)
-
-
-def _sanitize_for_json(data: Any) -> JsonValue:
-    """Serialize declared data; reject opaque runtime objects instead of stringifying."""
-
-    def convert(value: Any) -> Any:
-        if isinstance(value, BaseModel):
-            return value.model_dump(mode="json")
-        if isinstance(value, dict):
-            return {key: convert(item) for key, item in value.items()}
-        if isinstance(value, (list, tuple)):
-            return [convert(item) for item in value]
-        return value
-
-    return _json_payload.validate_python(convert(data), strict=True)
 
 
 async def broadcast_event(

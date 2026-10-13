@@ -30,10 +30,10 @@ from ..error import (
     SendCommandError,
     ServerNotRunningError,
 )
+from ..events import trigger_event
 from ..logging import log_operation_error
 from ..plugins.api_bridge import api_method
 from ..plugins.api_contract import validate_contract
-from ..plugins.event_trigger import trigger_event
 from ..plugins.runtime_capabilities import server_lifecycle_manager
 from ..utils import list_content_files
 from .models.addon import (

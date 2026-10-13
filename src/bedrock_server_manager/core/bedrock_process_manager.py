@@ -330,18 +330,15 @@ class BedrockProcessManager:
                                 previous_player_count,
                                 server.player_count,
                             )
-                            # Call the API bridge to handle events and websockets properly
+                            # Publish the authoritative snapshot through the application event bus.
                             try:
-                                if self.api is None:
-                                    raise BSMError(
-                                        "Process manager API is not available."
-                                    )
-                                await self.api.server.update_player_stats(
-                                    request={
-                                        "server_name": server.server_name,
-                                        "player_count": server.player_count,
-                                        "players": server.players,
-                                    }
+                                from ..events.player import publish_player_snapshot
+
+                                await publish_player_snapshot(
+                                    server.app_context,
+                                    server_name=server.server_name,
+                                    player_count=server.player_count,
+                                    players=server.players,
                                 )
                                 self._pending_player_events.discard(server_name)
                             except Exception as e:

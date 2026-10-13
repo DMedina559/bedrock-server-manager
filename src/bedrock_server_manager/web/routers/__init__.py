@@ -1,3 +1,5 @@
+from .events import router as events_router
+
 """
 Web routers package.
 """
@@ -29,6 +31,7 @@ from .websocket import router as websocket_router
 from .world import router as world_router
 
 all_routers = [
+    events_router,
     logs_router,
     setup_router,
     auth_router,
@@ -57,6 +60,7 @@ all_routers = [
 ]
 
 __all__ = [
+    "events_router",
     "all_routers",
     "account_router",
     "addon_router",

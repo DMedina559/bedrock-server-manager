@@ -21,13 +21,16 @@ for use by administrative interfaces like a web UI or CLI.
 
 import logging
 
+from pydantic import ValidationError
+
 from ..context import AppContext
 from ..error import BSMError, UserInputError
+from ..events import trigger_event
 from ..logging import log_operation_error
 from ..plugins.api_bridge import api_method
 from ..plugins.api_contract import validate_contract
-from ..plugins.event_trigger import trigger_event
 from .models.plugins import (
+    EventDispatchSummary,
     GetPluginSettingRequest,
     GetPluginSettingResponse,
     GetPluginSettingsRequest,
@@ -204,18 +207,34 @@ async def trigger_external_app_event(
         "Attempting to trigger custom plugin event '%s' externally.", event_name
     )
     try:
-        pm = app_context.plugin_manager
+        definition = app_context.events.registry.definition(event_name)
+        if definition.phase != "custom":
+            raise UserInputError("Only custom events may be triggered externally")
         actual_payload = payload if payload is not None else {}
-        await pm.trigger_event(
-            event_name, **actual_payload, _triggering_plugin="external_api_trigger"
+        record = await app_context.events.emit(
+            event_name, actual_payload, source="external_api"
         )
         logger.debug(
             "Custom plugin event '%s' triggered successfully via external API.",
             event_name,
         )
         return TriggerExternalAppEventResponse(
-            status="success", message=f"Event '{event_name}' triggered."
+            status=(
+                "partial"
+                if record.status == "partial"
+                else "skipped" if record.status == "suppressed" else "success"
+            ),
+            message=f"Event '{event_name}' dispatched.",
+            details=EventDispatchSummary(
+                event_id=record.event_id,
+                listeners_called=record.listeners_called,
+                failures=record.failures,
+            ),
         )
+    except ValidationError as error:
+        raise UserInputError(
+            "Custom event payload does not match its declared contract"
+        ) from error
     except Exception as e:
         log_operation_error(
             logger,

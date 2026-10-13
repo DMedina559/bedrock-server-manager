@@ -2,6 +2,7 @@
 
 from pydantic import JsonValue
 
+from ...events.models import ListenerFailure
 from .common import (
     ActionResponse,
     APIRequest,
@@ -58,8 +59,14 @@ class TriggerExternalAppEventRequest(APIRequest):
     payload: dict[str, JsonValue] | None = None
 
 
+class EventDispatchSummary(APIResponse):
+    event_id: str
+    listeners_called: int
+    failures: list[ListenerFailure]
+
+
 class TriggerExternalAppEventResponse(ActionResponse):
-    pass
+    details: EventDispatchSummary
 
 
 class GetPluginSettingRequest(APIRequest):

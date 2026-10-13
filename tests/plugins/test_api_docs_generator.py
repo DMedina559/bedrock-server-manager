@@ -36,3 +36,21 @@ def test_generated_docs_include_lifecycle_contract_and_usable_example():
         "name": "result",
         "type_obj": "StartServerResponse",
     }
+
+    assert "before_server_status_change" in events
+    assert events["before_server_status_change"]["identity_keys"] == (
+        "server_name",
+        "status",
+    )
+    assert (
+        events["after_server_status_change"]["parameters"][-1]["type_obj"]
+        == "StatusResult"
+    )
+
+    allowlist = events["before_allowlist_change"]
+    fields = {field["name"]: field for field in allowlist["parameters"]}
+    assert fields["new_players_data"]["optional"]
+    assert fields["player_names"]["optional"]
+    assert "AddToAllowlistRequest" in fields["request"]["type_obj"]
+    assert "RemoveFromAllowlistRequest" in fields["request"]["type_obj"]
+    assert "new_players_data=None" in generator._format_event_markdown([allowlist])

@@ -114,18 +114,14 @@ class BedrockServer(ServerResources):
         return self.configuration.snapshot().status
 
     async def set_status_in_config(self, status_string: str) -> None:
-        """Preserve the existing API event path until event dispatch is extracted."""
-        if not isinstance(status_string, str):
-            raise UserInputError("Server status must be a string.")
-        if self.app_context and self.app_context.api:
-            try:
-                await self.app_context.api.server.set_status(
-                    request={"server_name": self.server_name, "status": status_string}
-                )
-                return
-            except AttributeError:
-                pass
-        await self.configuration.update("server_info.status", status_string)
+        """Persist status and emit hooks without going through the API facade."""
+        from ..events.server import change_server_status
+
+        if self.app_context is not None and not self.app_context.events.accepting:
+            # A repeated stop after shutdown can still update the in-memory snapshot.
+            await self.configuration.update("server_info.status", status_string)
+            return
+        await change_server_status(self, status_string)
 
     async def get_world_name(self) -> str:
         value = (

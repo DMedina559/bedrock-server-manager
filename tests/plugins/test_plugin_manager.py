@@ -256,7 +256,7 @@ def test_runtime_snapshot_is_typed_and_independent(app_context):
 
     manager = app_context.plugin_manager
     manager._set_runtime_status("sample", "LOADED")
-    manager._event_listeners = {"example": {"sample": []}}
+    manager.events.subscribe("example", lambda **kwargs: None, owner="plugin:sample", active=False)
     snapshot = manager.get_plugin_runtime("sample")
     assert snapshot.loaded
     assert snapshot.registered_events == ["example"]

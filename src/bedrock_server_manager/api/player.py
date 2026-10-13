@@ -26,9 +26,9 @@ from ..core.player import (
     save_player_data,
 )
 from ..error import BSMError, UserInputError
+from ..events import trigger_event
 from ..logging import log_operation_error
 from ..plugins.api_bridge import api_method
-from ..plugins.event_trigger import trigger_event
 from .models.player import (
     AddPlayersManuallyRequest,
     AddPlayersManuallyResponse,
