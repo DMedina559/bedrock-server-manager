@@ -1,3 +1,5 @@
+from .event_api import PluginEventAPI
+
 # bedrock_server_manager/plugins/api_bridge.py
 """A bridge to safely expose core application APIs to plugins."""
 
@@ -17,10 +19,10 @@ from typing import (
 )
 
 from .api_contract import get_contract, validate_contract
-from .api_types import API_METHODS
 
 if TYPE_CHECKING:
     from ..context import AppContext
+    from ..events import EventBus
 
 if TYPE_CHECKING:
     from .api_types import (
@@ -131,10 +133,25 @@ def api_method(name: str, expose_to_plugins: bool = True) -> Callable[[F], F]:
     return decorator
 
 
+def _api_methods():
+    from .api_types import API_METHODS
+
+    return API_METHODS
+
+
 def create_app_api(
-    plugin_name: str, app_context: Optional["AppContext"], is_core: bool = False
+    plugin_name: str,
+    app_context: Optional["AppContext"],
+    is_core: bool = False,
+    *,
+    events: "EventBus | None" = None,
 ) -> "AppAPI":
     """Factory function to create an AppAPI instance."""
+
+    # Register built-in adapters explicitly at the API boundary.
+    from importlib import import_module
+
+    import_module("bedrock_server_manager.api")
 
     def runtime_dispatcher(name: str) -> Callable[..., Any]:
         from . import runtime_capabilities
@@ -246,26 +263,17 @@ def create_app_api(
             setattr(sync_wrapper, "__signature__", public_signature)
             return sync_wrapper
 
-    def event_listener(event_name: str, callback: Callable[..., None]):
-        if app_context is None or app_context.plugin_manager is None:
-            raise RuntimeError("PluginManager was not found in AppContext!")
-        app_context.plugin_manager.register_app_event_listener(
-            event_name, callback, plugin_name
-        )
+    from ..events.capabilities import create_event_capabilities
 
-    async def event_sender(event_name: str, *args: Any, **kwargs: Any):
-        if app_context is None or app_context.plugin_manager is None:
-            raise RuntimeError("PluginManager was not found in AppContext!")
-
-        from .util import _sanitize_for_json
-
-        _sanitize_for_json(kwargs)
-        kwargs["_triggering_plugin"] = plugin_name
-        await app_context.plugin_manager.trigger_event(event_name, *args, **kwargs)
-
-        from bedrock_server_manager.plugins.util import broadcast_event
-
-        await broadcast_event(app_context, event_name, kwargs)
+    event_listener, event_sender, event_dispatcher = create_event_capabilities(
+        plugin_name,
+        (
+            events
+            if events is not None
+            else app_context.events if app_context is not None else None
+        ),
+        is_core=is_core,
+    )
 
     return AppAPI(
         plugin_name,
@@ -274,6 +282,7 @@ def create_app_api(
         event_sender,
         is_core,
         runtime_dispatcher,
+        event_dispatcher,
     )
 
 
@@ -294,7 +303,7 @@ class CapabilityNamespace:
             if name not in names or self._api._runtime_dispatcher is None:
                 raise AttributeError(f"Unknown runtime capability: {name}")
             return self._api._runtime_dispatcher(names[name])
-        registered = API_METHODS.get(self._domain, {}).get(name)
+        registered = _api_methods().get(self._domain, {}).get(name)
         if registered is None:
             entry = _api_registry.get(name)
             if entry is None or entry[4] != self._domain:
@@ -305,6 +314,13 @@ class CapabilityNamespace:
 
 class AppAPI:
     """Safe, dynamic, and decoupled interface for plugins to access core APIs."""
+
+    @property
+    def events(self) -> PluginEventAPI:
+        """Typed, owner-scoped event declaration, delivery, and diagnostics."""
+        if self._event_dispatcher is None:
+            raise RuntimeError("Event capabilities are unavailable")
+        return PluginEventAPI(self._event_dispatcher)
 
     @property
     def addon(self) -> "AddonAPI":
@@ -383,15 +399,17 @@ class AppAPI:
         self,
         plugin_name: str,
         api_dispatcher: Callable[[str], Callable[..., Any]],
-        event_listener: Callable[[str, Callable[..., None]], None],
+        event_listener: Callable[..., Any],
         event_sender: Callable[..., Awaitable[Any]],
         is_core: bool = False,
         runtime_dispatcher: Optional[Callable[[str], Callable[..., Any]]] = None,
+        event_dispatcher: Optional[Callable[..., Any]] = None,
     ):
         self._plugin_name: str = plugin_name
         self._api_dispatcher = api_dispatcher
         self._event_listener = event_listener
         self._event_sender = event_sender
+        self._event_dispatcher = event_dispatcher
         self._is_core: bool = is_core
         self._runtime_dispatcher = runtime_dispatcher
         self._namespaces: Dict[str, CapabilityNamespace] = {}
@@ -465,9 +483,9 @@ class AppAPI:
                         "method": next(
                             (
                                 f"{domain}.{method}"
-                                for method, registered in API_METHODS.get(
-                                    domain, {}
-                                ).items()
+                                for method, registered in _api_methods()
+                                .get(domain, {})
+                                .items()
                                 if registered == name
                             ),
                             f"{domain}.{name}",
@@ -504,9 +522,9 @@ class AppAPI:
                         "method": next(
                             (
                                 f"{domain}.{method}"
-                                for method, registered in API_METHODS.get(
-                                    domain, {}
-                                ).items()
+                                for method, registered in _api_methods()
+                                .get(domain, {})
+                                .items()
                                 if registered == name
                             ),
                             f"{domain}.{name}",

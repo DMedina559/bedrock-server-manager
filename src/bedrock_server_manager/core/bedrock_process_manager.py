@@ -10,7 +10,7 @@ It also handles periodic tasks like player scanning from logs.
 
 import asyncio
 import logging
-from typing import TYPE_CHECKING, Any, Callable, Dict, Optional
+from typing import TYPE_CHECKING, Any, Awaitable, Callable, Dict, Optional
 
 from ..error import BSMError, FileOperationError
 from ..logging import RepeatedFailureReporter, log_operation_error
@@ -19,7 +19,8 @@ from .player import save_player_data
 if TYPE_CHECKING:
     from ..config.settings import Settings
     from ..db.storage import Storage
-    from ..plugins.api_bridge import AppAPI
+    from ..events.publisher import EventPublisher
+    from ..state.models import BanItem
     from .bedrock_server import BedrockServer
 
 
@@ -37,7 +38,7 @@ class BedrockProcessManager:
         servers (Dict[str, BedrockServer]): A dictionary mapping server names
             to :class:`~.core.bedrock_server.BedrockServer` instances currently being managed.
         logger (logging.Logger): Logger for the process manager.
-        app_context (AppContext): The application context.
+        events (EventPublisher): Publication capability for player observations.
         settings (Settings): The application settings.
     """
 
@@ -46,13 +47,18 @@ class BedrockProcessManager:
         settings: "Settings",
         storage: "Storage",
         server_provider: Optional[Callable[[str], "BedrockServer"]] = None,
-        api: Optional["AppAPI"] = None,
+        *,
+        events: Optional["EventPublisher"] = None,
+        stop_server: Callable[[str], Awaitable[None]] | None = None,
+        get_bans: Callable[[str], Awaitable[list["BanItem"]]] | None = None,
     ):
         """Initializes the BedrockProcessManager with explicit dependencies."""
         self.settings = settings
         self.storage = storage
         self.server_provider = server_provider
-        self.api = api
+        self.events = events
+        self.stop_server = stop_server
+        self.get_bans = get_bans
         self.servers: Dict[str, "BedrockServer"] = {}
         self.restart_attempts: dict[str, int] = {}
         self._pending_player_events: set[str] = set()
@@ -62,6 +68,25 @@ class BedrockProcessManager:
         self.player_scan_counter = 0
         self.monitoring_task: Optional[asyncio.Task[Any]] = None
         self.logger.debug("BedrockProcessManager initialized.")
+
+    async def _publish_players(self, server: "BedrockServer") -> None:
+        from ..events.player import PlayerSnapshot, publish_player_snapshot
+
+        if self.events is None:
+            raise BSMError("Player event publisher is not available.")
+        receipt = await publish_player_snapshot(
+            self.events,
+            PlayerSnapshot(
+                server_name=server.server_name,
+                player_count=server.player_count,
+                players=server.players,
+            ),
+        )
+        if receipt.rejection_reason in {"capacity", "depth_limit"}:
+            self._pending_player_events.add(server.server_name)
+        else:
+            # Partial listener delivery is recorded, not replayed to successful listeners.
+            self._pending_player_events.discard(server.server_name)
 
     async def start(self):
         """Call this from the main thread to start monitoring."""
@@ -129,13 +154,13 @@ class BedrockProcessManager:
                     return
 
                 try:
-                    if self.api is None:
-                        raise BSMError("Process manager API is not available.")
-                    await self.api.server.stop({"server_name": server_name})
+                    if self.stop_server is None:
+                        raise BSMError("Server stop capability is not available.")
+                    await self.stop_server(server_name)
                 except Exception as e:
                     log_operation_error(
                         self.logger,
-                        "Error stopping '%s' via API: %s. Attempting direct stop.",
+                        "Error stopping '%s' through the stop capability: %s. Attempting direct stop.",
                         server_name,
                         e,
                         error=e,
@@ -330,20 +355,9 @@ class BedrockProcessManager:
                                 previous_player_count,
                                 server.player_count,
                             )
-                            # Call the API bridge to handle events and websockets properly
+                            # Publish the authoritative snapshot through the application event bus.
                             try:
-                                if self.api is None:
-                                    raise BSMError(
-                                        "Process manager API is not available."
-                                    )
-                                await self.api.server.update_player_stats(
-                                    request={
-                                        "server_name": server.server_name,
-                                        "player_count": server.player_count,
-                                        "players": server.players,
-                                    }
-                                )
-                                self._pending_player_events.discard(server_name)
+                                await self._publish_players(server)
                             except Exception as e:
                                 self._pending_player_events.add(server_name)
                                 self.logger.warning(
@@ -354,16 +368,13 @@ class BedrockProcessManager:
                         # Enforce bans
                         if server.players:
                             try:
-                                if self.api is None:
+                                if self.get_bans is None:
                                     raise BSMError(
-                                        "Process manager API is not available."
+                                        "Ban lookup capability is not available."
                                     )
-                                ban_res = await self.api.ban.get_server_bans(
-                                    request={"server_name": server.server_name}
-                                )
+                                bans = await self.get_bans(server.server_name)
 
-                                if ban_res.status == "success":
-                                    bans = ban_res.bans
+                                if bans:
                                     banned_xuids = {b.xuid: b for b in bans}
                                     for p in server.players:
                                         xuid = p.get("xuid")

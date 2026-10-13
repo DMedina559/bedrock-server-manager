@@ -36,10 +36,10 @@ from ..error import (
     BSMError,
     IncompleteOperationError,
 )
+from ..events import trigger_event
 from ..failures import classify_failure
 from ..logging import log_operation_error
 from ..plugins.api_bridge import api_method
-from ..plugins.event_trigger import trigger_event
 from ..plugins.runtime_capabilities import server_lifecycle_manager
 from ..results import CleanupResult
 from .models.backup_restore import (

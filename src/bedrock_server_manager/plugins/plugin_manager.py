@@ -5,7 +5,6 @@ The :class:`.PluginManager` class handles all aspects of plugin interaction.
 """
 
 import asyncio
-import contextvars
 import importlib.util
 import inspect
 import logging
@@ -29,32 +28,30 @@ from typing import (
 )
 
 from fastapi import APIRouter, FastAPI
+from pydantic import BaseModel
 from starlette.routing import BaseRoute, Route
 from starlette.types import Lifespan
 
 if TYPE_CHECKING:
-    from ..context import AppContext
+    from .api_bridge import AppAPI
+    from ..web.tasks import TaskManager
+    from ..web.websocket_manager import ConnectionManager
     from ..state.app_state import AppState
     from ..db.storage import Storage
     from ..config.settings import Settings
 
 from ..config import GUARD_VARIABLE
-from ..config.const import _MISSING_PARAM_PLACEHOLDER, DEFAULT_ENABLED_PLUGINS
+from ..config.const import DEFAULT_ENABLED_PLUGINS
+from ..events import EventBus
 from ..logging import log_operation_error
 from ..utils.general import ReentrantAsyncLock
 from ..utils.threads import run_in_thread
 from .api_bridge import create_app_api
-from .event_trigger import _event_registry
 from .lifespan import RouterLifespan
 from .plugin_base import PluginBase
 from .runtime import PluginRuntime, PluginStatus
 
 logger = logging.getLogger(__name__)
-
-# ContextVars are the async-safe alternative to threading.local()
-_event_context_var: contextvars.ContextVar[Optional[Tuple[str, ...]]] = (
-    contextvars.ContextVar("_event_context_var", default=None)
-)
 
 
 class PluginManager:
@@ -65,13 +62,19 @@ class PluginManager:
         state: "AppState",
         storage: "Storage",
         settings: "Settings",
-        app_context: Optional["AppContext"] = None,
+        *,
+        events: EventBus | None = None,
+        api_factory: Callable[[str], "AppAPI"] | None = None,
+        settings_models: dict[str, type[BaseModel]] | None = None,
+        task_manager_provider: Callable[[], Optional["TaskManager"]] | None = None,
+        connection_manager_provider: (
+            Callable[[], Optional["ConnectionManager"]] | None
+        ) = None,
     ):
         """Initialize the PluginManager with explicit required dependencies."""
         self.state = state
         self.storage = storage
         self.settings = settings
-        self.app_context = app_context
         user_plugin_dir = Path(self.settings.get("paths.plugins"))
         default_plugin_dir = Path(__file__).parent / "default"
 
@@ -84,9 +87,15 @@ class PluginManager:
         self._runtime_records: dict[str, PluginRuntime] = {}
         self.plugins: List[PluginBase] = []
         self._pending_plugins: dict[str, PluginBase] = {}
+        self._draining_plugins: dict[str, set[str]] = {}
 
-        # Event listener map structured as: {event_name: {plugin_identifier: [callbacks]}}
-        self._event_listeners: Dict[str, Dict[str, List[Callable[..., Any]]]] = {}
+        self.events = events if events is not None else EventBus()
+        self.api_factory = api_factory or (
+            lambda name: create_app_api(name, None, events=self.events)
+        )
+        self.settings_models = settings_models if settings_models is not None else {}
+        self.task_manager_provider = task_manager_provider or (lambda: None)
+        self.connection_manager_provider = connection_manager_provider or (lambda: None)
         self.plugin_fastapi_routers: List[APIRouter] = []
         self._router_owners: dict[str, list[APIRouter]] = {}
         self._mount_owners: dict[str, list[Tuple[str, Path, str]]] = {}
@@ -289,122 +298,60 @@ class PluginManager:
     def register_app_event_listener(
         self, event_name: str, callback: Callable[..., Any], listening_plugin_name: str
     ) -> None:
-        """Registers a callback function to listen for a specific application event."""
-        if not callable(callback):
-            logger.error(
-                "Plugin '%s' attempted to register a non-callable listener.",
-                listening_plugin_name,
-            )
-            return
+        """Register a listener owned by the plugin's lifecycle."""
+        self.events.subscribe(
+            event_name, callback, owner=f"plugin:{listening_plugin_name}", active=False
+        )
 
-        plugin_map = self._event_listeners.setdefault(event_name, {})
-        plugin_map.setdefault(listening_plugin_name, []).append(callback)
+    @staticmethod
+    def _event_owners(plugin: PluginBase) -> set[str]:
+        return {
+            f"plugin:{name}"
+            for name in (
+                getattr(getattr(plugin, "api", None), "_plugin_name", None),
+                getattr(plugin, "name", None),
+            )
+            if name
+        }
 
     async def dispatch_event(
         self, target_plugin: PluginBase, event_name: str, *args: Any, **kwargs: Any
     ) -> None:
-        """Asynchronously dispatches an event to a specific plugin instance.
-
-        Checks both internal slug (api._plugin_name) and display name (target_plugin.name)
-        to ensure listeners are reliably found. Synchronous callbacks are executed off the
-        event loop via asyncio.to_thread. Internal context references (e.g. app_context)
-        are filtered out to prevent context leakage.
-        """
-        target_identifiers: Set[str] = set()
-
-        api = getattr(target_plugin, "api", None)
-        if api and getattr(api, "_plugin_name", None):
-            target_identifiers.add(api._plugin_name)
-        if getattr(target_plugin, "name", None):
-            target_identifiers.add(target_plugin.name)
-
-        if not target_identifiers:
+        """Deliver lifecycle hooks through the bus before publishing the plugin."""
+        owners = self._event_owners(target_plugin)
+        if not owners:
             return
-
-        dispatch_kwargs = {k: v for k, v in kwargs.items() if k != "app_context"}
-        executed_callbacks: Set[Callable[..., Any]] = set()
-
-        # 1. Execute registered @app_event listeners
-        for name in (event_name, "*"):
-            plugin_map = self._event_listeners.get(name, {})
-            for ident in target_identifiers:
-                listeners = plugin_map.get(ident, [])
-                for callback in listeners:
-                    if callback in executed_callbacks:
-                        continue
-                    executed_callbacks.add(callback)
-                    try:
-                        if inspect.iscoroutinefunction(callback):
-                            await callback(*args, **dispatch_kwargs)
-                        else:
-                            await run_in_thread(callback, *args, **dispatch_kwargs)
-                    except Exception as e:
-                        if event_name in ("on_load", "on_unload"):
-                            raise
-                        log_operation_error(
-                            logger,
-                            "Error in plugin '%s' handling event '%s': %s",
-                            ident,
-                            event_name,
-                            e,
-                            error=e,
-                        )
-
-        # 2. Lifecycle fallback (supports on_load and on_unload without requiring explicit @app_event)
-        if event_name in ("on_load", "on_unload"):
-            lifecycle_method = getattr(target_plugin, event_name, None)
-            if (
-                callable(lifecycle_method)
-                and lifecycle_method not in executed_callbacks
-                and not getattr(lifecycle_method, "_app_event_name", None)
-                and not getattr(lifecycle_method, "_app_event_names", None)
-            ):
-                try:
-                    if inspect.iscoroutinefunction(lifecycle_method):
-                        await lifecycle_method(*args, **dispatch_kwargs)
-                    else:
-                        await run_in_thread(lifecycle_method, *args, **dispatch_kwargs)
-                except Exception as e:
-                    if event_name in ("on_load", "on_unload"):
-                        raise
-                    log_operation_error(
-                        logger,
-                        "Error in plugin '%s' during lifecycle method '%s': %s",
-                        target_plugin,
-                        event_name,
-                        e,
-                        error=e,
-                    )
-
-    def _generate_event_key(self, event_name: str, **kwargs: Any) -> str:
-        """Generates a unique key for the event based on its name and identity parameters."""
-        identity_key_names = _event_registry.get(event_name)
-        if not identity_key_names:
-            return event_name
-        return "|".join(
-            (
-                event_name,
-                *(
-                    str(kwargs.get(k, _MISSING_PARAM_PLACEHOLDER))
-                    for k in identity_key_names
-                ),
+        temporary = None
+        lifecycle = event_name in {"on_load", "on_unload"}
+        method = getattr(target_plugin, event_name, None)
+        if (
+            lifecycle
+            and callable(method)
+            and not getattr(method, "_app_event_name", None)
+            and not getattr(method, "_app_event_names", None)
+        ):
+            temporary = self.events.subscribe(
+                event_name, method, owner=next(iter(owners)), active=False
             )
-        )
+        try:
+            await self.events.emit(
+                event_name,
+                kwargs,
+                *args,
+                target_owners=owners,
+                strict=lifecycle,
+                public=False,
+            )
+        finally:
+            if temporary is not None:
+                self.events.unsubscribe(temporary)
 
     async def trigger_event(self, event_name: str, *args: Any, **kwargs: Any) -> None:
-        """Asynchronously triggers an event on all loaded plugins."""
-        current_event_key = self._generate_event_key(event_name, **kwargs)
-        current_stack = _event_context_var.get() or ()
-
-        if current_event_key in current_stack:
-            return
-
-        token = _event_context_var.set(current_stack + (current_event_key,))
-        try:
-            for plugin_instance in list(self.plugins):
-                await self.dispatch_event(plugin_instance, event_name, *args, **kwargs)
-        finally:
-            _event_context_var.reset(token)
+        """Compatibility entry point for local plugin notifications."""
+        owners = set().union(*(self._event_owners(plugin) for plugin in self.plugins))
+        await self.events.emit(
+            event_name, kwargs, *args, target_owners=owners, public=False
+        )
 
     async def trigger_guarded_event(
         self, event: str, *args: Any, **kwargs: Any
@@ -557,8 +504,8 @@ class PluginManager:
                 version = getattr(p_class, "version", None)
                 if version and version != "N/A":
                     self._discovered_classes[p_name] = p_class
-                    if self.app_context:
-                        models = self.app_context.plugin_service.settings_models
+                    if self.settings_models is not None:
+                        models = self.settings_models
                         if p_class.settings_model is not None:
                             models[p_name] = p_class.settings_model
                         else:
@@ -600,8 +547,8 @@ class PluginManager:
         ]
         for plugin_name in plugins_to_remove:
             del self.plugin_config[plugin_name]
-            if self.app_context:
-                self.app_context.plugin_service.settings_models.pop(plugin_name, None)
+            if self.settings_models is not None:
+                self.settings_models.pop(plugin_name, None)
 
         await self._save_config()
 
@@ -679,21 +626,20 @@ class PluginManager:
             sorted_plugin_names = self._sort_plugin_dependencies(enabled_plugins_data)
 
             for plugin_name in sorted_plugin_names:
+                if not self._can_replace_plugin(plugin_name):
+                    continue
                 plugin_class = enabled_plugins_data[plugin_name]
                 instance = None
                 try:
                     plugin_logger = logging.getLogger(f"plugin.{plugin_name}")
-                    api_instance = create_app_api(
-                        plugin_name=plugin_name, app_context=self.app_context
-                    )
+                    self.events.open_owner(f"plugin:{plugin_name}")
+                    api_instance = self.api_factory(plugin_name)
 
                     instance = plugin_class(plugin_name, api_instance, plugin_logger)
                     self._pending_plugins[plugin_name] = instance
-                    if (
-                        self.app_context is not None
-                        and self.app_context._task_manager is not None
-                    ):
-                        self.app_context._task_manager.allow_plugin(plugin_name)
+                    task_manager = self.task_manager_provider()
+                    if task_manager is not None:
+                        task_manager.allow_plugin(plugin_name)
 
                     # Support both single (_app_event_name) and stacked/multi (_app_event_names) decorators
                     for _, method in inspect.getmembers(
@@ -747,6 +693,8 @@ class PluginManager:
                             self._register_mounts(plugin_name, valid_mounts)
 
                     self.plugins.append(instance)
+                    for owner in self._event_owners(instance):
+                        self.events.activate_owner(owner)
                     self._pending_plugins.pop(plugin_name, None)
                     if plugin_name in self.plugin_config:
                         self._set_runtime_status(plugin_name, "LOADED")
@@ -754,6 +702,8 @@ class PluginManager:
                 except BaseException as e:
                     if instance is not None:
                         await self.unload_plugin_by_name(plugin_name)
+                    else:
+                        self.events.remove_owner(f"plugin:{plugin_name}")
                     if plugin_name in self.plugin_config:
                         self._set_runtime_status(plugin_name, "ERROR")
                     if not isinstance(e, Exception):
@@ -816,7 +766,8 @@ class PluginManager:
                     # No active running loop, tasks are already cancelled
                     pass
 
-            self._event_listeners.clear()
+            for owner in list(self._runtime_records):
+                self.events.remove_owner(f"plugin:{owner}")
             self._discovered_classes.clear()
 
             # Purge every module and submodule registered under bsm_plugins (preserve the root package)
@@ -912,18 +863,8 @@ class PluginManager:
         owner = RouterLifespan(
             self._web_app,
             self._router_owners.get(name, []),
-            timeout=(
-                self.app_context.settings.get("lifecycle.plugin_timeout_seconds", 10.0)
-                if self.app_context
-                else 10.0
-            ),
-            grace=(
-                self.app_context.settings.get(
-                    "lifecycle.cancellation_grace_seconds", 2.0
-                )
-                if self.app_context
-                else 2.0
-            ),
+            timeout=(self.settings.get("lifecycle.plugin_timeout_seconds", 10.0)),
+            grace=(self.settings.get("lifecycle.cancellation_grace_seconds", 2.0)),
         )
         self._router_lifespans[name] = owner
         try:
@@ -1001,11 +942,9 @@ class PluginManager:
             plugin_name=plugin_name, status=self.get_plugin_status(plugin_name)
         )
         data = record.model_dump()
-        data["registered_events"] = [
-            event
-            for event, listeners in self._event_listeners.items()
-            if plugin_name in listeners
-        ]
+        data["registered_events"] = self.events.events_for_owner(
+            f"plugin:{plugin_name}"
+        )
         data["active_tasks"] = [
             task.get_name()
             for task in self.plugin_tasks.get(plugin_name, [])
@@ -1078,22 +1017,17 @@ class PluginManager:
                 except RuntimeError:
                     pass
 
-            if (
-                self.app_context is not None
-                and self.app_context._task_manager is not None
-            ):
-                await self.app_context._task_manager.drain_plugin(plugin_key)
+            task_manager = self.task_manager_provider()
+            if task_manager is not None:
+                await task_manager.drain_plugin(plugin_key)
 
             unload_errors: list[Exception] = []
             try:
-                timeout = (
-                    self.app_context.settings.get(
-                        "lifecycle.plugin_timeout_seconds", 10.0
-                    )
-                    if self.app_context
-                    else 10.0
-                )
+                timeout = self.settings.get("lifecycle.plugin_timeout_seconds", 10.0)
                 async with asyncio.timeout(timeout):
+                    for owner in self._event_owners(target_instance):
+                        self.events.deactivate_owner(owner)
+                        await self.events.drain_owner(owner, timeout)
                     await self.dispatch_event(target_instance, "on_unload")
             except Exception as e:
                 unload_errors.append(e)
@@ -1105,6 +1039,9 @@ class PluginManager:
                     error=e,
                 )
 
+            owners = set(self._event_owners(target_instance))
+            if any(self.events.owner_pending(owner) for owner in owners):
+                self._draining_plugins[plugin_key] = owners
             self._pending_plugins.pop(plugin_key, None)
             if target_instance in self.plugins:
                 self.plugins.remove(target_instance)
@@ -1123,12 +1060,11 @@ class PluginManager:
                     self.plugin_static_mounts.remove(mount)
 
             self._sync_web_routes(plugin_key)
-            for event_name, plugin_map in list(self._event_listeners.items()):
-                plugin_map.pop(plugin_key, None)
-                plugin_map.pop(target_instance.name, None)
+            for owner in self._event_owners(target_instance):
+                self.events.remove_owner(owner)
 
-            if self.app_context and hasattr(self.app_context, "connection_manager"):
-                cm = self.app_context.connection_manager
+            cm = self.connection_manager_provider()
+            if cm is not None:
                 cm.unregister_plugin_providers(plugin_key)
                 cm.unregister_plugin_providers(target_instance.name)
                 cm.unregister_plugin_providers(plugin_name)
@@ -1143,8 +1079,22 @@ class PluginManager:
                 raise ExceptionGroup(
                     f"Plugin '{plugin_key}' cleanup failed", unload_errors
                 )
+            if unload_errors:
+                self._set_runtime_status(plugin_name, "ERROR")
+                return False
             logger.info("Plugin '%s' unloaded successfully.", plugin_name)
             return True
+
+    def _can_replace_plugin(self, plugin_name: str) -> bool:
+        owners = self._draining_plugins.get(plugin_name, set())
+        if any(self.events.owner_pending(owner) for owner in owners):
+            self._set_runtime_status(plugin_name, "ERROR")
+            logger.warning(
+                "Plugin '%s' is still draining its old event generation", plugin_name
+            )
+            return False
+        self._draining_plugins.pop(plugin_name, None)
+        return True
 
     async def load_plugin_by_name(self, plugin_name: str) -> bool:
         """Loads and initializes a single plugin by name if discoverable."""
@@ -1152,6 +1102,8 @@ class PluginManager:
         async with self._lifecycle_lock:
             if self._shutdown_started:
                 raise RuntimeError("Cannot start plugins during shutdown.")
+            if not self._can_replace_plugin(plugin_name):
+                return False
             for p in self.plugins:
                 api = getattr(p, "api", None)
                 ident = getattr(api, "_plugin_name", None) or getattr(p, "name", None)
@@ -1178,8 +1130,8 @@ class PluginManager:
                     self._set_runtime_status(plugin_name, "ERROR")
                 return False
 
-            if self.app_context:
-                models = self.app_context.plugin_service.settings_models
+            if self.settings_models is not None:
+                models = self.settings_models
                 if p_class.settings_model is not None:
                     models[plugin_name] = p_class.settings_model
                 else:
@@ -1187,17 +1139,14 @@ class PluginManager:
             instance = None
             try:
                 plugin_logger = logging.getLogger(f"plugin.{plugin_name}")
-                api_instance = create_app_api(
-                    plugin_name=plugin_name, app_context=self.app_context
-                )
+                self.events.open_owner(f"plugin:{plugin_name}")
+                api_instance = self.api_factory(plugin_name)
 
                 instance = p_class(plugin_name, api_instance, plugin_logger)
                 self._pending_plugins[plugin_name] = instance
-                if (
-                    self.app_context is not None
-                    and self.app_context._task_manager is not None
-                ):
-                    self.app_context._task_manager.allow_plugin(plugin_name)
+                task_manager = self.task_manager_provider()
+                if task_manager is not None:
+                    task_manager.allow_plugin(plugin_name)
 
                 for _, method in inspect.getmembers(
                     instance, predicate=inspect.ismethod
@@ -1294,6 +1243,8 @@ class PluginManager:
                         self.plugin_tasks.setdefault(plugin_name, []).append(task)
 
                 self.plugins.append(instance)
+                for owner in self._event_owners(instance):
+                    self.events.activate_owner(owner)
                 self._pending_plugins.pop(plugin_name, None)
                 if plugin_name in self.plugin_config:
                     self._set_runtime_status(plugin_name, "LOADED")
@@ -1302,6 +1253,8 @@ class PluginManager:
             except BaseException as e:
                 if instance is not None:
                     await self.unload_plugin_by_name(plugin_name)
+                else:
+                    self.events.remove_owner(f"plugin:{plugin_name}")
                 if not isinstance(e, Exception):
                     raise
                 log_operation_error(
@@ -1318,7 +1271,19 @@ class PluginManager:
             if self._shutdown_started:
                 raise RuntimeError("Cannot start plugins during shutdown.")
             logger.info("Reloading plugin '%s'...", plugin_name)
-            await self.unload_plugin_by_name(plugin_name)
+            loaded = (
+                any(
+                    (
+                        getattr(getattr(plugin, "api", None), "_plugin_name", None)
+                        or plugin.name
+                    )
+                    == plugin_name
+                    for plugin in self.plugins
+                )
+                or plugin_name in self._pending_plugins
+            )
+            if loaded and not await self.unload_plugin_by_name(plugin_name):
+                return False
             return await self.load_plugin_by_name(plugin_name)
 
     async def enable_plugin(

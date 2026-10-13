@@ -228,3 +228,7 @@ class InvalidServerNameError(UserInputError):
     """Raised when a provided server name is invalid or contains illegal characters."""
 
     pass
+
+
+class APIResponseValidationError(RuntimeError):
+    """An operation produced invalid output; this is not bad caller input."""

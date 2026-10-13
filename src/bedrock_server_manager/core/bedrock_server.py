@@ -20,8 +20,8 @@ from .server.world import ServerWorlds
 
 if TYPE_CHECKING:
     from ..config.settings import Settings
-    from ..context import AppContext
     from ..db.storage import Storage
+    from ..events.publisher import EventPublisher
     from ..state.app_state import AppState
 
 
@@ -33,14 +33,14 @@ class BedrockServer(ServerResources):
         server_name: str,
         *,
         settings: "Settings | None" = None,
-        app_context: "AppContext | None" = None,
+        events: "EventPublisher | None" = None,
         state: "AppState | None" = None,
         storage: "Storage | None" = None,
     ) -> None:
         super().__init__(
             server_name,
             settings=settings,
-            app_context=app_context,
+            events=events,
             state=state,
             storage=storage,
         )
@@ -114,18 +114,8 @@ class BedrockServer(ServerResources):
         return self.configuration.snapshot().status
 
     async def set_status_in_config(self, status_string: str) -> None:
-        """Preserve the existing API event path until event dispatch is extracted."""
-        if not isinstance(status_string, str):
-            raise UserInputError("Server status must be a string.")
-        if self.app_context and self.app_context.api:
-            try:
-                await self.app_context.api.server.set_status(
-                    request={"server_name": self.server_name, "status": status_string}
-                )
-                return
-            except AttributeError:
-                pass
-        await self.configuration.update("server_info.status", status_string)
+        """Persist status and emit hooks without going through the API facade."""
+        await self.configuration.set_status(status_string, self.events)
 
     async def get_world_name(self) -> str:
         value = (

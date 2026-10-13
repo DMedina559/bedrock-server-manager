@@ -8,7 +8,7 @@ from typing import TYPE_CHECKING, Dict, Optional
 from .paths import ServerPaths
 
 if TYPE_CHECKING:
-    from ...context import AppContext
+    from ...events.publisher import EventPublisher
     from ...config.settings import Settings
     from ...state.app_state import AppState
     from ...db.storage import Storage
@@ -26,7 +26,7 @@ class ServerResources:
         server_name: str,
         *,
         settings: Optional["Settings"] = None,
-        app_context: Optional["AppContext"] = None,
+        events: Optional["EventPublisher"] = None,
         state: Optional["AppState"] = None,
         storage: Optional["Storage"] = None,
     ) -> None:
@@ -43,7 +43,7 @@ class ServerResources:
         self.state = state
         self._runtime_state = state.runtime if state is not None else RuntimeState()
         self.storage = storage
-        self.app_context = app_context
+        self.events = events
         self.logger.debug("Server resources for '%s' initialized", server_name)
         _base_dir_val = self.settings.get("paths.servers")
         if not _base_dir_val:

@@ -2,9 +2,9 @@ import logging
 
 from ..context import AppContext
 from ..error import BSMError, FileOperationError
+from ..events import trigger_event
 from ..logging import log_operation_error
 from ..plugins.api_bridge import api_method
-from ..plugins.event_trigger import trigger_event
 from .models.allowlist import (
     AddToAllowlistRequest,
     AddToAllowlistResponse,

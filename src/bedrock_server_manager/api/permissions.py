@@ -3,9 +3,9 @@ from typing import Any, Dict, List
 
 from ..context import AppContext
 from ..error import AppFileNotFoundError, BSMError
+from ..events import trigger_event
 from ..logging import log_operation_error
 from ..plugins.api_bridge import api_method
-from ..plugins.event_trigger import trigger_event
 from . import player as player_api
 from .models.permissions import (
     GetPermissionsRequest,

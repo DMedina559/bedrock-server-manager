@@ -70,6 +70,8 @@ async def test_event_hooks_publish_safe_payloads_to_real_socket(
             "topic": "event:socket_before",
             "epoch": before["epoch"],
             "revision": before["revision"],
+            "event_id": before["event_id"],
+            "correlation_id": before["correlation_id"],
             "data": {"value": 4},
         }
         assert after == {
@@ -77,6 +79,8 @@ async def test_event_hooks_publish_safe_payloads_to_real_socket(
             "topic": "event:socket_after",
             "epoch": after["epoch"],
             "revision": after["revision"],
+            "event_id": after["event_id"],
+            "correlation_id": after["correlation_id"],
             "data": {"value": 4, "result": 8},
         }
 
@@ -94,15 +98,12 @@ async def test_delayed_plugin_callback_preserves_original_event_revision(
 
     entered = asyncio.Event()
     release = asyncio.Event()
-    original = app_context.plugin_manager.trigger_event
 
-    async def delayed(event_name, **kwargs):
-        if event_name == "delayed_after":
-            entered.set()
-            await release.wait()
-        await original(event_name, **kwargs)
+    async def delayed(**kwargs):
+        entered.set()
+        await release.wait()
 
-    monkeypatch.setattr(app_context.plugin_manager, "trigger_event", delayed)
+    app_context.events.subscribe("delayed_after", delayed, owner="test")
 
     @trigger_event(after="delayed_after")
     async def target(app_context):

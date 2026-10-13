@@ -5,7 +5,7 @@ def test_bedrock_server_components(app_context):
     server = BedrockServer(
         "composed_server",
         settings=app_context.settings,
-        app_context=app_context,
+        events=app_context.events,
         state=app_context.state,
         storage=app_context.storage,
     )

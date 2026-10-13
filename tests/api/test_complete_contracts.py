@@ -201,7 +201,6 @@ async def test_plugin_target_event_retains_listener_fields_and_identity(
 ):
     from bedrock_server_manager.api.models import SetPluginStatusRequest
     from bedrock_server_manager.api.plugins import set_plugin_status
-    from bedrock_server_manager.plugins.event_trigger import _event_registry
 
     plugin = await plugin_factory(
         "observer",
@@ -220,7 +219,9 @@ async def test_plugin_target_event_retains_listener_fields_and_identity(
     assert received[0]["plugin_name"] == "observer"
     assert received[0]["enabled"] is False
     assert "target_plugin_name" not in received[0]
-    assert _event_registry["before_set_plugin_status"] == ("plugin_name", "enabled")
+    assert app_context.events.registry.definition(
+        "before_set_plugin_status"
+    ).identity_keys == ("plugin_name", "enabled")
 
 
 @pytest.mark.parametrize("count", [0, 2])
