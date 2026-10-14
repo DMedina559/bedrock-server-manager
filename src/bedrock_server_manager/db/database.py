@@ -15,43 +15,56 @@ from typing import AsyncGenerator
 
 from alembic import command
 from alembic.config import Config
-from sqlalchemy import event, inspect
+from sqlalchemy import event, inspect, text
 from sqlalchemy.ext.asyncio import (
     AsyncEngine,
     AsyncSession,
     async_sessionmaker,
     create_async_engine,
 )
-from sqlalchemy.orm import declarative_base
+from sqlalchemy.orm import DeclarativeBase
 
-Base = declarative_base()
+from ..error import ConfigurationError
+
+
+class Base(DeclarativeBase):
+    pass
 
 
 class Database:
-    """
-    Manages asynchronous database connections and sessions.
+    """Manage asynchronous database connections and sessions.
 
-    Attributes:
-        db_url (str): The database connection URL.
-        engine (AsyncEngine): The SQLAlchemy async engine.
-        SessionLocal (async_sessionmaker): The async session factory.
-        _tables_created (bool): Flag indicating if tables have been created.
+    :ivar db_url: The database connection URL.
+
+    :ivar engine: The SQLAlchemy async engine.
+
+    :ivar SessionLocal: The async session factory.
+
+    :ivar _tables_created: Flag indicating if tables have been created.
     """
 
     def __init__(self, db_url: str):
-        """
-        Initializes the Database instance.
+        """Initialize the Database instance.
 
-        Args:
-            db_url (str): The database connection URL.
+        :param db_url: The database connection URL.
         """
         self.db_url = db_url
+        self.schema_revision: str | None = None
         self.engine: AsyncEngine | None = None
         self.SessionLocal: async_sessionmaker[AsyncSession] | None = None
         self._tables_created = False
 
+    async def check_health(self) -> bool:
+        """Verify a database round trip without changing stored data."""
+        if self.engine is None:
+            return False
+        async with asyncio.timeout(2):
+            async with self.engine.connect() as connection:
+                await connection.execute(text("SELECT 1"))
+        return True
+
     def _get_db_url(self) -> str:
-        """Converts the standard database URL into an async-compatible URL."""
+        """Convert the standard database URL into an async-compatible URL."""
         if self.db_url.startswith("sqlite://"):
             return self.db_url.replace("sqlite://", "sqlite+aiosqlite://", 1)
         if self.db_url.startswith("postgresql://"):
@@ -61,18 +74,17 @@ class Database:
         return self.db_url
 
     def _get_sync_db_url(self) -> str:
-        """Converts an async database URL back into a standard sync URL (for Alembic)."""
-        url = self.db_url
+        """Convert an async database URL back into a standard sync URL (for Alembic)."""
+        url = self._get_db_url()
         url = url.replace("sqlite+aiosqlite://", "sqlite://", 1)
-        url = url.replace("postgresql+asyncpg://", "postgresql://", 1)
-        url = url.replace("mysql+aiomysql://", "mysql://", 1)
-        url = url.replace("mariadb+aiomysql://", "mariadb://", 1)
+        url = url.replace("postgresql+asyncpg://", "postgresql+psycopg://", 1)
+        url = url.replace("mysql+aiomysql://", "mysql+pymysql://", 1)
+        url = url.replace("mariadb+aiomysql://", "mariadb+pymysql://", 1)
         return url
 
     def initialize(self) -> None:
-        """
-        Initializes the async database engine and session factory.
-        This method is idempotent.
+        """Initialize the async database engine and session factory. This method is
+        idempotent.
         """
         if self.engine:
             return
@@ -85,6 +97,7 @@ class Database:
 
         self.engine = create_async_engine(
             db_url,
+            hide_parameters=True,
             connect_args=connect_args,
             pool_pre_ping=True,
             pool_recycle=3600,
@@ -119,14 +132,14 @@ class Database:
         alembic_cfg.set_main_option("skip_logging_config", "true")
         alembic_cfg.set_main_option("sqlalchemy.url", sync_url)
 
-        sync_engine = create_engine(sync_url)
+        sync_engine = create_engine(sync_url, hide_parameters=True)
         with sync_engine.begin() as connection:
             alembic_cfg.attributes["connection"] = connection
             command.upgrade(alembic_cfg, "head")
         sync_engine.dispose()
 
     def _get_head_revision(self) -> str | None:
-        """Retrieves the current head revision from Alembic script directory."""
+        """Return the current head revision from Alembic script directory."""
         try:
             alembic_ini_path = files("bedrock_server_manager").joinpath(
                 "db/alembic.ini"
@@ -137,10 +150,13 @@ class Database:
 
             script = ScriptDirectory.from_config(alembic_cfg)
             head = script.get_current_head()
-            return str(head) if head is not None else None
+            if head is None:
+                raise ConfigurationError("No database migration head is configured.")
+            return str(head)
         except Exception as e:
-            logging.warning(f"Failed to resolve Alembic head revision: {e}")
-            return None
+            raise ConfigurationError(
+                "Database migration head could not be resolved."
+            ) from e
 
     def _run_alembic_downgrade(self, revision: str = "-1") -> None:
         """Runs synchronous Alembic downgrade command."""
@@ -154,15 +170,15 @@ class Database:
         alembic_cfg.set_main_option("skip_logging_config", "true")
         alembic_cfg.set_main_option("sqlalchemy.url", sync_url)
 
-        sync_engine = create_engine(sync_url)
+        sync_engine = create_engine(sync_url, hide_parameters=True)
         with sync_engine.begin() as connection:
             alembic_cfg.attributes["connection"] = connection
             command.downgrade(alembic_cfg, revision)
         sync_engine.dispose()
 
     async def _ensure_tables_created(self) -> None:
-        """
-        Ensures that the database tables are created asynchronously and auto-upgraded if out of date.
+        """Ensure that the database tables are created asynchronously and auto-upgraded
+        if out of date.
         """
         if not self._tables_created:
             if not self.engine:
@@ -189,22 +205,22 @@ class Database:
 
             head_rev = self._get_head_revision()
 
+            upgraded = False
             if not has_users or (
                 has_version and current_rev and head_rev and current_rev != head_rev
             ):
                 logging.info("Auto-upgrading database schema to head...")
                 await asyncio.to_thread(self._run_alembic_upgrade)
+                upgraded = True
 
+            self.schema_revision = head_rev if upgraded else current_rev
             self._tables_created = True
 
     @asynccontextmanager
     async def session_manager(self) -> AsyncGenerator[AsyncSession, None]:
-        """
-        Async context manager for database sessions.
+        """Async context manager for database sessions.
 
-        Yields:
-            AsyncSession: An async database session.
-        """
+        :Yields: *AsyncSession* -- An async database session."""
         if not self.SessionLocal:
             self.initialize()
         await self._ensure_tables_created()

@@ -3,17 +3,18 @@
 Bedrock Server Manager
 ======================
 
-Welcome to the Bedrock Server Manager documentation!
-
-This documentation is designed to help you understand and use the Bedrock Server Manager effectively.
-
-Browse through the sections below to find various information about Bedrock Server Manager, including general information, CLI commands, web interface, plugins, and developer documentation.
+Install BSM, manage Bedrock servers, and build integrations. Start with the
+first-startup guide, then use the task guides and references below. Select
+documentation matching your installed release.
 
 .. toctree::
    :maxdepth: 2
-   :caption: General Information
+   :caption: Start here
 
    general/introduction.md
+   general/quickstart.md
+   general/upgrading.md
+   extras/installation.md
    cli/general.md
    web/general.md
    web/role_access_table.md
@@ -22,7 +23,7 @@ Browse through the sections below to find various information about Bedrock Serv
 
 .. toctree::
    :maxdepth: 2
-   :caption: Features
+   :caption: Manage servers
 
    features/installation.md
    features/server_management.md
@@ -41,13 +42,15 @@ Browse through the sections below to find various information about Bedrock Serv
 
 .. toctree::
    :maxdepth: 2
-   :caption: Extras
+   :caption: Administration and integrations
 
-   extras/installation.md
    extras/docker.md
+   extras/http_api.md
    extras/install_content.md
    extras/web_extras.md
    extras/websockets.md
+   extras/web_runtime.md
+   extras/diagnostics.md
    web/theming.md
 
 .. toctree::
@@ -58,10 +61,11 @@ Browse through the sections below to find various information about Bedrock Serv
 
 .. toctree::
    :maxdepth: 2
-   :caption: Plugins
+   :caption: Use and develop plugins
 
    plugins/introduction.md
    developer/plugins/introduction.md
+   developer/plugins/contracts.md
    plugins/plugin_apis.md
    plugins/plugin_events.md
    developer/plugins/plugin_base
@@ -74,8 +78,10 @@ Browse through the sections below to find various information about Bedrock Serv
 
 .. toctree::
    :maxdepth: 2
-   :caption: Developer Documentation
+   :caption: Backend contributors and Python reference
 
+   developer/overview.md
+   developer/web_architecture.md
    developer/api/api
    developer/classes/classes
    developer/core/core

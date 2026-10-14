@@ -1,4 +1,5 @@
 import json
+import logging
 import shutil
 from datetime import datetime
 from importlib.resources import files
@@ -12,9 +13,12 @@ from sqlalchemy import create_engine, inspect, select
 
 from ..context import AppContext
 from ..db import models
+from ..logging import log_operation_error
 from ..utils.database import backup_database, get_current_db_revision, restore_database
 from ..utils.general import run_async
 from ..utils.migration import run_migrations_downgrade, run_migrations_upgrade
+
+logger = logging.getLogger(__name__)
 
 
 @click.group()
@@ -79,7 +83,7 @@ def upgrade(ctx: click.Context, yes: bool):  # noqa: C901
 
     # --- Run Migrations ---
     try:
-        sync_engine = create_engine(sync_db_url)
+        sync_engine = create_engine(sync_db_url, hide_parameters=True)
 
         with sync_engine.begin() as connection:
             alembic_cfg.attributes["connection"] = connection
@@ -263,15 +267,19 @@ def backup_db(ctx: click.Context, output: str | None):
         timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
         output = f"{backup_dir}/db_data_backup_{timestamp}.json"
 
-    Path(output).parent.mkdir(parents=True, exist_ok=True)
-
     click.echo("Backing up database to JSON...")
     try:
+        Path(output).parent.mkdir(parents=True, exist_ok=True)
         run_async(backup_database(source_db, output))
         click.secho(f"Database data backup successful! Saved to {output}", fg="green")
     except Exception as e:
+        log_operation_error(
+            logger, "Database backup failed for '%s': %s", output, e, error=e
+        )
         click.secho(
-            f"\nAn error occurred during data backup: {e}", fg="red", exc_info=True
+            "Database backup failed; see the application log for details.",
+            fg="red",
+            err=True,
         )
         raise click.Abort()
 

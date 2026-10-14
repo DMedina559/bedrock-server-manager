@@ -1,31 +1,5 @@
 # bedrock_server_manager/core/system/windows.py
-"""Provides Windows-specific implementations for system service management.
-
-This module offers functionalities tailored for the Windows operating system,
-primarily focused on managing Windows Services. It leverages the ``pywin32`` package for
-many of its operations, and its availability is checked by the
-:const:`PYWIN32_AVAILABLE` flag. Some optional ``pywin32`` modules for cleanup
-are checked via :const:`PYWIN32_HAS_OPTIONAL_MODULES`.
-
-Key functionalities include:
-
-
-Windows Service Management (Requires Administrator Privileges):
-
-    - Checking if a service exists (:func:`check_service_exists`).
-    - Creating or updating a Windows Service to run the Bedrock server
-      (:func:`create_windows_service`).
-    - Enabling (:func:`enable_windows_service`) or disabling
-      (:func:`disable_windows_service`) a service.
-    - Deleting a service, including cleanup of associated registry entries like
-      performance counters and event log sources (:func:`delete_windows_service`).
-
-Note:
-    Functions interacting with the Windows Service Control Manager (SCM)
-    typically require Administrator privileges to execute successfully. The module
-    attempts to handle :class:`~bedrock_server_manager.error.PermissionsError`
-    where appropriate.
-"""
+"""Windows SCM service definition and autostart helpers."""
 
 import logging
 from typing import Optional
@@ -72,24 +46,7 @@ logger = logging.getLogger(__name__)
 
 
 def check_service_exists(service_name: str) -> bool:
-    """Checks if a Windows service with the given name exists.
-
-    Requires Administrator privileges for a definitive check, otherwise, it might
-    return ``False`` due to access denied errors.
-
-    Args:
-        service_name (str): The short name of the service to check (e.g., "MyBedrockServer").
-
-    Returns:
-        bool: ``True`` if the service exists, ``False`` otherwise. Returns ``False``
-        if ``pywin32`` is not installed or if access is denied (which is logged
-        as a warning).
-
-    Raises:
-        MissingArgumentError: If `service_name` is empty.
-        SystemError: For unexpected Service Control Manager (SCM) errors other
-            than "service does not exist" or "access denied".
-    """
+    """Check if a Windows service with the given name exists."""
     if not PYWIN32_AVAILABLE:
         logger.debug("pywin32 not available, check_service_exists returning False.")
         return False
@@ -137,38 +94,7 @@ def create_windows_service(
     username: Optional[str] = None,
     password: Optional[str] = None,
 ) -> None:
-    """Creates a new Windows service or updates an existing one.
-
-    This function interacts with the Windows Service Control Manager (SCM) to
-    either create a new service or modify the configuration of an existing
-    service (specifically its display name, description, and executable command).
-    The service is configured for automatic start (``SERVICE_AUTO_START``) and
-    runs as ``LocalSystem`` by default upon creation.
-
-    Requires Administrator privileges.
-
-    Args:
-        service_name (str): The short, unique name for the service
-            (e.g., "MyBedrockServerSvc").
-        display_name (str): The user-friendly name shown in the Services console
-            (e.g., "My Bedrock Server").
-        description (str): A detailed description of the service.
-        command (str): The full command line to execute for the service,
-            including the path to the executable and any arguments.
-            Example: ``"C:\\path\\to\\python.exe C:\\path\\to\\script.py --run-as-service"``
-        username (Optional[str], optional): The username to run the service as.
-            If ``None``, the service runs as ``LocalSystem``. Defaults to ``None``.
-        password (Optional[str], optional): The password for the user.
-            Required if `username` is provided. Defaults to ``None``.
-
-    Raises:
-        SystemError: If ``pywin32`` is not available, or for other unexpected
-            SCM errors during service creation/update.
-        MissingArgumentError: If any of the required string arguments
-            (`service_name`, `display_name`, `description`, `command`) are empty.
-        PermissionsError: If the operation fails due to insufficient privileges
-            (typically requires Administrator rights).
-    """
+    """Create a new Windows service or updates an existing one."""
     if not PYWIN32_AVAILABLE:
         raise SystemError("pywin32 is required to manage Windows services.")
     if not all([service_name, display_name, description, command]):
@@ -176,7 +102,7 @@ def create_windows_service(
             "service_name, display_name, description, and command are required."
         )
 
-    logger.info(f"Attempting to create/update Windows service '{service_name}'...")
+    logger.debug("Attempting to create/update Windows service '%s'...", service_name)
 
     scm_handle = None
     service_handle = None
@@ -188,7 +114,7 @@ def create_windows_service(
         service_exists = check_service_exists(service_name)
 
         if not service_exists:
-            logger.info(f"Service '{service_name}' does not exist. Creating...")
+            logger.debug("Service '%s' does not exist. Creating...", service_name)
             # When creating, we can rely on defaults for the service account (LocalSystem)
             service_handle = win32service.CreateService(
                 scm_handle,
@@ -205,9 +131,9 @@ def create_windows_service(
                 f".\\{username}" if username else None,
                 password,
             )
-            logger.info(f"Service '{service_name}' created successfully.")
+            logger.info("Service '%s' created successfully.", service_name)
         else:
-            logger.info(f"Service '{service_name}' already exists. Updating...")
+            logger.debug("Service '%s' already exists. Updating...", service_name)
             service_handle = win32service.OpenService(
                 scm_handle, service_name, win32service.SERVICE_ALL_ACCESS
             )
@@ -225,13 +151,13 @@ def create_windows_service(
                 password,  # Password
                 display_name,  # DisplayName
             )
-            logger.info(f"Service '{service_name}' command and display name updated.")
+            logger.debug("Service '%s' command and display name updated.", service_name)
 
         # Set or update the service description (this part was already correct)
         win32service.ChangeServiceConfig2(
             service_handle, win32service.SERVICE_CONFIG_DESCRIPTION, description
         )
-        logger.info(f"Service '{service_name}' description updated.")
+        logger.debug("Service '%s' description updated.", service_name)
 
     except pywintypes.error as e:
         if e.winerror == 5:
@@ -255,28 +181,13 @@ def create_windows_service(
 
 
 def enable_windows_service(service_name: str) -> None:
-    """Enables a Windows service by setting its start type to 'Automatic'.
-
-    This function interacts with the Windows Service Control Manager (SCM)
-    to change the start type of the specified service to ``SERVICE_AUTO_START``.
-
-    Requires Administrator privileges.
-
-    Args:
-        service_name (str): The short name of the service to enable.
-
-    Raises:
-        SystemError: If ``pywin32`` is not available, if the service does not
-            exist, or for other unexpected SCM errors.
-        MissingArgumentError: If `service_name` is empty.
-        PermissionsError: If the operation fails due to insufficient privileges.
-    """
+    """Enables a Windows service by setting its start type to 'Automatic'."""
     if not PYWIN32_AVAILABLE:
         raise SystemError("pywin32 is required to manage Windows services.")
     if not service_name:
         raise MissingArgumentError("Service name cannot be empty.")
 
-    logger.info(f"Enabling service '{service_name}' (setting to Automatic start)...")
+    logger.debug("Enabling service '%s' (setting to Automatic start)...", service_name)
     scm_handle = None
     service_handle = None
     try:
@@ -300,7 +211,7 @@ def enable_windows_service(service_name: str) -> None:
             None,
             None,
         )
-        logger.info(f"Service '{service_name}' enabled successfully.")
+        logger.info("Service '%s' enabled successfully.", service_name)
     except pywintypes.error as e:
         if e.winerror == 5:
             raise PermissionsError(
@@ -322,30 +233,13 @@ def enable_windows_service(service_name: str) -> None:
 
 
 def disable_windows_service(service_name: str) -> None:
-    """Disables a Windows service by setting its start type to 'Disabled'.
-
-    This function interacts with the Windows Service Control Manager (SCM)
-    to change the start type of the specified service to ``SERVICE_DISABLED``.
-    If the service does not exist, a warning is logged, and the function returns
-    gracefully.
-
-    Requires Administrator privileges.
-
-    Args:
-        service_name (str): The short name of the service to disable.
-
-    Raises:
-        SystemError: If ``pywin32`` is not available or for unexpected SCM errors
-            (other than service not existing).
-        MissingArgumentError: If `service_name` is empty.
-        PermissionsError: If the operation fails due to insufficient privileges.
-    """
+    """Disables a Windows service by setting its start type to 'Disabled'."""
     if not PYWIN32_AVAILABLE:
         raise SystemError("pywin32 is required to manage Windows services.")
     if not service_name:
         raise MissingArgumentError("Service name cannot be empty.")
 
-    logger.info(f"Disabling service '{service_name}'...")
+    logger.debug("Disabling service '%s'...", service_name)
     scm_handle = None
     service_handle = None
     try:
@@ -368,7 +262,7 @@ def disable_windows_service(service_name: str) -> None:
             None,
             None,
         )
-        logger.info(f"Service '{service_name}' disabled successfully.")
+        logger.info("Service '%s' disabled successfully.", service_name)
     except pywintypes.error as e:
         if e.winerror == 5:
             raise PermissionsError(
@@ -392,38 +286,15 @@ def disable_windows_service(service_name: str) -> None:
 
 
 def delete_windows_service(service_name: str) -> None:  # noqa: C901
-    """Deletes a Windows service and performs associated cleanup.
-
-    This function interacts with the Windows Service Control Manager (SCM) to
-    delete the specified service. It also attempts to perform cleanup operations
-    such as unloading performance counters and removing event log sources from
-    the registry, provided that optional ``pywin32`` modules (like ``perfmon``
-    and ``win32evtlogutil``) are available (checked by
-    :const:`PYWIN32_HAS_OPTIONAL_MODULES`).
-
-    The service should ideally be stopped before deletion, though this function
-    does not explicitly stop it. If the service does not exist or is already
-    marked for deletion, warnings are logged, and the function may proceed with
-    cleanup or return gracefully.
-
-    Requires Administrator privileges.
-
-    Args:
-        service_name (str): The short name of the service to delete.
-
-    Raises:
-        SystemError: If ``pywin32`` is not available or for critical SCM errors
-            during deletion (e.g., service cannot be deleted for reasons other
-            than access denied, not existing, or already marked for deletion).
-        MissingArgumentError: If `service_name` is empty.
-        PermissionsError: If the operation fails due to insufficient privileges.
-    """
+    """Delete a Windows service and performs associated cleanup."""
     if not PYWIN32_AVAILABLE:
         raise SystemError("pywin32 is required to manage Windows services.")
     if not service_name:
         raise MissingArgumentError("Service name cannot be empty.")
 
-    logger.info(f"Attempting to delete service '{service_name}' and perform cleanup...")
+    logger.debug(
+        "Attempting to delete service '%s' and perform cleanup...", service_name
+    )
 
     # --- Step 1: Unload Performance Counters (Optional Cleanup) ---
     if PYWIN32_HAS_OPTIONAL_MODULES:
@@ -432,16 +303,18 @@ def delete_windows_service(service_name: str) -> None:  # noqa: C901
             # which might be 'python.exe <service_name>' as shown in the reference.
             # Adjust if your service uses a different registration name.
             perfmon.UnloadPerfCounterTextStrings("python.exe " + service_name)
-            logger.info(f"Unloaded performance counter strings for '{service_name}'.")
+            logger.debug("Unloaded performance counter strings for '%s'.", service_name)
         except (AttributeError, pywintypes.error, Exception) as e:
             # AttributeError if perfmon is missing expected function, pywintypes.error for Win32 errors
-            logger.warning(f"Failed to unload perf counters for '{service_name}': {e}")
+            logger.warning(
+                "Failed to unload perf counters for '%s': %s", service_name, e
+            )
         except ImportError:
             # This block might be redundant if PYWIN32_HAS_OPTIONAL_MODULES handles it,
             # but good for safety if perfmon itself is missing specific components.
             logger.warning("perfmon module not fully available for counter cleanup.")
     else:
-        logger.info(
+        logger.debug(
             "Skipping performance counter cleanup (optional pywin32 modules not found)."
         )
 
@@ -459,7 +332,7 @@ def delete_windows_service(service_name: str) -> None:  # noqa: C901
             scm_handle, service_name, win32service.SERVICE_ALL_ACCESS
         )
         win32service.DeleteService(service_handle)
-        logger.info(f"Service '{service_name}' deleted successfully.")
+        logger.info("Service '%s' deleted successfully.", service_name)
     except pywintypes.error as e:
         if e.winerror == 5:  # Access is denied
             raise PermissionsError(
@@ -472,7 +345,8 @@ def delete_windows_service(service_name: str) -> None:  # noqa: C901
             return  # Exit early if service doesn't exist, no more cleanup needed for it
         elif e.winerror == 1072:  # The specified service has been marked for deletion.
             logger.info(
-                f"Service '{service_name}' was already marked for deletion. Continuing with cleanup."
+                "Service '%s' was already marked for deletion. Continuing with cleanup.",
+                service_name,
             )
             # Do not return here, continue to cleanup other aspects
         else:
@@ -491,11 +365,13 @@ def delete_windows_service(service_name: str) -> None:  # noqa: C901
     if PYWIN32_HAS_OPTIONAL_MODULES:
         try:
             win32evtlogutil.RemoveSourceFromRegistry(service_name)
-            logger.info(f"Removed event log source for '{service_name}' from registry.")
+            logger.debug(
+                "Removed event log source for '%s' from registry.", service_name
+            )
         except (AttributeError, pywintypes.error, Exception) as e:
             # AttributeError if win32evtlogutil is missing expected function, pywintypes.error for Win32 errors
             logger.warning(
-                f"Failed to remove event log source for '{service_name}': {e}"
+                "Failed to remove event log source for '%s': %s", service_name, e
             )
         except ImportError:
             # Safety check if win32evtlogutil itself is missing specific components
@@ -503,6 +379,6 @@ def delete_windows_service(service_name: str) -> None:  # noqa: C901
                 "win32evtlogutil module not fully available for event log cleanup."
             )
     else:
-        logger.info(
+        logger.debug(
             "Skipping event log source cleanup (optional pywin32 modules not found)."
         )

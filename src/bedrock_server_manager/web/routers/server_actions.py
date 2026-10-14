@@ -1,203 +1,158 @@
 # bedrock_server_manager/web/routers/server_actions.py
-"""
-FastAPI router for server lifecycle actions and command execution.
-
-This module defines API endpoints for managing the operational state of
-Bedrock server instances, including starting, stopping, restarting, updating,
-and deleting servers. It also provides an endpoint for sending commands to
-a running server.
-
-Most long-running operations (start, stop, restart, update, delete) are
-executed as background tasks to provide immediate API responses.
-User authentication and server existence are typically verified using
-FastAPI dependencies.
-"""
+"""FastAPI router for server lifecycle actions and command execution."""
 
 import logging
 
 from fastapi import APIRouter, Depends, HTTPException, status
 
+from bedrock_server_manager.api.models import (
+    DeleteServerDataRequest,
+    GetServerSummaryRequest,
+    SendCommandRequest,
+    SendCommandResponse,
+    UpdateServerRequest,
+)
+
 from ...api import install
 from ...api import server as server_api
-from ...context import AppContext
-from ...error import (
-    BlockedCommandError,
-    BSMError,
-    ServerNotRunningError,
-    UserInputError,
+from ...api.models import (
+    RestartServerRequest,
+    RestartServerResponse,
+    StartServerRequest,
+    StartServerResponse,
+    StopServerRequest,
+    StopServerResponse,
 )
+from ...context import AppContext
 from ..deps import (
     get_admin_user,
     get_app_context,
     get_moderator_user,
     validate_server_exists,
 )
-from ..schemas import ActionResponse, CommandPayload, ServerSchemaResponse, UserResponse
+from ..deps.server import validate_server_registered
+from ..schemas import CommandPayload, ServerSchemaResponse, UserResponse
+from ..schemas.base import TaskAcceptedResponse
 
 logger = logging.getLogger(__name__)
 
-router = APIRouter(
-    tags=["Server Mannagement"],
-)
+router = APIRouter()
 
 
 @router.get(
     "/api/server/{server_name}/summary",
+    operation_id="get_server_summary",
+    tags=["Server Management"],
     response_model=ServerSchemaResponse,
-    tags=["Server Information"],
 )
 async def get_server_summary(
     server_name: str = Depends(validate_server_exists),
     current_user: UserResponse = Depends(get_moderator_user),
     app_context: AppContext = Depends(get_app_context),
-):
-    """
-    Retrieves the basic summary information for a specific server instance.
-    """
+) -> ServerSchemaResponse:
+    """Return the basic summary information for a specific server instance."""
     identity = current_user.username
-    logger.info(
-        f"API: Get server summary request for '{server_name}' by user '{identity}'."
+    logger.debug(
+        "Get server summary request for '%s' by user '%s'.", server_name, identity
     )
 
     result = await server_api.get_server_summary(
-        server_name=server_name, app_context=app_context
+        request=GetServerSummaryRequest(server_name=server_name),
+        app_context=app_context,
     )
 
-    if result.get("status") == "success":
-        summary = result.get("summary", {})
-        return ServerSchemaResponse(
-            name=summary.get("name", server_name),
-            status=summary.get("status", "Unknown"),
-            version=summary.get("version", "Unknown"),
-            player_count=summary.get("player_count", 0),
-            players=summary.get("players", []),
-        )
-    else:
-        raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
-            detail=result.get("message", "Failed to get server summary."),
-        )
+    return ServerSchemaResponse.model_validate(result.summary)
 
 
 # --- API Route: Start Server ---
 @router.post(
     "/api/server/{server_name}/start",
-    response_model=ActionResponse,
-    status_code=status.HTTP_202_ACCEPTED,
-    tags=["Process Management"],
+    operation_id="start_server",
+    tags=["Server Processes"],
+    response_model=StartServerResponse,
+    status_code=status.HTTP_200_OK,
 )
 async def post_start_server(
     server_name: str = Depends(validate_server_exists),
     current_user: UserResponse = Depends(get_moderator_user),
     app_context: AppContext = Depends(get_app_context),
-):
-    """
-    Initiates starting a specific Bedrock server instance in the background.
-
-    The server start operation is performed as a background task.
-    This endpoint immediately returns a 202 Accepted response.
-    """
-    identity = current_user.username
-    logger.info(f"API: Start server request for '{server_name}' by user '{identity}'.")
-    task_id = await app_context.task_manager.run_task(
-        server_api.start_server,
-        username=current_user.username,
-        server_name=server_name,
-        app_context=app_context,
+) -> StartServerResponse:
+    """Await server start and return its completed operation result."""
+    logger.info(
+        "Start server request for '%s' by user '%s'.",
+        server_name,
+        current_user.username,
     )
-
-    return ActionResponse(
-        status="pending",
-        message=f"Start operation for server '{server_name}' initiated in background.",
-        task_id=task_id,
+    return await server_api.start_server(
+        request=StartServerRequest(server_name=server_name),
+        app_context=app_context,
     )
 
 
 @router.post(
     "/api/server/{server_name}/stop",
-    response_model=ActionResponse,
-    status_code=status.HTTP_202_ACCEPTED,
-    tags=["Process Management"],
+    operation_id="stop_server",
+    tags=["Server Processes"],
+    response_model=StopServerResponse,
+    status_code=status.HTTP_200_OK,
 )
 async def post_stop_server(
-    server_name: str = Depends(validate_server_exists),
+    server_name: str = Depends(validate_server_registered),
     current_user: UserResponse = Depends(get_moderator_user),
     app_context: AppContext = Depends(get_app_context),
-):
-    """
-    Initiates stopping a specific Bedrock server instance in the background.
-
-    The server stop operation is performed as a background task.
-    This endpoint immediately returns a 202 Accepted response.
-    """
-    identity = current_user.username
-    logger.info(f"API: Stop server request for '{server_name}' by user '{identity}'.")
-    task_id = await app_context.task_manager.run_task(
-        server_api.stop_server,
-        username=current_user.username,
-        server_name=server_name,
-        app_context=app_context,
+) -> StopServerResponse:
+    """Await server stop and return its completed operation result."""
+    logger.info(
+        "Stop server request for '%s' by user '%s'.", server_name, current_user.username
     )
-
-    return ActionResponse(
-        status="pending",
-        message=f"Stop operation for server '{server_name}' initiated in background.",
-        task_id=task_id,
+    return await server_api.stop_server(
+        request=StopServerRequest(server_name=server_name),
+        app_context=app_context,
     )
 
 
 @router.post(
     "/api/server/{server_name}/restart",
-    response_model=ActionResponse,
-    status_code=status.HTTP_202_ACCEPTED,
-    tags=["Process Management"],
+    operation_id="restart_server",
+    tags=["Server Processes"],
+    response_model=RestartServerResponse,
+    status_code=status.HTTP_200_OK,
 )
 async def post_restart_server(
     server_name: str = Depends(validate_server_exists),
     current_user: UserResponse = Depends(get_moderator_user),
     app_context: AppContext = Depends(get_app_context),
-):
-    """
-    Initiates restarting a specific Bedrock server instance in the background.
-
-    The server restart operation (stop followed by start) is performed as a
-    background task. This endpoint immediately returns a 202 Accepted response.
-    """
-    identity = current_user.username
+) -> RestartServerResponse:
+    """Await server restart and return its completed operation result."""
     logger.info(
-        f"API: Restart server request for '{server_name}' by user '{identity}'."
+        "Restart server request for '%s' by user '%s'.",
+        server_name,
+        current_user.username,
     )
-    task_id = await app_context.task_manager.run_task(
-        server_api.restart_server,
-        username=current_user.username,
-        server_name=server_name,
+    return await server_api.restart_server(
+        request=RestartServerRequest(server_name=server_name),
         app_context=app_context,
-    )
-
-    return ActionResponse(
-        status="pending",
-        message=f"Restart operation for server '{server_name}' initiated in background.",
-        task_id=task_id,
     )
 
 
 @router.post(
     "/api/server/{server_name}/send_command",
-    response_model=ActionResponse,
-    tags=["Send Command"],
+    operation_id="send_command",
+    tags=["Server Processes"],
+    response_model=SendCommandResponse,
 )
 async def post_send_command(
     payload: CommandPayload,
     server_name: str = Depends(validate_server_exists),
     current_user: UserResponse = Depends(get_moderator_user),
     app_context: AppContext = Depends(get_app_context),
-):
+) -> SendCommandResponse:
     """
     Sends a command to a specific running Bedrock server instance.
     """
     identity = current_user.username
     logger.info(
-        f"API: Send command request for '{server_name}' by user '{identity}'. Command: {payload.command}"
+        "Command requested for server '%s' by user '%s'.", server_name, identity
     )
 
     if not payload.command or not payload.command.strip():
@@ -206,78 +161,29 @@ async def post_send_command(
             detail="Request must contain a non-empty 'command'.",
         )
 
-    try:
-        command_result = await server_api.send_command(
-            server_name=server_name,
-            command=payload.command.strip(),
-            app_context=app_context,
-        )
+    command_result = await server_api.send_command(
+        request=SendCommandRequest(
+            server_name=server_name, command=payload.command.strip()
+        ),
+        app_context=app_context,
+    )
 
-        if command_result.get("status") == "success":
-            logger.info(
-                f"API Send Command '{server_name}': Succeeded. Output: {command_result.get('details')}"
-            )
-            return ActionResponse(
-                status="success",
-                message=command_result.get("message", "Command processed."),
-                details=command_result.get("details"),
-            )
-        else:
-            logger.warning(
-                f"API Send Command '{server_name}': Failed. {command_result.get('message')}"
-            )
-
-            raise HTTPException(
-                status_code=status.HTTP_400_BAD_REQUEST,
-                detail=command_result.get("message", "Failed to execute command."),
-            )
-
-    except BlockedCommandError as e:
-        logger.warning(
-            f"API Send Command '{server_name}': Blocked command attempt. {e}"
-        )
-        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail=str(e))
-    except ServerNotRunningError as e:
-        logger.warning(f"API Send Command '{server_name}': Server not running. {e}")
-        raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail=str(e))
-    except (
-        UserInputError
-    ) as e:  # Covers InvalidServerNameError, AppFileNotFoundError from original
-        logger.warning(f"API Send Command '{server_name}': Input error. {e}")
-        # Determine if it's a 404 or 400 based on error type if possible
-        if "not found" in str(e).lower():
-            raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=str(e))
-        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(e))
-    except HTTPException:
-        raise
-    except BSMError as e:  # Catch other BSM specific errors
-        logger.error(
-            f"API Send Command '{server_name}': Application error. {e}", exc_info=True
-        )
-        raise HTTPException(
-            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail=str(e)
-        )
-    except Exception as e:
-        logger.error(
-            f"API Send Command '{server_name}': Unexpected error. {e}", exc_info=True
-        )
-        raise HTTPException(
-            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail="An unexpected error occurred while sending the command.",
-        )
+    logger.debug("API Send Command '%s': Succeeded.", server_name)
+    return command_result
 
 
 @router.post(
     "/api/server/{server_name}/update",
-    response_model=ActionResponse,
+    operation_id="update_server",
+    tags=["Server Management"],
+    response_model=TaskAcceptedResponse,
     status_code=status.HTTP_202_ACCEPTED,
-    tags=["Server Installation"],
 )
 async def post_update_server(
     server_name: str = Depends(validate_server_exists),
     current_user: UserResponse = Depends(get_admin_user),
     app_context: AppContext = Depends(get_app_context),
-):
+) -> TaskAcceptedResponse:
     """
     Initiates updating a specific Bedrock server instance in the background.
 
@@ -285,16 +191,16 @@ async def post_update_server(
     This endpoint immediately returns a 202 Accepted response.
     """
     identity = current_user.username
-    logger.info(f"API: Update server request for '{server_name}' by user '{identity}'.")
+    logger.info("Update server request for '%s' by user '%s'.", server_name, identity)
     task_id = await app_context.task_manager.run_task(
         install.update_server,
         username=current_user.username,
-        server_name=server_name,
         app_context=app_context,
+        request=UpdateServerRequest(server_name=server_name),
     )
 
-    return ActionResponse(
-        status="pending",
+    return TaskAcceptedResponse(
+        status="accepted",
         message=f"Update operation for server '{server_name}' initiated in background.",
         task_id=task_id,
     )
@@ -302,15 +208,16 @@ async def post_update_server(
 
 @router.delete(
     "/api/server/{server_name}/delete",
-    response_model=ActionResponse,
+    operation_id="delete_server",
+    tags=["Server Management"],
+    response_model=TaskAcceptedResponse,
     status_code=status.HTTP_202_ACCEPTED,
-    tags=["Server Installation"],
 )
 async def delete_server(
-    server_name: str = Depends(validate_server_exists),
+    server_name: str = Depends(validate_server_registered),
     current_user: UserResponse = Depends(get_admin_user),
     app_context: AppContext = Depends(get_app_context),
-):
+) -> TaskAcceptedResponse:
     """
     Initiates deleting a specific Bedrock server instance and its data in the background.
 
@@ -318,18 +225,18 @@ async def delete_server(
     This endpoint immediately returns a 202 Accepted response.
     """
     identity = current_user.username
-    logger.warning(
-        f"API: DELETE server data request for '{server_name}' by user '{identity}'. This is a destructive operation."
+    logger.info(
+        "Server deletion requested for '%s' by user '%s'.", server_name, identity
     )
     task_id = await app_context.task_manager.run_task(
         server_api.delete_server_data,
         username=current_user.username,
-        server_name=server_name,
         app_context=app_context,
+        request=DeleteServerDataRequest(server_name=server_name),
     )
 
-    return ActionResponse(
-        status="pending",
+    return TaskAcceptedResponse(
+        status="accepted",
         message=f"Delete operation for server '{server_name}' initiated in background.",
         task_id=task_id,
     )

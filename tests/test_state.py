@@ -3,6 +3,8 @@
 Unit tests for AppState and its sub-states.
 """
 
+import os
+
 import pytest
 
 from bedrock_server_manager.error import ConfigurationError
@@ -30,9 +32,10 @@ def test_app_state_defaults():
 
 
 def test_settings_state_create_defaults():
-    settings = SettingsState.create_defaults("/tmp/test_data")
-    assert settings.paths.servers == "/tmp/test_data/servers"
-    assert settings.paths.backups == "/tmp/test_data/backups"
+    test_dir = "/tmp/test_data"
+    settings = SettingsState.create_defaults(test_dir)
+    assert settings.paths.servers == os.path.join(test_dir, "servers")
+    assert settings.paths.backups == os.path.join(test_dir, "backups")
     assert settings.retention.backups == 3
     assert settings.web.port == 11325
 

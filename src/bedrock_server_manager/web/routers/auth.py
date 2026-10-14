@@ -1,21 +1,5 @@
 # bedrock_server_manager/web/routers/auth.py
-"""
-FastAPI router for user authentication and session management.
-
-This module defines endpoints related to user login and logout for the
-Bedrock Server Manager web interface. It handles:
-
-- Processing API login requests (typically form submissions) to authenticate users
-  against environment variable credentials and issue JWT access tokens
-  (:func:`~.api_login_for_access_token`). Tokens are set as HTTP-only cookies.
-- Handling user logout by clearing the authentication cookie
-  (:func:`~.logout`).
-
-It uses utilities from :mod:`~bedrock_server_manager.web.auth_utils` for
-password verification, token creation, and user retrieval from tokens.
-Authentication is required for most parts of the application, and these routes
-facilitate that access control.
-"""
+"""FastAPI router for user authentication and session management."""
 
 import datetime
 import logging
@@ -35,37 +19,36 @@ from ..schemas import TokenResponse, UserResponse
 
 logger = logging.getLogger(__name__)
 
-router = APIRouter(
-    prefix="/auth",
-    tags=["Authentication"],
-)
+router = APIRouter(prefix="/auth", tags=["Authentication"])
 
 
 # --- API Login Route ---
-@router.post("/token", response_model=TokenResponse, tags=["Login"])
+@router.post(
+    "/token",
+    operation_id="login",
+    response_model=TokenResponse,
+)
 async def api_login_for_access_token(
     request: Request,
     response: Response,
     form_data: Annotated[OAuth2PasswordRequestForm, Depends()],
     remember_me: Annotated[bool, Form()] = False,
     app_context: AppContext = Depends(get_app_context),
-):
-    """
-    Handles API user login and returns a JWT access token.
-    """
+) -> TokenResponse:
+    """Handle API user login and return a JWT access token."""
     if not form_data.username or not form_data.password:
         raise HTTPException(
             status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
             detail="Username and password cannot be empty.",
         )
 
-    logger.info(f"API login attempt for '{form_data.username}'")
+    logger.debug("API login attempt for '%s'", form_data.username)
     authenticated_username = await authenticate_user(
         app_context, form_data.username, form_data.password
     )
 
     if not authenticated_username:
-        logger.warning(f"Invalid API login attempt for '{form_data.username}'.")
+        logger.warning("Invalid API login attempt for '%s'.", form_data.username)
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
             detail="Incorrect username or password",
@@ -88,7 +71,7 @@ async def api_login_for_access_token(
         expires_delta=expires_delta,
     )
 
-    logger.info(f"API login successful for '{form_data.username}'. JWT created.")
+    logger.info("User '%s' signed in.", form_data.username)
     is_secure = (
         request.url.scheme == "https"
         or request.headers.get("x-forwarded-proto", "") == "https"
@@ -110,14 +93,18 @@ async def api_login_for_access_token(
     )
 
 
-@router.post("/reauth", response_model=TokenResponse, tags=["Login"])
+@router.post(
+    "/reauth",
+    operation_id="reauthenticate",
+    response_model=TokenResponse,
+)
 async def reauth(
     request: Request,
     response: Response,
     remember_me: Optional[bool] = None,
     current_user: UserResponse = Depends(get_current_user),
     app_context: AppContext = Depends(get_app_context),
-):
+) -> TokenResponse:
     """
     Refreshes the JWT access token for an already authenticated user.
     Supports form data, JSON body, or query parameters.
@@ -138,7 +125,8 @@ async def reauth(
                 val = form_data.get("remember_me")
                 if val is not None:
                     remember_me = str(val).lower() in ("true", "1", "yes", "on")
-        except Exception:
+        except ValueError:
+            # Optional remember-me data may be absent or malformed.
             pass
 
     if remember_me is None:
@@ -161,7 +149,7 @@ async def reauth(
         expires_delta=expires_delta,
     )
 
-    logger.info(f"Token refreshed for '{current_user.username}'.")
+    logger.debug("Token refreshed for '%s'.", current_user.username)
     is_secure = (
         request.url.scheme == "https"
         or request.headers.get("x-forwarded-proto", "") == "https"
@@ -184,7 +172,7 @@ async def reauth(
 
 
 # --- Logout Route ---
-@router.get("/logout")
+@router.get("/logout", operation_id="logout")
 async def logout(
     request: Request,
     current_user: UserResponse = Depends(get_current_user),
@@ -195,7 +183,7 @@ async def logout(
     This endpoint serves as an explicit logout action for auditing purposes.
     """
     username = current_user.username
-    logger.info(f"User '{username}' explicitly logged out.")
+    logger.info("User '%s' explicitly logged out.", username)
 
     response = JSONResponse(
         content={"status": "success", "message": "Successfully logged out."},

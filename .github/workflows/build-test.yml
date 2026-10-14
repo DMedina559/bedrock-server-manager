@@ -3,22 +3,22 @@
 name: Build Lint Test
 
 on:
-  push:
+  #push:
+  pull_request:
     branches-ignore:
       - 'main'
     paths:
       - 'src/bedrock_server_manager/**'
       - 'tests/**'
+      - 'plugins/**'
+      - 'scripts/**'
       - 'pyproject.toml'
-  #pull_request:
-  #  paths:
-  #    - 'src/bedrock_server_manager/**'
-  #    - 'tests/**'
-  #    - 'pyproject.toml'
+      - '.github/workflows/build-test.yml'
+      - '.pre-commit-config.yaml'
 
 jobs:
   build-and-test:
-    runs-on: ubuntu-latest
+    runs-on: ${{ matrix.os }}
     permissions:
       contents: write
       packages: write
@@ -26,6 +26,7 @@ jobs:
     strategy:
       matrix:
         python-version: ['3.11', '3.14']
+        os: [ubuntu-latest, windows-latest]
     steps:
     - name: Checkout repository
       uses: actions/checkout@v7
@@ -33,19 +34,33 @@ jobs:
         fetch-depth: 0
 
     - name: Set up Python ${{ matrix.python-version }}
+      id: python
       uses: actions/setup-python@v7
       with:
         python-version: ${{ matrix.python-version }}
+        cache: pip
+        cache-dependency-path: pyproject.toml
 
     - name: Install dependencies
       run: |
         python -m pip install --upgrade pip
         pip install build
-        pip install --upgrade --force -e .[dev]
+        pip install -e .[dev]
+
+    - name: Cache pre-commit environments
+      uses: actions/cache@v5
+      with:
+        path: ~/.cache/pre-commit
+        key: pre-commit-${{ runner.os }}-${{ steps.python.outputs.python-version }}-${{ hashFiles('.pre-commit-config.yaml', 'pyproject.toml') }}
 
     - name: Run pre-commit
       run: |
         pre-commit run --all-files
 
+    - name: Check API contracts and callers
+      run: |
+        python scripts/check_api_callers.py
+        python scripts/generate_plugin_api.py --check
+
     - name: Run Pytest
-      run: python -m pytest
+      run: python -m pytest --durations=25

@@ -1,25 +1,6 @@
 # bedrock_server_manager/cli/service.py
-"""
-Defines the `bsm service` command group for managing the Bedrock Server Manager system services.
-
-This module provides CLI commands to control the system services
-application (FastAPI/Uvicorn based) integration as an
-OS-level system service (e.g., systemd on Linux, Windows Services on Windows).
-
-Key command groups and commands include:
-
-    -   ``bsm service ...``: A subgroup for managing the Web UI's system service:
-        -   ``bsm service configure``: Interactively or directly configures the
-            Web UI system service (creation, autostart).
-        -   ``bsm service enable``: Enables the Web UI service for autostart.
-        -   ``bsm service disable``: Disables autostart for the Web UI service.
-        -   ``bsm service remove``: Removes the Web UI system service definition.
-        -   ``bsm service status``: Checks the status of the Web UI system service.
-
-Interactions with system services are contingent on the availability of
-appropriate service management tools on the host OS (e.g., `systemctl` for
-systemd, `pywin32` for Windows Services). The commands use functions from
-:mod:`~bedrock_server_manager.api.web`.
+"""Define the ``bsm service`` command group for managing the Bedrock Server Manager
+system services.
 """
 
 import functools
@@ -31,7 +12,16 @@ from typing import Callable, Optional
 import click
 import questionary
 
+from bedrock_server_manager.api.models import (
+    CreateWebUiServiceRequest,
+    DisableWebUiServiceRequest,
+    EnableWebUiServiceRequest,
+    GetWebUiServiceStatusRequest,
+    RemoveWebUiServiceRequest,
+)
+
 from ..api import web as web_api
+from ..api.models.common import ActionResponse
 from ..config.const import WEB_SERVICE_WINDOWS_NAME_INTERNAL
 from ..context import AppContext
 from ..core.system.base import can_manage_services
@@ -43,20 +33,8 @@ logger = logging.getLogger(__name__)
 
 # --- Web System Service ---
 def requires_web_service_manager(func: Callable) -> Callable:
-    """
-    A decorator to ensure Web UI service management commands only run on capable systems.
-
-    This decorator checks if the system has a supported service manager
-    (e.g., systemd for Linux, or `pywin32` installed for Windows services)
-    by inspecting `can_manage_services()`.
-
-    If the capability is not present, it prints an error and aborts the command.
-
-    Args:
-        func (Callable): The Click command function to decorate.
-
-    Returns:
-        Callable: The wrapped command function.
+    """A decorator to ensure Web UI service management commands only run on capable
+    systems.
     """
 
     @functools.wraps(func)
@@ -83,30 +61,7 @@ def _perform_web_service_configuration(
     username: Optional[str] = None,
     password: Optional[str] = None,
 ):
-    """
-    Internal helper to apply Web UI service configurations via API calls.
-
-    This non-interactive function is called by `configure_web_service` (when
-    flags are used) and `interactive_web_service_workflow` to execute the
-    actual service configuration changes. It only acts if the system has
-    service management capabilities.
-
-    Args:
-        app_context (AppContext): The AppContext instance for API calls.
-        setup_service (Optional[bool]): If ``True``, attempts to create/update
-            the Web UI system service.
-        enable_autostart (Optional[bool]): If ``True``, enables autostart for the
-            service; if ``False``, disables it. ``None`` means no change to
-            autostart unless `setup_service` is also ``True``.
-
-    Calls APIs:
-        - :func:`~bedrock_server_manager.api.web.create_web_ui_service`
-        - :func:`~bedrock_server_manager.api.web.enable_web_ui_service`
-        - :func:`~bedrock_server_manager.api.web.disable_web_ui_service`
-
-    Raises:
-        click.Abort: If API calls handled by `_handle_api_response` report errors.
-    """
+    """Internal helper to apply Web UI service configurations via API calls."""
     if not can_manage_services():
         click.secho(
             "System service manager not available. Skipping Web UI service configuration.",
@@ -124,12 +79,16 @@ def _perform_web_service_configuration(
         click.secho(
             f"\n--- Configuring Web UI System Service ({os_type}) ---", bold=True
         )
-        response = web_api.create_web_ui_service(
+        response: ActionResponse = web_api.create_web_ui_service(
+            request=CreateWebUiServiceRequest.model_validate(
+                {
+                    "autostart": enable_flag,
+                    "system": system,
+                    "username": username,
+                    "password": password,
+                }
+            ),
             app_context=app_context,
-            autostart=enable_flag,
-            system=system,
-            username=username,
-            password=password,
         )
         _handle_api_response(response, "Web UI system service configured successfully.")
     elif (
@@ -137,24 +96,20 @@ def _perform_web_service_configuration(
     ):  # Only change autostart if setup_service is False but autostart is specified
         click.echo("Applying autostart setting to existing Web UI service...")
         if enable_autostart:
-            response = web_api.enable_web_ui_service(app_context=app_context)
+            response = web_api.enable_web_ui_service(
+                request=EnableWebUiServiceRequest(), app_context=app_context
+            )
             _handle_api_response(response, "Web UI service enabled successfully.")
         else:
-            response = web_api.disable_web_ui_service(app_context=app_context)
+            response = web_api.disable_web_ui_service(
+                request=DisableWebUiServiceRequest(), app_context=app_context
+            )
             _handle_api_response(response, "Web UI service disabled successfully.")
 
 
 def interactive_web_service_workflow(app_context: AppContext):  # noqa: C901
-    """
-    Guides the user through an interactive session to configure the Web UI system service.
-
-    Uses `questionary` to prompt for:
-
-        - Creating/updating the system service.
-        - Enabling/disabling autostart for the service.
-
-    Args:
-        app_context (AppContext): The AppContext instance.
+    """Guides the user through an interactive session to configure the Web UI system
+    service.
     """
     click.secho("\n--- Interactive Web UI Service Configuration ---", bold=True)
     setup_service_choice = None
@@ -229,11 +184,10 @@ def interactive_web_service_workflow(app_context: AppContext):  # noqa: C901
 
 @click.group("service")
 def service():
-    """
-    Manages the Bedrock Server Manager Web UI application's service.
+    """Manage the Bedrock Server Manager Web UI application's service.
 
-    This group of commands allows you to manage its integration as an OS-level system service for
-    features like automatic startup.
+    This group of commands allows you to manage its integration as an OS-level system
+    service for features like automatic startup.
     """
     pass
 
@@ -271,26 +225,7 @@ def configure_web_service(
     username: Optional[str],
     password: Optional[str],
 ):
-    """
-    Configures the OS-level system service for the Web UI application.
-
-    This command allows setting up the Web UI to run as a system service,
-    enabling features like automatic startup on boot/login.
-
-    If run without any specific configuration flags (`--setup-service`,
-    `--enable-autostart`), it launches an interactive wizard
-    (:func:`~.interactive_web_service_workflow`) to guide the user.
-
-    If flags are provided, it applies those settings directly. The command
-    respects system capabilities (e.g., won't attempt service setup if a
-    service manager isn't available or `pywin32` is missing on Windows).
-
-    Calls internal helpers:
-
-        - :func:`~.interactive_web_service_workflow` (if no flags)
-        - :func:`~._perform_web_service_configuration` (if flags are present)
-
-    """
+    """Configures the OS-level system service for the Web UI application."""
     app_context: AppContext = ctx.obj["app_context"]
     if setup_service and not can_manage_services():
         click.secho(
@@ -370,7 +305,8 @@ def enable_web_service_cli(ctx: click.Context, system_flag: bool):
     click.echo("Attempting to enable Web UI system service...")
     try:
         response = web_api.enable_web_ui_service(
-            app_context=app_context, system=system_flag
+            request=EnableWebUiServiceRequest.model_validate({"system": system_flag}),
+            app_context=app_context,
         )
         _handle_api_response(response, "Web UI service enabled successfully.")
     except BSMError as e:
@@ -404,7 +340,8 @@ def disable_web_service_cli(ctx: click.Context, system_flag: bool):
     click.echo("Attempting to disable Web UI system service...")
     try:
         response = web_api.disable_web_ui_service(
-            app_context=app_context, system=system_flag
+            request=DisableWebUiServiceRequest.model_validate({"system": system_flag}),
+            app_context=app_context,
         )
         _handle_api_response(response, "Web UI service disabled successfully.")
     except BSMError as e:
@@ -425,18 +362,7 @@ def disable_web_service_cli(ctx: click.Context, system_flag: bool):
 @requires_web_service_manager
 @click.pass_context
 def remove_web_service_cli(ctx: click.Context, system_flag: bool):
-    """
-    Removes the Web UI system service definition from the OS.
-
-    .. danger::
-        This is a destructive operation. The service definition will be
-        deleted from the system.
-
-    Prompts for confirmation before proceeding.
-    Requires a supported service manager (checked by decorator).
-
-    Calls API: :func:`~bedrock_server_manager.api.web.remove_web_ui_service`.
-    """
+    """Remove the Web UI system service definition from the OS."""
     app_context: AppContext = ctx.obj["app_context"]
     if not questionary.confirm(
         "Are you sure you want to remove the Web UI system service?", default=False
@@ -446,7 +372,8 @@ def remove_web_service_cli(ctx: click.Context, system_flag: bool):
     click.echo("Attempting to remove Web UI system service...")
     try:
         response = web_api.remove_web_ui_service(
-            app_context=app_context, system=system_flag
+            request=RemoveWebUiServiceRequest.model_validate({"system": system_flag}),
+            app_context=app_context,
         )
         _handle_api_response(response, "Web UI service removed successfully.")
     except BSMError as e:
@@ -467,11 +394,10 @@ def remove_web_service_cli(ctx: click.Context, system_flag: bool):
 @requires_web_service_manager
 @click.pass_context
 def status_web_service_cli(ctx: click.Context, system_flag: bool):
-    """
-    Checks and displays the status of the Web UI system service.
+    """Check and displays the status of the Web UI system service.
 
-    Reports whether the service definition exists, if it's currently
-    active (running), and if it's enabled for autostart.
+    Reports whether the service definition exists, if it's currently active (running),
+    and if it's enabled for autostart.
 
     Requires a supported service manager (checked by decorator).
 
@@ -481,22 +407,25 @@ def status_web_service_cli(ctx: click.Context, system_flag: bool):
     click.echo("Checking Web UI system service status...")
     try:
         response = web_api.get_web_ui_service_status(
-            app_context=app_context, system=system_flag
+            request=GetWebUiServiceStatusRequest.model_validate(
+                {"system": system_flag}
+            ),
+            app_context=app_context,
         )
-        if response.get("status") == "success":
+        if response.status == "success":
             click.secho("Web UI Service Status:", bold=True)
             click.echo(
-                f"  Service Defined: {click.style(str(response.get('service_exists', False)), fg='cyan')}"
+                f"  Service Defined: {click.style(str(response.service_exists), fg='cyan')}"
             )
-            if response.get("service_exists"):
+            if response.service_exists:
                 click.echo(
-                    f"  Currently Active (Running): {click.style(str(response.get('is_active', False)), fg='green' if response.get('is_active') else 'red')}"
+                    f"  Currently Active (Running): {click.style(str(response.is_active), fg='green' if response.is_active else 'red')}"
                 )
                 click.echo(
-                    f"  Enabled for Autostart: {click.style(str(response.get('is_enabled', False)), fg='green' if response.get('is_enabled') else 'red')}"
+                    f"  Enabled for Autostart: {click.style(str(response.is_enabled), fg='green' if response.is_enabled else 'red')}"
                 )
-            if response.get("message"):
-                click.secho(f"  Info: {response.get('message')}", fg="yellow")
+            if response.message:
+                click.secho(f"  Info: {response.message}", fg="yellow")
         else:
             _handle_api_response(response, "Service status retrieved.")
     except BSMError as e:
@@ -509,7 +438,7 @@ if platform.system() == "Windows":
     import servicemanager
     import win32serviceutil
 
-    from ..core.system.windows_class import PYWIN32_AVAILABLE, WebServerWindowsService
+    from ..web.windows_service import PYWIN32_AVAILABLE, WebServerWindowsService
 
     @service.command(
         "_run-web",
@@ -540,7 +469,7 @@ if platform.system() == "Windows":
 
         if "debug" in ctx.args:
             logger.info(
-                f"Starting Web UI service '{actual_svc_name_arg}' in DEBUG mode."
+                "Starting Web UI service '%s' in DEBUG mode.", actual_svc_name_arg
             )
 
             win32serviceutil.DebugService(WebServiceHandler, argv=[actual_svc_name_arg])

@@ -4,9 +4,8 @@ from ..deps.auth import get_current_user_optional
 
 
 async def add_user_to_request(request: Request, call_next):
-    """
-    Middleware that checks for a valid authentication token/cookie and adds
-    the current user to `request.state.current_user`.
+    """Middleware that checks for a valid authentication token/cookie and adds the
+    current user to ``request.state.current_user``.
     """
 
     # 1. Bypass database lookup for static files to prevent SQLite locking

@@ -1,166 +1,183 @@
 import asyncio
-from unittest.mock import AsyncMock, MagicMock
+import json
+from pathlib import Path
 
 import pytest
 
-from bedrock_server_manager.web.log_streamer import LogStreamer
+from bedrock_server_manager.utils.io import _replace_file
+from bedrock_server_manager.utils.threads import run_in_thread
 
 
-@pytest.fixture
-def log_streamer(app_context):
-    return LogStreamer(
-        connection_manager=app_context.connection_manager,
-        log_dir=app_context.log_dir,
-        server_provider=app_context.get_server,
-    )
+async def receive_log(socket, topic):
+    async with asyncio.timeout(5):
+        while True:
+            message = json.loads(await socket.recv())
+            if message.get("type") == "log_update" and message.get("topic") == topic:
+                return message["data"]
 
 
-async def test_log_streamer_start_stop(log_streamer):
-    """Test start and stop lifecycle methods for LogStreamer."""
-    assert not log_streamer.running
-    assert log_streamer._task is None
-
-    log_streamer.start()
-    assert log_streamer.running
-    assert log_streamer._task is not None
-    assert not log_streamer._task.done()
-
-    # Starting again should be a no-op
-    task_ref = log_streamer._task
-    log_streamer.start()
-    assert log_streamer._task is task_ref
-
-    log_streamer.stop()
-    assert not log_streamer.running
-    assert log_streamer._task is None
+async def test_log_streamer_start_stop(app_context):
+    streamer = app_context.log_streamer
+    assert not streamer.running
+    streamer.start()
+    task = streamer._task
+    streamer.start()
+    assert streamer._task is task
+    await streamer.shutdown()
+    assert task.done()
+    assert not streamer.running
+    assert streamer._task is None
 
 
-async def test_log_streamer_reads_app_log(
-    log_streamer, app_context, tmp_path, monkeypatch
+@pytest.mark.parametrize("server_log", [False, True])
+async def test_log_streamer_delivers_real_file_updates(
+    app_context, real_bedrock_server, subscribed_socket, server_log
 ):
-    """Test that the log streamer reads and broadcasts app_log."""
-    # Setup mock file
-    log_dir = tmp_path / "logs"
-    log_dir.mkdir()
-    log_streamer.log_dir = str(log_dir)
-    monkeypatch.setattr(
-        "bedrock_server_manager.context.AppContext.log_dir", str(log_dir), raising=False
-    )
-    log_file = log_dir / "bedrock_server_manager.log"
-    log_file.write_text("initial log\n")
-
-    # Setup mock connections manager with a subscription
-    mock_broadcast = AsyncMock()
-    app_context.connection_manager.subscriptions = {"app_log": {"client1"}}
-    app_context.connection_manager.broadcast_to_topic = mock_broadcast
-
-    # Run one iteration of the stream
-    log_streamer.running = True
-    task = asyncio.create_task(log_streamer._stream_logs())
-    await asyncio.sleep(0.1)  # First run sets up file position
-
-    # Write new data explicitly defining newline characters
-    with open(log_file, "ab") as f:
-        f.write(b"new log line\n")
-
-    await asyncio.sleep(1.2)  # Wait for next tick (sleep is 1.0s)
-
-    task.cancel()
-    try:
-        await task
-    except asyncio.CancelledError:
-        pass
-
-    # Check broadcast was called with correct data
-    mock_broadcast.assert_called_with(
-        "app_log", {"type": "log_update", "topic": "app_log", "data": "new log line\n"}
-    )
+    streamer = app_context.log_streamer
+    if server_log:
+        topic = f"server_log:{real_bedrock_server.server_name}"
+        path = Path(real_bedrock_server.paths.server_log_path)
+    else:
+        topic = "app_log"
+        path = Path(app_context.log_dir) / "bedrock_server_manager.log"
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_text("initial line\n", newline="")
+    async with subscribed_socket(topic) as socket:
+        assert await receive_log(socket, topic) == "initial line\n"
+        with path.open("a", encoding="utf-8", newline="") as output:
+            output.write("appended line\n")
+        assert await receive_log(socket, topic) == "appended line\n"
+        assert streamer.file_positions[(topic, str(path))] == path.stat().st_size
 
 
-async def test_log_streamer_reads_server_log(
-    log_streamer, app_context, tmp_path, monkeypatch
+async def test_log_streamer_delivers_truncated_file(app_context, subscribed_socket):
+    path = Path(app_context.log_dir) / "bedrock_server_manager.log"
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_text("old data\n" * 100, newline="")
+    async with subscribed_socket("app_log") as socket:
+        assert await receive_log(socket, "app_log") == path.read_text()
+        path.write_text("new start\n", newline="")
+        assert await receive_log(socket, "app_log") == "new start\n"
+        assert (
+            app_context.log_streamer.file_positions[("app_log", str(path))]
+            == path.stat().st_size
+        )
+
+
+async def test_both_application_aliases_receive_updates(app_context, subscribed_socket):
+    path = Path(app_context.log_dir) / "bedrock_server_manager.log"
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_text("initial\n", newline="")
+    async with subscribed_socket("app_log", "app_logs") as socket:
+        messages = {}
+        async with asyncio.timeout(5):
+            while len(messages) < 2:
+                message = json.loads(await socket.recv())
+                if message.get("type") == "log_update":
+                    messages[message["topic"]] = message["data"]
+        assert messages == {"app_log": "initial\n", "app_logs": "initial\n"}
+        replacement = path.with_suffix(".replacement")
+        replacement.write_text("replacement with more content\n", newline="")
+        await run_in_thread(_replace_file, str(replacement), str(path))
+        messages = {}
+        async with asyncio.timeout(5):
+            while len(messages) < 2:
+                message = json.loads(await socket.recv())
+                if message.get("type") == "log_update":
+                    messages[message["topic"]] = message["data"]
+        assert set(messages.values()) == {"replacement with more content\n"}
+
+
+@pytest.mark.parametrize("server_log", [False, True])
+@pytest.mark.parametrize("newline", ["\n", "\r\n"])
+async def test_history_pages_reconstruct_entire_utf8_file(
+    app_context, admin_auth_client, real_bedrock_server, server_log, newline
 ):
-    """Test that the log streamer reads and broadcasts server logs."""
-    # Setup mock server and log file
-    server_dir = tmp_path / "servers" / "test_server"
-    server_dir.mkdir(parents=True)
-    log_file = server_dir / "server.log"
-    log_file.write_text("server start\n")
-
-    mock_server = MagicMock()
-    mock_server.server_log_path = str(log_file)
-    log_streamer.server_provider = MagicMock(return_value=mock_server)
-
-    mock_broadcast = AsyncMock()
-    app_context.connection_manager.subscriptions = {
-        "server_log:test_server": {"client1"}
-    }
-    app_context.connection_manager.broadcast_to_topic = mock_broadcast
-
-    # Run
-    log_streamer.running = True
-    task = asyncio.create_task(log_streamer._stream_logs())
-    await asyncio.sleep(0.1)
-
-    with open(log_file, "ab") as f:
-        f.write(b"player joined\n")
-
-    await asyncio.sleep(1.2)
-
-    task.cancel()
-    try:
-        await task
-    except asyncio.CancelledError:
-        pass
-
-    mock_broadcast.assert_called_with(
-        "server_log:test_server",
-        {
-            "type": "log_update",
-            "topic": "server_log:test_server",
-            "data": "player joined\n",
-        },
-    )
+    if server_log:
+        path = Path(real_bedrock_server.paths.server_log_path)
+        topic = f"server_log:{real_bedrock_server.server_name}"
+    else:
+        path = Path(app_context.log_dir) / "bedrock_server_manager.log"
+        topic = "app_log"
+    path.parent.mkdir(parents=True, exist_ok=True)
+    original = (f"世界 🌍 log entry{newline}{newline}" * 12000) + "partial final line"
+    path.write_text(original, encoding="utf-8", newline="")
+    pages = []
+    params = {"topic": topic}
+    while True:
+        response = await admin_auth_client.get("/api/logs/history", params=params)
+        assert response.status_code == 200, response.text
+        page = response.json()
+        assert page["end"] - page["start"] <= 64 * 1024
+        pages.insert(0, page["data"])
+        if not page["has_more"]:
+            break
+        params.update(before=page["start"], file_id=page["file_id"])
+    assert "".join(pages) == original
+    assert not app_context.log_streamer.file_positions
+    replacement = path.with_suffix(".replacement")
+    replacement.write_text("new file\n")
+    await run_in_thread(_replace_file, str(replacement), str(path))
+    response = await admin_auth_client.get("/api/logs/history", params=params)
+    assert response.status_code == 409
 
 
-async def test_log_streamer_file_rotation(
-    log_streamer, app_context, tmp_path, monkeypatch
+async def test_history_rejects_invalid_topics_and_offsets(admin_auth_client):
+    assert (
+        await admin_auth_client.get(
+            "/api/logs/history", params={"topic": "../../secret"}
+        )
+    ).status_code == 400
+    assert (
+        await admin_auth_client.get(
+            "/api/logs/history", params={"topic": "app_log", "before": -1}
+        )
+    ).status_code == 422
+
+
+async def test_history_requires_authorization(auth_client, unauth_client):
+    assert (
+        await unauth_client.get("/api/logs/history", params={"topic": "app_log"})
+    ).status_code == 401
+    assert (
+        await auth_client.get("/api/logs/history", params={"topic": "app_log"})
+    ).status_code == 403
+
+
+async def test_history_and_live_stream_join_without_gaps(
+    app_context, subscribed_socket
 ):
-    """Test log streamer handles file rotation (file getting smaller)."""
-    log_dir = tmp_path / "logs"
-    log_dir.mkdir()
-    log_streamer.log_dir = str(log_dir)
-    monkeypatch.setattr(
-        "bedrock_server_manager.context.AppContext.log_dir", str(log_dir), raising=False
-    )
-    log_file = log_dir / "bedrock_server_manager.log"
-    # Use binary write to ensure explicit length
-    log_file.write_bytes(b"old data\n" * 100)  # Big file
+    path = Path(app_context.log_dir) / "bedrock_server_manager.log"
+    path.parent.mkdir(parents=True, exist_ok=True)
+    original = "世界 entry\n" * 2000
+    path.write_text(original, encoding="utf-8", newline="")
+    async with subscribed_socket("app_log") as socket:
+        async with asyncio.timeout(5):
+            while True:
+                frame = json.loads(await socket.recv())
+                if frame.get("type") == "log_update":
+                    break
+        history = await app_context.log_streamer.read_history(
+            "app_log", frame["start"], frame["file_id"]
+        )
+        assert history.data + frame["data"] == original
+        with path.open("ab") as output:
+            output.write(b"\xf0\x9f")
+        await asyncio.sleep(1.2)
+        with path.open("ab") as output:
+            output.write(b"\x8c\x8d\n")
+        assert await receive_log(socket, "app_log") == "🌍\n"
 
-    mock_broadcast = AsyncMock()
-    app_context.connection_manager.subscriptions = {"app_log": {"client1"}}
-    app_context.connection_manager.broadcast_to_topic = mock_broadcast
 
-    log_streamer.running = True
-    task = asyncio.create_task(log_streamer._stream_logs())
-    await asyncio.sleep(0.1)  # Reads initial position
-
-    assert log_streamer.file_positions[str(log_file)] > 0
-
-    # Simulate file rotation / truncate
-    log_file.write_bytes(b"new start\n")
-    expected_length = len(b"new start\n")
-
-    await asyncio.sleep(1.2)
-
-    task.cancel()
-    try:
-        await task
-    except asyncio.CancelledError:
-        pass
-
-    # Broadcast should have sent the new data because position was reset to 0
-    mock_broadcast.assert_called_with(
-        "app_log", {"type": "log_update", "topic": "app_log", "data": "new start\n"}
-    )
-    assert log_streamer.file_positions[str(log_file)] == expected_length
+async def test_history_cannot_read_arbitrary_server_paths(
+    admin_auth_client, app_context
+):
+    for topic, status in (
+        ("server_log:../../private", 400),
+        ("server_log:missing", 404),
+    ):
+        response = await admin_auth_client.get(
+            "/api/logs/history", params={"topic": topic}
+        )
+        assert response.status_code == status
+    assert "missing" not in app_context._servers

@@ -1,41 +1,5 @@
 # bedrock_server_manager/core/system/process.py
-"""Provides generic, cross-platform process management utilities.
-
-This module abstracts common tasks related to system process interaction,
-aiming to provide a consistent interface regardless of the underlying OS
-(though some behaviors might be platform-specific, as noted in function
-docstrings). It is crucial for managing Bedrock server processes, launcher
-processes, and potentially other child processes.
-
-The module heavily relies on the ``psutil`` library for many of its
-capabilities. Its availability is checked by the :const:`PSUTIL_AVAILABLE` flag,
-and functions requiring ``psutil`` will typically raise a :class:`SystemError`
-if it's not installed.
-
-Key Functionality Groups:
-
-    - **PID File Management**:
-        - :func:`get_pid_file_path`,
-        - :func:`get_bedrock_server_pid_file_path`,
-        - :func:`get_bedrock_launcher_pid_file_path`,
-        - :func:`read_pid_from_file`,
-        - :func:`write_pid_to_file`,
-        - :func:`remove_pid_file_if_exists`.
-    - **Process Status & Verification**:
-        - :func:`is_process_running`,
-        - :func:`verify_process_identity`,
-        - :func:`get_verified_bedrock_process`.
-    - **Process Creation & Termination**:
-        - :func:`launch_detached_process` (using :class:`GuardedProcess`),
-        - :func:`terminate_process_by_pid`.
-    - **Guarded Subprocessing**:
-        - :class:`GuardedProcess`: A wrapper around ``subprocess`` to inject a
-          recursion guard environment variable, preventing re-initialization loops
-          when the application calls itself.
-
-Constants:
-    - :const:`PSUTIL_AVAILABLE`: Boolean indicating if ``psutil`` was imported.
-"""
+"""Cross-platform subprocess, identity verification and PID-file helpers."""
 
 import asyncio
 import logging
@@ -47,6 +11,8 @@ from typing import Any, Dict, List, Optional, Sequence, Union
 import aiofiles
 import aiofiles.os
 import aiofiles.ospath
+
+from ...utils.threads import run_in_thread
 
 try:
     import psutil
@@ -72,106 +38,55 @@ from ...error import (
     ServerStopError,
     SystemError,
 )
+from ...logging import log_operation_error
 
 logger = logging.getLogger(__name__)
 
 
 class GuardedProcess:
-    """Wraps ``subprocess`` calls to inject a recursion guard environment variable.
-
-    When the application needs to launch a new instance of itself as a subprocess
-    (e.g., to start a server in a detached background process via
-    :func:`launch_detached_process`), this class is used to manage the subprocess
-    creation.
-
-    Its primary purpose is to set a specific environment variable, defined by
-    :const:`~bedrock_server_manager.config.const.GUARD_VARIABLE` (e.g.,
-    ``BSM_GUARDED_EXECUTION="1"``), in the environment of the child process.
-    The application's main entry point or initialization logic can then check
-    for the presence of this variable. If detected, it can skip certain
-    initialization steps (like reloading plugins, re-parsing arguments for the
-    main CLI) that are unnecessary or problematic for a guarded, secondary instance.
-    This helps prevent issues like duplicate plugin loading or unintended
-    recursive behavior.
-
-    The class provides :meth:`run` and :meth:`popen` methods that mirror the
-    standard ``subprocess.run`` and ``subprocess.Popen`` functions but ensure
-    the guarded environment is passed to the child process.
-
-    Attributes:
-        command (List[Union[str, os.PathLike]]): The command and its arguments.
-        guard_env (Dict[str, str]): A copy of the current environment with the
-            guard variable added.
-    """
+    """Run subprocesses with the application recursion-guard environment set."""
 
     def __init__(self, command: Sequence[Union[str, os.PathLike]]):
-        """Initializes the GuardedProcess with the command to be run.
+        """Initialize the GuardedProcess with the command to be run.
 
-        Args:
-            command (Sequence[Union[str, os.PathLike]]): A list representing the
-                command and its arguments (e.g., ``['python', 'app.py', '--start-server']``).
+        :param command: A list representing the
+                        command and its arguments (e.g., ``['python', 'app.py', '--start-server']``).
         """
         self.command = command
         self.guard_env = self._create_guarded_environment()
 
     def _create_guarded_environment(self) -> Dict[str, str]:
-        """Creates a copy of the current environment with the guard variable set.
+        """Create a copy of the current environment with the guard variable set.
 
         The guard variable is defined by
         :const:`~bedrock_server_manager.config.const.GUARD_VARIABLE`.
 
-        Returns:
-            Dict[str, str]: A new dictionary representing the modified environment.
+        :returns: A new dictionary representing the modified environment.
         """
         child_env = os.environ.copy()
         child_env[GUARD_VARIABLE] = "1"
         return child_env
 
     def run(self, **kwargs: Any) -> subprocess.CompletedProcess:
-        """Wraps ``subprocess.run``, injecting the guarded environment.
-
-        This method calls ``subprocess.run`` with the stored ``self.command``
-        and passes along any additional ``**kwargs``. The crucial difference is
-        that it automatically sets the ``env`` keyword argument for
-        ``subprocess.run`` to ``self.guard_env``.
-
-        Args:
-            **kwargs (Any): Keyword arguments to pass directly to ``subprocess.run``.
-                If ``env`` is provided in ``kwargs``, it will be overwritten.
-
-        Returns:
-            subprocess.CompletedProcess: The result of the ``subprocess.run`` call.
-        """
+        """Run the command with the guarded environment, replacing any supplied ``env``."""
         kwargs["env"] = self.guard_env
         return subprocess.run(self.command, **kwargs)
 
     def popen(self, **kwargs: Any) -> subprocess.Popen:
-        """Wraps ``subprocess.Popen``, injecting the guarded environment.
-
-        This method calls ``subprocess.Popen`` with the stored ``self.command``
-        and passes along any additional ``**kwargs``. The crucial difference is
-        that it automatically sets the ``env`` keyword argument for
-        ``subprocess.Popen`` to ``self.guard_env``.
-
-        Args:
-            **kwargs (Any): Keyword arguments to pass directly to ``subprocess.Popen``.
-                If ``env`` is provided in ``kwargs``, it will be overwritten.
-
-        Returns:
-            subprocess.Popen: The ``subprocess.Popen`` object for the new process.
+        """Spawn the command with the guarded environment, replacing any supplied
+        ``env``.
         """
         kwargs["env"] = self.guard_env
         return subprocess.Popen(self.command, **kwargs)
 
     async def create_subprocess_exec(self, **kwargs: Any) -> asyncio.subprocess.Process:
-        """Wraps ``asyncio.create_subprocess_exec``, injecting the guarded environment.
+        """Wrap ``asyncio.create_subprocess_exec``, injecting the guarded environment.
 
-        Args:
-            **kwargs (Any): Keyword arguments to pass directly.
-                If ``env`` is provided in ``kwargs``, it will be overwritten.
+        :param kwargs: Keyword arguments to pass directly.
+                           If ``env`` is provided in ``kwargs``, it will be overwritten.
+        :type kwargs: Any
 
-        Returns:
-            asyncio.subprocess.Process: The asynchronous process object.
+        :returns: The asynchronous process object.
         """
         kwargs["env"] = self.guard_env
         return await asyncio.create_subprocess_exec(*self.command, **kwargs)
@@ -179,14 +94,13 @@ class GuardedProcess:
     async def create_subprocess_shell(
         self, **kwargs: Any
     ) -> asyncio.subprocess.Process:
-        """Wraps ``asyncio.create_subprocess_shell``, injecting the guarded environment.
+        """Wrap ``asyncio.create_subprocess_shell``, injecting the guarded environment.
 
-        Args:
-            **kwargs (Any): Keyword arguments to pass directly.
-                If ``env`` is provided in ``kwargs``, it will be overwritten.
+        :param kwargs: Keyword arguments to pass directly.
+                           If ``env`` is provided in ``kwargs``, it will be overwritten.
+        :type kwargs: Any
 
-        Returns:
-            asyncio.subprocess.Process: The asynchronous process object.
+        :returns: The asynchronous process object.
         """
         kwargs["env"] = self.guard_env
         import shlex
@@ -196,26 +110,7 @@ class GuardedProcess:
 
 
 async def get_pid_file_path(config_dir: str, pid_filename: str) -> str:
-    """Asynchronously constructs the full, absolute path for a generic PID file.
-
-    This utility function joins the provided configuration directory and PID
-    filename to produce a standardized, absolute path for a PID file,
-    verifying directory existence asynchronously.
-
-    Args:
-        config_dir (str): The absolute path to the application's (or a specific
-            component's) configuration directory where the PID file should reside.
-        pid_filename (str): The base name of the PID file (e.g., "web_server.pid",
-            "my_process.pid").
-
-    Returns:
-        str: The absolute path to where the PID file should be stored.
-
-    Raises:
-        AppFileNotFoundError: If `config_dir` is not provided, is not a string,
-            or is not an existing directory.
-        MissingArgumentError: If `pid_filename` is not provided or is an empty string.
-    """
+    """Return an absolute PID-file path below the configuration directory."""
     if (
         not isinstance(config_dir, str)
         or not config_dir
@@ -228,27 +123,7 @@ async def get_pid_file_path(config_dir: str, pid_filename: str) -> str:
 
 
 async def get_bedrock_server_pid_file_path(server_name: str, config_dir: str) -> str:
-    """Asynchronously constructs the standardized path to a Bedrock server's main process PID file.
-
-    This function generates a path for a PID file specific to a Bedrock server
-    instance. The PID file is typically located in a subdirectory named after the
-    `server_name` within the main `config_dir`. The filename itself is
-    ``bedrock_<server_name>.pid``.
-
-    Args:
-        server_name (str): The unique name of the server instance.
-        config_dir (str): The main configuration directory for the application.
-            This directory must exist.
-
-    Returns:
-        str: The absolute path to where the server's PID file should be located.
-
-    Raises:
-        MissingArgumentError: If `server_name` or `config_dir` are empty or not strings.
-        AppFileNotFoundError: If the `config_dir` does not exist, or if the
-            derived server-specific config subdirectory (e.g., `<config_dir>/<server_name>`)
-            does not exist.
-    """
+    """Return the server process PID-file path."""
     if not isinstance(server_name, str) or not server_name:
         raise MissingArgumentError("Server name cannot be empty and must be a string.")
     if not isinstance(config_dir, str) or not config_dir:
@@ -272,30 +147,7 @@ async def get_bedrock_server_pid_file_path(server_name: str, config_dir: str) ->
 
 
 async def get_bedrock_launcher_pid_file_path(server_name: str, config_dir: str) -> str:
-    """Asynchronously constructs the path for a Bedrock server's LAUNCHER process PID file.
-
-    This PID file is intended for the "launcher" or "wrapper" process that
-    manages the actual Bedrock server (e.g., a process started by this application
-    to run the server in the background or foreground with IPC).
-    The PID file is typically named ``bedrock_<server_name>_launcher.pid`` and is
-    placed directly in the provided `config_dir` (unlike the server's own PID
-    file which might be in a subdirectory).
-
-    If `config_dir` does not exist, this function will attempt to create it asynchronously.
-
-    Args:
-        server_name (str): The unique name of the server instance this launcher
-            is associated with.
-        config_dir (str): The main configuration directory for the application.
-            If it doesn't exist, an attempt will be made to create it.
-
-    Returns:
-        str: The absolute path to where the launcher's PID file should be located.
-
-    Raises:
-        MissingArgumentError: If `server_name` or `config_dir` are empty or not strings.
-        AppFileNotFoundError: If `config_dir` does not exist and cannot be created.
-    """
+    """Return the detached launcher PID-file path."""
     if not isinstance(server_name, str) or not server_name:
         raise MissingArgumentError("Server name cannot be empty and must be a string.")
     if not isinstance(config_dir, str) or not config_dir:
@@ -306,9 +158,9 @@ async def get_bedrock_launcher_pid_file_path(server_name: str, config_dir: str) 
     if not await aiofiles.ospath.isdir(config_dir):
         try:
             # aiofiles.os doesn't have makedirs, so we use to_thread
-            await asyncio.to_thread(os.makedirs, config_dir, exist_ok=True)
-            logger.info(
-                f"Created configuration directory for launcher PID: {config_dir}"
+            await run_in_thread(os.makedirs, config_dir, exist_ok=True)
+            logger.debug(
+                "Created configuration directory for launcher PID: %s", config_dir
             )
         except OSError as e:
             raise AppFileNotFoundError(
@@ -321,30 +173,12 @@ async def get_bedrock_launcher_pid_file_path(server_name: str, config_dir: str) 
 
 
 async def read_pid_from_file(pid_file_path: str) -> Optional[int]:
-    """Asynchronously reads a Process ID (PID) from the specified file.
-
-    This function attempts to open and read the contents of the file at
-    `pid_file_path`. It expects the file to contain a single integer
-    representing a PID.
-
-    Args:
-        pid_file_path (str): The absolute path to the PID file.
-
-    Returns:
-        Optional[int]: The PID as an integer if the file exists, is readable,
-        and contains a valid integer. Returns ``None`` otherwise (e.g., file not
-        found, permission denied, invalid content).
-
-    Raises:
-        MissingArgumentError: If `pid_file_path` is not provided or is empty.
-        FileOperationError: If there's an error reading or parsing the file
-            content that is not handled (though most are caught and logged).
-    """
+    """Read an integer PID, or return ``None`` for absent, empty or unreadable files."""
     if not isinstance(pid_file_path, str) or not pid_file_path:
         raise MissingArgumentError("PID file path cannot be empty.")
 
     if not await aiofiles.ospath.exists(pid_file_path):
-        logger.debug(f"PID file not found: {pid_file_path}")
+        logger.debug("PID file not found: %s", pid_file_path)
         return None
 
     try:
@@ -352,36 +186,23 @@ async def read_pid_from_file(pid_file_path: str) -> Optional[int]:
             content = await f.read()
             pid_str = content.strip()
             if not pid_str:
-                logger.warning(f"PID file is empty: {pid_file_path}")
+                logger.warning("PID file is empty: %s", pid_file_path)
                 return None
             return int(pid_str)
     except ValueError:
         logger.warning(
-            f"Invalid content in PID file '{pid_file_path}'. Expected an integer."
+            "Invalid content in PID file '%s'. Expected an integer.", pid_file_path
         )
         return None
     except OSError as e:
-        logger.error(f"Error reading PID file '{pid_file_path}': {e}", exc_info=True)
+        log_operation_error(
+            logger, "Error reading PID file '%s': %s", pid_file_path, e, error=e
+        )
         return None
 
 
 async def write_pid_to_file(pid_file_path: str, pid: int):
-    """Asynchronously writes a Process ID (PID) to the specified file.
-
-    This function ensures the directory containing the `pid_file_path` exists
-    (creating it if necessary) and then writes the `pid` to the file as a string.
-
-    Args:
-        pid_file_path (str): The absolute path to the file where the PID should
-            be written.
-        pid (int): The Process ID to write.
-
-    Raises:
-        MissingArgumentError: If `pid_file_path` is empty or not a string, or
-            if `pid` is not an integer.
-        FileOperationError: If there is an error creating the directory or
-            writing to the file (e.g., permission issues).
-    """
+    """Write an integer PID to its file; propagate invalid arguments and write failures."""
     if not isinstance(pid_file_path, str) or not pid_file_path:
         raise MissingArgumentError("PID file path cannot be empty.")
     if not isinstance(pid, int):
@@ -391,7 +212,7 @@ async def write_pid_to_file(pid_file_path: str, pid: int):
     if directory and not await aiofiles.ospath.exists(directory):
         try:
             os.makedirs(directory, exist_ok=True)
-            logger.debug(f"Created directory for PID file: {directory}")
+            logger.debug("Created directory for PID file: %s", directory)
         except OSError as e:
             raise FileOperationError(
                 f"Failed to create directory '{directory}' for PID file: {e}"
@@ -400,7 +221,7 @@ async def write_pid_to_file(pid_file_path: str, pid: int):
     try:
         async with aiofiles.open(pid_file_path, "w", encoding="utf-8") as f:
             await f.write(str(pid))
-        logger.debug(f"Wrote PID {pid} to '{pid_file_path}'")
+        logger.debug("Wrote PID %s to '%s'", pid, pid_file_path)
     except OSError as e:
         raise FileOperationError(
             f"Failed to write PID {pid} to '{pid_file_path}': {e}"
@@ -408,58 +229,33 @@ async def write_pid_to_file(pid_file_path: str, pid: int):
 
 
 async def is_process_running(pid: int) -> bool:
-    """Asynchronously checks if a process with the given PID is currently running.
-
-    This function relies on ``psutil.pid_exists()`` to determine if a process
-    with the specified `pid` is active on the system, offloaded to a thread.
-
-    Args:
-        pid (int): The process ID to check.
-
-    Returns:
-        bool: ``True`` if a process with the given `pid` exists and is running,
-        ``False`` otherwise.
-
-    Raises:
-        SystemError: If the ``psutil`` library is not available.
-        MissingArgumentError: If `pid` is not an integer.
-    """
+    """Return whether the PID exists according to psutil."""
     if not PSUTIL_AVAILABLE:
         raise SystemError(
             "psutil package is required to check if a process is running."
         )
     if not isinstance(pid, int):
         raise MissingArgumentError("PID must be an integer.")
-    return await asyncio.to_thread(psutil.pid_exists, pid)
+    return await run_in_thread(psutil.pid_exists, pid)
 
 
 async def launch_detached_process(
     command: List[str], launcher_pid_file_path: str
 ) -> int:
-    """Asynchronously launches a command as a detached background process and records its PID.
+    """Launch a guarded detached child and record its PID.
 
-    This function uses the :class:`GuardedProcess` wrapper to execute the given
-    `command` via ``asyncio.create_subprocess_exec``. Standard input, output,
-    and error streams of the new process are redirected to ``subprocess.DEVNULL``.
-
-    The PID of the newly launched detached process is written to the file specified
-    by `launcher_pid_file_path` using :func:`write_pid_to_file`.
-
-    Args:
-        command (List[str]): The command and its arguments.
-        launcher_pid_file_path (str): The absolute path to the PID file.
-
-    Returns:
-        int: The Process ID (PID) of the newly launched detached process.
+    Redirect standard streams to the null device; the child outlives the caller loop.
     """
     if not command or not command[0]:
         raise MissingArgumentError("Command list and executable cannot be empty.")
     if not isinstance(launcher_pid_file_path, str) or not launcher_pid_file_path:
         raise MissingArgumentError("Launcher PID file path cannot be empty.")
 
-    logger.info(
-        f"Executing guarded detached command asynchronously: {' '.join(command)}"
-    )
+    logged_command = list(command)
+    for index, argument in enumerate(logged_command[:-1]):
+        if argument == "--db-url":
+            logged_command[index + 1] = "<redacted>"
+    logger.debug("Executing guarded detached command: %s", " ".join(logged_command))
 
     guarded_proc = GuardedProcess(command)
 
@@ -471,13 +267,16 @@ async def launch_detached_process(
         start_new_session = True
 
     try:
-        process = await guarded_proc.create_subprocess_exec(
+        # A detached child must outlive the event loop used to launch it.
+        # asyncio subprocess transports may kill their child when closed.
+        process = await run_in_thread(
+            guarded_proc.popen,
             stdin=subprocess.DEVNULL,
             stdout=subprocess.DEVNULL,
             stderr=subprocess.DEVNULL,
             creationflags=creation_flags,
             start_new_session=start_new_session,
-            close_fds=(platform.system() != "Windows"),
+            close_fds=True,
         )
     except FileNotFoundError:
         raise AppFileNotFoundError(command[0], "Command executable") from None
@@ -485,7 +284,7 @@ async def launch_detached_process(
         raise SystemError(f"OS error starting detached process: {e}") from e
 
     pid = process.pid
-    logger.info(f"Successfully started guarded process asynchronously with PID: {pid}")
+    logger.debug("Successfully started guarded process with PID: %s", pid)
     await write_pid_to_file(launcher_pid_file_path, pid)
     return pid
 
@@ -496,39 +295,10 @@ async def verify_process_identity(  # noqa: C901
     expected_cwd: Optional[str] = None,
     expected_command_args: Optional[Union[str, List[str]]] = None,
 ):
-    """Verifies if a running process matches an expected signature.
+    """Verify a PID against supplied executable, directory and argument criteria.
 
-    This function checks a process, identified by its `pid`, against one or more
-    provided criteria: its executable path, its current working directory (CWD),
-    and/or specific command-line arguments. This is useful for confirming that
-    a PID read from a file indeed corresponds to the expected application or
-    server process, and not some other unrelated process that happens to have
-    the same PID if the original process died and its PID was recycled.
-
-    It uses ``psutil.Process(pid).oneshot()`` for efficient information retrieval.
-    Path comparisons (for executable and CWD) are case-insensitive and normalized.
-
-    Args:
-        pid (int): The Process ID of the process to verify.
-        expected_executable_path (Optional[str], optional): The expected absolute
-            path of the main executable. Defaults to ``None``.
-        expected_cwd (Optional[str], optional): The expected absolute current
-            working directory of the process. Defaults to ``None``.
-        expected_command_args (Optional[Union[str, List[str]]], optional):
-            A specific string or a list of strings that are expected to be present
-            in the process's command-line arguments. Defaults to ``None``.
-
-    Raises:
-        SystemError: If the ``psutil`` library is not available or if ``psutil``
-            encounters an internal error retrieving process information.
-        ServerProcessError: If the process with the given `pid` does not exist,
-            or if it exists but does not match one or more of the provided
-            expected criteria (mismatch details are included in the error message).
-        PermissionsError: If ``psutil`` is denied access when trying to get
-            information for the specified `pid`.
-        MissingArgumentError: If `pid` is not an integer or if none of the
-            optional verification criteria (`expected_executable_path`,
-            `expected_cwd`, `expected_command_args`) are provided.
+    Raise ``ServerProcessError`` for missing or mismatched processes; path comparisons
+    are normalized and case-insensitive.
     """
     if not PSUTIL_AVAILABLE:
         raise SystemError("psutil package is required for process verification.")
@@ -591,7 +361,7 @@ async def verify_process_identity(  # noqa: C901
 
             return proc_name
 
-        proc_name = await asyncio.to_thread(_verify)
+        proc_name = await run_in_thread(_verify)
     except psutil.NoSuchProcess:
         raise ServerProcessError(
             f"Process with PID {pid} does not exist for verification."
@@ -604,7 +374,7 @@ async def verify_process_identity(  # noqa: C901
         raise
 
     logger.debug(
-        f"Process {pid} (Name: {proc_name}) verified successfully against signature."
+        "Process %s (Name: %s) verified successfully against signature.", pid, proc_name
     )
 
 
@@ -621,15 +391,16 @@ async def get_verified_bedrock_process(
         return None
 
     if not isinstance(server_name, str) or not server_name:
-        logger.error("get_verified_bedrock_process: server_name is invalid.")
+        logger.debug("Cannot verify process without a server name.")
         return None
     if (
         not isinstance(server_dir, str)
         or not server_dir
         or not await aiofiles.ospath.isdir(server_dir)
     ):
-        logger.error(
-            f"get_verified_bedrock_process: server_dir '{server_dir}' is invalid or not a directory."
+        logger.debug(
+            "get_verified_bedrock_process: server_dir '%s' is invalid or not a directory.",
+            server_dir,
         )
         return None
     if (
@@ -637,8 +408,9 @@ async def get_verified_bedrock_process(
         or not config_dir
         or not await aiofiles.ospath.isdir(config_dir)
     ):
-        logger.error(
-            f"get_verified_bedrock_process: config_dir '{config_dir}' is invalid or not a directory."
+        logger.debug(
+            "get_verified_bedrock_process: config_dir '%s' is invalid or not a directory.",
+            config_dir,
         )
         return None
 
@@ -647,12 +419,12 @@ async def get_verified_bedrock_process(
         pid = await read_pid_from_file(pid_file_path)
 
         if pid is None:
-            logger.debug(f"No valid PID found in file for server '{server_name}'.")
+            logger.debug("No valid PID found in file for server '%s'.", server_name)
             return None
 
         if not await is_process_running(pid):
             logger.debug(
-                f"Stale PID {pid} found for '{server_name}'. Process not running."
+                "Stale PID %s found for '%s'. Process not running.", pid, server_name
             )
             await remove_pid_file_if_exists(pid_file_path)
             return None
@@ -679,7 +451,7 @@ async def get_verified_bedrock_process(
         MissingArgumentError,  # From called functions if somehow inputs are bad despite checks
     ) as e:
         # These are expected "not running" or "mismatch" scenarios.
-        logger.debug(f"Verification failed for server '{server_name}': {e}")
+        logger.debug("Verification failed for server '%s': %s", server_name, e)
         # Attempt to clean up PID file if verification failed for a running PID
         if (
             "pid" in locals()
@@ -688,7 +460,9 @@ async def get_verified_bedrock_process(
         ):
             if isinstance(e, ServerProcessError):  # Mismatch
                 logger.debug(
-                    f"Cleaning up PID file '{pid_file_path}' due to verification mismatch for PID {pid}."
+                    "Cleaning up PID file '%s' due to verification mismatch for PID %s.",
+                    pid_file_path,
+                    pid,
                 )
                 await remove_pid_file_if_exists(pid_file_path)
         return None
@@ -697,9 +471,12 @@ async def get_verified_bedrock_process(
         Exception,
     ) as e:  # SystemError from psutil functions, or any other unexpected
         # These are more serious, unexpected errors.
-        logger.error(
-            f"Unexpected error getting verified process for '{server_name}': {e}",
-            exc_info=True,
+        log_operation_error(
+            logger,
+            "Unexpected error getting verified process for '%s': %s",
+            server_name,
+            e,
+            error=e,
         )
         return None
 
@@ -707,34 +484,10 @@ async def get_verified_bedrock_process(
 async def terminate_process_by_pid(  # noqa: C901
     pid: int, terminate_timeout: int = 5, kill_timeout: int = 2
 ):
-    """Attempts to gracefully terminate, then forcefully kill, a process by PID.
+    """Terminate a process, then kill it if the first deadline expires.
 
-    This function implements a two-stage termination strategy:
-
-        1. **Graceful Termination (SIGTERM)**: It first sends a SIGTERM signal
-           (``process.terminate()``) to the process with the given `pid`. It then
-           waits for `terminate_timeout` seconds for the process to exit cleanly.
-        2. **Forceful Kill (SIGKILL)**: If the process does not terminate within
-           the `terminate_timeout`, a SIGKILL signal (``process.kill()``) is sent
-           to forcibly stop it. It then waits for `kill_timeout` seconds.
-
-    This approach gives the target process a chance to shut down gracefully
-    (e.g., save data, release resources) before resorting to a forceful kill.
-
-    Args:
-        pid (int): The Process ID of the process to terminate.
-        terminate_timeout (int, optional): Seconds to wait for graceful
-            termination after SIGTERM. Defaults to 5.
-        kill_timeout (int, optional): Seconds to wait for the process to die
-            after SIGKILL. Defaults to 2.
-
-    Raises:
-        SystemError: If the ``psutil`` library is not available.
-        MissingArgumentError: If `pid` is not an integer.
-        PermissionsError: If ``psutil`` is denied access when trying to
-            terminate the process.
-        ServerStopError: For other ``psutil`` errors (e.g., process already
-            exited before kill, unexpected errors) or if timeouts are invalid.
+    Timeouts are seconds. Windows termination is forceful; POSIX termination uses
+    SIGTERM. Propagate failures to confirm process exit.
     """
     if not PSUTIL_AVAILABLE:
         raise SystemError("psutil package is required to terminate processes.")
@@ -750,25 +503,28 @@ async def terminate_process_by_pid(  # noqa: C901
         def _terminate() -> None:
             process = psutil.Process(pid)
             # 1. Attempt graceful termination first.
-            logger.info(f"Attempting graceful termination (SIGTERM) for PID {pid}...")
+            logger.debug("Attempting graceful termination (SIGTERM) for PID %s...", pid)
             process.terminate()
             try:
                 process.wait(timeout=terminate_timeout)
-                logger.info(f"Process {pid} terminated gracefully.")
+                logger.debug("Process %s terminated gracefully.", pid)
             except psutil.TimeoutExpired:
                 # 2. If graceful termination fails, resort to forceful killing.
                 logger.warning(
-                    f"Process {pid} did not terminate gracefully within {terminate_timeout}s. Attempting kill (SIGKILL)..."
+                    "Process %s did not terminate gracefully within %ss. Attempting kill (SIGKILL)...",
+                    pid,
+                    terminate_timeout,
                 )
                 process.kill()
                 process.wait(timeout=kill_timeout)
-                logger.info(f"Process {pid} forcefully killed.")
+                logger.info("Process %s forcefully killed.", pid)
 
-        await asyncio.to_thread(_terminate)
+        await run_in_thread(_terminate)
     except psutil.NoSuchProcess:
         # This is not an error; the process is already gone.
-        logger.warning(
-            f"Process with PID {pid} disappeared or was already stopped during termination attempt."
+        logger.debug(
+            "Process with PID %s disappeared or was already stopped during termination attempt.",
+            pid,
         )
     except psutil.AccessDenied:
         raise PermissionsError(
@@ -781,33 +537,16 @@ async def terminate_process_by_pid(  # noqa: C901
 
 
 async def remove_pid_file_if_exists(pid_file_path: str) -> bool:
-    """Asynchronously removes the specified PID file if it exists, logging outcomes.
-
-    This function checks for the existence of a file at `pid_file_path`.
-    If it exists, an attempt is made to delete it. Deletion failures due to
-    ``OSError`` (e.g., permission issues) are logged as warnings but do not
-    propagate the exception.
-
-    Args:
-        pid_file_path (str): The absolute path to the PID file to remove.
-
-    Returns:
-        bool: ``True`` if the file was successfully removed or if it did not
-        exist initially. ``False`` if an ``OSError`` occurred during an
-        attempted removal.
-
-    Raises:
-        MissingArgumentError: If `pid_file_path` is not provided or is empty.
-    """
+    """Remove a PID file if present; return ``False`` if removal fails."""
     if not isinstance(pid_file_path, str) or not pid_file_path:
         raise MissingArgumentError("PID file path cannot be empty.")
 
     if await aiofiles.ospath.exists(pid_file_path):
         try:
-            await aiofiles.os.remove(pid_file_path)
-            logger.info(f"Removed PID file '{pid_file_path}'.")
+            await run_in_thread(os.remove, pid_file_path)
+            logger.debug("Removed PID file '%s'.", pid_file_path)
             return True
         except OSError as e:
-            logger.warning(f"Could not remove PID file '{pid_file_path}': {e}")
+            logger.warning("Could not remove PID file '%s': %s", pid_file_path, e)
             return False
     return True

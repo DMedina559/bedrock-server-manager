@@ -18,8 +18,10 @@ class EventSenderPlugin(PluginBase):
 
     @app_event("on_load")
     async def plugin_loaded(self):
-        self.logger.info(
-            f"Plugin '{self.name}' v{self.version} loaded. Event sender page available at /event_sender/ui"
+        self.logger.debug(
+            "Plugin '%s' v%s loaded. Event sender page available at /event_sender/ui",
+            self.name,
+            self.version,
         )
 
         self.router = APIRouter(
@@ -27,12 +29,12 @@ class EventSenderPlugin(PluginBase):
             tags=["Event Sender Plugin"],
         )
         define_routes(self.router, self)
-        self.logger.info(f"EventSenderPlugin v{self.version} initialized.")
+        self.logger.debug("EventSenderPlugin v%s initialized.", self.version)
 
     @app_event("on_unload")
     async def plugin_unloaded(self):
-        self.logger.info(f"Plugin '{self.name}' v{self.version} unloaded.")
+        self.logger.debug("Plugin '%s' v%s unloaded.", self.name, self.version)
 
     def get_fastapi_routers(self):
-        self.logger.debug(f"Providing FastAPI router for {self.name}")
+        self.logger.debug("Providing FastAPI router for %s", self.name)
         return [self.router]

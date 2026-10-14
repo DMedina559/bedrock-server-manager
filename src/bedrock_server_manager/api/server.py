@@ -1,306 +1,238 @@
 # bedrock_server_manager/api/server.py
-"""Provides API functions for managing Bedrock server instances.
-
-This module serves as a key interface layer for server-specific operations within
-the Bedrock Server Manager. It leverages the
-:class:`~bedrock_server_manager.core.bedrock_server.BedrockServer` core class
-to perform a variety of actions such as server lifecycle management (starting,
-stopping, restarting), configuration (getting/setting server-specific properties),
-and command execution.
-
-The functions within this module are designed to return structured dictionary
-responses, making them suitable for consumption by web API routes, command-line
-interface (CLI) commands, or other parts of the application. This module also
-integrates with the plugin system by exposing many of its functions as callable
-APIs for plugins (via :func:`~bedrock_server_manager.plugins.api_bridge.api_method`)
-and by triggering various plugin events during server operations.
-"""
+"""Provide API functions for managing Bedrock server instances."""
 
 import logging
 import os
-from contextlib import asynccontextmanager
 from typing import Any, Dict
+
+from pydantic import ValidationError
 
 from ..config import API_COMMAND_BLACKLIST
 from ..context import AppContext
+from ..core.server.removal import delete_all_data
 from ..core.system import remove_pid_file_if_exists
 from ..error import (
     BlockedCommandError,
     BSMError,
-    InvalidServerNameError,
+    ConfigParseError,
     MissingArgumentError,
     ServerError,
-    ServerStartError,
-    ServerStopError,
+    ServerRunningError,
+    UserInputError,
 )
+from ..events import trigger_event
+from ..logging import log_operation_error
 from ..plugins.api_bridge import api_method
-from ..plugins.event_trigger import trigger_event
+from ..plugins.api_contract import validate_contract
+from ..state_revision import revision_clock
+from .models import (
+    RestartServerRequest,
+    RestartServerResponse,
+    StartServerRequest,
+    StartServerResponse,
+    StopServerRequest,
+    StopServerResponse,
+)
+from .models.server import (
+    DeleteServerDataRequest,
+    DeleteServerDataResponse,
+    GetAllServerSettingsRequest,
+    GetAllServerSettingsResponse,
+    GetServerSettingRequest,
+    GetServerSettingResponse,
+    GetServerSummaryRequest,
+    GetServerSummaryResponse,
+    GetValidServerNamesRequest,
+    GetValidServerNamesResponse,
+    SendCommandRequest,
+    SendCommandResponse,
+    SetServerCustomValueRequest,
+    SetServerCustomValueResponse,
+    SetServerSettingRequest,
+    SetServerSettingResponse,
+    SetServerStatusRequest,
+    SetServerStatusResponse,
+    UpdateServerPlayerStatsRequest,
+    UpdateServerPlayerStatsResponse,
+)
 
 logger = logging.getLogger(__name__)
 
 
 @api_method("get_server_setting")
 async def get_server_setting(
-    server_name: str, key: str, app_context: AppContext
-) -> Dict[str, Any]:
-    """Reads any value from a server's specific JSON configuration file
-    (e.g., ``<server_name>_config.json``) using dot-notation for keys.
-
-    Args:
-        server_name (str): The name of the server.
-        key (str): The dot-notation key to read from the server's JSON
-            configuration (e.g., "server_info.status", "settings.autoupdate",
-            "custom.my_value").
-
-    Returns:
-        Dict[str, Any]: A dictionary containing the operation result.
-        On success: ``{"status": "success", "value": <retrieved_value>}``
-        On error: ``{"status": "error", "message": "<error_message>"}``
-        The ``<retrieved_value>`` will be ``None`` if the key is not found.
-
-    Raises:
-        InvalidServerNameError: If `server_name` is empty.
-        MissingArgumentError: If `key` is empty.
-    """
-    if not server_name:
-        raise InvalidServerNameError("Server name cannot be empty.")
-    if not key:
-        raise MissingArgumentError("A 'key' must be provided.")
-
-    logger.debug(f"API: Reading server setting for '{server_name}': Key='{key}'")
+    request: GetServerSettingRequest, *, app_context: AppContext
+) -> GetServerSettingResponse:
+    """Reads any value from a server's specific persisted configuration"""
+    server_name = request.server_name
+    key = request.key
+    logger.debug("Reading server setting for '%s': Key='%s'", server_name, key)
     try:
         server = app_context.get_server(server_name)
-        # Use the internal method to access any key
-        value = await server._manage_json_config(key, "read")
+        value = server.configuration.read(key)
         success_response: Dict[str, Any] = {"status": "success", "value": value}
-        return success_response
+        return GetServerSettingResponse.model_validate(success_response)
     except BSMError as e:
-        logger.error(
-            f"API: Error reading setting '{key}' for server '{server_name}': {e}"
+        log_operation_error(
+            logger,
+            "Error reading setting '%s' for server '%s': %s",
+            key,
+            server_name,
+            e,
+            error=e,
         )
-        error_response: Dict[str, Any] = {"status": "error", "message": str(e)}
-        return error_response
+        raise
     except Exception as e:
-        logger.error(
-            f"API: Unexpected error reading setting for '{server_name}': {e}",
-            exc_info=True,
+        log_operation_error(
+            logger,
+            "Unexpected error reading setting for '%s': %s",
+            server_name,
+            e,
+            error=e,
         )
-        generic_error: Dict[str, Any] = {
-            "status": "error",
-            "message": "An unexpected error occurred.",
-        }
-        return generic_error
+        raise
 
 
+@validate_contract
 @trigger_event(
     before="before_set_server_setting",
     after="after_set_server_setting",
     identity_keys=("server_name", "key"),
 )
 async def set_server_setting(
-    server_name: str, key: str, value: Any, app_context: AppContext
-) -> Dict[str, Any]:
-    """Writes any value to a server's specific JSON configuration file
-    (e.g., ``<server_name>_config.json``) using dot-notation for keys.
-    Intermediate dictionaries will be created if they don't exist along the key path.
-
-    Args:
-        server_name (str): The name of the server.
-        key (str): The dot-notation key to write to in the server's JSON
-            configuration (e.g., "server_info.status", "custom.new_setting").
-        value (Any): The new value to write. Must be JSON serializable.
-
-    Returns:
-        Dict[str, Any]: A dictionary containing the operation result.
-        On success: ``{"status": "success", "message": "Setting '<key>' updated..."}``
-        On error: ``{"status": "error", "message": "<error_message>"}``
-
-    Raises:
-        InvalidServerNameError: If `server_name` is empty.
-        MissingArgumentError: If `key` is empty.
-        ConfigParseError: If `value` is not JSON serializable or if an
-            intermediate part of the `key` path conflicts with an existing
-            non-dictionary item.
-    """
-    if not server_name:
-        raise InvalidServerNameError("Server name cannot be empty.")
-    if not key:
-        raise MissingArgumentError("A 'key' must be provided.")
-
-    logger.info(
-        f"API: Writing server setting for '{server_name}': Key='{key}', Value='{value}'"
-    )
+    request: SetServerSettingRequest, *, app_context: AppContext
+) -> SetServerSettingResponse:
+    """Writes any value to a server's specific persisted configuration"""
+    server_name = request.server_name
+    key = request.key
+    value = request.value
+    logger.debug("Updating setting '%s' for server '%s'.", key, server_name)
     try:
         server = app_context.get_server(server_name)
-        # Use the internal method to write to any key
-        await server._manage_json_config(key, "write", value)
-        success_response: Dict[str, Any] = {
-            "status": "success",
-            "message": f"Setting '{key}' updated for server '{server_name}'.",
-        }
-        return success_response
-    except BSMError as e:
-        logger.error(f"API: Error setting '{key}' for server '{server_name}': {e}")
-        error_response: Dict[str, Any] = {"status": "error", "message": str(e)}
-        return error_response
-    except Exception as e:
-        logger.error(
-            f"API: Unexpected error setting value for '{server_name}': {e}",
-            exc_info=True,
+        try:
+            await server.configuration.update(key, value)
+        except (ValidationError, ConfigParseError) as error:
+            raise UserInputError("Invalid server setting key or value.") from error
+        return SetServerSettingResponse(
+            server_name=server_name,
+            message=f"Setting '{key}' updated for server '{server_name}'.",
         )
-        generic_error: Dict[str, Any] = {
-            "status": "error",
-            "message": "An unexpected error occurred.",
-        }
-        return generic_error
+    except BSMError as e:
+        log_operation_error(
+            logger,
+            "Error setting '%s' for server '%s': %s",
+            key,
+            server_name,
+            e,
+            error=e,
+        )
+        raise
+    except Exception as e:
+        log_operation_error(
+            logger,
+            "Unexpected error setting value for '%s': %s",
+            server_name,
+            e,
+            error=e,
+        )
+        raise
 
 
 @api_method("set_server_custom_value")
 async def set_server_custom_value(
-    server_name: str, key: str, value: Any, app_context: AppContext
-) -> Dict[str, Any]:
-    """Writes a key-value pair to the 'custom' section of a server's specific
-    JSON configuration file (e.g., ``<server_name>_config.json``).
-    This is a sandboxed way for plugins or users to store arbitrary data
-    associated with a server. The key will be stored as ``custom.<key>``.
-
-    Args:
-        server_name (str): The name of the server.
-        key (str): The key (string) for the custom value within the 'custom' section.
-            Cannot be empty.
-        value (Any): The value to write. Must be JSON serializable.
-
-    Returns:
-        Dict[str, Any]: A dictionary containing the operation result.
-        On success: ``{"status": "success", "message": "Custom value '<key>' updated..."}``
-        On error: ``{"status": "error", "message": "<error_message>"}``
-
-    Raises:
-        InvalidServerNameError: If `server_name` is empty.
-        MissingArgumentError: If `key` is empty.
-        ConfigParseError: If `value` is not JSON serializable.
-    """
-    if not server_name:
-        raise InvalidServerNameError("Server name cannot be empty.")
-    if not key:
-        raise MissingArgumentError("A 'key' must be provided.")
-
-    logger.info(f"API (Plugin): Writing custom value for '{server_name}': Key='{key}'")
+    request: SetServerCustomValueRequest, *, app_context: AppContext
+) -> SetServerCustomValueResponse:
+    """Writes a key-value pair to the 'custom' section of a server's specific"""
+    server_name = request.server_name
+    key = request.key
+    value = request.value
+    logger.debug("Writing custom value for '%s': Key='%s'", server_name, key)
     try:
         server = app_context.get_server(server_name)
-        # This method is sandboxed to the 'custom' section
         await server.set_custom_config_value(key, value)
-        success_response: Dict[str, Any] = {
-            "status": "success",
-            "message": f"Custom value '{key}' updated for server '{server_name}'.",
-        }
-        return success_response
+        return SetServerCustomValueResponse(
+            server_name=server_name,
+            message=f"Custom value '{key}' updated for server '{server_name}'.",
+        )
     except BSMError as e:
-        logger.error(
-            f"API (Plugin): Error setting custom value for '{server_name}': {e}"
+        log_operation_error(
+            logger, "Error setting custom value for '%s': %s", server_name, e, error=e
         )
-        error_response: Dict[str, Any] = {"status": "error", "message": str(e)}
-        return error_response
+        raise
     except Exception as e:
-        logger.error(
-            f"API (Plugin): Unexpected error setting custom value for '{server_name}': {e}",
-            exc_info=True,
+        log_operation_error(
+            logger,
+            "Unexpected error setting custom value for '%s': %s",
+            server_name,
+            e,
+            error=e,
         )
-        generic_error: Dict[str, Any] = {
-            "status": "error",
-            "message": "An unexpected error occurred.",
-        }
-        return generic_error
+        raise
 
 
 @api_method("get_all_server_settings")
 async def get_all_server_settings(
-    server_name: str, app_context: AppContext
-) -> Dict[str, Any]:
-    """Reads the entire JSON configuration for a specific server from its
-    dedicated configuration file (e.g., ``<server_name>_config.json``).
-    If the file doesn't exist, it will be created with default values.
-    Handles schema migration if an older config format is detected.
-
-    Args:
-        server_name (str): The name of the server.
-
-    Returns:
-        Dict[str, Any]: A dictionary containing the operation result.
-        On success: ``{"status": "success", **<all_settings_dict>}``
-        On error: ``{"status": "error", "message": "<error_message>"}``
-
-    Raises:
-        InvalidServerNameError: If `server_name` is empty.
-        FileOperationError: If creating/reading the config directory/file fails.
-    """
-    if not server_name:
-        raise InvalidServerNameError("Server name cannot be empty.")
-
-    logger.debug(f"API: Reading all settings for server '{server_name}'.")
+    request: GetAllServerSettingsRequest, *, app_context: AppContext
+) -> GetAllServerSettingsResponse:
+    """Reads the entire persisted configurationuration for a specific server from its"""
+    server_name = request.server_name
+    logger.debug("Reading all settings for server '%s'.", server_name)
     try:
         server = app_context.get_server(server_name)
-        # _load_server_config handles loading and migration
-        all_settings = await server._load_server_config()
+        all_settings = server.configuration.as_settings()
         success_response: Dict[str, Any] = {
             "status": "success",
-            **all_settings,
+            "settings": all_settings,
         }
-        return success_response  # type: ignore[no-any-return]
+        return GetAllServerSettingsResponse.model_validate(success_response)
     except BSMError as e:
-        logger.error(f"API: Error reading all settings for server '{server_name}': {e}")
-        error_response: Dict[str, Any] = {"status": "error", "message": str(e)}
-        return error_response  # type: ignore[no-any-return]
-    except Exception as e:
-        logger.error(
-            f"API: Unexpected error reading all settings for '{server_name}': {e}",
-            exc_info=True,
+        log_operation_error(
+            logger,
+            "Error reading all settings for server '%s': %s",
+            server_name,
+            e,
+            error=e,
         )
-        generic_error: Dict[str, Any] = {
-            "status": "error",
-            "message": "An unexpected error occurred.",
-        }
-        return generic_error  # type: ignore[no-any-return]
+        raise
+    except Exception as e:
+        log_operation_error(
+            logger,
+            "Unexpected error reading all settings for '%s': %s",
+            server_name,
+            e,
+            error=e,
+        )
+        raise
 
 
 @api_method("get_server_summary")
 async def get_server_summary(
-    server_name: str, app_context: AppContext
-) -> Dict[str, Any]:
-    """Retrieves the summary information for a specific server.
-
-    This endpoint gets the server summary using the lightweight get_summary_info
-    method, providing a snapshot of the server's basic details like status and
-    player count.
-
-    Args:
-        server_name (str): The name of the server to get the summary for.
-        app_context (AppContext): The application context.
-
-    Returns:
-        Dict[str, Any]: On success, ``{"status": "success", "summary": {...}}``.
-        On error, ``{"status": "error", "message": "<error_message>"}``.
-    """
-    logger.debug(f"API: Requesting summary info for server '{server_name}'.")
-    if not server_name:
-        raise InvalidServerNameError("Server name cannot be empty.")
-
+    request: GetServerSummaryRequest, *, app_context: AppContext
+) -> GetServerSummaryResponse:
+    """Return the summary information for a specific server."""
+    server_name = request.server_name
+    logger.debug("Requesting summary info for server '%s'.", server_name)
     try:
         server = app_context.get_server(server_name)
         if not await server.is_installed():
-            return {
-                "status": "error",
-                "message": f"Server '{server_name}' is not installed.",
-            }
-
+            raise BSMError(f"Server '{server_name}' is not installed.")
+        revision = revision_clock.capture()
         summary = await server.get_summary_info()
-        return {"status": "success", "summary": summary}
-    except Exception as e:
-        logger.error(
-            f"API: Unexpected error getting summary for server '{server_name}': {e}",
-            exc_info=True,
+        return GetServerSummaryResponse.model_validate(
+            {
+                "status": "success",
+                "summary": {**summary.model_dump(mode="json"), **revision},
+            }
         )
-        return {"status": "error", "message": str(e)}
+    except Exception as e:
+        log_operation_error(
+            logger,
+            "Unexpected error getting summary for server '%s': %s",
+            server_name,
+            e,
+            error=e,
+        )
+        raise
 
 
 @api_method("start_server")
@@ -309,47 +241,28 @@ async def get_server_summary(
     after="after_server_start",
     identity_keys=("server_name",),
 )
-async def start_server(server_name: str, app_context: AppContext) -> Dict[str, Any]:
-    """Starts the specified Bedrock server."""
-    if not server_name:
-        raise InvalidServerNameError("Server name cannot be empty.")
-
-    logger.info(f"API: Attempting to start server '{server_name}'...")
-    try:
-        server = app_context.get_server(server_name)
-
+async def start_server(
+    request: StartServerRequest, *, app_context: AppContext
+) -> StartServerResponse:
+    """Start a server, or report that it is already running; failures raise."""
+    server_name = request.server_name
+    server = app_context.get_server(server_name)
+    async with server.operation_lock:
         if await server.is_running():
-            logger.warning(
-                f"API: Server '{server_name}' is already running. Start request ignored."
+            return StartServerResponse(
+                server_name=server_name,
+                outcome="already_running",
+                message=f"Server '{server_name}' is already running.",
             )
-            return {
-                "status": "error",
-                "message": f"Server '{server_name}' is already running.",
-            }
 
         await server.start()
         await app_context.bedrock_process_manager.add_server(server)
-
-        logger.info(f"API: Start for server '{server_name}' completed.")
-        return {
-            "status": "success",
-            "message": f"Server '{server_name}' process started.",
-        }
-
-    except BSMError as e:
-        logger.error(f"API: Failed to start server '{server_name}': {e}", exc_info=True)
-        return {
-            "status": "error",
-            "message": f"Failed to start server '{server_name}': {e}",
-        }
-    except Exception as e:
-        logger.error(
-            f"API: Unexpected error starting server '{server_name}': {e}", exc_info=True
+        logger.debug("Start for server '%s' completed.", server_name)
+        return StartServerResponse(
+            server_name=server_name,
+            outcome="started",
+            message=f"Server '{server_name}' process started.",
         )
-        return {
-            "status": "error",
-            "message": f"Unexpected error starting server '{server_name}': {e}",
-        }
 
 
 @api_method("stop_server")
@@ -358,185 +271,84 @@ async def start_server(server_name: str, app_context: AppContext) -> Dict[str, A
     after="after_server_stop",
     identity_keys=("server_name",),
 )
-async def stop_server(server_name: str, app_context: AppContext) -> Dict[str, Any]:
-    """Stops the specified Bedrock server.
-
-    Triggers the ``before_server_stop`` and ``after_server_stop`` plugin events.
-    The method used for stopping :meth:`~.core.bedrock_server.BedrockServer.stop`, which involves gracefully shutdown, with a forceful fallback.
-
-    Args:
-        server_name (str): The name of the server to stop.
-
-    Returns:
-        Dict[str, str]: A dictionary containing the operation result.
-
-        On success: ``{"status": "success", "message": "Server... stopped successfully."}`` or
-                    ``{"status": "success", "message": "Server... stop initiated via <service_manager>."}``
-
-        On error (e.g., already stopped): ``{"status": "error", "message": "<error_message>"}``
-
-    Raises:
-        InvalidServerNameError: If `server_name` is not provided.
-        ServerStopError: If the server fails to stop after all attempts.
-        BSMError: For other application-specific errors during shutdown.
-    """
-    if not server_name:
-        raise InvalidServerNameError("Server name cannot be empty.")
-
-    logger.info(f"API: Attempting to stop server '{server_name}'...")
-    server = None
-    try:
-        server = app_context.get_server(server_name)
-
-        if not await server.is_running():
-            logger.warning(
-                f"API: Server '{server_name}' is not running. Stop request ignored."
-            )
-            await server.set_status_in_config("STOPPED")
-            return {
-                "status": "error",
-                "message": f"Server '{server_name}' was already stopped.",
-            }
-
-        await app_context.api.set_server_status(server_name, "STOPPING")
-
-        await server.stop()
-        await app_context.bedrock_process_manager.remove_server(server.server_name)
-
-        logger.info(f"API: Server '{server_name}' stopped successfully.")
-        return {
-            "status": "success",
-            "message": f"Server '{server_name}' stopped successfully.",
-            "server_name": server_name,
-        }  # type: ignore[no-any-return]
-    except BSMError as e:
-        logger.error(f"API: Failed to stop server '{server_name}': {e}", exc_info=True)
-        return {
-            "status": "error",
-            "message": f"Failed to stop server '{server_name}': {e}",
-        }  # type: ignore[no-any-return]
-    except Exception as e:
-        logger.error(
-            f"API: Unexpected error stopping server '{server_name}': {e}", exc_info=True
-        )
-        return {
-            "status": "error",
-            "message": f"Unexpected error stopping server '{server_name}': {e}",
-        }  # type: ignore[no-any-return]
-    finally:
-        # Always attempt to clean up the PID file as a final step.
-        if server:
-            try:
-                pid_file_path = server.get_pid_file_path()
-                if os.path.isfile(pid_file_path):
-                    await remove_pid_file_if_exists(pid_file_path)
-            except Exception as e_cleanup:
-                logger.warning(
-                    f"Error during PID file cleanup for '{server_name}': {e_cleanup}"
+async def stop_server(
+    request: StopServerRequest, *, app_context: AppContext
+) -> StopServerResponse:
+    """Stop a server, or report that it is already stopped; failures raise."""
+    server_name = request.server_name
+    server = app_context.get_server(server_name, require_installation=False)
+    async with server.operation_lock:
+        stopped = False
+        try:
+            if not await server.is_running():
+                await server.set_status_in_config("STOPPED")
+                stopped = True
+                return StopServerResponse(
+                    server_name=server_name,
+                    outcome="already_stopped",
+                    message=f"Server '{server_name}' was already stopped.",
                 )
+
+            await app_context.api.server.set_status(
+                request={"server_name": server_name, "status": "STOPPING"}
+            )
+            await server.stop()
+            stopped = True
+            await app_context.bedrock_process_manager.remove_server(server.server_name)
+            logger.debug("Server '%s' stopped successfully.", server_name)
+            return StopServerResponse(
+                server_name=server_name,
+                outcome="stopped",
+                message=f"Server '{server_name}' stopped successfully.",
+            )
+        finally:
+            # A failed stop may leave a live process: retain its PID file.
+            if stopped:
+                try:
+                    pid_file_path = server.get_pid_file_path()
+                    if os.path.isfile(pid_file_path):
+                        await remove_pid_file_if_exists(pid_file_path)
+                except Exception as cleanup_error:
+                    logger.warning(
+                        "Error during PID file cleanup for '%s': %s",
+                        server_name,
+                        cleanup_error,
+                    )
 
 
 @api_method("restart_server")
-async def restart_server(  # noqa: C901
-    server_name: str,
-    app_context: AppContext,
-    send_message: bool = True,
-) -> Dict[str, Any]:
-    """Restarts the specified Bedrock server by orchestrating stop and start.
-
-    This function internally calls :func:`~.stop_server` and then
-    :func:`~.start_server`.
-
-    - If the server is already stopped, this function will attempt to start it.
-    - If running, it will attempt to stop it (optionally sending a restart
-      message to the server if ``send_message=True``), wait briefly for the
-      stop to complete, and then start it again.
-
-    Args:
-        server_name (str): The name of the server to restart.
-        send_message (bool, optional): If ``True``, attempts to send a "say Restarting server..."
-            message to the server console via
-            :meth:`~.core.bedrock_server.BedrockServer.send_command`
-            before stopping. Defaults to ``True``.
-
-    Returns:
-        Dict[str, str]: A dictionary with the operation status and a message,
-        reflecting the outcome of the start/stop operations.
-        On success: ``{"status": "success", "message": "Server... restarted successfully."}``
-        On error: ``{"status": "error", "message": "Restart failed: <reason>"}``
-
-    Raises:
-        InvalidServerNameError: If `server_name` is not provided.
-        ServerStartError: If the start phase fails (from :func:`~.start_server`).
-        ServerStopError: If the stop phase fails (from :func:`~.stop_server`).
-        BSMError: For other application-specific errors.
-    """
-    if not server_name:
-        raise InvalidServerNameError("Server name cannot be empty.")
-
-    logger.debug(
-        f"API: Initiating restart for server '{server_name}'. Send message: {send_message}"
-    )
-    try:
-        server = app_context.get_server(server_name)
-        is_running = await server.is_running()
-
-        # If server is not running, just start it.
-        if not is_running:
-            logger.info(
-                f"API: Server '{server_name}' was not running. Attempting to start..."
+async def restart_server(
+    request: RestartServerRequest, *, app_context: AppContext
+) -> RestartServerResponse:
+    """Orchestrate stop/start; abort on cancellation or either phase failing."""
+    server_name = request.server_name
+    server = app_context.get_server(server_name)
+    async with server.operation_lock:
+        was_running = await server.is_running()
+        if was_running:
+            if request.send_message:
+                try:
+                    await server.send_command("say Restarting server...")
+                except BSMError as error:
+                    logger.warning(
+                        "Failed to send restart warning to '%s': %s", server_name, error
+                    )
+            await stop_server(
+                StopServerRequest(server_name=server_name), app_context=app_context
             )
-            start_result = await start_server(server_name, app_context=app_context)
 
-            if start_result.get("status") == "success":
-                start_result["message"] = (
-                    f"Server '{server_name}' was not running and has been started."
-                )
-            return start_result
-
-        # If server is running, perform the stop-start cycle.
-        logger.info(
-            f"API: Server '{server_name}' is running. Proceeding with stop/start cycle."
+        await start_server(
+            StartServerRequest(server_name=server_name), app_context=app_context
         )
-        if send_message:
-            try:
-                await server.send_command("say Restarting server...")
-            except BSMError as e:
-                logger.warning(
-                    f"API: Failed to send restart warning to '{server_name}': {e}"
-                )
-
-        stop_result = await stop_server(server_name, app_context=app_context)
-        if stop_result.get("status") == "error":
-            stop_result["message"] = (
-                f"Restart failed during stop phase: {stop_result.get('message')}"
-            )
-            return stop_result
-
-        start_result = await start_server(server_name, app_context=app_context)
-        if start_result.get("status") == "error":
-            start_result["message"] = (
-                f"Restart failed during start phase: {start_result.get('message')}"
-            )
-            return start_result
-
-        logger.info(f"API: Server '{server_name}' restarted successfully.")
-        return {
-            "status": "success",
-            "message": f"Server '{server_name}' restarted successfully.",
-        }
-
-    except BSMError as e:
-        logger.error(
-            f"API: Failed to restart server '{server_name}': {e}", exc_info=True
+        return RestartServerResponse(
+            server_name=server_name,
+            outcome="restarted" if was_running else "started",
+            message=(
+                f"Server '{server_name}' restarted successfully."
+                if was_running
+                else f"Server '{server_name}' was not running and has been started."
+            ),
         )
-        return {"status": "error", "message": f"Restart failed: {e}"}
-    except Exception as e:
-        logger.error(
-            f"API: Unexpected error during restart for '{server_name}': {e}",
-            exc_info=True,
-        )
-        return {"status": "error", "message": f"Unexpected error during restart: {e}"}
 
 
 @api_method("send_command")
@@ -546,309 +358,129 @@ async def restart_server(  # noqa: C901
     identity_keys=("server_name", "command"),
 )
 async def send_command(
-    server_name: str, command: str, app_context: AppContext
-) -> Dict[str, str]:
-    """Sends a command to a running Bedrock server.
-
-    The command is checked against a blacklist (defined by
-    :const:`~bedrock_server_manager.config.blocked_commands.API_COMMAND_BLACKLIST`)
-    before being sent via
-    :meth:`~.core.bedrock_server.BedrockServer.send_command`.
-    Triggers ``before_command_send`` and ``after_command_send`` plugin events.
-
-    Args:
-        server_name (str): The name of the server to send the command to.
-        command (str): The command string to send (e.g., "list", "say Hello").
-            Cannot be empty.
-
-    Returns:
-        Dict[str, str]: On successful command submission, returns a dictionary:
-        ``{"status": "success", "message": "Command '<command>' sent successfully."}``.
-        If an error occurs, an exception is raised instead of returning an error dictionary.
-
-    Raises:
-        InvalidServerNameError: If `server_name` is not provided.
-        MissingArgumentError: If `command` is empty.
-        BlockedCommandError: If the command is in the API blacklist.
-        ServerNotRunningError: If the target server is not running.
-        SendCommandError: For underlying issues during command transmission (e.g., pipe errors).
-        ServerError: For other unexpected errors during the operation.
-    """
-    if not server_name:
-        raise InvalidServerNameError("Server name cannot be empty.")
+    request: SendCommandRequest, *, app_context: AppContext
+) -> SendCommandResponse:
+    """Sends a command to a running Bedrock server."""
+    server_name = request.server_name
+    command = request.command
     if not command or not command.strip():
         raise MissingArgumentError("Command cannot be empty.")
-
     command_clean = command.strip()
-
-    logger.info(
-        f"API: Attempting to send command to server '{server_name}': '{command_clean}'"
-    )
+    logger.debug("Sending command to server '%s'.", server_name)
     try:
-        # Check command against the configured blacklist.
         blacklist = API_COMMAND_BLACKLIST or []
         command_check = command_clean.lower().lstrip("/")
         for blocked_cmd_prefix in blacklist:
             if isinstance(blocked_cmd_prefix, str) and command_check.startswith(
                 blocked_cmd_prefix.lower()
             ):
-                error_msg = f"Command '{command_clean}' is blocked by configuration."
-                logger.warning(
-                    f"API: Blocked command attempt for '{server_name}': {error_msg}"
-                )
+                error_msg = "Command is blocked by configuration."
                 raise BlockedCommandError(error_msg)
-
         server = app_context.get_server(server_name)
         await server.send_command(command_clean)
-
-        logger.info(
-            f"API: Command '{command_clean}' sent successfully to server '{server_name}'."
+        logger.debug("Command delivered to server '%s'.", server_name)
+        return SendCommandResponse(
+            server_name=server_name,
+            status="success",
+            message=f"Command '{command_clean}' sent successfully.",
         )
-        return {
-            "status": "success",
-            "message": f"Command '{command_clean}' sent successfully.",
-        }
-
+    except BlockedCommandError:
+        logger.warning("Blocked command attempt for server '%s'.", server_name)
+        raise
     except BSMError as e:
-        logger.error(
-            f"API: Failed to send command to server '{server_name}': {e}", exc_info=True
+        log_operation_error(
+            logger, "Failed to send command to server '%s': %s", server_name, e, error=e
         )
-        # Re-raise to allow higher-level handlers to catch specific BSM errors.
         raise
     except Exception as e:
-        logger.error(
-            f"API: Unexpected error sending command to '{server_name}': {e}",
-            exc_info=True,
+        log_operation_error(
+            logger,
+            "Unexpected error sending command to '%s': %s",
+            server_name,
+            e,
+            error=e,
         )
-        # Wrap unexpected errors in a generic ServerError.
         raise ServerError(f"Unexpected error sending command: {e}") from e
 
 
+@validate_contract
 @trigger_event(
     before="before_delete_server_data",
     after="after_delete_server_data",
     identity_keys=("server_name",),
 )
 async def delete_server_data(
-    server_name: str,
-    app_context: AppContext,
-    stop_if_running: bool = True,
-) -> Dict[str, str]:
-    """Deletes all data associated with a Bedrock server.
-
-    .. danger::
-        This is a **HIGHLY DESTRUCTIVE** and irreversible operation.
-
-    It calls :meth:`~.core.bedrock_server.BedrockServer.delete_all_data`, which
-    removes:
-    - The server's main installation directory.
-    - The server's JSON configuration subdirectory.
-    - The server's entire backup directory.
-    - The server's PID file.
-
-    Triggers ``before_delete_server_data`` and ``after_delete_server_data`` plugin events.
-
-    Args:
-        server_name (str): The name of the server to delete.
-        stop_if_running (bool, optional): If ``True`` (default), the server will be
-            stopped using :func:`~.stop_server` before its data is deleted.
-            If ``False`` and the server is running, the operation will likely
-            fail due to file locks or other conflicts.
-
-    Returns:
-        Dict[str, str]: A dictionary with the operation status and a message.
-        On success: ``{"status": "success", "message": "All data for server... deleted successfully."}``
-        On error: ``{"status": "error", "message": "<error_message>"}``
-
-    Raises:
-        InvalidServerNameError: If `server_name` is not provided.
-        ServerStopError: If `stop_if_running` is ``True`` and the server fails to stop.
-        FileOperationError: If deleting one or more essential directories or files fails.
-        BSMError: For other application-specific errors.
-    """
-    if not server_name:
-        raise InvalidServerNameError("Server name cannot be empty.")
-
-    server = app_context.get_server(server_name)
-
+    request: DeleteServerDataRequest, *, app_context: AppContext
+) -> DeleteServerDataResponse:
+    """Delete all data associated with a Bedrock server."""
+    server_name = request.server_name
+    stop_if_running = request.stop_if_running
+    server = app_context.get_server(server_name, require_installation=False)
     try:
         await server.operation_lock.acquire(timeout=300)
     except TimeoutError:
         logger.warning(
-            f"An operation for '{server_name}' is already in progress. Skipping server deletion."
+            "An operation for '%s' is already in progress. Skipping server deletion.",
+            server_name,
         )
-        return {
-            "status": "skipped",
-            "message": "A server operation is already in progress.",
-        }
-
+        return DeleteServerDataResponse(
+            status="skipped",
+            server_name=server_name,
+            message="A server operation is already in progress.",
+        )
     try:
-        # High-visibility warning for a destructive operation.
-        logger.warning(
-            f"API: !!! Initiating deletion of ALL data for server '{server_name}'. Stop if running: {stop_if_running} !!!"
-        )
-
-        # Stop the server first if requested and it's running.
-        if stop_if_running and await server.is_running():
-            logger.info(
-                f"API: Server '{server_name}' is running. Stopping before deletion..."
-            )
-
-            stop_result = await stop_server(server_name, app_context=app_context)
-            if stop_result.get("status") == "error":
-                error_msg = f"Failed to stop server '{server_name}' before deletion: {stop_result.get('message')}. Deletion aborted."
-                logger.error(error_msg)
-                return {"status": "error", "message": error_msg}
-
-            logger.info(f"API: Server '{server_name}' stopped.")
-
         logger.debug(
-            f"API: Proceeding with deletion of data for server '{server_name}'..."
+            "Deleting all data for server '%s' (stop_if_running=%s).",
+            server_name,
+            stop_if_running,
         )
-        await server.delete_all_data()
-
-        # Remove the server from the AppContext cache
+        if not stop_if_running and await server.is_running():
+            raise ServerRunningError(
+                f"Server '{server_name}' must be stopped before deletion."
+            )
+        if stop_if_running and await server.is_running():
+            logger.debug(
+                "Server '%s' is running. Stopping before deletion...", server_name
+            )
+            await stop_server(
+                StopServerRequest(server_name=server_name), app_context=app_context
+            )
+            logger.debug("Server '%s' stopped.", server_name)
+        logger.debug("Proceeding with deletion of data for server '%s'...", server_name)
+        await delete_all_data(server)
         await app_context.remove_server(server_name)
-
-        logger.info(f"API: Successfully deleted all data for server '{server_name}'.")
-        return {
-            "status": "success",
-            "message": f"All data for server '{server_name}' deleted successfully.",
-        }
-
+        logger.debug("Successfully deleted all data for server '%s'.", server_name)
+        return DeleteServerDataResponse(
+            status="success",
+            server_name=server_name,
+            message=f"All data for server '{server_name}' deleted successfully.",
+        )
     except BSMError as e:
-        logger.error(
-            f"API: Failed to delete server data for '{server_name}': {e}", exc_info=True
+        log_operation_error(
+            logger, "Failed to delete server data for '%s': %s", server_name, e, error=e
         )
-        return {"status": "error", "message": f"Failed to delete server data: {e}"}
+        raise
     except Exception as e:
-        logger.error(
-            f"API: Unexpected error deleting server data for '{server_name}': {e}",
-            exc_info=True,
+        log_operation_error(
+            logger,
+            "Unexpected error deleting server data for '%s': %s",
+            server_name,
+            e,
+            error=e,
         )
-        return {
-            "status": "error",
-            "message": f"Unexpected error deleting server data: {e}",
-        }
+        raise
     finally:
         server.operation_lock.release()
 
 
-@api_method("server_lifecycle_manager")
-@asynccontextmanager
-async def server_lifecycle_manager(
-    server_name: str,
-    stop_before: bool,
-    app_context: AppContext,
-    start_after: bool = True,
-    restart_on_success_only: bool = False,
-):
-    """A context manager to safely stop and restart a server for an operation."""
-    server = app_context.get_server(server_name)
-    was_running = False
-    operation_succeeded = True
-
-    # If the operation doesn't require a server stop, just yield and exit.
-    if not stop_before:
-        logger.debug(
-            f"Context Mgr: Stop/Start not flagged for '{server_name}'. Skipping."
-        )
-        yield
-        return
-
-    try:
-        # --- PRE-OPERATION: STOP SERVER ---
-
-        if await server.is_running():
-            was_running = True
-            logger.info(f"Context Mgr: Server '{server_name}' is running. Stopping...")
-            stop_result = await stop_server(server_name, app_context=app_context)
-            if stop_result.get("status") == "error":
-                error_msg = f"Failed to stop server '{server_name}': {stop_result.get('message')}. Aborted."
-                logger.error(error_msg)
-                # Do not proceed if the server can't be stopped.
-                raise ServerStopError(error_msg)
-            logger.info(f"Context Mgr: Server '{server_name}' stopped.")
-        else:
-            logger.debug(
-                f"Context Mgr: Server '{server_name}' is not running. No stop needed."
-            )
-
-        # Yield control to the wrapped code block.
-        yield
-
-    except Exception:
-        # If an error occurs in the `with` block, record it and re-raise.
-        operation_succeeded = False
-        logger.error(
-            f"Context Mgr: Exception occurred during managed operation for '{server_name}'.",
-            exc_info=True,
-        )
-        raise
-    finally:
-        # --- POST-OPERATION: RESTART SERVER ---
-        # Only restart if the server was running initially and `start_after` is true.
-        if was_running and start_after:
-            should_restart = True
-            # If `restart_on_success_only` is set, check if the operation failed.
-            if restart_on_success_only and not operation_succeeded:
-                should_restart = False
-                logger.warning(
-                    f"Context Mgr: Operation for '{server_name}' failed. Skipping restart as requested."
-                )
-
-            if should_restart:
-                logger.info(f"Context Mgr: Restarting server '{server_name}'...")
-                try:
-                    # Use the API function to ensure detached mode and proper handling.
-                    start_result = await start_server(
-                        str(server_name), app_context=app_context
-                    )
-                    if start_result.get("status") == "error":
-                        raise ServerStartError(
-                            f"Failed to restart '{server_name}': {start_result.get('message')}"
-                        )
-                    logger.info(
-                        f"Context Mgr: Server '{server_name}' restart initiated."
-                    )
-                except BSMError as e:
-                    logger.error(
-                        f"Context Mgr: FAILED to restart '{server_name}': {e}",
-                        exc_info=True,
-                    )
-                    # If the original operation succeeded, the failure to restart
-                    # becomes the primary error to report.
-                    if operation_succeeded:
-                        raise
-
-
 @api_method("set_server_status", expose_to_plugins=False)
-@trigger_event(
-    before="before_server_status_change",
-    after="after_server_status_change",
-    identity_keys=("server_name", "status"),
-)
 async def set_server_status(
-    server_name: str, status: str, app_context: "AppContext"
-) -> Dict[str, Any]:
+    request: SetServerStatusRequest, *, app_context: AppContext
+) -> SetServerStatusResponse:
     """Internal API to set server status and trigger events."""
-    server = app_context.get_server(server_name)
-    previous_status = await server.get_status_from_config()
-
-    await server._manage_json_config(
-        key="server_info.status", operation="write", value=status
-    )
-    server.logger.info(
-        f"Status in JSON config for '{server.server_name}' set to '{status}'."
-    )
-
-    return {
-        "status": "success",
-        "message": f"Server status set to {status}.",
-        "server_name": server_name,
-        "previous_status": previous_status,
-        "new_status": status,
-    }
+    server = app_context.get_server(request.server_name)
+    result = await server.configuration.set_status(request.status, app_context.events)
+    return SetServerStatusResponse.model_validate(result.model_dump())
 
 
 @api_method("update_server_player_stats", expose_to_plugins=False)
@@ -856,12 +488,30 @@ async def set_server_status(
     before="before_server_players_change", after="after_server_players_change"
 )
 async def update_server_player_stats(
-    server_name: str, player_count: int, players: list, app_context: "AppContext"
-) -> Dict[str, Any]:
+    request: UpdateServerPlayerStatsRequest, *, app_context: AppContext
+) -> UpdateServerPlayerStatsResponse:
     """Internal API to trigger player stat updates for websockets/plugins."""
-    return {
-        "status": "success",
-        "server_name": server_name,
-        "player_count": player_count,
-        "players": players,
-    }
+    server_name = request.server_name
+    player_count = request.player_count
+    players = request.model_dump(mode="python")["players"]
+    app_context.state.runtime.update_server_runtime(
+        server_name, players=players, players_online=player_count
+    )
+    return UpdateServerPlayerStatsResponse.model_validate(
+        {
+            "status": "success",
+            "server_name": server_name,
+            "player_count": player_count,
+            "players": players,
+        }
+    )
+
+
+@api_method("get_valid_server_names")
+async def get_valid_server_names(
+    request: GetValidServerNamesRequest, *, app_context: AppContext
+) -> GetValidServerNamesResponse:
+    """Return current registered server names without sampling processes."""
+    return GetValidServerNamesResponse(
+        server_names=app_context.get_valid_server_names()
+    )

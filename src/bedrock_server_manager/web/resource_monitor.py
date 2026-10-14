@@ -1,7 +1,14 @@
 # bedrock_server_manager/web/resource_monitor.py
 import asyncio
 import logging
-from typing import Any
+from typing import TYPE_CHECKING, Callable
+
+from ..logging import RepeatedFailureReporter
+from ..state_revision import revision_clock
+from .websocket_manager import ConnectionManager
+
+if TYPE_CHECKING:
+    from ..core.bedrock_server import BedrockServer
 
 logger = logging.getLogger(__name__)
 
@@ -14,19 +21,20 @@ class ResourceMonitor:
 
     def __init__(
         self,
-        connection_manager: Any,
-        server_provider: Any = None,
+        connection_manager: ConnectionManager,
+        server_provider: Callable[[str], "BedrockServer"] | None = None,
+        interval_provider: Callable[[], float] | None = None,
     ):
-        """
-        Initializes the ResourceMonitor with explicit dependencies.
+        """Initialize the ResourceMonitor with explicit dependencies.
 
-        Args:
-            connection_manager: The WebSocket connection manager.
-            server_provider: Optional callable returning a BedrockServer instance by name.
+        :param connection_manager: The WebSocket connection manager.
+        :param server_provider: Optional callable returning a BedrockServer instance by name.
         """
         self.connection_manager = connection_manager
         self.server_provider = server_provider
+        self.interval_provider = interval_provider or (lambda: 3.0)
         self._task: asyncio.Task | None = None
+        self._failures = RepeatedFailureReporter(logger)
 
     async def _monitor_loop(self):
         """
@@ -48,6 +56,7 @@ class ResourceMonitor:
                         if server_name and callable(self.server_provider):
                             server = self.server_provider(server_name)
                             if server:
+                                revision = revision_clock.capture()
                                 process_info = await server.get_process_info()
                                 message = {
                                     "type": "resource_update",
@@ -55,25 +64,38 @@ class ResourceMonitor:
                                     "data": {
                                         "status": "success",
                                         "process_info": process_info,
+                                        **revision,
                                     },
                                 }
                                 await connection_manager.broadcast_to_topic(
                                     topic, message
                                 )
+                self._failures.recover("resource monitoring")
             except Exception as e:
-                logger.error(f"Error in resource monitor loop: {e}", exc_info=True)
+                self._failures.report(
+                    "resource monitoring",
+                    "Resource updates unavailable (%s): %s; retrying.",
+                    e,
+                )
 
-            await asyncio.sleep(2)  # Broadcast every 2 seconds
+            await asyncio.sleep(self.interval_provider())
 
     def start(self):
-        """Starts the background monitoring task."""
+        """Start the background monitoring task."""
         if self._task is None or self._task.done():
             self._task = asyncio.create_task(self._monitor_loop())
-            logger.info("Resource monitor background task started.")
+            logger.debug("Resource monitor background task started.")
 
     def stop(self):
-        """Stops the background monitoring task."""
+        """Stop the background monitoring task."""
         if self._task and not self._task.done():
             self._task.cancel()
             self._task = None
-            logger.info("Resource monitor background task stopped.")
+            logger.debug("Resource monitor background task stopped.")
+
+    async def shutdown(self) -> None:
+        """Cancel and await the monitor before releasing its dependencies."""
+        task = self._task
+        self.stop()
+        if task is not None:
+            await asyncio.gather(task, return_exceptions=True)

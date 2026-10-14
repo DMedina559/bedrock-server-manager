@@ -1,0 +1,112 @@
+import json
+import os
+
+import pytest
+
+from bedrock_server_manager.error import FileOperationError
+
+
+async def test_get_formatted_permissions(real_bedrock_server, app_context):
+    """Test retrieving formatted permissions including names from a map."""
+    server = real_bedrock_server
+    permissions_path = server.paths.permissions_json_path
+
+    perm_data = [
+        {"permission": "operator", "xuid": "12345"},
+        {"permission": "member", "xuid": "67890"},
+    ]
+
+    with open(permissions_path, "w") as f:
+        json.dump(perm_data, f)
+
+    await app_context.storage.save_players([{"xuid": "12345", "name": "player1"}])
+    formatted = await server.permissions.get_formatted_permissions(app_context.storage)
+
+    assert len(formatted) == 2
+    # Sort order: 'p' comes before 'u' (player1 vs Unknown)
+    assert formatted[0]["xuid"] == "12345"
+    assert formatted[0]["permission_level"] == "operator"
+    assert formatted[0]["name"] == "player1"
+
+    assert formatted[1]["xuid"] == "67890"
+    assert formatted[1]["permission_level"] == "member"
+    assert formatted[1]["name"] == "Unknown (XUID: 67890)"
+
+
+async def test_set_player_permission_new_player(real_bedrock_server):
+    """Test setting permission for a new player."""
+    server = real_bedrock_server
+    await server.permissions.set_player_permission("12345", "operator", "player1")
+
+    permissions_path = server.paths.permissions_json_path
+    with open(permissions_path, "r") as f:
+        data = json.load(f)
+        assert len(data) == 1
+        assert data[0] == {"permission": "operator", "xuid": "12345", "name": "player1"}
+
+
+async def test_set_player_permission_update_existing(real_bedrock_server):
+    """Test updating permission for an existing player."""
+    server = real_bedrock_server
+    permissions_path = server.paths.permissions_json_path
+    perm_data = [{"permission": "member", "xuid": "12345", "name": "existing"}]
+    with open(permissions_path, "w") as f:
+        json.dump(perm_data, f)
+
+    await server.permissions.set_player_permission("12345", "operator")
+
+    with open(permissions_path, "r") as f:
+        data = json.load(f)
+        assert len(data) == 1
+        assert data[0]["permission"] == "operator"
+        assert data[0]["xuid"] == "12345"
+
+
+async def test_set_player_permission_visitor(real_bedrock_server):
+    """Test setting permission to visitor updates them in the list."""
+    server = real_bedrock_server
+    permissions_path = server.paths.permissions_json_path
+    perm_data = [{"permission": "operator", "xuid": "12345"}]
+    with open(permissions_path, "w") as f:
+        json.dump(perm_data, f)
+
+    await server.permissions.set_player_permission("12345", "visitor")
+
+    with open(permissions_path, "r") as f:
+        data = json.load(f)
+        assert len(data) == 1
+        assert data[0]["permission"] == "visitor"
+
+
+async def test_set_player_permission_unwritable_file(real_bedrock_server):
+    """Test setting permission fails gracefully if file is unwritable."""
+    server = real_bedrock_server
+    permissions_path = server.paths.permissions_json_path
+    with open(permissions_path, "w") as f:
+        f.write("[]")
+
+    os.chmod(permissions_path, 0o444)
+    os.chmod(os.path.dirname(permissions_path), 0o555)
+    try:
+        with pytest.raises(FileOperationError, match="Failed to write permissions"):
+            await server.permissions.set_player_permission("12345", "operator")
+    finally:
+        os.chmod(os.path.dirname(permissions_path), 0o755)
+        os.chmod(permissions_path, 0o644)
+
+
+@pytest.mark.parametrize(
+    "content", ["{}", "null", "false", "{broken", '[{"unexpected": "value"}]']
+)
+async def test_malformed_configuration_is_preserved(real_bedrock_server, content):
+    from pathlib import Path
+
+    from bedrock_server_manager.error import ConfigParseError
+
+    server = real_bedrock_server
+    path = Path(server.paths.permissions_json_path)
+    path.write_text(content, encoding="utf-8")
+    before = path.read_bytes()
+    with pytest.raises(ConfigParseError):
+        await server.permissions.set_player_permission("123", "operator", "Alex")
+    assert path.read_bytes() == before

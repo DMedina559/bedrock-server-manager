@@ -5,13 +5,10 @@
 :width: 200px
 :align: center
 ```
----
 
----
 
 ```{changelog}
 :changelog-url: https://bedrock-server-manager.readthedocs.io/en/latest/changelog.html
 :github: https://github.com/DMedina559/bedrock-server-manager/releases/
 :pypi: https://pypi.org/project/bedrock-server-manager/
 ```
----

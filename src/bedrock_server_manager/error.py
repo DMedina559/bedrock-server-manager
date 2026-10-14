@@ -2,11 +2,13 @@
 """Custom exception hierarchy for the bedrock_server_manager package.
 
 Key Principles:
-    - A single base exception, `BSMError`, for all application errors.
+    - A single base exception, ``BSMError``, for all application errors.
     - A clear hierarchy with logical categories (e.g., FileError, ServerError).
     - Inheritance from standard Python exceptions (e.g., ValueError, FileNotFoundError)
       to allow for flexible and standard exception handling.
 """
+
+from pydantic import BaseModel
 
 # --- Base Exception ---
 
@@ -18,6 +20,10 @@ class BSMError(Exception):
 
 
 # --- Primary Exception Categories ---
+
+
+class APICancelledError(BSMError):
+    """An API operation was canceled by a plugin before execution."""
 
 
 class FileError(BSMError):
@@ -57,21 +63,32 @@ class NetworkError(BSMError):
 
 
 class UserInputError(BSMError, ValueError):
-    """
-    Base for errors caused by invalid user input.
-    Inherits from `ValueError` for broader compatibility.
+    """Base for errors caused by invalid user input. Inherits from ``ValueError`` for
+    broader compatibility.
     """
 
     pass
 
 
 class UserExitError(KeyboardInterrupt):
-    """
-    Raised for graceful exits initiated by the user (e.g., answering 'no' to a prompt).
-    Inherits from `KeyboardInterrupt` so it's not caught by a broad `except Exception`.
+    """Raised for graceful exits initiated by the user (e.g., answering 'no' to a
+    prompt). Inherits from ``KeyboardInterrupt`` so it's not caught by a broad
+    ``except Exception``.
     """
 
     pass
+
+
+class ResourceNotFoundError(BSMError, LookupError):
+    """A requested domain resource does not exist."""
+
+
+class OperationConflictError(BSMError):
+    """An operation conflicts with the current domain state."""
+
+
+class DependencyUnavailableError(BSMError):
+    """A required dependency could not be reached or inspected."""
 
 
 # --- Specific Exceptions by Category ---
@@ -79,9 +96,8 @@ class UserExitError(KeyboardInterrupt):
 
 # File and Directory Errors
 class AppFileNotFoundError(FileError, FileNotFoundError):
-    """
-    Raised when an essential application file or directory is not found.
-    Inherits from `FileNotFoundError` for standard exception handling.
+    """Raised when an essential application file or directory is not found. Inherits from
+    ``FileNotFoundError`` for standard exception handling.
     """
 
     def __init__(self, path: str, description: str = "Required file or directory"):
@@ -114,6 +130,14 @@ class BackupRestoreError(FileOperationError):
     pass
 
 
+class IncompleteOperationError(BSMError):
+    """An aggregate operation failed, preserving validated component results."""
+
+    def __init__(self, message: str, result: BaseModel):
+        super().__init__(message)
+        self.result = result
+
+
 # Server Process and Communication Errors
 class ServerProcessError(ServerError):
     """Base for errors in starting, stopping, or checking the server process."""
@@ -139,6 +163,10 @@ class ServerNotRunningError(ServerProcessError):
     pass
 
 
+class ServerRunningError(ServerProcessError):
+    """Raised when an operation requires the server to be stopped."""
+
+
 class SendCommandError(ServerError):
     """Raised when sending a command to the server console fails."""
 
@@ -147,9 +175,8 @@ class SendCommandError(ServerError):
 
 # Configuration Errors
 class ConfigParseError(ConfigurationError, ValueError):
-    """
-    Raised when a configuration file is malformed or contains invalid values.
-    Inherits from `ValueError` for standard exception handling.
+    """Raised when a configuration file is malformed or contains invalid values. Inherits
+    from ``ValueError`` for standard exception handling.
     """
 
     pass
@@ -163,9 +190,8 @@ class BlockedCommandError(ConfigParseError):
 
 # System and Environment Errors
 class PermissionsError(SystemError, PermissionError):
-    """
-    Raised for OS-level file or directory permission errors.
-    Inherits from `PermissionError` for standard exception handling.
+    """Raised for OS-level file or directory permission errors. Inherits from
+    ``PermissionError`` for standard exception handling.
     """
 
     pass
@@ -198,3 +224,7 @@ class InvalidServerNameError(UserInputError):
     """Raised when a provided server name is invalid or contains illegal characters."""
 
     pass
+
+
+class APIResponseValidationError(RuntimeError):
+    """An operation produced invalid output; this is not bad caller input."""

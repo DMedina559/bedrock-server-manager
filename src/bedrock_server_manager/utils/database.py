@@ -30,7 +30,7 @@ def default_serializer(obj: Any) -> str:
 
 
 async def get_current_db_revision(engine: Optional[AsyncEngine]) -> Optional[str]:
-    """Retrieves the current Alembic revision from the database asynchronously."""
+    """Return the current Alembic revision from the database asynchronously."""
     if not engine:
         return None
 

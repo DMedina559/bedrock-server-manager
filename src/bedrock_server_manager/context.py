@@ -1,14 +1,15 @@
 # src/bedrock_server_manager/context.py
-"""
-Defines the central application context.
-"""
+"""Define the central application context."""
 
 from __future__ import annotations
 
-from logging import Logger
+import asyncio
+from logging import Logger, getLogger
 from typing import TYPE_CHECKING, Any, Dict, Optional
 
 from sqlalchemy import inspect, select
+
+from .services.lifecycle import LifecyclePhase, is_application_ready, run_stage
 
 if TYPE_CHECKING:
     from asyncio import AbstractEventLoop
@@ -18,11 +19,19 @@ if TYPE_CHECKING:
     from .core.bedrock_server import BedrockServer
     from .db.database import Database
     from .db.storage import Storage
+    from .diagnostics.service import Diagnostics
+    from .events import EventBus
     from .plugins.api_bridge import AppAPI
     from .plugins.plugin_manager import PluginManager
+    from .services.metrics_service import MetricsService
+    from .services.plugin_service import PluginService
+    from .services.server_service import ServerService
+    from .services.settings_service import SettingsService
+    from .services.user_service import UserService
     from .state.app_state import AppState
     from .web.log_streamer import LogStreamer
     from .web.resource_monitor import ResourceMonitor
+    from .web.runtime import WebRuntime
     from .web.tasks import TaskManager
     from .web.websocket_manager import ConnectionManager
 
@@ -40,9 +49,7 @@ class AppContext:
         log_level: Optional[str] = None,
         logger: Optional[Logger] = None,
     ):
-        """
-        Initializes the AppContext.
-        """
+        """Initialize the AppContext."""
 
         self._config_dir: Optional[str] = config_dir
         self._data_dir: Optional[str] = data_dir
@@ -58,32 +65,73 @@ class AppContext:
         self._plugin_manager: Optional["PluginManager"] = None
         self._task_manager: Optional["TaskManager"] = None
         self._connection_manager: Optional["ConnectionManager"] = None
+        self._metrics_service: Optional["MetricsService"] = None
         self._resource_monitor: Optional["ResourceMonitor"] = None
         self._log_streamer: Optional["LogStreamer"] = None
         self._api: Optional["AppAPI"] = None
+        self._events: EventBus | None = None
+        self._diagnostics: Diagnostics | None = None
+        self._web_runtime: WebRuntime | None = None
 
         self.loop: Optional["AbstractEventLoop"] = None
-        self._web_server: Optional[Any] = None
+        self._shutdown_task: asyncio.Task[None] | None = None
+        self.lifecycle_phase = LifecyclePhase.STOPPED
+        self._startup_task: asyncio.Task[None] | None = None
+        self._started_components: set[str] | None = None
+        self._startup_failed = False
+        self._lifecycle_tasks: set[asyncio.Task] = set()
 
         self._servers: Dict[str, "BedrockServer"] = {}
         self.splash_txt: Optional[str] = None
         self._needs_setup: Optional[bool] = None
 
         self._pre_app_config_cache: Optional[Dict[str, Any]] = None
-        self._settings_service: Optional[Any] = None
-        self._server_service: Optional[Any] = None
-        self._plugin_service: Optional[Any] = None
-        self._user_service: Optional[Any] = None
+        self._settings_service: Optional["SettingsService"] = None
+        self._server_service: Optional["ServerService"] = None
+        self._plugin_service: Optional["PluginService"] = None
+        self._user_service: Optional["UserService"] = None
 
     async def load(self):
-        """
-        Loads the application context by initializing the settings, AppState, and Storage.
+        """Load the application context by initializing the settings, AppState, and
+        Storage.
         """
         from . import api  # noqa: F401
         from .config.settings import Settings
         from .db.storage import Storage
         from .state.app_state import AppState
 
+        if self.lifecycle_phase in {
+            LifecyclePhase.STARTING,
+            LifecyclePhase.READY,
+            LifecyclePhase.STOPPING,
+        }:
+            raise RuntimeError("Cannot reload context while its runtime is active.")
+        if any(not task.done() for task in self._lifecycle_tasks):
+            raise RuntimeError("Cannot reload while lifecycle work is still running.")
+        if self._diagnostics is not None and self._diagnostics.has_pending_providers:
+            raise RuntimeError(
+                "Cannot reload while diagnostic providers are still running."
+            )
+        if self._shutdown_task is not None:
+            for name in (
+                "_task_manager",
+                "_plugin_manager",
+                "_bedrock_process_manager",
+                "_metrics_service",
+                "_resource_monitor",
+                "_log_streamer",
+                "_connection_manager",
+                "_events",
+                "_api",
+                "_diagnostics",
+            ):
+                setattr(self, name, None)
+            self._servers.clear()
+            self._shutdown_task = None
+            self._startup_task = None
+            self._started_components = None
+            self._startup_failed = False
+            self.lifecycle_phase = LifecyclePhase.STOPPED
         self.db.initialize()
 
         self._storage = Storage(db=self.db, data_dir=self.data_dir)
@@ -103,6 +151,13 @@ class AppContext:
                 app_context=self,
             )
         await self._settings.load()
+
+        from .diagnostics.composition import configure_diagnostics
+
+        if self._diagnostics is not None:
+            await self._diagnostics.close()
+        self._diagnostics = configure_diagnostics(self)
+        self._storage.diagnostics = self._diagnostics
 
         from .utils import get_utils
 
@@ -129,11 +184,11 @@ class AppContext:
             await self._plugin_manager.reload()
 
         if self._resource_monitor is not None:
-            self._resource_monitor.stop()
+            await self._resource_monitor.shutdown()
             self._resource_monitor.start()
 
         if self._log_streamer is not None:
-            self._log_streamer.stop()
+            await self._log_streamer.shutdown()
             self._log_streamer.start()
 
     async def flush(self):
@@ -143,32 +198,190 @@ class AppContext:
         if self._storage and self._state:
             await self._storage.flush(self._state)
 
-    async def shutdown(self):
-        """
-        Shuts down application context components and flushes pending state to storage.
-        """
-        if self._bedrock_process_manager is not None:
-            await self._bedrock_process_manager.shutdown()
+    async def startup(self) -> None:
+        """Start runtime dependencies once; roll back partial startup on failure."""
+        if self.lifecycle_phase == LifecyclePhase.READY:
+            return
+        if (
+            self._shutdown_task is not None
+            or self.lifecycle_phase == LifecyclePhase.FAILED
+        ):
+            raise RuntimeError("Reload the context before restarting its runtime.")
+        if self._startup_task is None:
+            self._startup_task = asyncio.create_task(
+                self._startup_components(), name="application-startup"
+            )
+        await self._startup_task
 
-        if self._plugin_manager is not None:
-            await self._plugin_manager.shutdown()
+    async def _startup_components(self) -> None:
+        self.loop = asyncio.get_running_loop()
+        self.lifecycle_phase = LifecyclePhase.STARTING
+        if self._diagnostics is not None:
+            self._diagnostics.start()
+        self._started_components = set()
+        timeout = self.settings.get("lifecycle.startup_timeout_seconds", 30.0)
+        grace = self.settings.get("lifecycle.cancellation_grace_seconds", 2.0)
+
+        async def startup_hooks() -> None:
+            import os
+
+            from .config.const import GUARD_VARIABLE
+
+            if not os.environ.get(GUARD_VARIABLE):
+                await self.events.emit("on_manager_startup", public=False)
+
+        steps = (
+            ("plugins", lambda: self.plugin_manager.load_plugins()),
+            ("servers", lambda: self.bedrock_process_manager.start()),
+            (
+                "server discovery",
+                lambda: self.api.application.update_server_statuses(request={}),
+            ),
+            ("resources", lambda: self.resource_monitor.start()),
+            ("metrics", lambda: self.metrics_service.start()),
+            ("metrics readiness", lambda: self.metrics_service.snapshot()),
+            (
+                "startup hooks",
+                startup_hooks,
+            ),
+            ("plugin tasks", lambda: self.plugin_manager.start_plugin_tasks()),
+            ("logs", lambda: self.log_streamer.start()),
+        )
+        try:
+            for name, action in steps:
+                self._started_components.add(name)
+                await run_stage(
+                    f"start {name}",
+                    action,
+                    timeout,
+                    grace,
+                    owned_tasks=self._lifecycle_tasks,
+                    diagnostics=self._diagnostics,
+                )
+            self.lifecycle_phase = LifecyclePhase.READY
+            getLogger(__name__).info("Application runtime ready.")
+        except BaseException as error:
+            self._startup_failed = True
+            try:
+                await self.shutdown()
+            except BaseException as cleanup_error:
+                error.add_note(f"Startup rollback also failed: {cleanup_error}")
+                getLogger(__name__).error("Startup rollback failed.", exc_info=True)
+            self.lifecycle_phase = LifecyclePhase.FAILED
+            raise
+
+    async def shutdown(self) -> None:
+        """Finish cleanup before propagating cancellation to the caller."""
+        startup = self._startup_task
+        if (
+            startup is not None
+            and not startup.done()
+            and startup is not asyncio.current_task()
+        ):
+            startup.cancel()
+            await asyncio.wait(
+                {startup},
+                timeout=self.settings.get("lifecycle.shutdown_timeout_seconds", 15.0),
+            )
+            if startup.done() and not startup.cancelled():
+                startup.exception()
+        task = self._shutdown_task
+        if task is asyncio.current_task():
+            raise RuntimeError(
+                "Application cleanup cannot recursively shut down itself."
+            )
+        if task is None:
+            task = asyncio.create_task(
+                self._shutdown_components(), name="application-shutdown"
+            )
+            self._shutdown_task = task
+        cancelled = False
+        while not task.done():
+            try:
+                await asyncio.shield(task)
+            except asyncio.CancelledError:
+                cancelled = True
+        task.result()
+        if cancelled:
+            raise asyncio.CancelledError
+
+    async def _shutdown_components(self) -> None:
+        """Quiesce producers, drain operations, and persist state before disposal."""
+        errors: list[Exception] = []
+        self.lifecycle_phase = LifecyclePhase.STOPPING
+        getLogger(__name__).info("Application runtime stopping.")
+        timeout = self.settings.get("lifecycle.shutdown_timeout_seconds", 15.0)
+        grace = self.settings.get("lifecycle.cancellation_grace_seconds", 2.0)
+        started = self._started_components
+
+        async def stop(name: str, action: Any, deadline: float = timeout) -> None:
+            try:
+                await run_stage(
+                    name,
+                    action,
+                    deadline,
+                    grace,
+                    owned_tasks=self._lifecycle_tasks,
+                    diagnostics=self._diagnostics if name != "close database" else None,
+                )
+            except (Exception, asyncio.CancelledError) as error:
+                failure = (
+                    error
+                    if isinstance(error, Exception)
+                    else RuntimeError(f"{name} cancelled")
+                )
+                errors.append(failure)
 
         if self._task_manager is not None:
-            await self._task_manager.shutdown()
-
-        if self._resource_monitor is not None:
-            self._resource_monitor.stop()
-
-        if self._log_streamer is not None:
-            self._log_streamer.stop()
-
+            self._task_manager.begin_shutdown()
+        # Observers release process and websocket dependencies before teardown.
+        for name, component in (
+            ("metrics", self._metrics_service),
+            ("resources", self._resource_monitor),
+            ("logs", self._log_streamer),
+        ):
+            if component is not None and (started is None or name in started):
+                await stop(f"stop {name}", component.shutdown)
+        if self._bedrock_process_manager is not None and (
+            started is None or "servers" in started
+        ):
+            await stop("quiesce servers", self._bedrock_process_manager.quiesce)
+        if self._plugin_manager is not None and (
+            started is None or "plugins" in started
+        ):
+            await stop("quiesce plugins", self._plugin_manager.quiesce)
+        if self._task_manager is not None:
+            await stop(
+                "drain operations",
+                self._task_manager.shutdown,
+                self.settings.get("lifecycle.task_drain_timeout_seconds", 30.0),
+            )
+        # Server stop hooks still have their plugins and transports available.
+        if self._bedrock_process_manager is not None and (
+            started is None or "servers" in started
+        ):
+            await stop("stop servers", self._bedrock_process_manager.shutdown)
+        if self._plugin_manager is not None and (
+            started is None or "plugins" in started
+        ):
+            await stop("unload plugins", self._plugin_manager.shutdown)
+        if self._events is not None:
+            await stop("drain events", self._events.close)
         if self._connection_manager is not None:
-            await self._connection_manager.shutdown()
-
-        await self.flush()
-
+            await stop("close websockets", self._connection_manager.shutdown)
+        await stop("flush state", self.flush)
+        if self._diagnostics is not None:
+            await self._diagnostics.close()
         if self._db is not None:
-            await self._db.shutdown()
+            await stop("close database", self._db.shutdown)
+        self.lifecycle_phase = (
+            LifecyclePhase.FAILED
+            if errors or self._startup_failed
+            else LifecyclePhase.STOPPED
+        )
+        if errors:
+            raise ExceptionGroup("Application shutdown failed", errors)
+        getLogger(__name__).info("Application runtime stopped.")
 
     @property
     def pre_app_config(self) -> Dict[str, Any]:
@@ -183,17 +396,7 @@ class AppContext:
         return self._pre_app_config_cache
 
     def get_pre_app_config(self, key: str, default: Any = None) -> Any:
-        """
-        Retrieves a single value from the cached pre-application configuration.
-        Supports dot notation for nested keys (e.g., 'web.cors_origins').
-
-        Args:
-            key (str): The key of the value to retrieve.
-            default (Any, optional): The default value to return if the key is not found.
-
-        Returns:
-            Any: The configuration value or the default.
-        """
+        """Read a dotted key from cached bootstrap configuration or return its default."""
         keys = key.split(".")
         value = self.pre_app_config
         for k in keys:
@@ -242,8 +445,7 @@ class AppContext:
             self._log_dir = os.path.join(self.config_dir, "logs")
         return self._log_dir
 
-    @property
-    def needs_setup(self) -> bool:
+    async def check_setup(self) -> bool:
         """
         bool: Indicates whether the application requires initial setup.
 
@@ -257,7 +459,6 @@ class AppContext:
             return True
 
         from .db.models import User
-        from .utils.general import run_async
 
         async def _check():
             if not self.db.engine:
@@ -279,12 +480,25 @@ class AppContext:
                 return await conn.run_sync(_sync_inspect_and_query)
 
         try:
-            needs = bool(run_async(_check()))
+            needs = bool(await _check())
             if not needs:
                 self._needs_setup = False
             return needs
-        except Exception:
-            return True
+        except Exception as error:
+            from .error import DependencyUnavailableError
+
+            raise DependencyUnavailableError(
+                "Setup status could not be determined."
+            ) from error
+
+    @property
+    def needs_setup(self) -> bool:
+        """Synchronous CLI adapter; async consumers use check_setup()."""
+        if self._needs_setup is False:
+            return False
+        from .utils.general import run_async
+
+        return bool(run_async(self.check_setup()))
 
     @property
     def api(self) -> "AppAPI":
@@ -310,9 +524,7 @@ class AppContext:
 
     @property
     def state(self) -> "AppState":
-        """
-        Returns the AppState instance.
-        """
+        """Return the AppState instance."""
         if self._state is None:
             from .error import BSMError
 
@@ -322,10 +534,33 @@ class AppContext:
         return self._state
 
     @property
+    def diagnostics(self) -> "Diagnostics":
+        """Return diagnostics after application configuration has loaded."""
+        if self._diagnostics is None:
+            raise RuntimeError("Diagnostics require a loaded application context")
+        return self._diagnostics
+
+    @property
+    def is_ready(self) -> bool:
+        """Observe readiness using loaded state and existing runtimes only."""
+        return is_application_ready(
+            self.lifecycle_phase,
+            state_loaded=self.state_loaded,
+            web_phase=(
+                self._web_runtime.snapshot().phase
+                if self._web_runtime is not None
+                else None
+            ),
+        )
+
+    @property
+    def state_loaded(self) -> bool:
+        """Whether the persistent state has been loaded into this context."""
+        return self._state is not None and self._storage is not None
+
+    @property
     def storage(self) -> "Storage":
-        """
-        Returns the Storage instance.
-        """
+        """Return the Storage instance."""
         if self._storage is None:
             from .error import BSMError
 
@@ -336,9 +571,7 @@ class AppContext:
 
     @property
     def settings(self) -> "Settings":
-        """
-        Returns the Settings instance.
-        """
+        """Return the Settings instance."""
         if self._settings is None:
             from .config.settings import Settings
 
@@ -350,18 +583,53 @@ class AppContext:
         return self._settings
 
     @property
+    def events(self) -> EventBus:
+        """Application-owned events remain available without plugins or HTTP."""
+        if self._events is None:
+            from .events import EventBus, EventOptions
+
+            options = (
+                self.settings.get("events", {}) if self._settings is not None else {}
+            )
+            from .state_revision import revision_clock
+
+            self._events = EventBus(
+                EventOptions.model_validate(options),
+                revision_provider=revision_clock.capture,
+            )
+            if self._diagnostics is not None:
+                self._events.diagnostic_recorder = self._diagnostics.record_event
+        return self._events
+
+    @property
     def plugin_manager(self) -> "PluginManager":
         """
         Lazily loads and returns the PluginManager instance.
         """
         if self._plugin_manager is None:
+            from .plugins.api_bridge import create_app_api
             from .plugins.plugin_manager import PluginManager
 
             self._plugin_manager = PluginManager(
                 state=self.state,
                 storage=self.storage,
                 settings=self.settings,
-                app_context=self,
+                events=self.events,
+                api_factory=lambda name: create_app_api(name, self),
+                settings_models=self.plugin_service.settings_models,
+                task_manager_provider=lambda: self._task_manager,
+                connection_manager_provider=lambda: self._connection_manager,
+                diagnostic_cleanup=lambda owner: self.diagnostics.remove_owner(
+                    f"plugin:{owner}"
+                ),
+                diagnostic_failure=(
+                    self._diagnostics.record_plugin_failure
+                    if self._diagnostics
+                    else None
+                ),
+                diagnostic_pending=lambda owner: self.diagnostics.owner_pending(
+                    f"plugin:{owner}"
+                ),
             )
         return self._plugin_manager
 
@@ -375,6 +643,7 @@ class AppContext:
 
             self._task_manager = TaskManager(
                 connection_manager=self.connection_manager,
+                diagnostics=self._diagnostics,
             )
         return self._task_manager
 
@@ -386,8 +655,27 @@ class AppContext:
         if self._connection_manager is None:
             from .web.websocket_manager import ConnectionManager
 
-            self._connection_manager = ConnectionManager()
+            self._connection_manager = ConnectionManager(
+                user_provider=self.state.users.get,
+                outbound_queue_limit=self.settings.get("web.outbound_queue_limit", 64),
+                record_failure=(
+                    self._diagnostics.record_transport_failure
+                    if self._diagnostics
+                    else None
+                ),
+            )
+            from .events.websocket import attach_websocket_observer
+
+            attach_websocket_observer(self.events, self._connection_manager)
         return self._connection_manager
+
+    @property
+    def metrics_service(self) -> "MetricsService":
+        if self._metrics_service is None:
+            from .services.metrics_service import MetricsService
+
+            self._metrics_service = MetricsService(self)
+        return self._metrics_service
 
     @property
     def resource_monitor(self) -> "ResourceMonitor":
@@ -400,6 +688,9 @@ class AppContext:
             self._resource_monitor = ResourceMonitor(
                 connection_manager=self.connection_manager,
                 server_provider=self.get_server,
+                interval_provider=lambda: float(
+                    self.settings.get("monitoring.bedrock_metrics_interval_sec", 3)
+                ),
             )
         return self._resource_monitor
 
@@ -423,46 +714,62 @@ class AppContext:
         self._log_streamer = value
 
     @property
-    def settings_service(self):
-        """Returns the SettingsService instance."""
+    def settings_service(self) -> "SettingsService":
+        """Return the SettingsService instance."""
         if self._settings_service is None:
             from .services.settings_service import SettingsService
 
             self._settings_service = SettingsService(
-                state=self._state, storage=self._storage, settings=self.settings
+                state=self.state,
+                storage=self.storage,
+                settings=self.settings,
+                plugin_service=self.plugin_service,
             )
         return self._settings_service
 
     @property
-    def server_service(self):
-        """Returns the ServerService instance."""
+    def server_service(self) -> "ServerService":
+        """Return the ServerService instance."""
         if self._server_service is None:
             from .services.server_service import ServerService
 
-            self._server_service = ServerService(
-                state=self._state, storage=self._storage
-            )
+            self._server_service = ServerService(state=self.state, storage=self.storage)
         return self._server_service
 
     @property
-    def plugin_service(self):
-        """Returns the PluginService instance."""
+    def plugin_service(self) -> "PluginService":
+        """Return the PluginService instance."""
         if self._plugin_service is None:
             from .services.plugin_service import PluginService
 
-            self._plugin_service = PluginService(
-                state=self._state, storage=self._storage
-            )
+            self._plugin_service = PluginService(state=self.state, storage=self.storage)
         return self._plugin_service
 
     @property
-    def user_service(self):
-        """Returns the UserService instance."""
+    def user_service(self) -> "UserService":
+        """Return the UserService instance."""
         if self._user_service is None:
             from .services.user_service import UserService
 
-            self._user_service = UserService(state=self._state, storage=self._storage)
+            self._user_service = UserService(
+                state=self.state,
+                storage=self.storage,
+                revoke_connections=self._revoke_user_connections,
+            )
         return self._user_service
+
+    async def _revoke_user_connections(self, username: str) -> None:
+        if self._connection_manager is not None:
+            await self._connection_manager.revoke_user(username)
+
+    async def _stop_monitored_server(self, server_name: str) -> None:
+        await self.api.server.stop({"server_name": server_name})
+
+    async def _get_monitored_bans(self, server_name: str):
+        from .state.models import BanItem
+
+        response = await self.api.ban.get_server_bans({"server_name": server_name})
+        return [BanItem.model_validate(item.model_dump()) for item in response.bans]
 
     @property
     def bedrock_process_manager(self) -> "BedrockProcessManager":
@@ -476,19 +783,75 @@ class AppContext:
                 settings=self.settings,
                 storage=self.storage,
                 server_provider=self.get_server,
-                api=self.api,
+                events=self.events,
+                stop_server=self._stop_monitored_server,
+                get_bans=self._get_monitored_bans,
+                record_failure=(
+                    self._diagnostics.record_monitor_failure
+                    if self._diagnostics is not None
+                    else None
+                ),
             )
         return self._bedrock_process_manager
 
-    def get_server(self, server_name: str) -> "BedrockServer":
+    def get_server(
+        self, server_name: str, *, require_installation: bool = True
+    ) -> "BedrockServer":
+        """Retrieve a registered server, rejecting invalid and unknown names."""
+        from .error import ResourceNotFoundError
+        from .utils.server import core_validate_server_name_format
+
+        core_validate_server_name_format(server_name)
+        if self.state.servers.get(server_name) is None:
+            raise ResourceNotFoundError(f"Unknown server '{server_name}'.")
+        if not require_installation:
+            return self.prepare_server(server_name)
+        # Recheck files even for cached handles, since an installation can disappear.
+        import os
+
+        from .error import AppFileNotFoundError
+
+        server = self._servers.get(server_name)
+        if server is None:
+            import platform
+
+            from .core.server.paths import ServerPaths
+
+            paths = ServerPaths(
+                server_name,
+                self.settings.get("paths.servers"),
+                self.settings.config_dir,
+                platform.system(),
+            )
+        else:
+            paths = server.paths
+        for path, label in (
+            (paths.bedrock_executable_path, "Server executable"),
+            (paths.server_properties_path, "Server properties file"),
+        ):
+            if not os.path.isfile(path):
+                raise AppFileNotFoundError(path, label)
+        return self.prepare_server(server_name)
+
+    def get_valid_server_names(self) -> list[str]:
+        """Registered installations with an executable and server.properties."""
+        from .server_validation import valid_server_names
+
+        return valid_server_names(self.state)
+
+    def prepare_server(self, server_name: str) -> "BedrockServer":
         """
-        Retrieve or create a BedrockServer instance.
+        Create a server handle for installation or disk discovery.
         """
         from .core.bedrock_server import BedrockServer
+        from .utils.server import core_validate_server_name_format
+
+        core_validate_server_name_format(server_name)
 
         if server_name not in self._servers:
             self._servers[server_name] = BedrockServer(
                 server_name=server_name,
+                events=self.events,
                 settings=self.settings,
                 state=self._state,
                 storage=self._storage,
@@ -496,8 +859,8 @@ class AppContext:
         return self._servers[server_name]
 
     async def remove_server(self, server_name: str):
-        """
-        Stops a server, removes it from the process manager, and discards it from the context cache.
+        """Stop a server, removes it from the process manager, and discards it from the
+        context cache.
         """
         # 1. Get the server instance from the cache.
         if server_name in self._servers:

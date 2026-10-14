@@ -1,55 +1,24 @@
-# Default Plugins
+# Bundled plugins
 
-Bedrock Server Manager comes with a set of default plugins that handle many standard lifecycle automation tasks. Most of these plugins are enabled by default, but you can disable them individually if desired, or even override them with custom plugins.
+BSM ships plugins for common automation and content tools. Check the plugin management view for enabled state and settings; optional policies should match your installation's needs.
 
-## Lifecycle Automation
+| Plugin | Behavior |
+|---|---|
+| Autostart | Starts servers configured for autostart during application startup |
+| Backup on start | Backs up supported server data before starting; its complete-backup policy can cancel startup on failure |
+| Update before start | Checks updates for servers configured for autoupdate |
+| Server lifecycle notifications | Warns connected players before server maintenance; configured delays affect operation duration |
+| World operation notifications | Announces supported world operations |
+| Auto reload configuration | Sends supported Bedrock reload commands after access-file changes |
+| Content uploader | Adds upload tools for supported content archives |
+| Download page | Adds downloads for supported content and backup files |
 
-These plugins automate server actions based on events like startup or shutdown.
+## Review automation before maintenance
 
-### Autostart Servers
-*   **Purpose**: Automatically starts servers that have the `autostart: true` setting enabled in their Service Configuration.
-*   **Trigger**: Application startup (when the BSM Web Server itself starts).
-*   **Key Behavior**: Iterates through all configured servers and boots them up if the flag is set.
+Backup-on-start and update-before-start run as hooks. Inspect their settings and logs to understand what happens before a start operation. A successful start does not by itself prove every optional backup succeeded.
 
-### Backup on Start
-*   **Purpose**: Ensures a safety backup exists before a server session begins.
-*   **Trigger**: On bedrock server start (`before_server_start`).
-*   **Key Behavior**: Performs a full backup of the server data. If the backup fails, the plugin logs a warning but allows the server to start (to prevent downtime loops).
+Notification delays are part of the operation's timeline, not the game process's termination policy. Configure lifecycle and service deadlines to allow intentional delays and cleanup.
 
-### Update Before Start
-*   **Purpose**: Checks for Bedrock Dedicated Server updates automatically.
-*   **Trigger**: On bedrock server start (`before_server_start`).
-*   **Key Behavior**: If `autoupdate: true` is set for the server, it checks Mojang's servers for a new version. If found, it updates the server binary before launching.
+Content tools add plugin-owned routes and interface components. Their availability follows plugin state. Use the [manual content library](../extras/install_content.md) if upload tools are unavailable.
 
-## Notifications & Safety
-
-These plugins provide feedback to players and ensure smoother operations.
-
-### Server Lifecycle Notifications
-*   **Purpose**: Warns players about impending server events.
-*   **Trigger**: Before major bedrock server events (`before_server_stop`, `before_delete_server_data`, `before_server_update`).
-*   **Key Behavior**:
-    *   **Shutdown**: Sends a "Server is stopping in X seconds..." message to the in-game chat and waits (default 10s) before killing the process.
-    *   **Delete**: Sends a critical warning if data is about to be erased.
-
-### World Operation Notifications
-*   **Purpose**: Warns players about major world changes.
-*   **Trigger**: Before major world operations (`before_world_export`, `before_world_import`, `before_world_reset`).
-*   **Key Behavior**: Sends chat messages like "World import starting... Current world will be replaced."
-
-### Auto Reload Config
-*   **Purpose**: Hot-reloads configuration files.
-*   **Trigger**: After configuration file changes (`after_allowlist_change`, `after_permission_change`).
-*   **Key Behavior**: If you modify the Allowlist or Permissions via the Web Server while the server is running, this plugin automatically sends the `allowlist reload` or `permission reload` command to the server console, so changes take effect instantly.
-
-## Content Tools
-
-### Content Uploader
-*   **Purpose**: Provides a web interface for uploading `.mcworld`, `.mcpack`, and `.mcaddon` files.
-*   **Access**: Adds a new route `/content/upload`.
-*   **Key Behavior**: Accepts file uploads and places them in the configured imports directory (`content/worlds` or `content/addons`), making them available for installation via the Content Management page.
-
-### Download Page
-*   **Purpose**: Provides a web interface for downloading BSM content like worlds, addons, and backups.
-*  **Access**: Adds a new entry in the web dashboard, and additional route `/api/download_page/download` to handle file downloads.
-*  **Key Behavior**: Lists available content/backup files and allows users to download them directly from the web interface, which is especially useful for remote server management.
+See [plugin management](../plugins/introduction.md) for installation/reload and [plugin development](../developer/plugins/introduction.md) for hook contracts.

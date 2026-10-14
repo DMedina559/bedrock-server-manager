@@ -5,15 +5,33 @@ Plugin to automatically back up a server before it starts.
 
 from typing import Any
 
-from bedrock_server_manager import PluginBase, app_event
+from pydantic import BaseModel, ConfigDict, Field
+
+from bedrock_server_manager import ExistingServerName, PluginBase, app_event
+from bedrock_server_manager.logging import log_operation_error
+
+
+class PluginSettings(BaseModel):
+    model_config = ConfigDict(extra="forbid", strict=True)
+    servers: list[ExistingServerName] = Field(
+        default_factory=list,
+        description="Servers to back up before starting. Leave empty to include all servers.",
+    )
+    require_complete_backup: bool = Field(
+        default=False, description="Cancel server start if the backup cannot complete."
+    )
+    enable_backup_on_start: bool = Field(
+        default=True, description="Back up this server before starting it."
+    )
 
 
 class AutoBackupOnStart(PluginBase):
+    """Performs a full backup of a server each time a start command is initiated. This
+    plugin hooks into the ``before_server_start`` event to ensure a recent backup
+    exists before the server goes online.
     """
-    Performs a full backup of a server each time a start command is initiated.
-    This plugin hooks into the `before_server_start` event to ensure a recent
-    backup exists before the server goes online.
-    """
+
+    settings_model = PluginSettings
 
     version = "1.2.0"
     description = "Performs a full backup of a server each time a start command is initiated. This plugin hooks into the `before_server_start` event."
@@ -23,7 +41,7 @@ class AutoBackupOnStart(PluginBase):
     @app_event("on_load")
     async def plugin_loaded(self):
         """Logs a message when the plugin is loaded."""
-        self.logger.info(
+        self.logger.debug(
             "Plugin loaded. Will perform a full backup before any server starts."
         )
 
@@ -33,36 +51,54 @@ class AutoBackupOnStart(PluginBase):
         Triggers a full backup of the server before it starts.
         """
         if not await self.get_plugin_setting("enable_backup_on_start", default=True):
-            self.logger.info("Backup on start is disabled in plugin settings.")
+            self.logger.debug("Backup on start is disabled in plugin settings.")
             return
 
         server_name = kwargs.get("server_name")
         if not server_name:
             return
+        selected = await self.get_plugin_setting("servers", default=[])
+        if selected and server_name not in selected:
+            return
 
-        self.logger.info(f"Performing pre-start backup for server '{server_name}'...")
+        self.logger.info("Performing pre-start backup for server '%s'...", server_name)
 
         try:
             # The server is guaranteed to be offline at this point, so it is safe
             # to run a backup without stopping it first.
 
-            result = await self.api.backup_all(server_name=server_name)
+            result = await self.api.backup_restore.backup_all(
+                request={"server_name": server_name}
+            )
 
-            if result.get("status") == "success":
+            if result.status == "success":
                 self.logger.info(
-                    f"Pre-start backup for '{server_name}' completed successfully."
+                    "Pre-start backup for '%s' completed successfully.", server_name
                 )
             else:
-                # The backup operation itself reported an error (e.g., file permissions).
-                error_message = result.get("message", "Unknown backup error")
+                event = kwargs.get("event")
+                if event is not None and await self.get_plugin_setting(
+                    "require_complete_backup", default=False
+                ):
+                    event.cancel("Pre-start backup did not complete.")
+                # Partial and skipped work are explicit operation outcomes.
+                error_message = result.message
                 self.logger.warning(
-                    f"Pre-start backup for '{server_name}' failed: {error_message}"
+                    "Pre-start backup for '%s' failed: %s", server_name, error_message
                 )
 
         except Exception as e:
-            # A more serious error where the API call itself failed.
+            event = kwargs.get("event")
+            if event is not None and await self.get_plugin_setting(
+                "require_complete_backup", default=False
+            ):
+                event.cancel("Pre-start backup failed.")
+            # Keep optional backup failures isolated from server startup.
             # This ensures the plugin does not crash the main application.
-            self.logger.error(
-                f"An unexpected error occurred during pre-start backup for '{server_name}': {e}",
-                exc_info=True,
+            log_operation_error(
+                self.logger,
+                "An unexpected error occurred during pre-start backup for '%s': %s",
+                server_name,
+                e,
+                error=e,
             )

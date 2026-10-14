@@ -1,10 +1,18 @@
 import logging
-from typing import Any, Dict, List
 
 from ..context import AppContext
-from ..error import BSMError, FileOperationError, MissingArgumentError
+from ..error import BSMError, FileOperationError
+from ..events import trigger_event
+from ..logging import log_operation_error
 from ..plugins.api_bridge import api_method
-from ..plugins.event_trigger import trigger_event
+from .models.allowlist import (
+    AddToAllowlistRequest,
+    AddToAllowlistResponse,
+    GetAllowlistRequest,
+    GetAllowlistResponse,
+    RemoveFromAllowlistRequest,
+    RemoveFromAllowlistResponse,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -16,89 +24,66 @@ logger = logging.getLogger(__name__)
     identity_keys=("server_name",),
 )
 async def add_to_allowlist(
-    server_name: str,
-    new_players_data: List[Dict[str, Any]],
-    app_context: AppContext,
-) -> Dict[str, Any]:
-    """Adds a list of players to the server's allowlist.
-
-    Args:
-        server_name (str): The name of the server.
-        new_players_data (List[Dict[str, Any]]): List of player dictionaries (with 'name' and 'xuid').
-        app_context (AppContext): The application context.
-
-    Returns:
-        Dict[str, Any]: Status dictionary containing success or error message.
-    """
-    if not server_name:
-        raise MissingArgumentError("Server name cannot be empty.")
-    if not isinstance(new_players_data, list):
-        return {
-            "status": "error",
-            "message": "Invalid input: new_players_data must be a list.",
-        }
-
+    request: AddToAllowlistRequest, *, app_context: AppContext
+) -> AddToAllowlistResponse:
+    """Adds a list of players to the server's allowlist."""
+    server_name = request.server_name
+    new_players_data = request.model_dump(mode="python")["new_players_data"]
     logger.info(
-        f"API: Adding {len(new_players_data)} player(s) to allowlist for '{server_name}'."
+        "Adding %s player(s) to allowlist for '%s'.", len(new_players_data), server_name
     )
     try:
         server = app_context.get_server(server_name)
-        added_count = await server.add_to_allowlist(new_players_data)
-
-        return {
-            "status": "success",
-            "message": f"Successfully added {added_count} new players to the allowlist.",
-            "added_count": added_count,
-        }
-
+        added_count = await server.allowlist.add_to_allowlist(new_players_data)
+        return AddToAllowlistResponse.model_validate(
+            {
+                "status": "success",
+                "message": f"Successfully added {added_count} new players to the allowlist.",
+                "added_count": added_count,
+            }
+        )
     except (FileOperationError, TypeError) as e:
-        logger.error(
-            f"API: Failed to update allowlist for '{server_name}': {e}", exc_info=True
+        log_operation_error(
+            logger, "Failed to update allowlist for '%s': %s", server_name, e, error=e
         )
-        return {"status": "error", "message": f"Failed to update allowlist: {e}"}
+        raise
     except Exception as e:
-        logger.error(
-            f"API: Unexpected error updating allowlist for '{server_name}': {e}",
-            exc_info=True,
+        log_operation_error(
+            logger,
+            "Unexpected error updating allowlist for '%s': %s",
+            server_name,
+            e,
+            error=e,
         )
-        return {
-            "status": "error",
-            "message": f"Unexpected error updating allowlist: {e}",
-        }
+        raise
 
 
 @api_method("get_allowlist")
-async def get_allowlist(server_name: str, app_context: AppContext) -> Dict[str, Any]:
-    """Retrieves the current allowlist for a given server.
-
-    Args:
-        server_name (str): The name of the server.
-        app_context (AppContext): The application context.
-
-    Returns:
-        Dict[str, Any]: A dictionary containing the list of players on the allowlist.
-    """
-    if not server_name:
-        raise MissingArgumentError("Server name cannot be empty.")
-
+async def get_allowlist(
+    request: GetAllowlistRequest, *, app_context: AppContext
+) -> GetAllowlistResponse:
+    """Return the current allowlist for a given server."""
+    server_name = request.server_name
     try:
         server = app_context.get_server(server_name)
-        players = await server.get_allowlist()
-        return {"status": "success", "players": players}
+        players = await server.allowlist.get_allowlist()
+        return GetAllowlistResponse.model_validate(
+            {"status": "success", "players": players}
+        )
     except BSMError as e:
-        logger.error(
-            f"API: Failed to access allowlist for '{server_name}': {e}", exc_info=True
+        log_operation_error(
+            logger, "Failed to access allowlist for '%s': %s", server_name, e, error=e
         )
-        return {"status": "error", "message": f"Failed to access allowlist: {e}"}
+        raise
     except Exception as e:
-        logger.error(
-            f"API: Unexpected error reading allowlist for '{server_name}': {e}",
-            exc_info=True,
+        log_operation_error(
+            logger,
+            "Unexpected error reading allowlist for '%s': %s",
+            server_name,
+            e,
+            error=e,
         )
-        return {
-            "status": "error",
-            "message": f"Unexpected error reading allowlist: {e}",
-        }
+        raise
 
 
 @api_method("remove_from_allowlist")
@@ -108,59 +93,49 @@ async def get_allowlist(server_name: str, app_context: AppContext) -> Dict[str, 
     identity_keys=("server_name",),
 )
 async def remove_from_allowlist(
-    server_name: str,
-    player_names: List[str],
-    app_context: AppContext,
-) -> Dict[str, Any]:
-    """Removes a list of players from the server's allowlist.
-
-    Args:
-        server_name (str): The name of the server.
-        player_names (List[str]): List of player names to remove.
-        app_context (AppContext): The application context.
-
-    Returns:
-        Dict[str, Any]: Status dictionary containing success or error message,
-        and details of removed vs not_found players.
-    """
-    if not server_name:
-        raise MissingArgumentError("Server name cannot be empty.")
-
+    request: RemoveFromAllowlistRequest, *, app_context: AppContext
+) -> RemoveFromAllowlistResponse:
+    """Remove a list of players from the server's allowlist."""
+    server_name = request.server_name
+    player_names = request.player_names
     try:
         if not player_names:
-            return {
-                "status": "success",
-                "message": "No players specified for removal.",
-                "details": {"removed": [], "not_found": []},
-            }
-
+            return RemoveFromAllowlistResponse.model_validate(
+                {
+                    "status": "success",
+                    "message": "No players specified for removal.",
+                    "details": {"removed": [], "not_found": []},
+                }
+            )
         server = app_context.get_server(server_name)
-        removed_players, not_found_players = [], []
-
+        removed_players, not_found_players = ([], [])
         for player in player_names:
-            if await server.remove_from_allowlist(player):
+            if await server.allowlist.remove_from_allowlist(player):
                 removed_players.append(player)
             else:
                 not_found_players.append(player)
-
-        return {
-            "status": "success",
-            "message": "Allowlist update process completed.",
-            "details": {"removed": removed_players, "not_found": not_found_players},
-        }
-
+        return RemoveFromAllowlistResponse.model_validate(
+            {
+                "status": "success",
+                "message": "Allowlist update process completed.",
+                "details": {"removed": removed_players, "not_found": not_found_players},
+            }
+        )
     except BSMError as e:
-        logger.error(
-            f"API: Failed to remove players from allowlist for '{server_name}': {e}",
-            exc_info=True,
+        log_operation_error(
+            logger,
+            "Failed to remove players from allowlist for '%s': %s",
+            server_name,
+            e,
+            error=e,
         )
-        return {
-            "status": "error",
-            "message": f"Failed to process allowlist removal: {e}",
-        }
+        raise
     except Exception as e:
-        logger.error(
-            f"API: Unexpected error removing players for '{server_name}': {e}",
-            exc_info=True,
+        log_operation_error(
+            logger,
+            "Unexpected error removing players for '%s': %s",
+            server_name,
+            e,
+            error=e,
         )
-        return {"status": "error", "message": f"Unexpected error: {e}"}
+        raise

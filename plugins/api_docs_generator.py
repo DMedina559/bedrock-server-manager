@@ -1,11 +1,13 @@
-import ast
-import datetime
 import inspect
+import json
 import os
-from typing import Any, Dict, List
+from types import UnionType
+from typing import Annotated, Any, Dict, List, Literal, Union, get_args, get_origin
 
-import bedrock_server_manager
-from bedrock_server_manager import PluginBase, __version__, app_event
+from bedrock_server_manager import PluginBase, app_event
+from bedrock_server_manager.events import server as status_events  # noqa: F401
+from bedrock_server_manager.events.registry import builtin_events
+from bedrock_server_manager.plugins.api_types import API_METHODS
 
 
 class APIDocsGenerator(PluginBase):
@@ -21,7 +23,7 @@ class APIDocsGenerator(PluginBase):
 
     @app_event("on_load")
     async def plugin_loaded(self):
-        self.logger.info(
+        self.logger.debug(
             "API Docs Generator plugin loaded. Will generate docs on manager startup."
         )
 
@@ -38,8 +40,11 @@ class APIDocsGenerator(PluginBase):
             # --- API Docs ---
             api_list = self.api.list_available_apis()
             api_markdown_content = self._format_api_markdown(api_list)
-            backup_dir = await self.api.get_global_setting("paths.backups")
-            backup_dir = backup_dir.get("value")
+            backup_dir = (
+                await self.api.settings.get_global_setting({"key": "paths.backups"})
+            ).value
+            if not isinstance(backup_dir, str):
+                raise ValueError("Backup path must be a string")
 
             api_output_path = os.path.join(backup_dir, "PLUGIN_API_REFERENCE.md")
 
@@ -49,7 +54,7 @@ class APIDocsGenerator(PluginBase):
 
             write_api_file()
             self.logger.info(
-                f"Successfully generated API documentation at: {api_output_path}"
+                "Successfully generated API documentation at: %s", api_output_path
             )
 
             # --- Event Docs ---
@@ -63,168 +68,94 @@ class APIDocsGenerator(PluginBase):
 
             write_event_file()
             self.logger.info(
-                f"Successfully generated Event documentation at: {event_output_path}"
+                "Successfully generated Event documentation at: %s", event_output_path
             )
 
         except Exception as e:
-            self.logger.error(f"Failed to generate documentation: {e}", exc_info=True)
+            self.logger.error("Failed to generate documentation: %s", e, exc_info=True)
 
     def _scan_codebase_for_events(self) -> List[Dict[str, Any]]:
-        """
-        Scans the bedrock_server_manager source code statically to find
-        all @trigger_event usages and extract their documentation.
-        """
-        events_info = []
-
-        # Get the root path of the bedrock_server_manager package
-        base_dir = os.path.dirname(bedrock_server_manager.__file__)
-
-        for root, _, files in os.walk(base_dir):
-            for file in files:
-                if file.endswith(".py"):
-                    filepath = os.path.join(root, file)
-                    try:
-                        with open(filepath, "r", encoding="utf-8") as f:
-                            source = f.read()
-
-                        # Quick string check to avoid parsing AST for files without the decorator
-                        if "trigger_event" not in source:
-                            continue
-
-                        tree = ast.parse(source)
-
-                        for node in ast.walk(tree):
-                            if isinstance(
-                                node, (ast.FunctionDef, ast.AsyncFunctionDef)
-                            ):
-                                for decorator in node.decorator_list:
-                                    if (
-                                        isinstance(decorator, ast.Call)
-                                        and isinstance(decorator.func, ast.Name)
-                                        and decorator.func.id == "trigger_event"
-                                    ):
-                                        before_name = None
-                                        after_name = None
-                                        identity_keys = []
-
-                                        for kw in decorator.keywords:
-                                            if kw.arg == "before" and isinstance(
-                                                kw.value, ast.Constant
-                                            ):
-                                                before_name = kw.value.value
-                                            elif kw.arg == "after" and isinstance(
-                                                kw.value, ast.Constant
-                                            ):
-                                                after_name = kw.value.value
-                                            elif (
-                                                kw.arg == "identity_keys"
-                                                and isinstance(
-                                                    kw.value, (ast.Tuple, ast.List)
-                                                )
-                                            ):
-                                                identity_keys = [
-                                                    elt.value
-                                                    for elt in kw.value.elts
-                                                    if isinstance(elt, ast.Constant)
-                                                ]
-
-                                        docstring = (
-                                            ast.get_docstring(node) or "No description."
-                                        )
-                                        first_line_doc = docstring.split("\n")[0]
-
-                                        # Extract function parameters from AST
-                                        params = []
-
-                                        # Handle positional args
-                                        for arg in node.args.args:
-                                            p_name = arg.arg
-                                            # Simple heuristic: if it's 'self' or 'cls', skip it.
-                                            # We also hide 'app_context' since plugins don't usually need it directly from kwargs.
-                                            if p_name in ("self", "cls", "app_context"):
-                                                continue
-
-                                            # Determine type if annotated
-                                            p_type = "Any"
-                                            if arg.annotation:
-                                                p_type = ast.unparse(arg.annotation)
-
-                                            params.append(
-                                                {
-                                                    "name": p_name,
-                                                    "type_obj": p_type,
-                                                }
-                                            )
-
-                                        # Note: Default values are trickier via static AST and we only need names/types for the docs.
-
-                                        if before_name:
-                                            events_info.append(
-                                                {
-                                                    "name": before_name,
-                                                    "type": "before",
-                                                    "cancellable": True,
-                                                    "docstring": f"Triggered before '{node.name}'. {first_line_doc}",
-                                                    "parameters": params,
-                                                    "identity_keys": identity_keys,
-                                                }
-                                            )
-
-                                        if after_name:
-                                            after_params = params.copy()
-                                            return_type = "Any"
-                                            if node.returns:
-                                                return_type = ast.unparse(node.returns)
-
-                                            after_params.append(
-                                                {
-                                                    "name": "result",
-                                                    "type_obj": return_type,
-                                                }
-                                            )
-                                            events_info.append(
-                                                {
-                                                    "name": after_name,
-                                                    "type": "after",
-                                                    "cancellable": False,
-                                                    "docstring": f"Triggered after '{node.name}'. {first_line_doc}",
-                                                    "parameters": after_params,
-                                                    "identity_keys": identity_keys,
-                                                }
-                                            )
-                    except Exception as e:
-                        self.logger.debug(f"Could not parse source for {filepath}: {e}")
-
-        # Deduplicate and sort
-        unique_events = {}
-        for event in events_info:
-            unique_events[event["name"]] = event
-
-        return sorted(list(unique_events.values()), key=lambda x: x["name"])
+        """Document the live core event contracts, including non-API emitters."""
+        events = []
+        for definition in builtin_events.catalog().events:
+            if definition.phase not in {"before", "after"}:
+                continue
+            parameters: dict[str, dict[str, Any]] = {}
+            occurrences: dict[str, int] = {}
+            models = builtin_events.payload_models(definition.name)
+            for model in models:
+                for name, field in model.model_fields.items():
+                    annotation = field.annotation
+                    type_name = (
+                        annotation.__name__ if isinstance(annotation, type) else None
+                    )
+                    if type_name is None:
+                        type_name = self._format_type_hint(annotation)
+                    occurrences[name] = occurrences.get(name, 0) + 1
+                    existing = parameters.get(name)
+                    if existing and type_name not in existing["type_obj"].split(" | "):
+                        type_name = existing["type_obj"] + " | " + type_name
+                    parameters[name] = {"name": name, "type_obj": type_name}
+            for name, parameter in parameters.items():
+                if occurrences[name] < len(models):
+                    parameter["optional"] = True
+            events.append(
+                {
+                    "name": definition.name,
+                    "type": definition.phase,
+                    "cancellable": definition.phase == "before",
+                    "docstring": definition.description,
+                    "parameters": list(parameters.values()),
+                    "identity_keys": definition.identity_keys,
+                }
+            )
+        return events
 
     def _format_type_hint(self, annotation: Any) -> str:
-        """
-        Cleans up the string representation of a type hint for display.
-        """
-        if annotation == inspect.Parameter.empty:
+        """Render logical types without version-dependent validation metadata."""
+        if annotation is inspect.Parameter.empty or annotation is Any:
             return "Any"
-
-        # Get the string representation
-        s = str(annotation)
-
-        # Clean up common Python cruft
-        s = s.replace("typing.", "")
-        s = s.replace("<class '", "").replace("'>", "")
-
-        return s
+        if annotation is None or annotation is type(None):
+            return "None"
+        if isinstance(annotation, list):
+            return (
+                "["
+                + ", ".join(self._format_type_hint(item) for item in annotation)
+                + "]"
+            )
+        origin = get_origin(annotation)
+        arguments = get_args(annotation)
+        if origin is Annotated:
+            return self._format_type_hint(arguments[0])
+        if origin in (Union, UnionType):
+            return " | ".join(self._format_type_hint(item) for item in arguments)
+        if origin is Literal:
+            return "Literal[" + ", ".join(repr(item) for item in arguments) + "]"
+        if origin is not None:
+            name = getattr(origin, "__name__", str(origin))
+            return (
+                name
+                + "["
+                + ", ".join(self._format_type_hint(item) for item in arguments)
+                + "]"
+            )
+        if annotation is Ellipsis:
+            return "..."
+        return (
+            str(annotation)
+            .replace("typing.", "")
+            .replace("<class '", "")
+            .replace("'>", "")
+        )
 
     def _format_api_markdown(self, api_list: list) -> str:
         """
         Takes the list of API details and converts it into a formatted Markdown string.
         """
         lines = [
-            f"> _This was auto-generated by the `api_docs_generator` plugin on {datetime.datetime.now(datetime.UTC).strftime('%Y-%m-%d %H:%M:%S UTC')}._",
-            f"> _Application Version: {__version__}_",
+            "# Available plugin APIs",
+            "",
+            "> _Generated from registered core contracts._",
             "\n---",
             "This list contains all functions available to plugins via the `self.api` object.",
             "For an updated list of available APIs, please download and run the [api_docs_generator](https://github.com/DMedina559/bedrock-server-manager/blob/main/plugins/api_docs_generator.py) plugin.",
@@ -237,6 +168,14 @@ class APIDocsGenerator(PluginBase):
         for api_func in sorted_api_list:
             name = api_func.get("name", "Unknown Function")
             domain = api_func.get("domain", "")
+            name = next(
+                (
+                    public
+                    for public, registered in API_METHODS.get(domain, {}).items()
+                    if registered == name
+                ),
+                name,
+            )
             docstring = api_func.get("docstring", "No description.")
             params = api_func.get("parameters", [])
             is_async = api_func.get("is_async", True)
@@ -266,6 +205,49 @@ class APIDocsGenerator(PluginBase):
             )
             lines.append(f"- **Description:** {docstring}\n")
 
+            if api_func.get("contract_version") == 2:
+                request_model = api_func["request_model"]
+                response_model = api_func["response_model"]
+                request_schema = api_func["request_schema"]
+                properties = request_schema.get("properties", {})
+                required = request_schema.get("required", [])
+                examples = {
+                    field: properties[field]["examples"][0]
+                    for field in required
+                    if properties.get(field, {}).get("examples")
+                }
+                payload_line = (
+                    f"payload = {examples!r}"
+                    if len(examples) == len(required)
+                    else "payload = {...}  # Supply required request fields below."
+                )
+                lines.append(f"- **Returns:** `{response_model}`\n")
+                lines.append(
+                    "Runtime context and plugin identity are injected by the bridge. "
+                    "Failures raise application exceptions; plugin cancellation raises "
+                    "`APICancelledError`.\n"
+                )
+                lines.append(
+                    f"```python\nfrom bedrock_server_manager.api.models import {request_model}\n"
+                    f"{payload_line}\n"
+                    f"request = {request_model}(**payload)\n"
+                    f"result = {signature_prefix}{full_name}(request)\n"
+                    'data = result.model_dump(mode="json")\n```'
+                )
+                for label, schema_key in (
+                    ("Request schema", "request_schema"),
+                    ("Response schema", "response_schema"),
+                    ("Transport error schema", "error_schema"),
+                ):
+                    schema = api_func.get(schema_key)
+                    if schema:
+                        lines.append(f"\n**{label}:**\n")
+                        lines.append(
+                            "```json\n"
+                            + json.dumps(schema, indent=2, sort_keys=True)
+                            + "\n```"
+                        )
+
             filtered_params = [p for p in params if p["name"] != "app_context"]
             if filtered_params:
                 lines.append("**Parameters:**\n")
@@ -281,15 +263,18 @@ class APIDocsGenerator(PluginBase):
 
             lines.append("\n---\n")
 
-        return "\n".join(lines)
+        if lines and lines[-1].strip() == "---":
+            lines.pop()
+        return "\n".join(lines).rstrip() + "\n"
 
     def _format_event_markdown(self, event_list: list) -> str:
         """
         Takes the list of Event details and converts it into a formatted Markdown string.
         """
         lines = [
-            f"> _This was auto-generated by the `api_docs_generator` plugin on {datetime.datetime.now(datetime.UTC).strftime('%Y-%m-%d %H:%M:%S UTC')}._",
-            f"> _Application Version: {__version__}_",
+            "# Available plugin events",
+            "",
+            "> _Generated from registered core contracts._",
             "\n---",
             "This list contains all core application events available to plugins.",
             'You can listen to these events using the `@app_event("event_name")` decorator.',
@@ -315,7 +300,11 @@ class APIDocsGenerator(PluginBase):
             lines.append("")
 
             lines.append("### Listener Signature:")
-            param_str = ", ".join([f"{p['name']}" for p in params])
+            param_str = ", ".join(
+                p["name"] + ("=None" if p.get("optional") else "") for p in params
+            )
+            if any(p.get("optional") for p in params):
+                param_str = "*, " + param_str
             if is_cancellable:
                 if param_str:
                     param_str += ", "
@@ -340,4 +329,6 @@ class APIDocsGenerator(PluginBase):
 
             lines.append("\n---\n")
 
-        return "\n".join(lines)
+        if lines and lines[-1].strip() == "---":
+            lines.pop()
+        return "\n".join(lines).rstrip() + "\n"

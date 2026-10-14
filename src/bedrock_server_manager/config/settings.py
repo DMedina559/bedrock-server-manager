@@ -1,24 +1,8 @@
 # bedrock_server_manager/config/settings.py
-"""Manages application-wide configuration settings.
-
-This module provides the `Settings` class, which is responsible for loading
-settings from a database, providing default values for missing keys, saving
-changes back to the database, and determining the appropriate application data and
-configuration directories based on the environment.
-
-The configuration is stored in a key-value format in the database. Settings are accessed
-programmatically using dot-notation (e.g., :meth:`Settings.get('paths.servers')`).
-
-Key components:
-
-    - :class:`Settings`: The main class for managing configuration.
-    - `settings`: A global instance of the :class:`Settings` class.
-
-"""
+"""Application settings backed by typed state and durable storage."""
 
 import collections.abc
 import logging
-import os
 from typing import TYPE_CHECKING, Any, Dict, Optional, cast
 
 if TYPE_CHECKING:
@@ -32,32 +16,9 @@ logger = logging.getLogger(__name__)
 def deep_merge(
     source: Dict[Any, Any] | collections.abc.Mapping, destination: Dict[Any, Any]
 ) -> Dict[Any, Any]:
-    """Recursively merges the ``source`` dictionary into the ``destination`` dictionary.
+    """Merge source values recursively into destination and return destination.
 
-    This function iterates through the ``source`` dictionary. If a value is itself
-    a dictionary (mapping), it recursively calls ``deep_merge`` for that nested
-    dictionary. Otherwise, the value from ``source`` directly overwrites the
-    corresponding value in ``destination``. The ``destination`` dictionary is
-    modified in place.
-
-    Example:
-
-        >>> s = {'a': 1, 'b': {'c': 2, 'd': 3}}
-        >>> d = {'b': {'c': 5, 'e': 6}, 'f': 7}
-        >>> deep_merge(s, d)
-        {'b': {'c': 2, 'd': 3, 'e': 6}, 'f': 7, 'a': 1}
-        >>> d # d is modified in place
-        {'b': {'c': 2, 'd': 3, 'e': 6}, 'f': 7, 'a': 1}
-
-    Args:
-        source (Dict[Any, Any]): The dictionary providing new or updated values.
-            Its values will take precedence in case of conflicts.
-        destination (Dict[Any, Any]): The dictionary to be updated. This dictionary
-            is modified in place.
-
-    Returns:
-        Dict[Any, Any]: The merged dictionary (which is the modified ``destination``
-        dictionary).
+    Conflicting source values take precedence; destination is modified in place.
     """
     for key, value in source.items():
         if isinstance(value, dict):
@@ -68,27 +29,9 @@ def deep_merge(
 
 
 class Settings:
-    """Manages loading, accessing, and saving application settings.
+    """Read and persist application settings through typed state.
 
-    This class acts as a single source of truth for all configuration data.
-    It handles:
-
-        - Determining appropriate application data and configuration directories
-          based on the environment (respecting ``BSM_DATA_DIR``).
-        - Loading settings from a database.
-        - Providing sensible default values for missing settings.
-
-        - Saving changes back to the database.
-        - Ensuring critical directories (e.g., for servers, backups, logs) exist.
-
-    Settings are stored in a key-value format in the database and can be accessed
-    programmatically using dot-notation via the :meth:`get` and :meth:`set` methods
-    (e.g., ``settings.get('paths.servers')``).
-
-    A global instance of this class, named `settings`, is typically used throughout
-    the application.
-
-    Attributes:
+    Use dotted keys with :meth:`get` and :meth:`set`.
     """
 
     def __init__(
@@ -97,12 +40,16 @@ class Settings:
         data_dir: str,
         app_context: Optional[Any] = None,
     ):
-        """Initializes the Settings object."""
+        """Initialize the Settings object."""
         logger.debug("Initializing Settings")
         self.data_dir = data_dir
         self.config_dir = config_dir
         self.app_context = app_context
-        self._settings: Dict[str, Any] = {}
+
+    @property
+    def _settings(self) -> Dict[str, Any]:
+        """Compatibility snapshot derived from live state, never a second cache."""
+        return self.state.settings.to_dict() if self.app_context is not None else {}
 
     @property
     def state(self) -> "AppState":
@@ -128,94 +75,33 @@ class Settings:
 
     @property
     def default_config(self) -> dict:
-        """Provides the default configuration values for the application.
+        """Return default settings with paths rooted in the application data directory."""
 
-        These defaults are used when a configuration file is not found or when a
-        specific setting is missing from an existing configuration file. Paths
-        are constructed dynamically based on the determined application data
-        directory (see :meth:`_determine_app_data_dir`).
+        from ..state.settings import SettingsState
 
-        The structure of the default configuration is as follows:
-
-        .. code-block:: text
-
-            {
-                "paths": {
-                    "servers": "<app_data_dir>/servers",
-                    "content": "<app_data_dir>/content",
-                    "downloads": "<app_data_dir>/.downloads",
-                    "backups": "<app_data_dir>/backups",
-                    "plugins": "<app_data_dir>/plugins",
-                },
-                "retention": {
-                    "backups": 3,
-                    "downloads": 3,
-                },
-                "web": {
-                    "host": "127.0.0.1",
-                    "jwt_secret_key": "randomly_generated_key",
-                    "port": 11325,
-                    "token_expires_weeks": 4,
-                },
-                "monitoring": {
-                    "max_retiries": 3,
-                    "process_interval_sec": 10,
-                    "player_interval_sec": 10,
-                },
-                "custom": {}
-            }
-
-        Returns:
-            dict: A dictionary of default settings with a nested structure.
-        """
-
-        return {
-            "paths": {
-                "servers": os.path.join(self.data_dir, "servers"),
-                "content": os.path.join(self.data_dir, "content"),
-                "downloads": os.path.join(self.data_dir, ".downloads"),
-                "backups": os.path.join(self.data_dir, "backups"),
-                "plugins": os.path.join(self.data_dir, "plugins"),
-                "themes": os.path.join(self.data_dir, "themes"),
-            },
-            "retention": {
-                "backups": 3,
-                "downloads": 3,
-            },
-            "monitoring": {
-                "max_retiries": 3,
-                "process_interval_sec": 10,
-                "player_interval_sec": 10,
-            },
-            "web": {
-                "host": "127.0.0.1",
-                "port": 11325,
-                "token_expires_weeks": 4,
-            },
-            "custom": {},
-        }
+        return SettingsState.create_defaults(self.data_dir).to_dict()
 
     def get(self, key: str, default: Any = None) -> Any:
-        """Retrieves a setting value using dot-notation for nested access."""
+        """Return a setting value using dot-notation for nested access."""
         val = self.state.settings.get(key, default)
         return val if val is not None else default
 
     async def load(self) -> None:
-        """Loads settings from the database asynchronously."""
+        """Load settings from the database asynchronously."""
         await self.storage.load_state(self.state)
-        self._settings = self.state.settings.to_dict()
 
     async def set(self, key: str, value: Any) -> None:
-        """Sets a configuration value using dot-notation asynchronously via SettingsService."""
+        """Set a configuration value using dot-notation asynchronously via
+        SettingsService.
+        """
         if self.app_context is None:
             from ..error import BSMError
 
             raise BSMError("Settings.set accessed without an associated app_context.")
         await self.app_context.settings_service.update_setting(key, value)
-        self._settings = self.state.settings.to_dict()
 
     async def reload(self):
         """Reloads the settings from the database asynchronously."""
-        logger.info("Reloading configuration from database asynchronously")
+        logger.debug("Reloading configuration from database")
         await self.load()
         logger.info("Configuration reloaded successfully.")

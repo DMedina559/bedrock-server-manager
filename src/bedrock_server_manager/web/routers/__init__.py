@@ -1,3 +1,6 @@
+from .diagnostics import router as diagnostics_router
+from .events import router as events_router
+
 """
 Web routers package.
 """
@@ -11,11 +14,14 @@ from .auth import router as auth_router
 from .backup_restore import router as backup_restore_router
 from .bans import router as bans_router
 from .install import router as install_router
+from .logs import router as logs_router
 from .main import router as main_router
 from .permissions import router as permissions_router
 from .plugin import router as plugin_router
 from .properties import router as properties_router
+from .raw_properties import router as raw_properties_router
 from .register import router as register_router
+from .runtime import router as runtime_router
 from .server_actions import router as server_actions_router
 from .server_settings import router as server_settings_router
 from .settings import router as settings_router
@@ -27,6 +33,10 @@ from .websocket import router as websocket_router
 from .world import router as world_router
 
 all_routers = [
+    diagnostics_router,
+    runtime_router,
+    events_router,
+    logs_router,
     setup_router,
     auth_router,
     users_router,
@@ -35,6 +45,7 @@ all_routers = [
     allowlist_router,
     permissions_router,
     properties_router,
+    raw_properties_router,
     install_router,
     backup_restore_router,
     addon_router,
@@ -53,6 +64,8 @@ all_routers = [
 ]
 
 __all__ = [
+    "diagnostics_router",
+    "events_router",
     "all_routers",
     "account_router",
     "addon_router",
@@ -68,6 +81,7 @@ __all__ = [
     "allowlist_router",
     "permissions_router",
     "properties_router",
+    "raw_properties_router",
     "install_router",
     "server_settings_router",
     "settings_router",

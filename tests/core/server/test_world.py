@@ -1,0 +1,234 @@
+import os
+from unittest.mock import AsyncMock, patch
+
+import pytest
+from bsm_test_utils.addons import create_mcworld
+
+
+async def test_extract_mcworld(real_bedrock_server, tmp_path, valid_mcworld_zip):
+    """Test extracting a .mcworld file."""
+    server = real_bedrock_server
+
+    zip_path = valid_mcworld_zip
+
+    extract_dir = tmp_path / "extracted_world"
+    await server.worlds.extract_mcworld(str(zip_path), str(extract_dir))
+
+    assert os.path.exists(extract_dir)
+    assert os.path.exists(os.path.join(extract_dir, "level.dat"))
+
+
+async def test_export_world(real_bedrock_server, tmp_path):
+    """Test exporting a world offline."""
+    server = real_bedrock_server
+
+    world_dir = os.path.join(server.paths.server_dir, "worlds")
+    os.makedirs(world_dir, exist_ok=True)
+
+    world_zip_path = create_mcworld(str(tmp_path), name="test_world")
+
+    world_path = os.path.join(world_dir, "test_world")
+    os.makedirs(world_path, exist_ok=True)
+    import zipfile
+
+    with zipfile.ZipFile(world_zip_path, "r") as zf:
+        zf.extractall(world_path)
+
+    export_target = os.path.join(str(tmp_path), "exported_world.mcworld")
+
+    await server.worlds.export_world("test_world", export_target)
+
+    assert os.path.exists(export_target)
+    assert export_target.endswith(".mcworld")
+
+
+async def test_live_export_world(real_bedrock_server, tmp_path):
+    """Test live world export using save hold/query/resume."""
+    server = real_bedrock_server
+
+    world_dir = os.path.join(server.paths.server_dir, "worlds")
+    os.makedirs(world_dir, exist_ok=True)
+
+    world_path = os.path.join(world_dir, "test_world")
+    db_dir = os.path.join(world_path, "db")
+    os.makedirs(db_dir, exist_ok=True)
+
+    ldb_file = os.path.join(db_dir, "000001.ldb")
+    level_dat = os.path.join(world_path, "level.dat")
+    icon_file = os.path.join(world_path, "world_icon.jpeg")
+
+    with open(ldb_file, "wb") as f:
+        f.write(b"X" * 100)
+    with open(level_dat, "wb") as f:
+        f.write(b"Y" * 50)
+    with open(icon_file, "wb") as f:
+        f.write(b"Z" * 30)
+
+    log_file = os.path.join(server.paths.server_dir, "server_output.txt")
+
+    sent_commands = []
+
+    async def mock_send_command(cmd):
+        sent_commands.append(cmd)
+        if cmd == "save query":
+            with open(log_file, "a", encoding="utf-8") as lf:
+                lf.write(
+                    "[2026-09-27 17:24:30:850 INFO] Data saved. Files are now ready to be copied.\n"
+                    "test_world/db/000001.ldb:20, test_world/level.dat:15\n"
+                )
+
+    server.send_command = AsyncMock(side_effect=mock_send_command)
+
+    export_target = os.path.join(str(tmp_path), "live_exported_world.mcworld")
+
+    with (
+        patch.object(server, "is_running", new_callable=AsyncMock, return_value=True),
+        patch.object(
+            server, "get_world_name", new_callable=AsyncMock, return_value="test_world"
+        ),
+    ):
+        await server.worlds.export_world("test_world", export_target)
+
+    assert os.path.exists(export_target)
+    assert "save hold" in sent_commands
+    assert "save query" in sent_commands
+    assert "save resume" in sent_commands
+
+    # Verify extracted mcworld contents and file truncation sizes
+    await server.worlds.extract_mcworld(export_target, "extracted_live")
+
+    ext_ldb = os.path.join(
+        server.paths.server_dir, "worlds", "extracted_live", "db", "000001.ldb"
+    )
+    ext_level_dat = os.path.join(
+        server.paths.server_dir, "worlds", "extracted_live", "level.dat"
+    )
+    ext_icon = os.path.join(
+        server.paths.server_dir, "worlds", "extracted_live", "world_icon.jpeg"
+    )
+
+    assert os.path.exists(ext_ldb)
+    assert os.path.getsize(ext_ldb) == 20
+    assert os.path.getsize(ext_level_dat) == 15
+    assert os.path.getsize(ext_icon) == 30
+
+
+async def test_live_export_world_finally_resume_on_timeout(
+    real_bedrock_server, tmp_path
+):
+    """Test that save resume is executed in finally block even if save query times out."""
+    server = real_bedrock_server
+
+    world_dir = os.path.join(server.paths.server_dir, "worlds")
+    os.makedirs(world_dir, exist_ok=True)
+    os.makedirs(os.path.join(world_dir, "test_world"), exist_ok=True)
+
+    sent_commands = []
+
+    async def mock_send_command(cmd):
+        sent_commands.append(cmd)
+
+    server.send_command = AsyncMock(side_effect=mock_send_command)
+    export_target = os.path.join(str(tmp_path), "timeout_export.mcworld")
+
+    from bedrock_server_manager.error import BackupRestoreError
+
+    with pytest.raises(BackupRestoreError):
+        await server.worlds._live_export_world(
+            "test_world", export_target, poll_interval=0.01, timeout=0.05
+        )
+
+    assert "save hold" in sent_commands
+    assert "save query" in sent_commands
+    assert "save resume" in sent_commands
+
+
+async def test_delete_world(real_bedrock_server):
+    """Test deleting the active world."""
+    server = real_bedrock_server
+    world_dir = os.path.join(server.paths.server_dir, "worlds", "test_world")
+    os.makedirs(world_dir, exist_ok=True)
+
+    assert os.path.exists(world_dir)
+    await server.properties.set_server_property("level-name", "test_world")
+    assert await server.worlds.delete_world() is True
+
+    assert not os.path.exists(world_dir)
+
+
+async def test_import_world(real_bedrock_server, tmp_path, valid_mcworld_zip):
+    """Test importing a world from a zip/mcworld file."""
+    server = real_bedrock_server
+
+    zip_path = valid_mcworld_zip
+
+    await server.properties.set_server_property("level-name", "test_world")
+    world_name = await server.worlds.import_world(str(zip_path))
+
+    assert world_name == "test_world"
+
+    # valid_mcworld_zip uses "Test World" so the extracted directory might be differently named,
+    # but import_world copies it under the target world name or the zip name.
+    # We'll just verify the level.dat exists in the imported directory
+    expected_world_dir = os.path.join(server.paths.server_dir, "worlds", "test_world")
+    assert os.path.exists(expected_world_dir)
+    assert os.path.exists(os.path.join(expected_world_dir, "level.dat"))
+
+
+async def test_import_world_invalid(real_bedrock_server, tmp_path):
+    """Test importing an invalid world fails."""
+    server = real_bedrock_server
+
+    invalid_path = tmp_path / "invalid.mcworld"
+    invalid_path.write_text("not a zip")
+
+    from bedrock_server_manager.error import BackupRestoreError
+
+    with pytest.raises(BackupRestoreError):
+        await server.worlds.import_world(str(invalid_path))
+
+
+@pytest.mark.parametrize("query_succeeds", [False, True])
+async def test_live_export_resume_failure_preserves_primary_error(
+    real_bedrock_server, tmp_path, monkeypatch, query_succeeds
+):
+    from pathlib import Path
+
+    from bedrock_server_manager.error import BackupRestoreError, SendCommandError
+
+    server = real_bedrock_server
+    world = Path(server.paths.server_dir) / "worlds" / "resume_world"
+    world.mkdir(parents=True)
+    (world / "level.dat").write_bytes(b"level-data")
+    log = Path(server.paths.server_log_path)
+    log.parent.mkdir(parents=True, exist_ok=True)
+    log.write_text("", encoding="utf-8")
+    target = tmp_path / "resume.mcworld"
+    commands = []
+
+    async def send_command(command):
+        commands.append(command)
+        if command == "save resume":
+            raise SendCommandError("command channel unavailable")
+        if command == "save query" and query_succeeds:
+            with log.open("a", encoding="utf-8") as output:
+                output.write(
+                    "Data saved. Files are now ready to be copied.\n"
+                    "resume_world/level.dat:5\n"
+                )
+
+    with monkeypatch.context() as fault:
+        fault.setattr(server, "send_command", send_command)
+        with pytest.raises(BackupRestoreError) as failure:
+            await server.worlds._live_export_world(
+                "resume_world", str(target), poll_interval=0.01, timeout=0.05
+            )
+    assert "save resume" in commands
+    if query_succeeds:
+        assert target.is_file()
+        assert "could not be resumed" in str(failure.value)
+        assert isinstance(failure.value.__cause__, SendCommandError)
+    else:
+        assert not target.exists()
+        assert "Timed out" in str(failure.value)
+        assert "Resuming server saves also failed" in failure.value.__notes__[0]

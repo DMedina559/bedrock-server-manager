@@ -5,9 +5,7 @@ from bedrock_server_manager import PluginBase, app_event
 
 
 class AutostartServers(PluginBase):
-    """
-    Starts all servers with the autostart setting set to true on manager startup.
-    """
+    """Start all servers with the autostart setting set to true on manager startup."""
 
     version = "1.1.0"
     description = (
@@ -21,7 +19,7 @@ class AutostartServers(PluginBase):
         """
         This event is called when the plugin is loaded by the manager.
         """
-        self.logger.info(
+        self.logger.debug(
             "Autostart Servers plugin loaded, checking for servers to start."
         )
 
@@ -29,27 +27,28 @@ class AutostartServers(PluginBase):
     async def autostart_servers(self, **kwargs: Any):
 
         # Run API calls in thread to not block startup loop
-        result = await self.api.get_all_servers_data()
-        servers = result.get("servers", [])
+        result = await self.api.application.get_all_servers_data(request={})
+        servers = result.servers
 
         for server in servers:
-            server_name = server.get("name")
+            server_name = server.name
             if not server_name:
                 continue
 
-            setting_result = await self.api.get_server_setting(
-                server_name, "settings.autostart"
+            setting_result = await self.api.server.get_setting(
+                request={"server_name": server_name, "key": "settings.autostart"}
             )
-            server_settings = setting_result.get("value")
+            server_settings = setting_result.value
 
             if server_settings:
                 self.logger.info(
-                    f"Server '{server_name}' has autostart enabled, starting it now (background task)."
+                    "Server '%s' has autostart enabled, starting it now (background task).",
+                    server_name,
                 )
                 # Use the task manager to start the server in the background so app startup isn't blocked
                 # especially if an update is required.
-                await self.api.run_task(
-                    self.api.start_server,
-                    server_name=server_name,
+                await self.api.runtime.run_task(
+                    self.api.server.start,
+                    request={"server_name": server_name},
                     username="System (Autostart)",
                 )

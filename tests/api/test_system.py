@@ -1,91 +1,82 @@
-from unittest.mock import AsyncMock, MagicMock
-
 import pytest
+from pydantic import ValidationError
 
+from bedrock_server_manager.api.models import (
+    GetBedrockProcessInfoRequest,
+    GetServerRunningStatusRequest,
+)
 from bedrock_server_manager.api.system import (
     get_bedrock_process_info,
     get_server_running_status,
 )
-from bedrock_server_manager.error import InvalidServerNameError
 
 
-async def test_get_server_running_status_success(app_context, monkeypatch):
-    """Test get_server_running_status correctly parses and returns truthy value."""
-    mock_server = MagicMock()
-    mock_server.is_running = AsyncMock()
-    mock_server.get_process_info = AsyncMock()
-    mock_server.is_running.return_value = True
-    monkeypatch.setattr(app_context, "get_server", lambda x: mock_server)
-
-    result = await get_server_running_status("test_server", app_context)
-
-    assert result["status"] == "success"
-    assert result["is_running"] is True
-
-
-async def test_get_server_running_status_missing_name(app_context):
-    """Test get_server_running_status throws correctly on missing server argument."""
-    with pytest.raises(InvalidServerNameError):
-        await get_server_running_status("", app_context)
+async def test_running_status_follows_real_server_process(
+    app_context, real_bedrock_server
+):
+    request = GetServerRunningStatusRequest(server_name=real_bedrock_server.server_name)
+    assert not (
+        await get_server_running_status(request, app_context=app_context)
+    ).is_running
+    await real_bedrock_server.start()
+    assert (
+        await get_server_running_status(request, app_context=app_context)
+    ).is_running
+    await real_bedrock_server.stop()
+    assert not (
+        await get_server_running_status(request, app_context=app_context)
+    ).is_running
 
 
-async def test_get_server_running_status_error(app_context, monkeypatch):
-    """Test get_server_running_status wraps specific core exceptions appropriately."""
-
-    def throw_err(*args):
-        raise Exception("System query error")
-
-    monkeypatch.setattr(app_context, "get_server", throw_err)
-
-    result = await get_server_running_status("test_server", app_context)
-    assert result["status"] == "error"
-    assert "System query error" in result["message"]
+async def test_stopped_server_has_no_process_info(app_context, real_bedrock_server):
+    response = await get_bedrock_process_info(
+        GetBedrockProcessInfoRequest(server_name=real_bedrock_server.server_name),
+        app_context=app_context,
+    )
+    assert response.status == "success"
+    assert response.process_info is None
 
 
-async def test_get_bedrock_process_info_success(app_context, monkeypatch):
-    """Test get_bedrock_process_info returns a well-formed process dict when active."""
-    mock_server = MagicMock()
-    mock_server.is_running = AsyncMock()
-    mock_server.get_process_info = AsyncMock()
-    mock_server.get_process_info.return_value = {"pid": 1234, "cpu_percent": 12.0}
-    monkeypatch.setattr(app_context, "get_server", lambda x: mock_server)
-
-    result = await get_bedrock_process_info("test_server", app_context)
-
-    assert result["status"] == "success"
-    assert result["process_info"]["pid"] == 1234
-    assert result["process_info"]["cpu_percent"] == 12.0
+@pytest.mark.parametrize(
+    "model", [GetBedrockProcessInfoRequest, GetServerRunningStatusRequest]
+)
+def test_system_requests_require_server_identity(model):
+    with pytest.raises(ValidationError):
+        model(server_name="")
 
 
-async def test_get_bedrock_process_info_not_running(app_context, monkeypatch):
-    """Test get_bedrock_process_info handles None gracefully signifying not running."""
-    mock_server = MagicMock()
-    mock_server.is_running = AsyncMock()
-    mock_server.get_process_info = AsyncMock()
-    mock_server.get_process_info.return_value = None
-    monkeypatch.setattr(app_context, "get_server", lambda x: mock_server)
+async def test_process_observation_revision_precedes_delayed_read(
+    app_context, real_bedrock_server, monkeypatch
+):
+    import asyncio
 
-    result = await get_bedrock_process_info("test_server", app_context)
+    from bedrock_server_manager.api.models.system import GetBedrockProcessInfoRequest
+    from bedrock_server_manager.api.system import get_bedrock_process_info
+    from bedrock_server_manager.state_revision import revision_clock
 
-    assert result["status"] == "success"
-    assert result["process_info"] is None
-    assert "not found" in result["message"]
+    entered = asyncio.Event()
+    release = asyncio.Event()
 
+    async def delayed_read():
+        entered.set()
+        await release.wait()
+        return None
 
-async def test_get_bedrock_process_info_missing_name(app_context):
-    """Test get_bedrock_process_info correctly fails when empty name is passed."""
-    with pytest.raises(InvalidServerNameError):
-        await get_bedrock_process_info("", app_context)
-
-
-async def test_get_bedrock_process_info_error(app_context, monkeypatch):
-    """Test get_bedrock_process_info catches arbitrary exception formats correctly."""
-
-    def throw_err(*args):
-        raise Exception("Access failure")
-
-    monkeypatch.setattr(app_context, "get_server", throw_err)
-
-    result = await get_bedrock_process_info("test_server", app_context)
-    assert result["status"] == "error"
-    assert "Access failure" in result["message"]
+    monkeypatch.setattr(real_bedrock_server, "get_process_info", delayed_read)
+    pending = asyncio.create_task(
+        get_bedrock_process_info(
+            GetBedrockProcessInfoRequest(server_name=real_bedrock_server.server_name),
+            app_context=app_context,
+        )
+    )
+    try:
+        async with asyncio.timeout(5):
+            await entered.wait()
+        newer = revision_clock.capture()
+        release.set()
+        result = await pending
+        assert result.epoch == newer["epoch"]
+        assert result.revision < newer["revision"]
+    finally:
+        release.set()
+        await asyncio.gather(pending, return_exceptions=True)

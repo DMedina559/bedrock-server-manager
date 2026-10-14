@@ -5,7 +5,23 @@ Plugin to send in-game notifications before world operations like export, import
 
 from typing import Any
 
+from pydantic import BaseModel, ConfigDict, Field
+
 from bedrock_server_manager import PluginBase, app_event
+from bedrock_server_manager.logging import log_operation_error
+
+
+class PluginSettings(BaseModel):
+    model_config = ConfigDict(extra="forbid", strict=True)
+    notify_export: bool = Field(
+        default=True, description="Warn players before exporting a world."
+    )
+    notify_import: bool = Field(
+        default=True, description="Warn players before importing a world."
+    )
+    notify_reset: bool = Field(
+        default=True, description="Warn players before resetting a world."
+    )
 
 
 class WorldOperationNotificationsPlugin(PluginBase):
@@ -14,6 +30,8 @@ class WorldOperationNotificationsPlugin(PluginBase):
     are performed on a running server, providing a heads-up for potential disruptions.
     """
 
+    settings_model = PluginSettings
+
     version = "1.2.0"
     description = "Notifies in-game players before significant world operations (export, import, reset) are performe..."
     author = "dmedina559"
@@ -21,24 +39,33 @@ class WorldOperationNotificationsPlugin(PluginBase):
     @app_event("on_load")
     async def plugin_loaded(self):
         """Logs a message when the plugin is loaded."""
-        self.logger.info("Plugin loaded. Will send notifications for world operations.")
+        self.logger.debug(
+            "Plugin loaded. Will send notifications for world operations."
+        )
 
     async def _is_server_running(self, server_name: str) -> bool:
-        """Checks if a server is currently running via the API."""
+        """Check if a server is currently running via the API."""
         try:
-            response = await self.api.get_server_running_status(server_name=server_name)
-            if response and response.get("status") == "success":
-                return bool(response.get("is_running", False))
+            response = await self.api.system.get_server_running_status(
+                request={"server_name": server_name}
+            )
+            if response and response.status == "success":
+                return bool(response.is_running)
             self.logger.warning(
-                f"Could not determine running status for '{server_name}'. API: {response}"
+                "Could not determine running status for '%s'.",
+                server_name,
             )
         except AttributeError:
             self.logger.error(
                 "API is missing 'get_server_running_status'. Cannot check server status."
             )
         except Exception as e:
-            self.logger.error(
-                f"Error checking server status for '{server_name}': {e}", exc_info=True
+            log_operation_error(
+                self.logger,
+                "Error checking server status for '%s': %s",
+                server_name,
+                e,
+                error=e,
             )
         return False
 
@@ -52,34 +79,43 @@ class WorldOperationNotificationsPlugin(PluginBase):
                 else:
                     command = message
 
-                await self.api.send_command(server_name=server_name, command=command)
-                self.logger.info(
-                    f"Sent {context} warning to '{server_name}': {message}"
+                await self.api.server.send_command(
+                    request={"server_name": server_name, "command": command}
+                )
+                self.logger.debug(
+                    "Sent %s warning to '%s': %s", context, server_name, message
                 )
             except Exception as e:
-                self.logger.error(
-                    f"Failed to send {context} warning to '{server_name}': {e}",
-                    exc_info=True,
+                log_operation_error(
+                    self.logger,
+                    "Failed to send %s warning to '%s': %s",
+                    context,
+                    server_name,
+                    e,
+                    error=e,
                 )
         else:
-            self.logger.info(
-                f"Server '{server_name}' not running, skipping {context} warning."
+            self.logger.debug(
+                "Server '%s' not running, skipping %s warning.", server_name, context
             )
 
     @app_event("before_world_export")
     async def send_export_warning(self, **kwargs: Any):
         """Notifies players before a world export begins."""
 
+        if not await self.get_plugin_setting("notify_export", default=True):
+            return
+
         server_name = str(kwargs.get("server_name"))
         export_dir = kwargs.get("export_dir")
         self.logger.debug(
-            f"Handling before_world_export for '{server_name}' to '{export_dir}'."
+            "Handling before_world_export for '%s' to '%s'.", server_name, export_dir
         )
-        summary = await self.api.get_server_summary(server_name=server_name)
+        summary = await self.api.server.get_summary(
+            request={"server_name": server_name}
+        )
         player_count = (
-            summary.get("summary", {}).get("player_count", 0)
-            if summary.get("status") == "success"
-            else 0
+            summary.summary.player_count if summary.status == "success" else 0
         )
         if player_count > 0:
             await self._send_ingame_warning(
@@ -92,16 +128,19 @@ class WorldOperationNotificationsPlugin(PluginBase):
     async def send_import_warning(self, **kwargs: Any):
         """Notifies players before a world import begins."""
 
+        if not await self.get_plugin_setting("notify_import", default=True):
+            return
+
         server_name = str(kwargs.get("server_name"))
         file_path = kwargs.get("file_path")
         self.logger.debug(
-            f"Handling before_world_import for '{server_name}' from '{file_path}'."
+            "Handling before_world_import for '%s' from '%s'.", server_name, file_path
         )
-        summary = await self.api.get_server_summary(server_name=server_name)
+        summary = await self.api.server.get_summary(
+            request={"server_name": server_name}
+        )
         player_count = (
-            summary.get("summary", {}).get("player_count", 0)
-            if summary.get("status") == "success"
-            else 0
+            summary.summary.player_count if summary.status == "success" else 0
         )
         if player_count > 0:
             await self._send_ingame_warning(
@@ -114,16 +153,19 @@ class WorldOperationNotificationsPlugin(PluginBase):
     async def send_reset_warning(self, **kwargs: Any):
         """Sends a critical warning before a world reset operation."""
 
+        if not await self.get_plugin_setting("notify_reset", default=True):
+            return
+
         server_name = str(kwargs.get("server_name"))
-        self.logger.debug(f"Handling before_world_reset for '{server_name}'.")
-        self.logger.warning(
-            f"Critical operation: World reset initiated for server '{server_name}'."
+        self.logger.debug("Handling before_world_reset for '%s'.", server_name)
+        self.logger.debug(
+            "Critical operation: World reset initiated for server '%s'.", server_name
         )
-        summary = await self.api.get_server_summary(server_name=server_name)
+        summary = await self.api.server.get_summary(
+            request={"server_name": server_name}
+        )
         player_count = (
-            summary.get("summary", {}).get("player_count", 0)
-            if summary.get("status") == "success"
-            else 0
+            summary.summary.player_count if summary.status == "success" else 0
         )
         if player_count > 0:
             await self._send_ingame_warning(

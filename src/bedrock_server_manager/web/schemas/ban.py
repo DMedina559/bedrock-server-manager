@@ -1,13 +1,13 @@
 from typing import Optional
 
-from pydantic import BaseModel
+from ...api.models.common import APIRequest
 
 
-class BanAddRequest(BaseModel):
+class BanAddRequest(APIRequest):
     player_name: str
     xuid: str
     reason: Optional[str] = None
 
 
-class BanRemoveRequest(BaseModel):
+class BanRemoveRequest(APIRequest):
     xuid: str

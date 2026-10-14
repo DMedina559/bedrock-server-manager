@@ -1,195 +1,51 @@
-# Developing Plugins
+# Write a plugin
 
-```{image} https://raw.githubusercontent.com/DMedina559/bsm-frontend/main/frontend/public/image/icon/favicon.svg
-:alt: Bedrock Server Manager Logo
-:width: 150px
-:align: center
-```
+Plugins extend BSM through `PluginBase`, typed API capabilities and declared events. Start with [typed contracts](contracts.md), then consult the generated [API](../../plugins/plugin_apis.md) and [event](../../plugins/plugin_events.md) references for exact names and payloads.
 
-This guide will walk you through creating your own plugins to extend and customize the Bedrock Server Manager. The plugin system is designed to be simple yet powerful, allowing you to hook into various application events and use the core application's functions safely.
+## Minimal plugin
 
-This guide assumes you have a basic understanding of Python programming.
-
-For a complete list of all available event, see the [Available Events](../../plugins/plugin_events.md).
-For a complete list of all available APIs, see the [Available APIs](../../plugins/plugin_apis.md).
-
----
-
-## 1. Getting Started: Your First Plugin
-
-1.  **Locate a `plugins` directory:**
-    *   **User Plugins:** Find the application's data directory (typically `~/.bedrock-server-manager/` or where `BSM_DATA_DIR` points). Inside, there will be a `plugins` folder. This is for your custom plugins.
-    *   **Default Plugins:** The application also ships with default plugins located within its installation source at `src/bedrock_server_manager/plugins/default/`. While you can look here for examples, you should place your custom plugins in the user plugins directory.
-    *   **Root `plugins/` folder (for development/examples):** The main repository also contains a `plugins/` folder in its root. This is primarily for development-time examples and testing of the plugin system itself. For user-created plugins meant for regular use, the user plugins directory is preferred.
-2.  **Choose your plugin structure:** Plugins can be single Python files or complete Python packages (directories). This will be detailed in the next section.
-3.  **Write the code:** Create your plugin file(s) and define a class that inherits from `PluginBase`.
-
-Here is the most basic "Hello World" plugin:
+Save this as `my_plugin.py` in the configured user plugin directory:
 
 ```python
-# my_first_plugin.py
 from bedrock_server_manager import PluginBase, app_event
 
-class MyFirstPlugin(PluginBase):
-    """
-    This is an example description that will be saved in the database
-    """
-    version = "1.0.0"  # Mandatory version attribute
+
+class MyPlugin(PluginBase):
+    """Log successful server starts."""
+
+    version = "1.0.0"
+    description = "Log successful server starts."
 
     @app_event("on_load")
-    async def plugin_loaded(self, **kwargs):
-        """This event is called when the plugin is loaded by the manager."""
-        self.logger.info("Hello from MyFirstPlugin!")
+    async def loaded(self, **kwargs):
+        self.logger.info("Plugin loaded")
 
     @app_event("after_server_start")
-    async def after_server_start(self, **kwargs):
-        """This event is called after a server has started."""
-        server_name = kwargs.get("server_name")
-        result = kwargs.get("result", {})
-        if result.get("status") == "success":
-            self.logger.info(f"Server '{server_name}' has started successfully!")
+    async def started(self, server_name, result, **kwargs):
+        if result.status == "success":
+            self.logger.info("Server %s started", server_name)
 ```
 
-4.  **Run the application:** Start the Bedrock Server Manager.
-5.  **Enable your plugin:** Navigate to the Web UI to activate it. You should see your "Hello from MyFirstPlugin!" message in the logs on the next startup or plugins reload.
+Discover and enable the plugin through management, then check its load log. Internal identity comes from the file/package name; `name` changes the display name. Define a `version`, and optionally `author`, `description`, `dependencies` and `optional_dependencies`.
 
----
+For a package, put the main subclass in—or expose it from—`my_plugin/__init__.py`. Additional modules can live beside it. Dependencies refer to plugin identities, not arbitrary Python packages; install Python dependencies into BSM's environment separately.
 
-## 2. Plugin Structures: Single File vs. Package
+## Call typed capabilities
 
-Bedrock Server Manager supports two primary ways to structure your plugin:
+Use `self.api` with declared request models or supported mappings. Results are Pydantic models; inspect their fields and use `model_dump(mode="json")` when serialization is needed. The bridge supplies caller identity; do not pass a caller plugin name or AppContext.
 
-### 2.1. Single-File Plugin
+Use `PluginBase` settings helpers and managed runtime capabilities instead of importing internal servers, database sessions or application context. Narrow capabilities preserve ownership and cleanup boundaries. Await direct operations when their result is needed; see [managed tasks](task_manager.md) for work that belongs in the background.
 
-This is the simplest structure, suitable for smaller plugins.
+## Handle events
 
-*   Create a Python file (e.g., `my_simple_plugin.py`) directly in one of the plugin search paths (e.g., your user `plugins` directory).
-*   The filename (without the `.py` extension, so `my_simple_plugin` in this case) becomes the internal name of your plugin.
-*   Your `PluginBase` subclass must be defined within this file.
+Use `@app_event` for known events and read the event reference's typed request/result fields. Before-operation hooks can cancel an operation; notifications and observers do not veto it. Avoid recursively invoking the same operation from its own before-hook.
 
-This is the structure used in the "Hello World" example above.
+Prefer asynchronous handlers. Supported synchronous handlers run in bounded workers and must cooperate with cancellation; a timeout does not forcibly stop a Python thread. Keep hooks short and move long notification work to the supported queued or managed-task facilities.
 
-### 2.2. Package-Based Plugin (Directory)
+For custom declarations, priorities, delivery limits, waits and diagnostics, use the [event guide](custom_events.md). Declare custom events in your plugin's owned namespace rather than emitting another plugin's undeclared events.
 
-For more complex plugins that might include multiple Python modules, templates, static files, or other resources, structuring your plugin as a Python package (a directory) is recommended.
+## Own and release resources
 
-*   Create a directory in one of the plugin search paths (e.g., `plugins/my_packaged_plugin/`).
-*   The name of this directory (`my_packaged_plugin`) becomes the internal name of your plugin.
-*   Inside this directory, you **must** have an `__init__.py` file.
-*   The main `PluginBase` subclass for your plugin should be defined (or imported and made available) in this `__init__.py` file.
+Register routes, listeners, waits, tasks and data providers through supported capabilities. Stop producers and release external resources during unload. Reload can be blocked while an old generation still has outstanding synchronous work.
 
-**Example Directory Structure for a Packaged Plugin:**
-
-```
-plugins/
-└── my_packaged_plugin/       # Plugin Name: my_packaged_plugin
-    ├── __init__.py           # Main plugin file, contains MyPluginClass(PluginBase)
-    └── internal_logic.py     # Optional: other Python modules for your plugin
-```
-
-
-## 2.3. Plugin Metadata Attributes
-
-To help the Plugin Manager identify and display your plugin correctly, your `PluginBase` subclass should define several metadata attributes:
-
-*   **`version`** (str) - *Required*. Used for versioning and updates.
-*   **`name`** (str) - Optional. The display name of the plugin (defaults to the module's file name).
-*   **`description`** (str) - Optional. A short sentence describing what your plugin does.
-*   **`author`** (str) - Optional. The creator of the plugin.
-*   **`dependencies`** (List[str]) - Optional. A list of plugin names that **must** load before this one.
-*   **`optional_dependencies`** (List[str]) - Optional. Plugins to load first *if* they are present.
-
-```python
-from bedrock_server_manager import PluginBase, app_event
-
-class MyAwesomePlugin(PluginBase):
-    name = "My Awesome Automation Plugin"
-    version = "1.0.0"
-    author = "Jane Doe"
-    description = "Automatically performs server backups and chat translations."
-    dependencies = ["core_backup_plugin"]
-
-    @app_event("on_load")
-    async def plugin_loaded(self, **kwargs):
-        self.logger.info(f"{self.name} v{self.version} by {self.author} loaded!")
-```
-
-
-
-This package structure allows for better organization. Python's standard import mechanisms (e.g., `from . import internal_logic`) will work within your plugin package.
-
----
-
-## 3. The `PluginBase` Class
-
-Every plugin **must** inherit from `bedrock_server_manager.PluginBase` (typically imported as `from bedrock_server_manager import PluginBase`). When your plugin is initialized, you are provided with three essential attributes:
-
-*   `self.name` (str): The name of your plugin, derived from its filename.
-*   `self.logger` (logging.Logger): A pre-configured Python logger. **Always use this for logging.**
-*   `self.api` (AppAPI): Your gateway to interacting with the main application. It dynamically exposes core application APIs to plugins safely and with robust type hints available in most modern IDEs.
-
-```{important}
-**Important Plugin Class Requirements:**
-
-*   **`version` Attribute (Mandatory):** Your plugin class **must** define a class-level attribute named `version` as a string (e.g., `version = "1.0.0"`). Plugins without a valid `version` attribute will not be loaded.
-*   **Description (from Docstring):** The description for your plugin is automatically extracted from the main docstring of your plugin class.
-```
-
-## 3. Understanding Event Hooks
-
-Event hooks are methods from `PluginBase` that you can override. The Plugin Manager calls these methods when the corresponding event occurs.
-
-*   **`before_*` events:** Called *before* an action is attempted.
-*   **`after_*` events:** Called *after* an action has been attempted. They are always passed a `result` dictionary that you can inspect to see if the action succeeded or failed.
-
-### Asynchronous Architecture & Event Hooks (Version 4.0)
-
-In Version 4.0, Bedrock Server Manager operates on a fully asynchronous architecture. Event handlers and lifecycle methods are defined using `async def` and `await` calls.
-
-```{important}
-**Plugin Boundaries & Architecture Standard:**
-
-Plugins **must not** attempt to import or access BSM internal objects (such as `app_context`, `BedrockServer`, or direct database sessions) directly. All interactions with the core application, background tasks, settings, and server operations must go exclusively through `PluginBase` methods and `self.api` methods (e.g., `await self.api.start_server(...)`, `await self.api.run_task(...)`, `await self.get_plugin_setting(...)`).
-```
-
-Define event handlers using the `@app_event` decorator with `async def`:
-
-```python
-import asyncio
-from bedrock_server_manager import PluginBase, app_event
-
-class MyAsyncPlugin(PluginBase):
-    version = "4.0.0"
-
-    @app_event("before_server_start")
-    async def handle_before_start(self, **kwargs):
-        """This hook is awaited by the core application asynchronously."""
-        server_name = kwargs.get("server_name")
-        self.logger.info(f"Preparing to start {server_name} in 3 seconds...")
-
-        # Non-blocking async operations
-        await asyncio.sleep(3)
-
-        # Call core APIs using await
-        await self.api.send_command(server_name, "say Server starting in 3 seconds!")
-        self.logger.info("Done waiting. Proceeding with server start.")
-```
-
-## 4. Advanced Topics
-
-The plugin system offers many advanced features for deep integration:
-
-*   **[Custom Events & Interception](./custom_events.md):** Learn how to send inter-plugin messages, trigger actions externally, and intercept/cancel core application operations before they happen.
-*   **[Plugin Settings & Storage](./settings.md):** Discover how to persistently save and load configurations specific to your plugin within the application's database.
-*   **[Custom FastAPI Endpoints](./fastapi_endpoints.md):** Extend the web server itself by registering your own web routes, APIs, and Native JSON UI pages.
-*   **[Background Task Loops](./task_manager.md):** Use the `@task_loop` decorator to easily schedule asynchronous or synchronous repeating background jobs without blocking the main event loop.
-
-## 5. Best Practices
-
-```{tip}
-*   **Always use `self.logger`:** Do not use `print()`. The provided logger is integrated with the application's logging system.
-*   **Handle exceptions:** Wrap API calls in `try...except` blocks to handle potential failures gracefully.
-*   **Check the `result` dictionary:** After an `after_*` event, inspect the `result['status']` to confirm the outcome.
-*   **Avoid blocking operations:** Long-running tasks in your event handlers or FastAPI endpoints can freeze the application. Use the [Task Manager](./task_manager.md) to offload them to background threads.
-*   **Use the API for operations:** Do not directly manipulate server files or directories. Use the provided `self.api` functions to ensure thread-safety and consistency.
-```
+Additional guides cover [settings](settings.md), [FastAPI routes](fastapi_endpoints.md) and [native JSON UI](native_json_ui.md). Authenticate custom routes explicitly and validate their requests with Pydantic models.

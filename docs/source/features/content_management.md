@@ -1,72 +1,19 @@
-# Content Management
+# Worlds and addons
 
-Bedrock Server Manager allows you to easily manage the content of your server, including uploading new worlds and installing addons (resource and behavior packs).
+Create a [backup](backups.md) before replacing a world, resetting it or changing packs. Content operations can replace gameplay data; inspect task completion and logs before returning the server to players.
 
-## World Management
+## Import and export worlds
 
-You can import existing worlds, export your current world, or reset the server to a fresh state.
+Place a `.mcworld` file in the configured world-content library, or use the enabled content-uploader plugin. Select it for the intended server through the content view. Import replaces the active world. Archive validation/extraction failure preserves the existing world.
 
-### Importing a World
+Export packages the active world as a `.mcworld` file in the world-content library. Confirm the exported file exists before copying or deleting source data.
 
-To use a custom world (e.g., a downloaded map or a backup from another server):
+Reset removes the active world; it does not mean deleting every world belonging to every server. Bedrock creates the replacement on the next start using the configured world properties. Save anything you want to keep first.
 
-1.  **Upload the World**:
-    *   Place your world file (`.mcworld`) into the `content/worlds` directory on the server.
-    *   (Enable the content uploader plugin to easily upload content files).
-2.  Select the server from the dropdown menu in the web dashboard.
-3.  Navigate to the **Content** page and then click on the **Worlds** tab.
-4.  Locate the file in the file list.
-5.  Click the **Install** button next to the file.
-6.  **Warning**: This action will replace the currently active world on the server. Ensure you have backed up your current world if you wish to save it.
+## Install and manage addons
 
-### Exporting the Current World
+Place `.mcpack` or `.mcaddon` files in the addon-content library and select them for installation. Packs must be compatible with your Bedrock version and world. Some features require Bedrock experiment settings.
 
-To save a copy of your current world for download or transfer:
+Enabling and disabling packs changes the world's activation lists. Disabled packs can remain installed. Pack ordering follows the stored activation order; test behavior and resource interactions rather than assuming a universal conflict-resolution rule. Subpack selection applies only to packs that declare subpacks.
 
-1.  Select the server from the dropdown menu in the web dashboard.
-2.  Navigate to the **Content** page and then click on the **Worlds** tab.
-3.  Click the **Export World** button.
-4.  BSM will compress the active world directory into a `.mcworld` file.
-5.  The file will be exported to the `content/worlds` directory for you to import into another server.
-
-### Resetting the World
-
-To start fresh with a newly generated world:
-
-1.  Select the server from the dropdown menu in the web dashboard.
-2.  Navigate to the **Content** page and then click on the **Worlds** tab.
-3.  Click the **Reset World** button.
-4.  Confirm the action.
-5.  BSM will delete the current `worlds/` directory.
-6.  Upon the next server start, the Bedrock Dedicated Server software will generate a new world based on the `level-seed` defined in `server.properties`.
-
-## Addons (Resource & Behavior Packs)
-
-BSM simplifies the process of installing, managing, and configuring addons to enhance your server.
-
-### Installing Addons
-
-1.  **Upload the Addon**:
-    *   Place your addon file (`.mcpack`/`.mcaddon`) into the `content/addons` directory.
-    *   (Enable the content uploader plugin to easily upload content files).
-2.  Select the server from the dropdown menu in the web dashboard.
-3.  Navigate to the **Content** page and then click on the **Addons** tab.
-4.  Locate the file in the **Available Addons** list.
-5.  Click the **Install** button.
-
-### Managing Installed Addons
-
-Once addons are installed, you can manage their status and load order:
-
-1.  Navigate to the **Content** page and click the **Manage Installed Addons** button.
-2.  A window will appear with tabs for **Behavior Packs** and **Resource Packs**.
-3.  **Enabling/Disabling**: You can toggle addons on or off. Disabled addons remain installed on the server but are temporarily deactivated in the world configuration.
-4.  **Reordering**: You can drag and drop the packs to change their load order (packs higher in the list load first and take priority over those below them). Click **Save Order** to apply the changes.
-5.  **Removing**: You can click the delete/remove icon next to an installed pack to permanently remove it from the server.
-
-### How It Works
-
-When you install an addon, BSM performs the following actions:
-1.  **Extraction**: Unzips the package.
-2.  **Placement**: Moves resource packs to `resource_packs/` and behavior packs to `behavior_packs/`.
-3.  **Activation**: Automatically updates `world_behavior_packs.json` and `world_resource_packs.json` to register the new content with the server.
+Removing a pack can affect existing world content. Back up the world, check task results and verify it in-game after restarting. The [manual content guide](../extras/install_content.md) explains file placement when the upload/download plugins are unavailable.

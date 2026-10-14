@@ -1,14 +1,19 @@
-from typing import Any, Dict, List, Optional
+from typing import Dict, List, Literal, Optional
 
-from pydantic import BaseModel, Field
+from pydantic import Field
 
-from .base import BaseApiResponse
+from ...api.models.allowlist import GetAllowlistResponse
+from ...api.models.common import APIRequest, APIResponse, PermissionLevel, ServerName
+from ...api.models.permissions import GetPermissionsResponse
+from ...api.models.properties import GetPropertiesResponse
+from ...results import ItemResult
+from .base import BaseApiResponse, TaskAcceptedResponse
 
 
-class InstallServerPayload(BaseModel):
+class InstallServerPayload(APIRequest):
     """Request model for installing a new server."""
 
-    server_name: str = Field(
+    server_name: ServerName = Field(
         ..., min_length=1, max_length=50, description="Name for the new server."
     )
     server_version: str = Field(
@@ -31,57 +36,41 @@ class CustomZipsResponse(BaseApiResponse):
     custom_zips: List[str]
 
 
-class PropertiesGetResponse(BaseApiResponse):
-    """Response model for server properties."""
-
-    properties: Dict[str, Any]
-    raw_content: Optional[str] = None
-
-
-class AllowlistGetResponse(BaseApiResponse):
-    """Response model for server allowlist."""
-
-    players: List[Dict[str, Any]]
-
-
-class PermissionsGetResponse(BaseApiResponse):
-    """Response model for server permissions."""
-
-    permissions: List[Dict[str, Any]]
+PropertiesGetResponse = GetPropertiesResponse
+AllowlistGetResponse = GetAllowlistResponse
+PermissionsGetResponse = GetPermissionsResponse
 
 
 class PermissionsUpdateResponse(BaseApiResponse):
+    updated: int = Field(default=0, ge=0)
+    outcomes: dict[str, ItemResult] = Field(default_factory=dict)
     """Response model for permissions update."""
 
     errors: Optional[Dict[str, str]] = None
 
 
-class InstallServerResponse(BaseModel):
-    """Response model for server installation requests."""
-
-    status: str = Field(
-        ...,
-        description="Status of the installation ('success', 'confirm_needed', 'pending').",
-    )
-    message: str = Field(..., description="Descriptive message about the operation.")
-    server_name: Optional[str] = Field(
-        default=None,
-        description="Name of the server, especially if confirmation is needed.",
-    )
-    task_id: Optional[str] = Field(
-        default=None, description="Task ID for background installation."
-    )
+class InstallConfirmationResponse(APIResponse):
+    status: Literal["confirm_needed"] = "confirm_needed"
+    message: str
+    server_name: str
 
 
-class PropertiesPayload(BaseModel):
+class InstallationAcceptedResponse(TaskAcceptedResponse):
+    server_name: str
+
+
+InstallServerResponse = InstallConfirmationResponse | InstallationAcceptedResponse
+
+
+class PropertiesPayload(APIRequest):
     """Request model for updating server.properties."""
 
-    properties: Dict[str, Any] = Field(
+    properties: Dict[str, str] = Field(
         ..., description="Dictionary of properties to set."
     )
 
 
-class AllowlistAddPayload(BaseModel):
+class AllowlistAddPayload(APIRequest):
     """Request model for adding players to the allowlist."""
 
     players: List[str] = Field(..., description="List of player gamertags to add.")
@@ -90,21 +79,21 @@ class AllowlistAddPayload(BaseModel):
     )
 
 
-class AllowlistRemovePayload(BaseModel):
+class AllowlistRemovePayload(APIRequest):
     """Request model for removing players from the allowlist."""
 
     players: List[str] = Field(..., description="List of player gamertags to remove.")
 
 
-class PlayerPermissionPayload(BaseModel):
-    """Represents a single player's permission data sent from the client."""
+class PlayerPermissionPayload(APIRequest):
+    """Represent a single player's permission data sent from the client."""
 
     xuid: str
     name: str
-    permission_level: str
+    permission_level: PermissionLevel
 
 
-class PermissionsSetPayload(BaseModel):
+class PermissionsSetPayload(APIRequest):
     """Request model for setting multiple player permissions."""
 
     permissions: List[PlayerPermissionPayload] = Field(

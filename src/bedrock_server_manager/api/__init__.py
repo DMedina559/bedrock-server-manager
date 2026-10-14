@@ -5,6 +5,7 @@ from . import (
     application,
     backup_restore,
     ban,
+    diagnostics,
     install,
     misc,
     permissions,
@@ -15,10 +16,12 @@ from . import (
     settings,
     system,
     web,
+    websocket,
     world,
 )
 
 __all__ = [
+    "diagnostics",
     "application",
     "addon",
     "backup_restore",
@@ -34,5 +37,6 @@ __all__ = [
     "settings",
     "system",
     "web",
+    "websocket",
     "world",
 ]

@@ -1,6 +1,5 @@
 # bedrock_server_manager/utils/general.py
-"""
-Provides general utility functions for the application.
+"""Provide general utility functions for the application.
 
 Includes startup checks, timestamp generation, and interactive prompts.
 """
@@ -13,6 +12,7 @@ from datetime import datetime
 from typing import Any, List
 
 from ..error import AppFileNotFoundError, FileOperationError
+from ..logging import log_operation_error
 
 logger = logging.getLogger(__name__)
 
@@ -20,15 +20,12 @@ logger = logging.getLogger(__name__)
 def startup_checks(
     settings: Any,
 ) -> None:
-    """
-    Performs initial checks and setup when the application starts.
+    """Performs initial checks and setup when the application starts.
 
     - Verifies Python version compatibility (>= 3.11).
     - Creates essential application directories based on settings.
 
-    Args:
-        settings: Settings instance or object providing paths configuration.
-    """
+    :param settings: Settings instance or object providing paths configuration."""
     # Python Version Check
     if sys.version_info < (3, 11):
         message = "Python version 3.11 or later is required. You are running {}.{}.{}.".format(
@@ -66,14 +63,14 @@ def startup_checks(
         if dir_path and isinstance(dir_path, str):
             try:
                 os.makedirs(dir_path, exist_ok=True)
-                # logger.debug(f"Ensured directory exists: {dir_path} (Setting: {name})")
             except OSError as e:
-                logger.error(
-                    f"Failed to create directory {dir_path}: {e}", exc_info=True
+                log_operation_error(
+                    logger, "Failed to create directory %s: %s", dir_path, e, error=e
                 )
         elif not dir_path:
             logger.warning(
-                f"Directory path for '{name}' is missing in settings. Skipping creation."
+                "Directory path for '%s' is missing in settings. Skipping creation.",
+                name,
             )
 
     logger.debug("Startup checks completed.")
@@ -181,14 +178,11 @@ class ReentrantAsyncLock:
 
 
 def get_timestamp() -> str:
-    """
-    Generates a timestamp string suitable for filenames or logging.
+    """Generates a timestamp string suitable for filenames or logging.
 
-    Returns:
-        str: The current timestamp in YYYYMMDD_HHMMSS format.
+    :returns: The current timestamp in YYYYMMDD_HHMMSS format.
     """
     timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
-    # logger.debug(f"Generated timestamp: {timestamp}")
     return timestamp
 
 
@@ -207,7 +201,7 @@ async def list_content_files(
     target_dir = os.path.join(content_dir, sub_folder)
     if not os.path.isdir(target_dir):
         logger.debug(
-            f"BSM: Content sub-directory '{target_dir}' not found. Returning empty list."
+            "Content sub-directory '%s' not found. Returning empty list.", target_dir
         )
         return []
 

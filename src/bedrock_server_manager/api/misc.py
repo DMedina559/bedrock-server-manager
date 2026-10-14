@@ -1,21 +1,30 @@
 # bedrock_server_manager/api/misc.py
-"""Provides API functions for miscellaneous or global operations.
+"""Provide API functions for miscellaneous or global operations.
 
-This module contains functions that are not tied to a specific server
-instance, such as managing the global download cache for server executables.
-Operations are designed to be thread-safe.
+This module contains functions that are not tied to a specific server instance, such
+as managing the global download cache for server executables. Operations are designed
+to be thread-safe.
 """
 
 import asyncio
 import logging
-from typing import Dict, Optional
+from typing import Optional
 
 from ..context import AppContext
 from ..core import prune_old_downloads
-from ..error import BSMError, MissingArgumentError, UserInputError
+from ..error import (
+    BSMError,
+    IncompleteOperationError,
+    UserInputError,
+)
+from ..events import trigger_event
+from ..logging import log_operation_error
 from ..plugins.api_bridge import api_method
-from ..plugins.event_trigger import trigger_event
 from ..utils.general import ReentrantAsyncLock
+from .models.misc import (
+    PruneDownloadCacheRequest,
+    PruneDownloadCacheResponse,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -29,128 +38,83 @@ _misc_lock = ReentrantAsyncLock()
     after="after_prune_download_cache",
     identity_keys=("download_dir", "keep_count"),
 )
-async def prune_download_cache(  # noqa: C901
-    download_dir: str,
-    keep_count: Optional[int] = None,
-    app_context: Optional[AppContext] = None,
-) -> Dict[str, str]:
-    """Prunes old downloaded server archives (.zip) in a directory.
-
-    This function removes older ``bedrock-server-*.zip`` archive files from the
-    specified `download_dir`, keeping a specified number of the most recent
-    files. It delegates the actual pruning logic to
-    :func:`~bedrock_server_manager.core.downloader.prune_old_downloads`.
-
-    The operation uses a non-blocking lock (``_misc_lock``) to ensure thread
-    safety; if another pruning operation is in progress, this call will be
-    skipped, returning a "skipped" status.
-    Triggers ``before_prune_download_cache`` and ``after_prune_download_cache`` plugin events.
-
-    Args:
-        download_dir (str): The path to the directory containing the downloaded
-            server archives.
-        keep_count (Optional[int], optional): The number of recent archives to keep.
-            If ``None``, the value from the global application setting
-            ``retention.downloads`` (defaulting to 3 if not set) is used.
-            Defaults to ``None``.
-
-    Returns:
-        Dict[str, str]: A dictionary with the operation result.
-        Possible statuses: "success", "error", or "skipped" (if lock not acquired).
-        Example: ``{"status": "success", "message": "Download cache pruned..."}``
-
-    Raises:
-        MissingArgumentError: If `download_dir` is not provided.
-        UserInputError: If `keep_count` (or the ``retention.downloads`` setting)
-            is not a valid non-negative integer.
-        BSMError: Can be raised by the underlying prune operation for issues like
-            :class:`~.error.AppFileNotFoundError` (if `download_dir` is invalid after initial checks)
-            or :class:`~.error.FileOperationError`.
-    """
-    # Attempt to acquire the lock without blocking. If another operation
-    # is in progress, skip this one to avoid conflicts.
+async def prune_download_cache(
+    request: PruneDownloadCacheRequest, *, app_context: Optional[AppContext] = None
+) -> PruneDownloadCacheResponse:
+    """Prunes old downloaded server archives (.zip) in a directory."""
+    download_dir = request.download_dir
+    keep_count = request.keep_count
     try:
         await _misc_lock.acquire(timeout=300)
     except asyncio.TimeoutError:
         logger.warning(
             "A miscellaneous file operation is already in progress. Skipping concurrent prune."
         )
-        return {
-            "status": "skipped",
-            "message": "A file operation is already in progress.",
-        }
-
+        return PruneDownloadCacheResponse(
+            status="skipped", message="A file operation is already in progress."
+        )
     try:
-        if not download_dir:
-            raise MissingArgumentError("Download directory cannot be empty.")
-
         effective_keep: int
         try:
-            # Determine the number of files to keep, prioritizing the function
-            # argument over the global setting.
             if keep_count is None:
                 if app_context and app_context.settings:
                     settings = app_context.settings
                     keep_setting = settings.get("retention.downloads", 3)
                     effective_keep = int(keep_setting)
                 else:
-                    effective_keep = 3  # Default fallback if app_context is None
+                    effective_keep = 3
             else:
                 effective_keep = int(keep_count)
-
             if effective_keep < 0:
                 raise ValueError("Keep count cannot be negative")
-
         except (TypeError, ValueError) as e:
-            # Catch errors from invalid settings or user input.
             raise UserInputError(
                 f"Invalid keep_count or DOWNLOAD_KEEP setting: {e}"
             ) from e
-
-        logger.info(
-            f"API: Pruning download cache directory '{download_dir}'. Keep: {effective_keep}"
+        logger.debug(
+            "Pruning download cache directory '%s'. Keep: %s",
+            download_dir,
+            effective_keep,
         )
-
         try:
-            # Delegate the actual file deletion to the core downloader module.
-            await prune_old_downloads(
+            result = await prune_old_downloads(
                 download_dir=download_dir, download_keep=effective_keep
             )
-
-            logger.info(f"API: Pruning successful for directory '{download_dir}'.")
-            return {
-                "status": "success",
-                "message": f"Download cache pruned successfully for '{download_dir}'.",
-            }
-
+            if result.outcome == "failed":
+                raise IncompleteOperationError("Download retention failed.", result)
+            return PruneDownloadCacheResponse(
+                status=(
+                    "partial"
+                    if result.failures
+                    else "skipped" if result.outcome == "noop" else "success"
+                ),
+                message=f"Download retention {result.outcome}: {len(result.deleted)} deleted, {len(result.failures)} failed.",
+                result=result,
+            )
         except BSMError as e:
-            # Handle application-specific errors during pruning.
-            logger.error(
-                f"API: Failed to prune download cache '{download_dir}': {e}",
-                exc_info=True,
+            log_operation_error(
+                logger,
+                "Failed to prune download cache '%s': %s",
+                download_dir,
+                e,
+                error=e,
             )
-            return {"status": "error", "message": f"Failed to prune downloads: {e}"}
+            raise
         except Exception as e:
-            # Handle any other unexpected errors.
-            logger.error(
-                f"API: Unexpected error pruning download cache '{download_dir}': {e}",
-                exc_info=True,
+            log_operation_error(
+                logger,
+                "Unexpected error pruning download cache '%s': %s",
+                download_dir,
+                e,
+                error=e,
             )
-            return {
-                "status": "error",
-                "message": f"Unexpected error pruning downloads: {e}",
-            }
-
-    except UserInputError as e:
-        # Handle the validation error for keep_count from the outer try block.
-        return {"status": "error", "message": str(e)}
-
+            raise
+    except UserInputError:
+        raise
     except Exception as e:
-        logger.error(
-            f"API: Unexpected error in prune_download_cache: {e}", exc_info=True
+        log_operation_error(
+            logger, "Unexpected error in prune_download_cache: %s", e, error=e
         )
-        return {"status": "error", "message": f"Unexpected error: {e}"}
-
+        raise
     finally:
-        # Ensure the lock is always released, even if errors occur.
         _misc_lock.release()

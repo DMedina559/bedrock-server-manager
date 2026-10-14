@@ -1,15 +1,33 @@
 import os
 import re
 from pathlib import Path
-from typing import Any, Dict, List, Optional
+from typing import Annotated, Any, List, Literal, Optional
 
 from fastapi import APIRouter, Depends, HTTPException, Query
 from fastapi.responses import FileResponse, JSONResponse
+from pydantic import BaseModel, ConfigDict, Field
 
 from bedrock_server_manager import PluginBase, app_event
 from bedrock_server_manager.error import InvalidServerNameError
+from bedrock_server_manager.logging import log_operation_error
 from bedrock_server_manager.utils.server import core_validate_server_name_format
 from bedrock_server_manager.web import get_admin_user
+from bedrock_server_manager.web.schemas import UserResponse
+
+
+class DownloadPageQuery(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    server: str | None = None
+    type: Literal["backups", "content"] = "backups"
+
+
+class DownloadFileQuery(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    file_type: Literal[
+        "backup_world", "backup_config", "content_world", "content_addon"
+    ]
+    filename: str = Field(min_length=1, max_length=255, pattern=r"^[A-Za-z0-9._\- ]+$")
+    server: str | None = None
 
 
 class DownloadPagePlugin(PluginBase):
@@ -26,21 +44,23 @@ class DownloadPagePlugin(PluginBase):
     async def plugin_loaded(self, **kwargs):
         self.router = APIRouter(tags=["Download Page Plugin"])
         self._define_routes()
-        self.logger.info(f"Plugin '{self.name}' v{self.version} initialized.")
+        self.logger.debug("Plugin '%s' v%s initialized.", self.name, self.version)
 
     def _define_routes(self):  # noqa: C901
         @self.router.get(
             "/api/download_page/ui",
             response_class=JSONResponse,
+            operation_id="download_page_ui",
             name="Download Page UI",
             summary="Download Page UI",
             tags=["plugin-json-ui"],
         )
         async def get_download_page_ui(
-            server: Optional[str] = Query(None),
-            type: str = Query("backups"),
-            current_user: Dict[str, Any] = Depends(get_admin_user),
+            query: Annotated[DownloadPageQuery, Query()],
+            current_user: UserResponse = Depends(get_admin_user),
         ):
+            server = query.server
+            type = query.type
             if not server:
                 return JSONResponse(
                     content={
@@ -80,32 +100,37 @@ class DownloadPagePlugin(PluginBase):
 
                 try:
 
-                    file_list = await self.api.list_backup_files(
-                        server_name=server, backup_type="all"
+                    file_list = await self.api.backup_restore.list_backup_files(
+                        request={"server_name": server, "backup_type": "all"}
                     )
 
+                    if not isinstance(file_list.backups, dict):
+                        raise ValueError("Expected grouped backup files")
                     # World Backups
-                    wb_res = file_list["backups"]["world_backups"]
-                    if file_list["status"] == "success":
+                    wb_res = file_list.backups["world_backups"]
+                    if file_list.status == "success":
                         world_backups = [os.path.basename(p) for p in wb_res]
 
                     # Properties Backups
-                    pb_res = file_list["backups"]["properties_backups"]
-                    if file_list["status"] == "success":
+                    pb_res = file_list.backups["properties_backups"]
+                    if file_list.status == "success":
                         properties_backups = [os.path.basename(p) for p in pb_res]
 
                     # Allowlist Backups
-                    ab_res = file_list["backups"]["allowlist_backups"]
-                    if file_list["status"] == "success":
+                    ab_res = file_list.backups["allowlist_backups"]
+                    if file_list.status == "success":
                         allowlist_backups = [os.path.basename(p) for p in ab_res]
 
                     # Permissions Backups
-                    prm_res = file_list["backups"]["permissions_backups"]
-                    if file_list["status"] == "success":
+                    prm_res = file_list.backups["permissions_backups"]
+                    if file_list.status == "success":
                         permissions_backups = [os.path.basename(p) for p in prm_res]
 
                 except Exception as e:
-                    self.logger.error(f"Error listing backups: {e}")
+                    log_operation_error(
+                        self.logger, "Error listing backups: %s", e, error=e
+                    )
+                    raise
 
                 tabs_children = [
                     {
@@ -152,21 +177,22 @@ class DownloadPagePlugin(PluginBase):
                 addons = []
                 try:
 
-                    worlds_list = await self.api.list_available_worlds()
-                    addons_list = await self.api.list_available_addons()
+                    worlds_list = await self.api.application.list_available_worlds(
+                        request={}
+                    )
+                    addons_list = await self.api.addon.list_available_addons(request={})
 
-                    if worlds_list["status"] == "success":
-                        worlds = [
-                            os.path.basename(p) for p in worlds_list.get("files", [])
-                        ]
+                    if worlds_list.status == "success":
+                        worlds = [os.path.basename(p) for p in worlds_list.files]
 
-                    if addons_list["status"] == "success":
-                        addons = [
-                            os.path.basename(p) for p in addons_list.get("files", [])
-                        ]
+                    if addons_list.status == "success":
+                        addons = [os.path.basename(p) for p in addons_list.files]
 
                 except Exception as e:
-                    self.logger.error(f"Error listing content: {e}")
+                    log_operation_error(
+                        self.logger, "Error listing content: %s", e, error=e
+                    )
+                    raise
 
                 tabs_children = [
                     {
@@ -236,13 +262,16 @@ class DownloadPagePlugin(PluginBase):
                 }
             )
 
-        @self.router.get("/api/download_page/download")
+        @self.router.get(
+            "/api/download_page/download", operation_id="download_page_file"
+        )
         async def download_file(
-            file_type: str,
-            filename: str,
-            server: Optional[str] = None,
-            current_user: Dict[str, Any] = Depends(get_admin_user),
+            query: Annotated[DownloadFileQuery, Query()],
+            current_user: UserResponse = Depends(get_admin_user),
         ):
+            file_type = query.file_type
+            filename = query.filename
+            server = query.server
             # Strict validation of user-controlled inputs to avoid path traversal
             # Allow alphanumeric, dot, underscore, dash, and space
             safe_name_pattern = re.compile(r"^[A-Za-z0-9._\- ]+$")
@@ -260,11 +289,11 @@ class DownloadPagePlugin(PluginBase):
             if file_type in ("backup_world", "backup_config"):
                 if not server:
                     raise HTTPException(400, "Server name required for backups")
-                result = await self.api.get_global_setting(key="paths.backups")
-                backup_dir_str = (
-                    result.get("value") if result.get("status") == "success" else None
+                result = await self.api.settings.get_global_setting(
+                    request={"key": "paths.backups"}
                 )
-                if not backup_dir_str:
+                backup_dir_str = result.value if result.status == "success" else None
+                if not isinstance(backup_dir_str, str) or not backup_dir_str:
                     raise HTTPException(500, "Backup directory not configured")
 
                 # Trust anchor for backups
@@ -280,11 +309,11 @@ class DownloadPagePlugin(PluginBase):
                     raise HTTPException(403, "Access denied: Invalid server path")
 
             elif file_type in ("content_world", "content_addon"):
-                result = await self.api.get_global_setting(key="paths.content")
-                content_dir_str = (
-                    result.get("value") if result.get("status") == "success" else None
+                result = await self.api.settings.get_global_setting(
+                    request={"key": "paths.content"}
                 )
-                if not content_dir_str:
+                content_dir_str = result.value if result.status == "success" else None
+                if not isinstance(content_dir_str, str) or not content_dir_str:
                     raise HTTPException(500, "Content directory not configured")
 
                 # Trust anchor for content
@@ -328,12 +357,17 @@ class DownloadPagePlugin(PluginBase):
                 # Re-raise HTTPExceptions as-is
                 raise
             except Exception as e:
-                self.logger.error(f"Download error: {e}")
+                log_operation_error(self.logger, "Download error: %s", e, error=e)
                 raise HTTPException(500, "Internal server error during download")
 
     def _create_file_list_table(
-        self, files: List[str], file_type: str, server: Optional[str]
-    ) -> Dict:
+        self,
+        files: List[str],
+        file_type: Literal[
+            "backup_world", "backup_config", "content_world", "content_addon"
+        ],
+        server: Optional[str],
+    ) -> dict:
         if not files:
             return {
                 "type": "Text",
@@ -376,7 +410,7 @@ class DownloadPagePlugin(PluginBase):
 
     @app_event("on_unload")
     async def plugin_unloaded(self, **kwargs):
-        self.logger.info(f"Plugin '{self.name}' v{self.version} unloaded.")
+        self.logger.debug("Plugin '%s' v%s unloaded.", self.name, self.version)
 
     def get_fastapi_routers(self, **kwargs):
         return [self.router]

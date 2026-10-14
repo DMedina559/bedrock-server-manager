@@ -1,21 +1,12 @@
-# Install Content
+# Place content files manually
 
-```{image} https://raw.githubusercontent.com/DMedina559/bsm-frontend/main/frontend/public/image/icon/favicon.svg
-:alt: Bedrock Server Manager Icon
-:width: 200px
-:align: center
-```
+Use the content library when you cannot use the content-uploader plugin. Resolve its root from application settings; paths need not be relative to your checkout or server directory.
 
-Easily import addons and worlds into your servers. The app will look in the configured `CONTENT_DIR` directories for addon files.
+| Library subdirectory | Files |
+|---|---|
+| `worlds` | `.mcworld` world archives |
+| `addons` | `.mcpack` and `.mcaddon` archives |
 
-<div style="text-align: left;">
-    <img src="https://raw.githubusercontent.com/DMedina559/bedrock-server-manager/main/docs/images/cli_install_content.png" alt="Install Worlds" width="300" height="200"/>
-</div>
+Copy complete files into the matching library using an account with appropriate permissions. Select the archive through BSM's content management interface; copying it into the library does not install it into a server.
 
-Place .mcworld files in `CONTENT_DIR/worlds` or .mcpack/.mcaddon files in `CONTENT_DIR/addons`
-
-Navigate to the Web UI to install content to your servers.
-
-```{tip}
-Enable the content_uploader_plugin to easily upload content to your content dir!
-```
+Back up the active world before installation and follow the resulting task through completion. See [content management](../features/content_management.md) for replacement effects, export, activation and removal.

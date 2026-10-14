@@ -1,31 +1,5 @@
 # bedrock_server_manager/core/downloader.py
-"""Manages downloading, extracting, and maintaining Minecraft Bedrock Server files.
-
-This module is central to acquiring the necessary files for running a Minecraft
-Bedrock server. It provides functionalities to:
-
-    - Fetch the latest or specific versions of the Bedrock Server software for
-      Linux and Windows.
-    - Download the server software from official sources, using the Minecraft
-      download API as the primary method.
-    - Extract the downloaded server files into a designated server directory, with
-      options for preserving existing configuration, worlds, and data during updates.
-    - Manage a local cache of downloaded server ZIP files, including pruning old
-      versions to save disk space.
-
-Key Components:
-
-    - :class:`BedrockDownloader`: A class that orchestrates the download and setup
-      process for a single server instance. It handles version resolution,
-      downloading, extraction, and local cache pruning related to its operation.
-    - :func:`prune_old_downloads`: A standalone utility function to clean up
-      old downloaded server ZIP files from a specified directory, independent
-      of a specific `BedrockDownloader` instance.
-
-The module aims to provide a robust and error-handled way to obtain server files,
-dealing with potential network issues, file system operations, and changes in
-download URLs or API responses.
-"""
+"""Resolve Bedrock downloads, prepare server files and prune cached archives."""
 
 import asyncio
 import json
@@ -53,6 +27,15 @@ from ..error import (
     SystemError,
     UserInputError,
 )
+from ..failures import classify_failure
+from ..results import CleanupResult
+from ..utils.threads import run_in_thread
+from .files import (
+    extract_archive,
+    file_transaction,
+    temporary_directory,
+    validate_archive,
+)
 from .system import base as system_base
 from .system import find_files
 
@@ -62,144 +45,42 @@ if TYPE_CHECKING:
 logger = logging.getLogger(__name__)
 
 
-async def prune_old_downloads(download_dir: str, download_keep: int):  # noqa: C901
-    """Asynchronously removes the oldest downloaded server ZIP files from a directory.
-
-    This function keeps a specified number of the most recent downloads and
-    deletes the rest to manage disk space using native async file operations.
-
-    Args:
-        download_dir: The directory containing the downloaded
-            ``bedrock-server-*.zip`` files.
-        download_keep: The number of most recent ZIP files to retain.
-
-    Raises:
-        MissingArgumentError: If `download_dir` is not provided.
-        UserInputError: If `download_keep` is not a non-negative integer.
-        AppFileNotFoundError: If `download_dir` does not exist.
-        FileOperationError: If there's an error accessing or deleting files.
-    """
+async def prune_old_downloads(download_dir: str, download_keep: int) -> CleanupResult:
+    """Report every retention deletion rather than hiding filesystem failures."""
     if not download_dir:
-        raise MissingArgumentError("Download directory cannot be empty for pruning.")
-    if not isinstance(download_keep, int) or download_keep < 0:
-        raise UserInputError(
-            f"Invalid value for downloads to keep: '{download_keep}'. Must be an integer >= 0."
-        )
-
-    logger.debug(f"Configured to keep {download_keep} downloads in '{download_dir}'.")
-
+        raise MissingArgumentError("Download directory is required.")
+    if (
+        isinstance(download_keep, bool)
+        or not isinstance(download_keep, int)
+        or download_keep < 0
+    ):
+        raise UserInputError("Download retention must be a non-negative integer.")
     if not await aiofiles.ospath.isdir(download_dir):
-        # Log a warning and return if the directory doesn't exist
-        logger.warning(
-            f"Download directory '{download_dir}' not found. Skipping pruning."
-        )
-        return
-
-    logger.info(
-        f"Pruning old Bedrock server downloads in '{download_dir}' (keeping {download_keep})..."
-    )
-
+        return CleanupResult()
     try:
-        # Find all files matching the bedrock server download pattern using thread wrap.
-        download_files_paths = await find_files(
-            download_dir,
-            "bedrock-server-*.zip",
-            sort_by="mtime",
-            reverse=True,
+        files = await find_files(
+            download_dir, "bedrock-server-*.zip", sort_by="mtime", reverse=True
         )
-        download_files = []
-        for p in download_files_paths:
-            if isinstance(p, str):
-                download_files.append(p)
-            elif isinstance(p, dict) and "path" in p:
-                download_files.append(str(p["path"]))
-
-        logger.debug(
-            f"Found {len(download_files)} potential download files matching pattern in '{download_dir}'."
-        )
-
-        if len(download_files) > download_keep:
-            files_to_delete = download_files[download_keep:]
-            logger.info(
-                f"Found {len(download_files)} downloads in '{download_dir}'. Will delete {len(files_to_delete)} oldest file(s) to keep {download_keep}."
-            )
-
-            deleted_count = 0
-            failed_deletions = []
-            for file_path_str in files_to_delete:
-                try:
-                    await aiofiles.os.remove(file_path_str)
-                    logger.info(f"Deleted old download: {file_path_str}")
-                    deleted_count += 1
-                except OSError as e_unlink:
-                    logger.error(
-                        f"Failed to delete old server download '{file_path_str}': {e_unlink}",
-                        exc_info=True,
-                    )
-                    failed_deletions.append(file_path_str)
-
-            if failed_deletions:
-                logger.warning(
-                    f"Failed to delete {len(failed_deletions)} old download(s) in '{download_dir}': {', '.join(failed_deletions)}. Check logs."
-                )
-            if deleted_count > 0:
-                logger.info(
-                    f"Successfully deleted {deleted_count} old download(s) from '{download_dir}'."
-                )
-            elif not failed_deletions:
-                logger.info(
-                    f"No files were deleted from '{download_dir}' as part of this pruning operation."
-                )
-        else:
-            logger.info(
-                f"Found {len(download_files)} download(s) in '{download_dir}', which is not more than the {download_keep} to keep. No files deleted."
-            )
-
-    except OSError as e_os:
-        logger.warning(
-            f"Error accessing or processing files for pruning in '{download_dir}': {e_os}",
-            exc_info=True,
-        )
-    except Exception as e_generic:
-        logger.error(
-            f"Unexpected error during pruning operation for '{download_dir}': {e_generic}",
-            exc_info=True,
-        )
+        paths = [str(path) for path in files if isinstance(path, str)]
+    except OSError as error:
+        raise FileOperationError("Cannot list download cache.") from error
+    deleted = []
+    failures = {}
+    for path in paths[download_keep:]:
+        try:
+            await run_in_thread(os.remove, path)
+            deleted.append(path)
+        except OSError as error:
+            failures[path] = classify_failure(error).error
+    return CleanupResult(
+        deleted=deleted, retained=paths[:download_keep], failures=failures
+    )
 
 
 class BedrockDownloader:
-    """Manages the download, extraction, and setup of a Bedrock Server instance.
+    """Prepare Bedrock files for a release target or a custom archive.
 
-    This class orchestrates the process of obtaining and preparing Minecraft
-    Bedrock server files for a specific server instance. It handles:
-
-        - **Version Targeting**: Allows specifying "LATEST" (stable), "PREVIEW", or a
-          concrete version number (e.g., "1.20.10.01", "1.20.10.01-PREVIEW").
-        - **URL Resolution**: Primarily uses the official Minecraft download API to find
-          the correct download URL for the target version and operating system (Linux/Windows).
-        - **Downloading**: Downloads the server ZIP archive from the resolved URL,
-          saving it to a version-specific (stable/preview) subdirectory within the
-          configured global downloads path. It skips downloading if the file already exists.
-        - **Extraction**: Extracts the contents of the downloaded ZIP archive into the
-          specified server directory. It supports "fresh install" and "update" modes,
-          where the latter preserves user data like worlds, properties, and allowlists.
-        - **Cache Pruning**: After a download, it can trigger pruning of older ZIP files
-          within its specific download subdirectory (stable or preview) based on retention settings.
-
-    An instance of this class is typically created when a new server needs to be
-    installed or an existing one updated.
-
-    Attributes:
-        settings (Settings): The application settings object.
-        server_dir (str): The absolute path to the target server directory.
-        input_target_version (str): The user-provided version string.
-        os_name (str): The name of the current operating system (e.g., "Linux", "Windows").
-        base_download_dir (Optional[str]): The root directory for all downloads.
-        resolved_download_url (Optional[str]): The final URL used for downloading.
-        actual_version (Optional[str]): The specific version number resolved (e.g., "1.20.10.01").
-        zip_file_path (Optional[str]): Full path to the downloaded server ZIP file.
-        specific_download_dir (Optional[str]): Path to the subdirectory within
-            `base_download_dir` used for this instance's downloads (e.g., ".../downloads/stable").
+    Supported targets are stable, preview, explicit versions and ``CUSTOM``.
     """
 
     PRESERVED_ITEMS_ON_UPDATE: Set[str] = {
@@ -218,23 +99,9 @@ class BedrockDownloader:
         target_version: str = "LATEST",
         server_zip_path: Optional[str] = None,
     ):
-        """Initializes the BedrockDownloader.
+        """Bind settings, destination and version target for a server download.
 
-        Args:
-            settings_obj (Settings): The application's ``Settings`` object,
-                providing access to configuration like download paths.
-            server_dir (str): The target directory where the server files will be
-                installed or updated. This path will be converted to an absolute path.
-            target_version (str, optional): The version identifier for the server
-                to download. Defaults to "LATEST".
-                Examples: "LATEST", "PREVIEW", "CUSTOM", "1.20.10.01", "1.20.10.01-PREVIEW".
-            server_zip_path (str, optional): Absolute path to a custom server ZIP file.
-                Required if `target_version` is "CUSTOM".
-        Raises:
-            MissingArgumentError: If `settings_obj`, `server_dir`, or
-                `target_version` are not provided or are empty.
-            ConfigurationError: If the `paths.downloads` setting is missing or
-                empty in the provided `settings_obj`.
+        ``CUSTOM`` requires ``server_zip_path``; download paths come from settings.
         """
         if not settings_obj:
             raise MissingArgumentError(
@@ -291,65 +158,51 @@ class BedrockDownloader:
         self._determine_version_parameters()
 
     def _determine_version_parameters(self):
-        """Parses the ``input_target_version`` string to set internal parameters.
-
-        This method analyzes the ``self.input_target_version`` attribute to
-        determine if the target is "LATEST" (stable), "PREVIEW", a specific
-        stable version number (e.g., "1.20.10.01"), or a specific preview
-        version number (e.g., "1.20.10.01-PREVIEW").
-
-        It populates the following internal attributes:
-
-            - ``self._version_type``: Set to "LATEST" or "PREVIEW".
-            - ``self._custom_version_number``: Set to the version number string
-              (e.g., "1.20.10.01") if a specific version is targeted, otherwise empty.
-
-        """
+        """Resolve stable, preview and explicit version selectors into instance fields."""
         target_upper = self.input_target_version.upper()
         if target_upper == "CUSTOM":
             self._version_type = "CUSTOM"
-            self.logger.info(
-                f"Instance targeting CUSTOM version for server: {self.server_dir}"
+            self.logger.debug(
+                "Instance targeting CUSTOM version for server: %s", self.server_dir
             )
         elif target_upper == "PREVIEW":
             self._version_type = "PREVIEW"
-            self.logger.info(
-                f"Instance targeting latest PREVIEW version for server: {self.server_dir}"
+            self.logger.debug(
+                "Instance targeting latest PREVIEW version for server: %s",
+                self.server_dir,
             )
         elif target_upper == "LATEST":
             self._version_type = "LATEST"
-            self.logger.info(
-                f"Instance targeting latest STABLE version for server: {self.server_dir}"
+            self.logger.debug(
+                "Instance targeting latest STABLE version for server: %s",
+                self.server_dir,
             )
         elif target_upper.endswith("-PREVIEW"):
             self._version_type = "PREVIEW"
             self._custom_version_number = self.input_target_version[: -len("-PREVIEW")]
-            self.logger.info(
-                f"Instance targeting specific PREVIEW version '{self._custom_version_number}' for server: {self.server_dir}"
+            self.logger.debug(
+                "Instance targeting specific PREVIEW version '%s' for server: %s",
+                self._custom_version_number,
+                self.server_dir,
             )
         else:
             self._version_type = "LATEST"  # Assume a specific stable version
             self._custom_version_number = self.input_target_version
-            self.logger.info(
-                f"Instance targeting specific STABLE version '{self._custom_version_number}' for server: {self.server_dir}"
+            self.logger.debug(
+                "Instance targeting specific STABLE version '%s' for server: %s",
+                self._custom_version_number,
+                self.server_dir,
             )
 
     async def _lookup_bedrock_download_url(self) -> str:  # noqa: C901
-        """Asynchronously finds the download URL by querying the official Minecraft download API.
+        """Resolve the requested release URL through the Bedrock download API.
 
-        This is the most reliable method as it does not rely on web scraping.
-
-        Returns:
-            The resolved download URL for the specified version and OS.
-
-        Raises:
-            SystemError: If the operating system is not supported.
-            InternetConnectivityError: If the API cannot be reached.
-            DownloadError: If the API response is invalid or does not contain
-                the required URL.
+        Connectivity and invalid-response failures propagate as application
+        exceptions.
         """
         self.logger.debug(
-            f"Asynchronously looking up download URL for target: '{self.input_target_version}'"
+            "Asynchronously looking up download URL for target: '%s'",
+            self.input_target_version,
         )
         API_URL = self.settings.get(
             "downloader.download_url",
@@ -373,7 +226,7 @@ class BedrockDownloader:
             raise SystemError(
                 f"Unsupported OS for Bedrock server download: {self.os_name}"
             )
-        self.logger.debug(f"Targeting API downloadType identifier: '{download_type}'")
+        self.logger.debug("Targeting API downloadType identifier: '%s'", download_type)
 
         # 2. Fetch data from the API asynchronously.
         try:
@@ -388,7 +241,7 @@ class BedrockDownloader:
                 async with session.get(API_URL) as response:
                     response.raise_for_status()
                     api_data = await response.json(content_type=None)
-            self.logger.debug(f"Successfully fetched API data: {api_data}")
+            self.logger.debug("Bedrock release metadata retrieved.")
         except (aiohttp.ClientError, asyncio.TimeoutError, TimeoutError) as e:
             raise InternetConnectivityError(
                 f"Could not contact the Minecraft download API: {e}"
@@ -411,12 +264,13 @@ class BedrockDownloader:
 
         if not base_url:
             self.logger.error(
-                f"API response did not contain a URL for downloadType '{download_type}'."
+                "API response did not contain a URL for downloadType '%s'.",
+                download_type,
             )
             raise DownloadError(
                 f"The API did not provide a download URL for your system ({download_type})."
             )
-        self.logger.info(f"Found URL via API for '{download_type}': {base_url}")
+        self.logger.debug("Found URL via API for '%s': %s", download_type, base_url)
 
         # 4. If a specific version was requested, substitute it into the URL.
         if self._custom_version_number:
@@ -435,8 +289,8 @@ class BedrockDownloader:
                         f"Failed to construct URL for specific version '{self._custom_version_number}'. The URL format may have changed."
                     )
                 self.resolved_download_url = str(modified_url)
-                self.logger.info(
-                    f"Constructed specific version URL: {self.resolved_download_url}"
+                self.logger.debug(
+                    "Constructed specific version URL: %s", self.resolved_download_url
                 )
                 return str(modified_url)
             except Exception as e:
@@ -449,14 +303,12 @@ class BedrockDownloader:
 
     def _get_version_from_url(self) -> str:
         """Extracts the version number from the resolved download URL or custom zip path.
-        This method populates `self.actual_version`.
-        Returns:
-            The extracted version string (e.g., "1.20.10.01").
-        Raises:
-            MissingArgumentError: If the download URL has not been resolved yet.
-            DownloadError: If the URL format is unexpected and the version
-                cannot be parsed.
-        """
+        This method populates ``self.actual_version``.
+        :returns: The extracted version string (e.g., "1.20.10.01").
+
+        :raises MissingArgumentError: If the download URL has not been resolved yet.
+        :raises DownloadError: If the URL format is unexpected and the version
+            cannot be parsed."""
         source_path = (
             self.server_zip_path
             if self._version_type == "CUSTOM"
@@ -473,7 +325,9 @@ class BedrockDownloader:
         if match:
             version = match.group(1).rstrip(".")
             self.logger.debug(
-                f"Extracted version '{version}' from standard path format: {source_path}"
+                "Extracted version '%s' from standard path format: %s",
+                version,
+                source_path,
             )
             self.actual_version = version
             return self.actual_version
@@ -485,7 +339,9 @@ class BedrockDownloader:
             if match:
                 version = match.group(1)
                 self.logger.debug(
-                    f"Extracted version '{version}' from custom ZIP name: {source_path}"
+                    "Extracted version '%s' from custom ZIP name: %s",
+                    version,
+                    source_path,
                 )
                 self.actual_version = version
                 return self.actual_version
@@ -493,8 +349,9 @@ class BedrockDownloader:
                 # Fallback for custom zips that don't have a clear version number
                 custom_version = Path(source_path).stem
                 self.logger.warning(
-                    f"Could not parse a version number from custom ZIP '{source_path}'. "
-                    f"Using filename stem '{custom_version}' as version."
+                    "Could not parse a version number from custom ZIP '%s'. Using filename stem '%s' as version.",
+                    source_path,
+                    custom_version,
                 )
                 self.actual_version = custom_version
                 return self.actual_version
@@ -507,21 +364,19 @@ class BedrockDownloader:
     async def _download_server_zip_file(self):  # noqa: C901
         """Asynchronously downloads the server ZIP file from the resolved URL.
 
-        Raises:
-            MissingArgumentError: If the URL or target file path are not set.
-            FileOperationError: If directories cannot be created or the file
-                cannot be written.
-            InternetConnectivityError: If the download request fails.
-        """
+        :raises MissingArgumentError: If the URL or target file path are not set.
+        :raises FileOperationError: If directories cannot be created or the file
+            cannot be written.
+        :raises InternetConnectivityError: If the download request fails."""
         if not self.resolved_download_url or not self.zip_file_path:
             raise MissingArgumentError(
                 "Download URL or ZIP file path not set. Cannot download."
             )
 
-        self.logger.info(
-            f"Attempting to asynchronously download server from: {self.resolved_download_url}"
+        self.logger.debug(
+            "Attempting to download server from: %s", self.resolved_download_url
         )
-        self.logger.debug(f"Saving downloaded file to: {self.zip_file_path}")
+        self.logger.debug("Saving downloaded file to: %s", self.zip_file_path)
 
         target_dir = os.path.dirname(self.zip_file_path)
         try:
@@ -533,46 +388,55 @@ class BedrockDownloader:
             ) from e
 
         try:
+            async with temporary_directory(target_dir or ".") as staging:
+                download_path = staging / "download.zip"
 
-            headers = {
-                "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36"
-            }
-            # Use a streaming request to handle large files efficiently.
-            timeout = aiohttp.ClientTimeout(total=600, connect=30, sock_read=60)
-            async with aiohttp.ClientSession(
-                timeout=timeout, headers=headers
-            ) as session:
-                async with session.get(self.resolved_download_url) as response:
-                    response.raise_for_status()
-                    self.logger.debug(
-                        f"Download request successful (status {response.status}). Writing to file."
-                    )
-                    total_size = int(response.headers.get("content-length", 0))
-                    bytes_written = 0
-                    async with aiofiles.open(self.zip_file_path, "wb") as f:
-                        # Write the file in chunks to avoid high memory usage.
-                        async for chunk in response.content.iter_chunked(8192 * 4):
-                            await f.write(chunk)
-                            bytes_written += len(chunk)
-                    self.logger.info(
-                        f"Successfully downloaded {bytes_written} bytes to: {self.zip_file_path}"
-                    )
-                    if total_size != 0 and bytes_written != total_size:
-                        self.logger.warning(
-                            f"Downloaded size ({bytes_written}) does not match content-length ({total_size}). File might be incomplete."
+                headers = {
+                    "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36"
+                }
+                # Use a streaming request to handle large files efficiently.
+                timeout = aiohttp.ClientTimeout(total=600, connect=30, sock_read=60)
+                async with aiohttp.ClientSession(
+                    timeout=timeout, headers=headers
+                ) as session:
+                    async with session.get(self.resolved_download_url) as response:
+                        response.raise_for_status()
+                        self.logger.debug(
+                            "Download request successful (status %s). Writing to file.",
+                            response.status,
                         )
+                        total_size = int(response.headers.get("content-length", 0))
+                        bytes_written = 0
+                        async with aiofiles.open(download_path, "wb") as f:
+                            # Write the file in chunks to avoid high memory usage.
+                            async for chunk in response.content.iter_chunked(8192 * 4):
+                                await f.write(chunk)
+                                bytes_written += len(chunk)
+                        self.logger.info(
+                            "Bedrock download complete (%s bytes): '%s'.",
+                            bytes_written,
+                            self.zip_file_path,
+                        )
+                        if total_size != 0 and bytes_written != total_size:
+                            raise InternetConnectivityError(
+                                f"Downloaded size ({bytes_written}) does not match content-length ({total_size}). File might be incomplete."
+                            )
+
+                def validate() -> None:
+                    with zipfile.ZipFile(download_path) as archive:
+                        validate_archive(archive)
+                        bad = archive.testzip()
+                        if bad is not None:
+                            raise zipfile.BadZipFile(f"Corrupt archive entry: {bad}")
+
+                await run_in_thread(validate)
+                await run_in_thread(os.replace, download_path, self.zip_file_path)
         except (aiohttp.ClientError, asyncio.TimeoutError, TimeoutError) as e:
-            # Clean up partial download on failure.
-            if await aiofiles.ospath.exists(self.zip_file_path):
-                try:
-                    await aiofiles.os.remove(self.zip_file_path)
-                except OSError as rm_err:
-                    self.logger.warning(
-                        f"Could not remove incomplete file '{self.zip_file_path}': {rm_err}"
-                    )
             raise InternetConnectivityError(
                 f"Download failed for '{self.resolved_download_url}': {e}"
             ) from e
+        except InternetConnectivityError:
+            raise
         except OSError as e:
             raise FileOperationError(
                 f"Cannot write to file '{self.zip_file_path}': {e}"
@@ -581,15 +445,9 @@ class BedrockDownloader:
             raise FileOperationError(f"Unexpected error during download: {e}") from e
 
     async def _execute_instance_pruning(self):
-        """Executes download cache pruning for this downloader instance.
+        """Prune the selected download cache using the configured retention count.
 
-        This method calls the global :func:`prune_old_downloads` function,
-        passing the instance's specific download directory (e.g.,
-        ``.../downloads/stable`` or ``.../downloads/preview``) and the
-        configured retention policy from settings (``retention.downloads``).
-
-        Pruning failures are logged as warnings and do not interrupt the main
-        download or setup operations, as pruning is a non-critical maintenance task.
+        Pruning failures are logged without interrupting installation.
         """
         if self._version_type == "CUSTOM":
             self.logger.debug("Skipping pruning for CUSTOM version.")
@@ -611,13 +469,23 @@ class BedrockDownloader:
             effective_keep = int(keep_setting)
             if effective_keep < 0:
                 self.logger.error(
-                    f"Invalid DOWNLOAD_KEEP setting ('{keep_setting}'). Must be >= 0. Skipping."
+                    "Invalid DOWNLOAD_KEEP setting ('%s'). Must be >= 0. Skipping.",
+                    keep_setting,
                 )
                 return
             self.logger.debug(
-                f"Instance triggering pruning for '{self.specific_download_dir}' keeping {effective_keep} files."
+                "Instance triggering pruning for '%s' keeping %s files.",
+                self.specific_download_dir,
+                effective_keep,
             )
-            await prune_old_downloads(self.specific_download_dir, effective_keep)
+            result = await prune_old_downloads(
+                self.specific_download_dir, effective_keep
+            )
+            if result.failures:
+                self.logger.warning(
+                    "Download retention failed for %s cached archives.",
+                    len(result.failures),
+                )
         except (
             UserInputError,
             FileOperationError,
@@ -627,16 +495,19 @@ class BedrockDownloader:
         ) as e:
             # Log as a warning and continue, as pruning failure should not block the main operation.
             self.logger.warning(
-                f"Pruning failed for instance's directory '{self.specific_download_dir}': {e}. Continuing main operation.",
+                "Pruning failed for instance's directory '%s': %s. Continuing main operation.",
+                self.specific_download_dir,
+                e,
                 exc_info=True,
             )
 
-    def _update_server_properties_from_zip(self, zip_ref: zipfile.ZipFile) -> None:
+    def _update_server_properties_from_zip(
+        self, zip_ref: zipfile.ZipFile, target_dir: Path | None = None
+    ) -> None:
         """Updates the server.properties file by applying existing user values
         on top of the fresh file from the zip archive.
 
-        Args:
-            zip_ref (zipfile.ZipFile): The opened ZIP file containing the new server files.
+        :param zip_ref: The opened ZIP file containing the new server files.
         """
         server_properties_path = os.path.join(self.server_dir, "server.properties")
 
@@ -659,9 +530,10 @@ class BedrockDownloader:
                         user_properties[parts[0].strip()] = parts[1].strip()
         except OSError as e:
             self.logger.warning(
-                f"Could not read existing server.properties to merge new properties: {e}"
+                "Could not read existing server.properties to merge new properties: %s",
+                e,
             )
-            return
+            raise
 
         # 2. Extract properties from zip and merge
         try:
@@ -699,62 +571,59 @@ class BedrockDownloader:
                     merged_lines.append(f"{k}={user_properties[k]}")
 
             # 4. Write back out to disk
-            with open(server_properties_path, "w", encoding="utf-8") as f:
+            with open(
+                (
+                    (target_dir / "server.properties")
+                    if target_dir
+                    else server_properties_path
+                ),
+                "w",
+                encoding="utf-8",
+            ) as f:
                 f.write("\n".join(merged_lines) + "\n")
 
-            self.logger.info(
+            self.logger.debug(
                 "Successfully merged user values into new server.properties"
             )
 
         except Exception as e:
-            self.logger.warning(f"Could not merge new server.properties from zip: {e}")
+            self.logger.warning("Could not merge new server.properties from zip: %s", e)
+            raise
 
     def get_actual_version(self) -> Optional[str]:
-        """Returns the resolved actual version string of the server.
+        """Return the resolved actual version string of the server.
 
         This value is populated after :meth:`.get_version_for_target_spec` or
         :meth:`.prepare_download_assets` has been successfully called.
 
-        Returns:
-            Optional[str]: The actual version string (e.g., "1.20.10.01"),
-            or ``None`` if the version has not been resolved yet.
+        :returns: The actual version string (e.g., "1.20.10.01"),
+                  or ``None`` if the version has not been resolved yet.
         """
         return self.actual_version
 
     def get_zip_file_path(self) -> Optional[str]:
-        """Returns the absolute path to the downloaded (or identified) server ZIP file.
+        """Return the absolute path to the downloaded (or identified) server ZIP file.
 
         This value is populated after :meth:`.prepare_download_assets` has
         successfully identified or downloaded the ZIP file.
 
-        Returns:
-            Optional[str]: The full path to the server ZIP file, or ``None`` if
-            not yet determined.
+        :returns: The full path to the server ZIP file, or ``None`` if
+                  not yet determined.
         """
         return self.zip_file_path
 
     def get_specific_download_dir(self) -> Optional[str]:
-        """Returns the specific download directory used for this instance's downloads.
-
-        This is typically a subdirectory like 'stable' or 'preview' within the
-        main download directory. It's populated by :meth:`.prepare_download_assets`.
-
-        Returns:
-            Optional[str]: The absolute path to the instance's specific download
-            directory (e.g., ``/path/to/downloads/stable``), or ``None`` if not
-            yet determined.
-        """
+        """Return the selected cache directory, or ``None`` before preparation."""
         return self.specific_download_dir
 
     def get_resolved_download_url(self) -> Optional[str]:
-        """Returns the fully resolved download URL for the server archive.
+        """Return the fully resolved download URL for the server archive.
 
         This value is populated after :meth:`.get_version_for_target_spec` or
         :meth:`.prepare_download_assets` (which calls the former) has successfully
         resolved the URL.
 
-        Returns:
-            Optional[str]: The complete download URL, or ``None`` if not yet resolved.
+        :returns: The complete download URL, or ``None`` if not yet resolved.
         """
         return self.resolved_download_url
 
@@ -767,72 +636,77 @@ class BedrockDownloader:
         if not await aiofiles.ospath.exists(self.zip_file_path):
             raise AppFileNotFoundError(self.zip_file_path, "ZIP file to extract")
 
-        self.logger.info(
-            f"Extracting server files from '{self.zip_file_path}' to '{self.server_dir}' asynchronously..."
-        )
+        self.logger.info("Extracting Bedrock server files into '%s'.", self.server_dir)
         self.logger.debug(
-            f"Extraction mode: {'Update (preserving config/worlds)' if is_update else 'Fresh install'}"
+            "Extraction mode: %s",
+            "Update (preserving config/worlds)" if is_update else "Fresh install",
         )
 
         try:
-            await asyncio.to_thread(os.makedirs, self.server_dir, exist_ok=True)
+            await run_in_thread(os.makedirs, self.server_dir, exist_ok=True)
         except OSError as e:
             raise FileOperationError(
                 f"Cannot create target directory '{self.server_dir}' for extraction: {e}"
             ) from e
 
-        def _do_extract():
-            with zipfile.ZipFile(self.zip_file_path, "r") as zip_ref:
-                if is_update:
-                    self.logger.debug(
-                        f"Update mode: Excluding items matching: {self.PRESERVED_ITEMS_ON_UPDATE}"
-                    )
-                    extracted_count, skipped_count = 0, 0
-                    for member in zip_ref.infolist():
-                        member_path = member.filename.replace("\\", "/")
-                        should_extract = not any(
-                            member_path == item or member_path.startswith(item)
-                            for item in self.PRESERVED_ITEMS_ON_UPDATE
-                        )
-                        if should_extract:
-                            zip_ref.extract(member, path=self.server_dir)
-                            extracted_count += 1
-                        else:
-                            self.logger.debug(
-                                f"Skipping extraction of preserved item: {member_path}"
-                            )
-                            skipped_count += 1
-
-                    self._update_server_properties_from_zip(zip_ref)
-
-                    self.logger.info(
-                        f"Update extraction complete. Extracted {extracted_count} items, skipped {skipped_count} preserved items."
-                    )
-                else:
-                    self.logger.debug("Fresh install mode: Extracting all files...")
-                    zip_ref.extractall(self.server_dir)
-                    self.logger.info(
-                        f"Successfully extracted all files to: {self.server_dir}"
-                    )
-
         try:
-            await asyncio.to_thread(_do_extract)
-        except zipfile.BadZipFile as e:
-            raise ExtractError(f"Invalid ZIP file: '{self.zip_file_path}'. {e}") from e
-        except (OSError, IOError) as e:
-            raise FileOperationError(f"Error during file extraction: {e}") from e
-        except Exception as e:
-            raise ExtractError(f"Unexpected error during extraction: {e}") from e
+            async with temporary_directory(Path(self.server_dir).parent) as staging:
+
+                archive_path = self.zip_file_path
+
+                def prepare() -> None:
+                    with zipfile.ZipFile(archive_path, "r") as archive:
+                        members = [
+                            member
+                            for member in archive.infolist()
+                            if not is_update
+                            or not any(
+                                member.filename.replace("\\", "/") == item
+                                or member.filename.replace("\\", "/").startswith(item)
+                                for item in self.PRESERVED_ITEMS_ON_UPDATE
+                            )
+                        ]
+                        extract_archive(archive, staging, members)
+                        if is_update:
+                            self._update_server_properties_from_zip(archive, staging)
+
+                await run_in_thread(prepare)
+                async with file_transaction(
+                    Path(self.server_dir).parent
+                ) as transaction:
+
+                    def install() -> None:
+                        for entry in sorted(staging.rglob("*")):
+                            target = Path(self.server_dir) / entry.relative_to(staging)
+                            if entry.is_dir():
+                                transaction.mkdir(target)
+                            else:
+                                transaction.replace(entry, target)
+
+                    await run_in_thread(install)
+        except zipfile.BadZipFile as error:
+            raise ExtractError(
+                f"Invalid ZIP file: '{self.zip_file_path}'. {error}"
+            ) from error
+        except OSError as error:
+            raise FileOperationError(
+                f"Error during file extraction: {error}"
+            ) from error
 
     async def full_server_setup(self, is_update: bool) -> str:
         """Performs the complete server setup asynchronously."""
-        self.logger.info(
-            f"Starting full server setup asynchronously for '{self.server_dir}', version '{self.input_target_version}', update={is_update}"
+        self.logger.debug(
+            "Starting full server setup for '%s', version '%s', update=%s",
+            self.server_dir,
+            self.input_target_version,
+            is_update,
         )
         actual_version, _, _ = await self.prepare_download_assets()
         await self.extract_server_files(is_update)
-        self.logger.info(
-            f"Server setup/update for version {actual_version} completed asynchronously in '{self.server_dir}'."
+        self.logger.debug(
+            "Server setup/update for version %s completed in '%s'.",
+            actual_version,
+            self.server_dir,
         )
         if not actual_version:
             raise DownloadError("Actual version not determined after full setup.")
@@ -841,14 +715,15 @@ class BedrockDownloader:
     async def get_version_for_target_spec(self) -> str:
         """Resolves the target version asynchronously."""
         self.logger.debug(
-            f"Getting prospective version asynchronously for target spec: '{self.input_target_version}'"
+            "Getting prospective version for target spec: '%s'",
+            self.input_target_version,
         )
         if self._version_type == "CUSTOM":
             self.logger.debug("Custom version specified, skipping download URL lookup.")
-            await asyncio.to_thread(self._get_version_from_url)
+            await run_in_thread(self._get_version_from_url)
         else:
             await self._lookup_bedrock_download_url()
-            await asyncio.to_thread(self._get_version_from_url)
+            await run_in_thread(self._get_version_from_url)
 
         if not self.actual_version:
             raise DownloadError("Could not determine actual version from resolved URL.")
@@ -856,13 +731,14 @@ class BedrockDownloader:
 
     async def prepare_download_assets(self) -> Tuple[str, str, str]:
         """Prepares download assets asynchronously."""
-        self.logger.info(
-            f"Starting Bedrock server download preparation asynchronously for directory: '{self.server_dir}'"
+        self.logger.debug(
+            "Starting Bedrock server download preparation for directory: '%s'",
+            self.server_dir,
         )
 
         if self._version_type == "CUSTOM":
-            self.logger.info(
-                f"Custom version specified. Using local ZIP: {self.server_zip_path}"
+            self.logger.debug(
+                "Custom version specified. Using local ZIP: %s", self.server_zip_path
             )
             if not self.server_zip_path:
                 raise MissingArgumentError(
@@ -870,11 +746,12 @@ class BedrockDownloader:
                 )
 
             self.zip_file_path = self.server_zip_path
-            await asyncio.to_thread(self._get_version_from_url)
+            await run_in_thread(self._get_version_from_url)
 
             self.specific_download_dir = str(Path(self.server_zip_path).parent)
             self.logger.debug(
-                f"Setting specific_download_dir for custom zip to: {self.specific_download_dir}"
+                "Setting specific_download_dir for custom zip to: %s",
+                self.specific_download_dir,
             )
 
             if (
@@ -891,11 +768,9 @@ class BedrockDownloader:
         await system_base.check_internet_connectivity()
 
         try:
-            await asyncio.to_thread(os.makedirs, self.server_dir, exist_ok=True)
+            await run_in_thread(os.makedirs, self.server_dir, exist_ok=True)
             if self.base_download_dir:
-                await asyncio.to_thread(
-                    os.makedirs, self.base_download_dir, exist_ok=True
-                )
+                await run_in_thread(os.makedirs, self.base_download_dir, exist_ok=True)
         except OSError as e:
             raise FileOperationError(
                 f"Failed to create required directories asynchronously: {e}"
@@ -917,12 +792,10 @@ class BedrockDownloader:
             self.base_download_dir, version_subdir_name
         )
         self.logger.debug(
-            f"Using specific download subdirectory: {self.specific_download_dir}"
+            "Using specific download subdirectory: %s", self.specific_download_dir
         )
         try:
-            await asyncio.to_thread(
-                os.makedirs, self.specific_download_dir, exist_ok=True
-            )
+            await run_in_thread(os.makedirs, self.specific_download_dir, exist_ok=True)
         except OSError as e:
             raise FileOperationError(
                 f"Failed to create download subdirectory '{self.specific_download_dir}': {e}"
@@ -933,18 +806,21 @@ class BedrockDownloader:
         )
 
         if not await aiofiles.ospath.exists(self.zip_file_path):
-            self.logger.info(
-                f"Server version {self.actual_version} ZIP not found locally. Downloading asynchronously..."
+            self.logger.debug(
+                "Server version %s ZIP not found locally. Downloading...",
+                self.actual_version,
             )
             await self._download_server_zip_file()
         else:
-            self.logger.info(
-                f"Server version {self.actual_version} ZIP already exists at '{self.zip_file_path}'. Skipping download."
+            self.logger.debug(
+                "Server version %s ZIP already exists at '%s'. Skipping download.",
+                self.actual_version,
+                self.zip_file_path,
             )
 
         await self._execute_instance_pruning()
-        self.logger.info(
-            f"Download preparation completed asynchronously for version {self.actual_version}."
+        self.logger.debug(
+            "Download preparation completed for version %s.", self.actual_version
         )
 
         if (

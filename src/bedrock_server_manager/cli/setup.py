@@ -96,6 +96,6 @@ def setup(ctx: click.Context):  # noqa: C901
             "\nSetup complete! Your settings have been saved.", fg="cyan", bold=True
         )
     except Exception as e:
-        click.secho(f"Error during configuration: {e}", fg="red")
+        raise click.ClickException("Configuration could not be completed.") from e
     except (click.Abort, KeyboardInterrupt):
         click.secho("\nOperation cancelled.", fg="yellow")

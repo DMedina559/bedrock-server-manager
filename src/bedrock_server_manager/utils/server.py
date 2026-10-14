@@ -1,17 +1,5 @@
 # bedrock_server_manager/utils/server.py
-"""
-Provides low-level core utility functions for server management.
-
-This module contains a collection of helper functions that perform specific,
-atomic tasks related to server management. These utilities are designed to be
-used by higher-level components like the :class:`~.core.bedrock_server.BedrockServer`
-or API endpoints.
-
-Key functions include:
-
-    - :func:`core_validate_server_name_format`: Validates server names against a regex.
-
-"""
+"""Server naming, discovery and persistent player-directory helpers."""
 
 import logging
 import os
@@ -25,7 +13,11 @@ from ..error import (
     FileOperationError,
     InvalidServerNameError,
     MissingArgumentError,
+    ResourceNotFoundError,
 )
+from ..failures import classify_failure
+from ..logging import log_operation_error
+from ..results import ResourceFailure
 
 logger = logging.getLogger(__name__)
 
@@ -33,28 +25,15 @@ logger = logging.getLogger(__name__)
 
 
 def core_validate_server_name_format(server_name: str) -> None:
-    """
-    Validates the format of a server name against a specific pattern.
-
-    The function checks that the server name is not empty and contains only
-    alphanumeric characters (a-z, A-Z, 0-9), hyphens (-), and underscores (_).
-    This helps prevent issues with file paths and system commands.
-
-    Args:
-        server_name (str): The server name string to validate.
-
-    Raises:
-        :class:`~.error.InvalidServerNameError`: If the server name is empty or
-            contains invalid characters.
-    """
-    if not server_name:
-        raise InvalidServerNameError("Server name cannot be empty.")
+    """Validate the server identifier or raise ``InvalidServerNameError``."""
+    if not isinstance(server_name, str) or not server_name:
+        raise InvalidServerNameError("Server name must be a non-empty string.")
     if not re.fullmatch(r"^[a-zA-Z0-9_-]+$", server_name):
         raise InvalidServerNameError(
             "Invalid server name format. Only use letters (a-z, A-Z), "
             "numbers (0-9), hyphens (-), and underscores (_)."
         )
-    logger.debug(f"Server name '{server_name}' format is valid.")
+    logger.debug("Server name '%s' format is valid.", server_name)
 
 
 # --- Server Discovery and Validation ---
@@ -65,36 +44,28 @@ async def validate_server(server_name: str, app_context: AppContext) -> bool:
     if not server_name:
         raise MissingArgumentError("Server name cannot be empty for validation.")
 
-    logger.debug(f"BSM: Validating server '{server_name}' using BedrockServer class.")
+    logger.debug("Validating server '%s' using BedrockServer class.", server_name)
     try:
         server_instance = app_context.get_server(server_name)
         is_valid = await server_instance.is_installed()
         if is_valid:
-            logger.debug(f"BSM: Server '{server_name}' validation successful.")
+            logger.debug("Server '%s' validation successful.", server_name)
         else:
             logger.debug(
-                f"BSM: Server '{server_name}' validation failed (directory or executable missing)."
+                "Server '%s' validation failed (directory or executable missing).",
+                server_name,
             )
         return is_valid
-    except (
-        ValueError,
-        MissingArgumentError,
-        ConfigurationError,
-        InvalidServerNameError,
-        Exception,
-    ) as e_val:
-        logger.warning(
-            f"BSM: Validation failed for server '{server_name}' due to an error: {e_val}"
-        )
+    except (InvalidServerNameError, ResourceNotFoundError, AppFileNotFoundError):
         return False
 
 
 async def get_servers_data(
     app_context: AppContext,
-) -> Tuple[List[Dict[str, Any]], List[str]]:
+) -> Tuple[List[Dict[str, Any]], List[ResourceFailure]]:
     """Discovers and retrieves status data for all valid server instances."""
     servers_data: List[Dict[str, Any]] = []
-    error_messages: List[str] = []
+    error_messages: List[ResourceFailure] = []
 
     base_dir = app_context.settings.get("paths.servers")
     if not base_dir or not os.path.isdir(base_dir):
@@ -106,24 +77,35 @@ async def get_servers_data(
             continue
 
         try:
-            server = app_context.get_server(server_name_candidate)
+            server = app_context.prepare_server(server_name_candidate)
 
             if not await server.is_installed():
                 logger.debug(
-                    f"Skipping '{server_name_candidate}': Not a valid server installation."
+                    "Skipping '%s': Not a valid server installation.",
+                    server_name_candidate,
                 )
                 continue
 
-            servers_data.append(await server.get_summary_info())
+            servers_data.append(
+                (await server.get_summary_info()).model_dump(mode="json")
+            )
 
         except (FileOperationError, ConfigurationError, InvalidServerNameError) as e:
             msg = f"Could not get info for server '{server_name_candidate}': {e}"
             logger.warning(msg)
-            error_messages.append(msg)
+            error_messages.append(
+                ResourceFailure(
+                    resource=server_name_candidate, error=classify_failure(e).error
+                )
+            )
         except Exception as e:
             msg = f"An unexpected error occurred while processing server '{server_name_candidate}': {e}"
-            logger.error(msg, exc_info=True)
-            error_messages.append(msg)
+            log_operation_error(logger, msg, error=e)
+            error_messages.append(
+                ResourceFailure(
+                    resource=server_name_candidate, error=classify_failure(e).error
+                )
+            )
 
     servers_data.sort(key=lambda s: s.get("name", "").lower())
     return servers_data, error_messages

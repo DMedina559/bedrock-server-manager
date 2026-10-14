@@ -11,189 +11,104 @@ This module provides endpoints for:
 """
 
 import logging
-from typing import Any, List
+from typing import List
 
-from fastapi import APIRouter, Depends, HTTPException, status
+from fastapi import APIRouter, Depends, HTTPException
 
 from ...context import AppContext
+from ...state.updates import AccountPatch
 from ..deps import get_admin_user, get_app_context, get_moderator_user
 from ..schemas import BaseApiResponse, UpdateUserRolePayload
 from ..schemas import UserResponse as UserSchema
-from .audit_log import create_audit_log
 
 logger = logging.getLogger(__name__)
 
-router = APIRouter(
-    prefix="/api/users",
-    tags=["User Management"],
-)
+router = APIRouter(prefix="/api/users", tags=["User Management"])
 
 
-@router.get("/list", response_model=List[UserSchema])
+@router.get("/list", operation_id="list_users", response_model=List[UserSchema])
 async def list_users_api(
     current_user: UserSchema = Depends(get_moderator_user),
     app_context: AppContext = Depends(get_app_context),
-):
-    """
-    Retrieves the list of users as JSON.
-    """
+) -> List[UserSchema]:
+    """Return the list of users as JSON."""
     async with app_context.storage.transaction() as session:
         users = await app_context.storage.user_repo.get_all_users(session)
-        return users
+        return [UserSchema.model_validate(user, from_attributes=True) for user in users]
 
 
-@router.post("/{user_id}/delete", response_model=BaseApiResponse)
+@router.post(
+    "/{user_id}/delete", operation_id="delete_user", response_model=BaseApiResponse
+)
 async def delete_user(
     user_id: int,
     current_user: UserSchema = Depends(get_admin_user),
     app_context: AppContext = Depends(get_app_context),
-):
-    """
-    Deletes a user.
-    """
-    async with app_context.storage.transaction() as session:
-        user = await app_context.storage.user_repo.get_user_by_id(session, user_id)
-        if user:
-            if (
-                user.role == "admin"
-                and await app_context.storage.user_repo.count_active_admins(session)
-                <= 1
-            ):
-                raise HTTPException(
-                    status_code=status.HTTP_400_BAD_REQUEST,
-                    detail="Cannot delete the last active admin.",
-                )
-
-            await create_audit_log(
-                app_context,
-                current_user.id,
-                "delete_user",
-                {"user_id": user.id, "username": str(user.username)},
-            )
-            await app_context.storage.user_repo.delete_user(session, user)
-            logger.info(
-                f"UserResponse '{user.username}' deleted by '{current_user.username}'."
-            )
-            return BaseApiResponse(status="success")
-
-    raise HTTPException(
-        status_code=status.HTTP_404_NOT_FOUND,
-        detail=f"UserResponse with id {user_id} not found.",
+) -> BaseApiResponse:
+    """Delete a user."""
+    result = await app_context.user_service.update_account(
+        action="delete", user_id=user_id, actor_id=current_user.id
     )
+    if result is None:
+        raise HTTPException(
+            status_code=404, detail=f"User with id {user_id} not found."
+        )
+    return BaseApiResponse(status="success")
 
 
-@router.post("/{user_id}/disable", response_model=BaseApiResponse)
+@router.post(
+    "/{user_id}/disable", operation_id="disable_user", response_model=BaseApiResponse
+)
 async def disable_user(
     user_id: int,
     current_user: UserSchema = Depends(get_admin_user),
     app_context: AppContext = Depends(get_app_context),
-):
-    """
-    Disables a user.
-    """
-    async with app_context.storage.transaction() as session:
-        user: Any = await app_context.storage.user_repo.get_user_by_id(session, user_id)
-        if user:
-            if (
-                user.role == "admin"
-                and await app_context.storage.user_repo.count_active_admins(session)
-                <= 1
-            ):
-                raise HTTPException(
-                    status_code=status.HTTP_400_BAD_REQUEST,
-                    detail="Cannot disable the last active admin.",
-                )
-
-            user.is_active = False
-            await create_audit_log(
-                app_context,
-                current_user.id,
-                "disable_user",
-                {"user_id": user.id, "username": str(user.username)},
-            )
-            logger.info(
-                f"UserResponse '{user.username}' disabled by '{current_user.username}'."
-            )
-            return BaseApiResponse(status="success")
-
-    raise HTTPException(
-        status_code=status.HTTP_404_NOT_FOUND,
-        detail=f"UserResponse with id {user_id} not found.",
+) -> BaseApiResponse:
+    result = await app_context.user_service.update_account(
+        action="disable", user_id=user_id, actor_id=current_user.id
     )
+    if result is None:
+        raise HTTPException(
+            status_code=404, detail=f"User with id {user_id} not found."
+        )
+    return BaseApiResponse(status="success")
 
 
-@router.post("/{user_id}/enable", response_model=BaseApiResponse)
+@router.post(
+    "/{user_id}/enable", operation_id="enable_user", response_model=BaseApiResponse
+)
 async def enable_user(
     user_id: int,
     current_user: UserSchema = Depends(get_admin_user),
     app_context: AppContext = Depends(get_app_context),
-):
-    """
-    Enables a user.
-    """
-    async with app_context.storage.transaction() as session:
-        user: Any = await app_context.storage.user_repo.get_user_by_id(session, user_id)
-        if user:
-            user.is_active = True
-            await create_audit_log(
-                app_context,
-                current_user.id,
-                "enable_user",
-                {"user_id": user.id, "username": str(user.username)},
-            )
-            logger.info(
-                f"UserResponse '{user.username}' enabled by '{current_user.username}'."
-            )
-            return BaseApiResponse(status="success")
-
-    raise HTTPException(
-        status_code=status.HTTP_404_NOT_FOUND,
-        detail=f"UserResponse with id {user_id} not found.",
+) -> BaseApiResponse:
+    result = await app_context.user_service.update_account(
+        action="enable", user_id=user_id, actor_id=current_user.id
     )
+    if result is None:
+        raise HTTPException(
+            status_code=404, detail=f"User with id {user_id} not found."
+        )
+    return BaseApiResponse(status="success")
 
 
-@router.post("/{user_id}/role", response_model=BaseApiResponse)
+@router.post(
+    "/{user_id}/role", operation_id="update_user_role", response_model=BaseApiResponse
+)
 async def update_user_role(
     user_id: int,
     data: UpdateUserRolePayload,
     current_user: UserSchema = Depends(get_admin_user),
     app_context: AppContext = Depends(get_app_context),
-):
-    """
-    Updates a user's role.
-    """
-    async with app_context.storage.transaction() as session:
-        user: Any = await app_context.storage.user_repo.get_user_by_id(session, user_id)
-        if user:
-            if (
-                user.role == "admin"
-                and data.role != "admin"
-                and await app_context.storage.user_repo.count_active_admins(session)
-                <= 1
-            ):
-                raise HTTPException(
-                    status_code=status.HTTP_400_BAD_REQUEST,
-                    detail="Cannot change the role of the last active admin.",
-                )
-            original_role = str(user.role)
-            user.role = data.role
-            await create_audit_log(
-                app_context,
-                current_user.id,
-                "update_user_role",
-                {
-                    "user_id": user.id,
-                    "username": str(user.username),
-                    "original_role": original_role,
-                    "new_role": data.role,
-                },
-            )
-            logger.info(
-                f"UserResponse '{user.username}' role changed to '{data.role}' by '{current_user.username}'."
-            )
-            return BaseApiResponse(status="success")
-
-    raise HTTPException(
-        status_code=status.HTTP_404_NOT_FOUND,
-        detail=f"UserResponse with id {user_id} not found.",
+) -> BaseApiResponse:
+    result = await app_context.user_service.update_account(
+        action="role",
+        user_id=user_id,
+        values=AccountPatch(role=data.role),
+        actor_id=current_user.id,
     )
+    if result is None:
+        raise HTTPException(
+            status_code=404, detail=f"User with id {user_id} not found."
+        )
+    return BaseApiResponse(status="success")

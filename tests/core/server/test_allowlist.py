@@ -1,0 +1,212 @@
+import json
+import os
+
+import pytest
+
+from bedrock_server_manager.error import ConfigParseError, FileOperationError
+
+
+async def test_get_allowlist(real_bedrock_server):
+    """Test retrieving allowlist from file."""
+    server = real_bedrock_server
+    allowlist_path = server.paths.allowlist_json_path
+    allowlist_data = [{"name": "player1", "xuid": "12345", "ignoresPlayerLimit": False}]
+    with open(allowlist_path, "w") as f:
+        json.dump(allowlist_data, f)
+
+    allowlist = await server.allowlist.get_allowlist()
+    assert allowlist == allowlist_data
+
+
+async def test_get_allowlist_missing_file(real_bedrock_server):
+    """Test retrieving allowlist when file doesn't exist returns empty list."""
+    server = real_bedrock_server
+    allowlist = await server.allowlist.get_allowlist()
+    assert allowlist == []
+
+
+async def test_get_allowlist_empty_file(real_bedrock_server):
+    """Test retrieving allowlist from empty file returns empty list."""
+    server = real_bedrock_server
+    allowlist_path = server.paths.allowlist_json_path
+    with open(allowlist_path, "w") as f:
+        f.write("")
+
+    allowlist = await server.allowlist.get_allowlist()
+    assert allowlist == []
+
+
+async def test_get_allowlist_invalid_json(real_bedrock_server):
+    """Test retrieving allowlist handles invalid json properly (raises error)."""
+    server = real_bedrock_server
+    allowlist_path = server.paths.allowlist_json_path
+    with open(allowlist_path, "w") as f:
+        f.write("{invalid_json}")
+
+    with pytest.raises(ConfigParseError, match="Invalid JSON in allowlist"):
+        await server.allowlist.get_allowlist()
+
+
+async def test_get_allowlist_json_object(real_bedrock_server):
+    """Test retrieving allowlist if it is a JSON object instead of a list."""
+    server = real_bedrock_server
+    allowlist_path = server.paths.allowlist_json_path
+    with open(allowlist_path, "w") as f:
+        json.dump({"key": "value"}, f)
+
+    with pytest.raises(ConfigParseError):
+        await server.allowlist.get_allowlist()
+
+
+async def test_add_to_allowlist(real_bedrock_server):
+    """Test adding a player to the allowlist."""
+    server = real_bedrock_server
+    allowlist_data = [{"name": "player1", "xuid": "12345"}]
+    await server.allowlist.add_to_allowlist(allowlist_data)
+
+    allowlist_path = server.paths.allowlist_json_path
+    with open(allowlist_path, "r") as f:
+        data = json.load(f)
+        assert data == [
+            {"name": "player1", "xuid": "12345", "ignoresPlayerLimit": False}
+        ]
+
+
+async def test_add_to_allowlist_non_existent_file(real_bedrock_server):
+    """Test adding to allowlist creates the file if it doesn't exist."""
+    server = real_bedrock_server
+    if os.path.exists(server.paths.allowlist_json_path):
+        os.remove(server.paths.allowlist_json_path)
+
+    players_to_add = [{"name": "player2", "xuid": "67890"}]
+    await server.allowlist.add_to_allowlist(players_to_add)
+    allowlist = await server.allowlist.get_allowlist()
+    assert len(allowlist) == 1
+    assert allowlist[0]["name"] == "player2"
+
+
+async def test_add_to_allowlist_player_already_exists(real_bedrock_server):
+    """Test adding a player that already exists returns 0 added."""
+    server = real_bedrock_server
+    players_to_add = [{"name": "player1", "xuid": "12345"}]
+    await server.allowlist.add_to_allowlist(players_to_add)
+
+    result = await server.allowlist.add_to_allowlist(players_to_add)
+    assert result == 0
+
+
+async def test_add_to_allowlist_invalid_entry(real_bedrock_server):
+    """Test adding an invalid entry (non-dict) to allowlist."""
+    server = real_bedrock_server
+    players_to_add = ["invalid_entry"]
+    await server.allowlist.add_to_allowlist(players_to_add)  # type: ignore
+    allowlist = await server.allowlist.get_allowlist()
+    assert len(allowlist) == 0
+
+
+async def test_add_to_allowlist_missing_name(real_bedrock_server):
+    """Test adding an entry without a name."""
+    server = real_bedrock_server
+    players_to_add = [{"xuid": "12345"}]
+    await server.allowlist.add_to_allowlist(players_to_add)
+    allowlist = await server.allowlist.get_allowlist()
+    assert len(allowlist) == 0
+
+
+async def test_add_to_allowlist_multiple_players(real_bedrock_server):
+    """Test adding multiple players including duplicates."""
+    server = real_bedrock_server
+    players_to_add = [
+        {"name": "player2", "xuid": "67890"},
+        {"name": "player3", "xuid": "54321"},
+        {
+            "name": "player2",
+            "xuid": "09876",
+        },  # Duplicate name but diff xuid usually ignored by name
+    ]
+    added = await server.allowlist.add_to_allowlist(players_to_add)
+    allowlist = await server.allowlist.get_allowlist()
+    assert added == 2
+    assert len(allowlist) == 2
+    assert any(p["name"] == "player2" for p in allowlist)
+    assert any(p["name"] == "player3" for p in allowlist)
+
+
+async def test_add_to_allowlist_unwritable_file(real_bedrock_server):
+    """Test adding to a read-only allowlist file."""
+    server = real_bedrock_server
+    allowlist_path = server.paths.allowlist_json_path
+    with open(allowlist_path, "w") as f:
+        f.write("[]")
+
+    os.chmod(allowlist_path, 0o444)  # Read-only
+    # also make directory unwritable so the temp file creation for atomic replace fails
+    os.chmod(os.path.dirname(allowlist_path), 0o555)
+    players_to_add = [{"name": "player2", "xuid": "67890"}]
+
+    try:
+        with pytest.raises(FileOperationError, match="Failed to write allowlist"):
+            await server.allowlist.add_to_allowlist(players_to_add)
+    finally:
+        os.chmod(os.path.dirname(allowlist_path), 0o755)
+        os.chmod(allowlist_path, 0o644)
+
+
+async def test_remove_from_allowlist_player_not_found(real_bedrock_server):
+    """Test removing a non-existent player."""
+    server = real_bedrock_server
+    result = await server.allowlist.remove_from_allowlist("non_existent_player")
+    assert result is False
+
+
+async def test_remove_from_allowlist_empty_file(real_bedrock_server):
+    """Test removing from an empty allowlist."""
+    server = real_bedrock_server
+    result = await server.allowlist.remove_from_allowlist("player1")
+    assert result is False
+
+
+async def test_remove_from_allowlist_success(real_bedrock_server):
+    """Test successfully removing a player."""
+    server = real_bedrock_server
+    players_to_add = [{"name": "player1", "xuid": "12345"}]
+    await server.allowlist.add_to_allowlist(players_to_add)
+
+    result = await server.allowlist.remove_from_allowlist("player1")
+    assert result is True
+    assert len(await server.allowlist.get_allowlist()) == 0
+
+
+async def test_remove_from_allowlist_unwritable_file(real_bedrock_server):
+    """Test removing from a read-only allowlist file."""
+    server = real_bedrock_server
+    players_to_add = [{"name": "player1", "xuid": "12345"}]
+    await server.allowlist.add_to_allowlist(players_to_add)
+
+    allowlist_path = server.paths.allowlist_json_path
+    os.chmod(allowlist_path, 0o444)  # Read-only
+    os.chmod(os.path.dirname(allowlist_path), 0o555)
+
+    try:
+        with pytest.raises(FileOperationError, match="Failed to write allowlist"):
+            await server.allowlist.remove_from_allowlist("player1")
+    finally:
+        os.chmod(os.path.dirname(allowlist_path), 0o755)
+        os.chmod(allowlist_path, 0o644)
+
+
+@pytest.mark.parametrize(
+    "content", ["{}", "null", "false", "{broken", '[{"unexpected": "value"}]']
+)
+async def test_malformed_configuration_is_preserved(real_bedrock_server, content):
+    from pathlib import Path
+
+    from bedrock_server_manager.error import ConfigParseError
+
+    server = real_bedrock_server
+    path = Path(server.paths.allowlist_json_path)
+    path.write_text(content, encoding="utf-8")
+    before = path.read_bytes()
+    with pytest.raises(ConfigParseError):
+        await server.allowlist.add_to_allowlist([{"name": "Alex"}])
+    assert path.read_bytes() == before

@@ -6,7 +6,7 @@ from bedrock_server_manager.error import ConfigurationError
 
 
 async def test_settings_initialization(app_context, isolated_bcm_config):
-    """Test Settings initializes properties correctly without loading."""
+    """Settings binds to shared state without maintaining a second cache."""
     base_dir = isolated_bcm_config
     test_config_dir = base_dir / "test_config"
     test_data_dir = base_dir / "test_data"
@@ -16,7 +16,7 @@ async def test_settings_initialization(app_context, isolated_bcm_config):
         app_context=app_context,
     )
     assert settings.app_context == app_context
-    assert settings._settings == {}
+    assert settings._settings["web"]["port"] == app_context.settings.get("web.port")
 
 
 async def test_settings_load_populates_defaults(app_context, db, isolated_bcm_config):
@@ -104,17 +104,26 @@ async def test_settings_set(settings, db):
         assert custom_setting.value["plugin"]["enabled"] is True
 
 
-async def test_settings_set_no_change_skips_write(settings, monkeypatch):
-    """Test setting the same value skips database write."""
-    from unittest.mock import AsyncMock
+async def test_settings_set_no_change_skips_write(settings, db):
+    from sqlalchemy import event
 
-    mock_flush = AsyncMock()
-    monkeypatch.setattr(settings.storage, "flush", mock_flush)
+    statements = []
 
-    current_val = settings.get("web.port")
-    await settings.set("web.port", current_val)
+    def record(connection, cursor, statement, parameters, context, executemany):
+        statements.append(statement)
 
-    mock_flush.assert_not_called()
+    event.listen(db.engine.sync_engine, "before_cursor_execute", record)
+    try:
+        current_val = settings.get("web.port")
+        await settings.set("web.port", current_val)
+        assert not statements
+        await settings.set("web.port", current_val + 1)
+        assert any(
+            statement.lstrip().upper().startswith(("INSERT", "UPDATE"))
+            for statement in statements
+        )
+    finally:
+        event.remove(db.engine.sync_engine, "before_cursor_execute", record)
 
 
 async def test_settings_set_conflict_raises_error(settings):
@@ -154,3 +163,55 @@ async def test_settings_properties(settings):
     """Test property getters like config_dir and data_dir."""
     assert settings.config_dir is not None
     assert settings.data_dir is not None
+
+
+async def test_settings_from_dict_unflattens_and_deep_merges():
+    """Test SettingsState.from_dict correctly deep merges flat and section settings."""
+    from bedrock_server_manager.state.settings import SettingsState
+
+    data_flat_first = {
+        "web.jwt_secret_key": "secret_123",
+        "web": {"host": "127.0.0.1", "port": 11325, "token_expires_weeks": 4},
+    }
+    s1 = SettingsState.from_dict(data_flat_first)
+    assert s1.get("web.jwt_secret_key") == "secret_123"
+    assert s1.get("web.port") == 11325
+
+    data_section_first = {
+        "web": {"host": "127.0.0.1", "port": 11325, "token_expires_weeks": 4},
+        "web.jwt_secret_key": "secret_123",
+    }
+    s2 = SettingsState.from_dict(data_section_first)
+    assert s2.get("web.jwt_secret_key") == "secret_123"
+    assert s2.get("web.port") == 11325
+
+
+async def test_save_settings_removes_legacy_flat_keys(app_context, db):
+    """Test save_settings cleans up legacy dot-notation keys in the settings table."""
+    async with db.session_manager() as session:
+        session.add(Setting(key="web.jwt_secret_key", value="legacy_key"))
+        session.add(
+            Setting(
+                key="web",
+                value={
+                    "host": "127.0.0.1",
+                    "port": 11325,
+                    "token_expires_weeks": 4,
+                    "jwt_secret_key": "active_key",
+                },
+            )
+        )
+        await session.commit()
+
+    # Apply changeset / save settings
+    await app_context.settings.set("web.port", 11326)
+    await app_context.storage.flush(app_context.state)
+
+    async with db.session_manager() as session:
+        from sqlalchemy.future import select
+
+        res = await session.execute(
+            select(Setting).filter(Setting.key == "web.jwt_secret_key")
+        )
+        legacy_record = res.scalars().first()
+        assert legacy_record is None

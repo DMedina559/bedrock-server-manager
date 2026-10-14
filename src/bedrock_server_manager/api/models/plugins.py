@@ -1,0 +1,104 @@
+"""Serializable plugins API request and response contracts."""
+
+from pydantic import JsonValue
+
+from ...events.models import ListenerFailure
+from .common import (
+    ActionResponse,
+    APIRequest,
+    APIResponse,
+    NonEmptyStr,
+    SuccessResponse,
+)
+
+
+class PluginInfo(APIResponse):
+    has_settings: bool = False
+    enabled: bool
+    description: str = ""
+    version: str = "N/A"
+    author: str = ""
+    status: str = "UNKNOWN"
+
+
+class GetPluginStatusesRequest(APIRequest):
+    pass
+
+
+class GetPluginStatusesResponse(SuccessResponse):
+    plugins: dict[str, PluginInfo]
+
+
+class SetPluginStatusRequest(APIRequest):
+    target_plugin_name: NonEmptyStr
+    enabled: bool
+
+
+class SetPluginStatusResponse(ActionResponse):
+    pass
+
+
+class ReloadSinglePluginRequest(APIRequest):
+    target_plugin_name: NonEmptyStr
+
+
+class ReloadSinglePluginResponse(ActionResponse):
+    pass
+
+
+class ReloadPluginsRequest(APIRequest):
+    pass
+
+
+class ReloadPluginsResponse(ActionResponse):
+    pass
+
+
+class TriggerExternalAppEventRequest(APIRequest):
+    event_name: NonEmptyStr
+    payload: dict[str, JsonValue] | None = None
+
+
+class EventDispatchSummary(APIResponse):
+    event_id: str
+    listeners_called: int
+    failures: list[ListenerFailure]
+
+
+class TriggerExternalAppEventResponse(ActionResponse):
+    details: EventDispatchSummary
+
+
+class GetPluginSettingRequest(APIRequest):
+    key: NonEmptyStr
+
+
+class GetPluginSettingResponse(SuccessResponse):
+    value: JsonValue
+
+
+class SetPluginSettingRequest(APIRequest):
+    key: NonEmptyStr
+    value: JsonValue
+
+
+class SetPluginSettingResponse(ActionResponse):
+    pass
+
+
+class GetPluginSettingsRequest(APIRequest):
+    target_plugin_name: NonEmptyStr
+
+
+class GetPluginSettingsResponse(SuccessResponse):
+    settings: dict[str, JsonValue]
+    settings_schema: dict[str, JsonValue] | None = None
+
+
+class UpdatePluginSettingsRequest(APIRequest):
+    target_plugin_name: NonEmptyStr
+    settings: dict[str, JsonValue]
+
+
+class PluginSettingsPayload(APIRequest):
+    settings: dict[str, JsonValue]

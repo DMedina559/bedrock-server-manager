@@ -52,9 +52,9 @@ async def test_user_service_mutations(app_context):
     assert app_context.state.users.get("john_doe").full_name == "John Doe"
 
 
-async def test_explicit_di_services(db):
+async def test_explicit_di_services(db, tmp_path):
     state = AppState()
-    storage = Storage(db)
+    storage = Storage(db, data_dir=str(tmp_path))
 
     server_svc = ServerService(state=state, storage=storage)
     plugin_svc = PluginService(state=state, storage=storage)
@@ -79,3 +79,21 @@ async def test_explicit_di_services(db):
     # Setting mutation
     await settings_svc.update_setting("custom.key", "custom_val")
     assert state.settings.get("custom.key") == "custom_val"
+
+
+async def test_invalid_plugin_settings_do_not_publish_metadata(app_context):
+    import pytest
+    from pydantic import ValidationError
+
+    from bedrock_server_manager.state.models import PluginInfoState
+
+    service = app_context.plugin_service
+    app_context.state.plugins.set(PluginInfoState(plugin_name="sample", enabled=False))
+    app_context.state.plugins.clear_dirty()
+    with pytest.raises(ValidationError):
+        await service.register_or_update_plugin(
+            "sample", enabled=True, settings={"invalid": object()}
+        )
+    assert app_context.state.plugins.get("sample").enabled is False
+    assert not app_context.state.plugins.is_dirty
+    assert not app_context.state.settings.is_dirty

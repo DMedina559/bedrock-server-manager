@@ -37,10 +37,10 @@ document.addEventListener("DOMContentLoaded", function () {
         function () {
           copyBtn.classList.add("copied");
           copyBtn.innerHTML = `
-            <svg class="check-icon" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#10b981" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
+            <svg class="check-icon" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="var(--bsm-accent)" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
               <polyline points="20 6 9 17 4 12"></polyline>
             </svg>
-            <span style="color: #10b981;">Copied!</span>
+            <span style="color: var(--bsm-accent);">Copied!</span>
           `;
           setTimeout(function () {
             copyBtn.classList.remove("copied");
@@ -91,8 +91,8 @@ document.addEventListener("DOMContentLoaded", function () {
       left: 0;
       width: 100vw;
       height: 100vh;
-      background: rgba(15, 23, 42, 0.92);
-      backdrop-filter: blur(8px);
+      background: rgba(3, 11, 13, 0.94);
+      backdrop-filter: blur(12px);
       align-items: center;
       justify-content: center;
       cursor: zoom-out;
@@ -105,8 +105,8 @@ document.addEventListener("DOMContentLoaded", function () {
       max-width: 92%;
       max-height: 92%;
       border-radius: 12px;
-      box-shadow: 0 25px 50px -12px rgba(0, 0, 0, 0.7);
-      border: 1px solid rgba(255, 255, 255, 0.15);
+      box-shadow: 0 25px 50px -12px rgba(0, 0, 0, 0.85), 0 0 30px rgba(0, 237, 149, 0.2);
+      border: 1px solid rgba(0, 237, 149, 0.3);
       transition: transform 0.25s ease;
       transform: scale(0.95);
     `;

@@ -1,34 +1,5 @@
 # bedrock_server_manager/core/system/base.py
-"""Provides base system utilities and foundational cross-platform functionalities.
-
-This module contains a collection of essential system-level utilities that are
-generally platform-agnostic or provide a common interface for operations that
-might have platform-specific nuances handled elsewhere. It serves as a core
-part of the system interaction layer.
-
-Key functionalities include:
-
-    - **Internet Connectivity**:
-        - :func:`.check_internet_connectivity`: Verifies basic internet access.
-    - **Filesystem Operations**:
-        - :func:`.set_server_folder_permissions`: Sets appropriate permissions for
-          server directories, with platform-aware logic.
-        - :func:`.delete_path_robustly`: A utility for robustly deleting files
-          or directories, handling potential read-only issues.
-    - **Process Information**:
-        - :func:`.is_server_running`: Checks if a Bedrock server process is active
-          and verified, relying on :mod:`~.core.system.process`.
-    - **Resource Monitoring**:
-        - :class:`.ResourceMonitor`: A singleton class for monitoring CPU and
-          memory usage of processes, requiring the ``psutil`` library.
-
-Constants:
-    - :const:`.PSUTIL_AVAILABLE`: Boolean indicating if ``psutil`` was imported,
-      critical for :class:`.ResourceMonitor`.
-
-Internal Helpers:
-    - :func:`._handle_remove_readonly_onerror`: An error handler for ``shutil.rmtree``.
-"""
+"""Shared filesystem, connectivity, permission and resource utilities."""
 
 import asyncio
 import logging
@@ -46,6 +17,8 @@ import aiofiles
 import aiofiles.os
 import aiofiles.ospath
 import aiohttp
+
+from ...utils.threads import run_in_thread
 
 try:
     import psutil
@@ -67,6 +40,7 @@ from ...error import (
     PermissionsError,
     SystemError,
 )
+from ...logging import log_operation_error
 from . import process as core_process
 
 logger = logging.getLogger(__name__)
@@ -79,18 +53,9 @@ async def find_files(
     reverse: bool = False,
     include_metadata: bool = False,
 ) -> Union[List[str], List[Dict[str, Any]]]:
-    """Asynchronously finds files in a directory matching a pattern and returns paths or metadata.
+    """Find sorted files matching a glob and return paths or metadata.
 
-    Args:
-        directory (str): The root directory to search in.
-        pattern (str): Glob pattern for matching files. Defaults to "*".
-        sort_by (str): Sorting criterion: "name", "mtime", "size". Defaults to "name".
-        reverse (bool): Whether to sort in reverse order. Defaults to False.
-        include_metadata (bool): If True, returns a list of dictionaries with metadata
-            (path, name, size, mtime). If False, returns a list of string paths.
-
-    Returns:
-        Union[List[str], List[Dict[str, Any]]]: A list of paths or metadata dictionaries.
+    Metadata contains path, name, size and modification time.
     """
 
     def _find() -> Union[List[str], List[Dict[str, Any]]]:
@@ -120,7 +85,7 @@ async def find_files(
         else:
             return [str(p) for p in files]
 
-    return await asyncio.to_thread(_find)
+    return await run_in_thread(_find)
 
 
 def can_manage_services() -> bool:
@@ -140,26 +105,11 @@ def can_manage_services() -> bool:
 async def check_internet_connectivity(
     url: str = "http://clients3.google.com/generate_204", timeout: int = 3
 ) -> None:
-    """Asynchronously checks for basic internet connectivity by attempting an HTTP GET request.
+    """Probe an HTTP URL within the timeout in seconds.
 
-    This function tries to establish an HTTP connection to a specified `url`
-    with a given `timeout`. Success indicates likely internet access.
-    Failure (timeout or other ``ClientError``) raises an
-    :class:`~bedrock_server_manager.error.InternetConnectivityError`.
-
-    Args:
-        url (str, optional): The URL to connect to.
-            Defaults to "http://clients3.google.com/generate_204".
-        timeout (int, optional): The connection timeout in seconds.
-            Defaults to 3.
-
-    Raises:
-        InternetConnectivityError: If the HTTP connection fails due to a
-            timeout, network error, or any other unexpected exception during the check.
+    Raise ``InternetConnectivityError`` when the probe fails.
     """
-    logger.debug(
-        f"Checking internet connectivity asynchronously by attempting HTTP GET to {url}..."
-    )
+    logger.debug("Checking internet connectivity by attempting HTTP GET to %s...", url)
     try:
         timeout_client = aiohttp.ClientTimeout(total=timeout)
         async with aiohttp.ClientSession(timeout=timeout_client) as session:
@@ -176,44 +126,15 @@ async def check_internet_connectivity(
         raise InternetConnectivityError(error_msg) from None
     except aiohttp.ClientError as ex:
         error_msg = f"Connectivity check failed: Cannot connect to {url}. Error: {ex}"
-        logger.error(error_msg)
+        log_operation_error(logger, error_msg, error=ex)
         raise InternetConnectivityError(error_msg) from ex
 
 
 async def set_server_folder_permissions(server_dir: str) -> None:  # noqa: C901
-    """Asynchronously sets appropriate permissions for a Bedrock server installation directory.
+    """Apply server-directory ownership and writable/executable permissions.
 
-    This function adjusts permissions recursively for the specified `server_dir`
-    based on the operating system:
-
-        -   **On Linux**:
-
-            -   Ownership of all files and directories is set to the current effective
-                user (UID) and group (GID) using ``os.chown``.
-            -   Directories are set to ``0o775`` (rwxrwxr-x).
-            -   The main server executable (assumed to be named "bedrock_server") is
-                set to ``0o775`` (rwxrwxr-x).
-            -   Other files are set to ``0o664`` (rw-rw-r--).
-
-        -   **On Windows**:
-
-            -   Ensures that the "write" permission (``stat.S_IWRITE`` or ``stat.S_IWUSR``)
-                is set for all files and directories. It preserves other existing
-                permissions by ORing with the current mode.
-
-        -   **Other OS**:
-
-            -   Logs a warning that permission setting is not implemented.
-
-    Args:
-        server_dir (str): The absolute path to the server's installation directory.
-
-    Raises:
-        MissingArgumentError: If `server_dir` is empty or not a string.
-        AppFileNotFoundError: If `server_dir` does not exist or is not a directory.
-        PermissionsError: If any ``OSError`` occurs during `os.chown` or `os.chmod`
-            operations (e.g., due to insufficient privileges to change ownership
-            or permissions), or for other unexpected errors.
+    Linux uses modes 0775 for directories/executables and 0664 for other files;
+    Windows preserves existing modes while adding write permission.
     """
     if not isinstance(server_dir, str) or not server_dir:
         raise MissingArgumentError(
@@ -224,7 +145,7 @@ async def set_server_folder_permissions(server_dir: str) -> None:  # noqa: C901
 
     os_name = platform.system()
     logger.debug(
-        f"Setting permissions for server directory: {server_dir} (OS: {os_name})"
+        "Setting permissions for server directory: %s (OS: %s)", server_dir, os_name
     )
 
     def _set_perms() -> None:
@@ -233,7 +154,7 @@ async def set_server_folder_permissions(server_dir: str) -> None:  # noqa: C901
                 current_uid = os.geteuid()  # type: ignore[attr-defined]
                 current_gid = os.getegid()  # type: ignore[attr-defined]
                 logger.debug(
-                    f"Setting ownership to UID={current_uid}, GID={current_gid}"
+                    "Setting ownership to UID=%s, GID=%s", current_uid, current_gid
                 )
 
                 for root, dirs, files in os.walk(server_dir, topdown=True):
@@ -252,10 +173,11 @@ async def set_server_folder_permissions(server_dir: str) -> None:  # noqa: C901
                 # Set top-level permissions last.
                 os.chown(server_dir, current_uid, current_gid)  # type: ignore[attr-defined]
                 os.chmod(server_dir, 0o775)
-                logger.info(f"Successfully set Linux permissions for: {server_dir}")
+                logger.debug("Successfully set Linux permissions for: %s", server_dir)
 
             elif os_name == "Windows":
                 logger.debug("Ensuring write permissions (S_IWRITE) on Windows...")
+                failures: list[OSError] = []
                 for root, dirs, files in os.walk(server_dir):
                     for name in dirs + files:
                         path = os.path.join(root, name)
@@ -263,15 +185,25 @@ async def set_server_folder_permissions(server_dir: str) -> None:  # noqa: C901
                             current_mode = os.stat(path).st_mode
                             os.chmod(path, current_mode | stat.S_IWRITE | stat.S_IWUSR)
                         except OSError as e_chmod:
+                            failures.append(e_chmod)
                             logger.warning(
-                                f"Could not set write permission on '{path}': {e_chmod}"
+                                "Could not set write permission on '%s': %s",
+                                path,
+                                e_chmod,
                             )
-                logger.info(
-                    f"Successfully ensured write permissions for: {server_dir} on Windows"
+                if failures:
+                    raise PermissionsError(
+                        f"Failed to set write permissions on {len(failures)} paths."
+                    ) from failures[0]
+                logger.debug(
+                    "Successfully ensured write permissions for: %s on Windows",
+                    server_dir,
                 )
             else:
-                logger.warning(f"Permission setting not implemented for OS: {os_name}")
+                logger.warning("Permission setting not implemented for OS: %s", os_name)
 
+        except PermissionsError:
+            raise
         except OSError as e:
             raise PermissionsError(
                 f"Failed to set permissions for '{server_dir}': {e}"
@@ -281,7 +213,7 @@ async def set_server_folder_permissions(server_dir: str) -> None:  # noqa: C901
                 f"Unexpected error during permission setup: {e}"
             ) from e
 
-    await asyncio.to_thread(_set_perms)
+    await run_in_thread(_set_perms)
 
 
 async def is_server_running(server_name: str, server_dir: str, config_dir: str) -> bool:
@@ -297,54 +229,35 @@ async def is_server_running(server_name: str, server_dir: str, config_dir: str) 
     if not isinstance(config_dir, str) or not config_dir:
         raise MissingArgumentError("Configuration directory cannot be empty.")
 
-    try:
-        process = await core_process.get_verified_bedrock_process(
-            server_name, server_dir, config_dir
-        )
-        return process is not None
-    except Exception as e:
-        logger.error(
-            f"Error asynchronously checking if server '{server_name}' is running: {e}",
-            exc_info=True,
-        )
-        return False
+    process = await core_process.get_verified_bedrock_process(
+        server_name, server_dir, config_dir
+    )
+    return process is not None
 
 
 def _handle_remove_readonly_onerror(func, path, exc_info):
-    """Error handler for ``shutil.rmtree`` to manage read-only files, primarily on Windows.
+    """Make a read-only path writable and retry the failed removal.
 
-    This function is designed to be passed as the `onerror` argument to
-    ``shutil.rmtree``. When ``shutil.rmtree`` encounters an ``OSError`` (often
-    a ``PermissionError`` on Windows) while trying to delete a file, this handler
-    is called.
-
-    It checks if the error is due to the file at `path` being read-only.
-    If so, it attempts to make the file writable (``stat.S_IWUSR | stat.S_IWRITE``)
-    and then retries the original operation that failed (e.g., `os.remove` or
-    `os.rmdir`), which is passed as the `func` argument.
-
-    If the error is not related to read-only status, or if making the file
-    writable fails, the original exception (from `exc_info`) is re-raised.
-
-    Args:
-        func (Callable): The function that raised the exception (e.g., `os.remove`).
-        path (str): The path to the file or directory that caused the error.
-        exc_info (Tuple): A tuple as returned by ``sys.exc_info()``, containing
-            the exception type, value, and traceback.
+    Propagate the original error if recovery fails.
     """
     # Check if the exception is an OSError and related to permissions
     # The specific error codes for read-only might vary, but AccessDenied (EACCES) is common.
     # We primarily check if we can make it writable.
     if isinstance(exc_info[1], OSError) and not os.access(path, os.W_OK):
         logger.debug(
-            f"Read-only error on path '{path}'. Attempting to make it writable and retry."
+            "Read-only error on path '%s'. Attempting to make it writable and retry.",
+            path,
         )
         try:
             os.chmod(path, stat.S_IWUSR | stat.S_IWRITE)
             func(path)  # Retry the original function (e.g., os.remove or os.rmdir)
         except Exception as e_retry:
             logger.warning(
-                f"Failed to make '{path}' writable and retry operation '{func.__name__}': {e_retry}. Original error: {exc_info[1]}"
+                "Failed to make '%s' writable and retry operation '%s': %s. Original error: %s",
+                path,
+                func.__name__,
+                e_retry,
+                exc_info[1],
             )
             # Re-raise the original exception if retry fails
             raise exc_info[1] from e_retry
@@ -352,40 +265,17 @@ def _handle_remove_readonly_onerror(func, path, exc_info):
         # If it's not an OSError we can handle or not a writable issue, re-raise the original exception.
         # For example, if the path is a directory that's not empty and func is os.rmdir.
         logger.debug(
-            f"Unhandled error during rmtree: {exc_info[1]} on path {path}. Re-raising."
+            "Unhandled error during rmtree: %s on path %s. Re-raising.",
+            exc_info[1],
+            path,
         )
         raise exc_info[1]
 
 
 async def delete_path_robustly(path_to_delete: str, item_description: str) -> bool:
-    """Asynchronously deletes a file or directory robustly, attempting to handle read-only attributes.
+    """Remove a path, retrying read-only entries where possible.
 
-    This function attempts to delete the specified `path_to_delete`.
-
-        - If it's a directory, it uses `shutil.rmtree` (via `asyncio.to_thread`) with a custom error
-          handler (:func:`._handle_remove_readonly_onerror`) that tries to make
-          read-only files writable before retrying deletion.
-        - If it's a file, it first checks if it's writable. If not, it attempts
-          to make it writable (``stat.S_IWRITE | stat.S_IWUSR``) before calling `aiofiles.os.remove`.
-        - If the path does not exist, it logs this and returns ``True``.
-        - If the path is neither a file nor a directory, it logs a warning and returns ``False``.
-
-    Deletion failures are logged, and the function returns ``False`` in such cases.
-
-    Args:
-        path_to_delete (str): The absolute path to the file or directory to delete.
-        item_description (str): A human-readable description of the item being
-            deleted, used for logging messages (e.g., "temporary file",
-            "old backup directory").
-
-    Returns:
-        bool: ``True`` if the deletion was successful or if the path did not
-        exist initially. ``False`` if an error occurred during deletion or if
-        the path was neither a file nor a directory.
-
-    Raises:
-        MissingArgumentError: If `path_to_delete` or `item_description` are
-            empty or not strings.
+    Return ``True`` on deletion or absence, and ``False`` on removal failure.
     """
     if not isinstance(path_to_delete, str) or not path_to_delete:
         raise MissingArgumentError("path_to_delete cannot be empty.")
@@ -394,86 +284,80 @@ async def delete_path_robustly(path_to_delete: str, item_description: str) -> bo
 
     if not await aiofiles.ospath.exists(path_to_delete):
         logger.debug(
-            f"{item_description.capitalize()} at '{path_to_delete}' not found, skipping."
+            "%s at '%s' not found, skipping.",
+            item_description.capitalize(),
+            path_to_delete,
         )
         return True
 
     if await aiofiles.ospath.isfile(path_to_delete):
-        logger.info(f"Preparing to delete {item_description} file: {path_to_delete}")
+        logger.debug(
+            "Preparing to delete %s file: %s", item_description, path_to_delete
+        )
         try:
             if not os.access(path_to_delete, os.W_OK):
                 os.chmod(path_to_delete, stat.S_IWRITE | stat.S_IWUSR)
-            await aiofiles.os.remove(path_to_delete)
-            logger.info(
-                f"Successfully deleted {item_description} file: {path_to_delete}"
+            await run_in_thread(os.remove, path_to_delete)
+            logger.debug(
+                "Successfully deleted %s file: %s", item_description, path_to_delete
             )
             return True
         except Exception as e:
-            logger.error(
-                f"Failed to delete {item_description} file at '{path_to_delete}': {e}",
-                exc_info=True,
+            log_operation_error(
+                logger,
+                "Failed to delete %s file at '%s': %s",
+                item_description,
+                path_to_delete,
+                e,
+                error=e,
             )
             return False
 
     if await aiofiles.ospath.isdir(path_to_delete):
-        logger.info(
-            f"Preparing to delete {item_description} directory: {path_to_delete}"
+        logger.debug(
+            "Preparing to delete %s directory: %s", item_description, path_to_delete
         )
 
         def _rmtree():
             shutil.rmtree(path_to_delete, onerror=_handle_remove_readonly_onerror)
 
         try:
-            await asyncio.to_thread(_rmtree)
-            logger.info(
-                f"Successfully deleted {item_description} directory: {path_to_delete}"
+            await run_in_thread(_rmtree)
+            logger.debug(
+                "Successfully deleted %s directory: %s",
+                item_description,
+                path_to_delete,
             )
             return True
         except Exception as e:
-            logger.error(
-                f"Failed to delete {item_description} directory at '{path_to_delete}': {e}",
-                exc_info=True,
+            log_operation_error(
+                logger,
+                "Failed to delete %s directory at '%s': %s",
+                item_description,
+                path_to_delete,
+                e,
+                error=e,
             )
             return False
 
     logger.warning(
-        f"Path '{path_to_delete}' is neither a regular file nor a directory. Deletion skipped."
+        "Path '%s' is neither a regular file nor a directory. Deletion skipped.",
+        path_to_delete,
     )
     return False
 
 
 # --- RESOURCE MONITOR ---
 class ResourceMonitor:
-    """A singleton class for monitoring process resource usage (CPU, memory, uptime).
-
-    This class provides a way to get resource statistics for a given ``psutil.Process``
-    object. It is implemented as a thread-safe singleton to ensure that the
-    internal state required for calculating CPU percentage (which relies on
-    comparing CPU times between calls) is maintained consistently across the
-    application for each monitored process.
-
-    The monitor stores the last CPU times and timestamp on a per-PID basis
-    to correctly calculate CPU utilization for individual processes.
-
-    Requires the ``psutil`` library. If ``psutil`` is not available (indicated by
-    :const:`.PSUTIL_AVAILABLE` being ``False``), methods like :meth:`.get_stats`
-    will typically log a warning and return ``None`` or raise an error.
-
-    Attributes:
-        _instance (Optional[ResourceMonitor]): The single instance of this class.
-        _lock (threading.Lock): A lock to ensure thread-safe singleton creation
-            and initialization.
-        _last_readings (Dict[int, Tuple[Any, float]]): A dictionary storing the
-            last CPU times (``psutil.cpu_times`` result) and timestamp for each
-            monitored PID. Keyed by PID.
-        _initialized (bool): A flag to ensure ``__init__`` logic runs only once.
-    """
+    """Collect process CPU, memory and uptime observations."""
 
     _instance: Optional["ResourceMonitor"] = None
     _lock = threading.Lock()
 
     def __new__(cls, *args: Any, **kwargs: Any) -> "ResourceMonitor":
-        """Ensures that only one instance of ResourceMonitor is created (Singleton pattern)."""
+        """Ensure that only one instance of ResourceMonitor is created (Singleton
+        pattern).
+        """
         if cls._instance is None:
             with cls._lock:
                 # Double-check locking
@@ -482,11 +366,11 @@ class ResourceMonitor:
         return cls._instance
 
     def __init__(self) -> None:
-        """Initializes the resource monitor's state.
+        """Initialize the resource monitor's state.
 
-        This constructor is called only once for the singleton instance.
-        It sets up the `_processes` dictionary to cache psutil.Process objects
-        and an `_initialized` flag.
+        This constructor is called only once for the singleton instance. It sets up
+        the ``_processes`` dictionary to cache psutil.Process objects and an
+        ``_initialized`` flag.
         """
         if not hasattr(self, "_initialized"):  # Ensure this runs only once
             with self._lock:
@@ -495,7 +379,7 @@ class ResourceMonitor:
                     self._initialized: bool = True
 
     def _cleanup_stale_processes(self) -> None:
-        """Removes cached process objects that are no longer running."""
+        """Remove cached process objects that are no longer running."""
         dead_pids = []
         for pid, proc in self._processes.items():
             try:
@@ -507,34 +391,10 @@ class ResourceMonitor:
             del self._processes[pid]
 
     def get_stats(self, process: "psutil.Process") -> Optional[Dict[str, Any]]:
-        """Calculates and returns resource usage statistics for the given process.
+        """Return PID, CPU percentage, memory in MiB and formatted uptime.
 
-        If ``psutil`` is not available, this method logs a warning and returns ``None``.
-
-        The CPU percentage is calculated using psutil's built-in cpu_percent.
-
-        Args:
-            process (psutil.Process): An instance of ``psutil.Process`` representing
-                the process to monitor.
-
-        Returns:
-            Optional[Dict[str, Any]]: A dictionary containing the statistics if
-            successful, or ``None`` if ``psutil`` is unavailable or the process
-            is inaccessible (e.g., ``psutil.NoSuchProcess``, ``psutil.AccessDenied``).
-            The dictionary structure is:
-            ::
-
-                {
-                    "pid": int,          # Process ID
-                    "cpu_percent": float, # CPU usage percentage (e.g., 12.3)
-                    "memory_mb": float,  # Resident Set Size (RSS) memory in megabytes
-                    "uptime": str        # Process uptime formatted as "HH:MM:SS"
-                }
-
-        Raises:
-            TypeError: If the input `process` is not a ``psutil.Process`` instance.
-            SystemError: If an unexpected error occurs while fetching stats using ``psutil``
-                         (other than ``NoSuchProcess`` or ``AccessDenied``).
+        Return ``None`` for inaccessible processes or an unavailable psutil
+        dependency.
         """
         if not PSUTIL_AVAILABLE:
             logger.warning(
@@ -586,7 +446,7 @@ class ResourceMonitor:
             if pid in self._processes:
                 del self._processes[pid]
             logger.debug(
-                f"Could not get stats for PID {pid}: Process gone or access denied."
+                "Could not get stats for PID %s: Process gone or access denied.", pid
             )
             return None
         except Exception as e:

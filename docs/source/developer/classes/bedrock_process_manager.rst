@@ -3,7 +3,7 @@
 Bedrock Process Manager Core Documentation
 ==========================================
 
-.. autoclass:: bedrock_server_manager.BedrockProcessManager
+.. autoclass:: bedrock_server_manager.core.bedrock_process_manager.BedrockProcessManager
    :members:
    :undoc-members:
    :show-inheritance:

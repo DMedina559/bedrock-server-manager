@@ -2,24 +2,28 @@
 Integration tests for the register router endpoints.
 """
 
-from fastapi.testclient import TestClient
+from httpx2 import AsyncClient
 from sqlalchemy import select
 
 from bedrock_server_manager.db.models import RegistrationToken, User
 
 
-async def test_generate_token_unauthorized(unauth_client: TestClient):
-    response = unauth_client.post("/api/register/generate-token", json={"role": "user"})
+async def test_generate_token_unauthorized(unauth_client: AsyncClient):
+    response = await unauth_client.post(
+        "/api/register/generate-token", json={"role": "user"}
+    )
     assert response.status_code == 401
 
 
-async def test_generate_token_forbidden(auth_client: TestClient):
-    response = auth_client.post("/api/register/generate-token", json={"role": "user"})
+async def test_generate_token_forbidden(auth_client: AsyncClient):
+    response = await auth_client.post(
+        "/api/register/generate-token", json={"role": "user"}
+    )
     assert response.status_code == 403
 
 
-async def test_generate_token_success(admin_auth_client: TestClient, app_context):
-    response = admin_auth_client.post(
+async def test_generate_token_success(admin_auth_client: AsyncClient, app_context):
+    response = await admin_auth_client.post(
         "/api/register/generate-token", json={"role": "user"}
     )
     assert response.status_code == 200
@@ -36,7 +40,7 @@ async def test_generate_token_success(admin_auth_client: TestClient, app_context
         assert token is not None
 
 
-async def test_validate_token_success(unauth_client: TestClient, app_context):
+async def test_validate_token_success(unauth_client: AsyncClient, app_context):
     # Add token to db
     import time
 
@@ -48,18 +52,18 @@ async def test_validate_token_success(unauth_client: TestClient, app_context):
         db.add(token)
         await db.commit()
 
-    response = unauth_client.get(f"/api/register/validate/{token_str}")
+    response = await unauth_client.get(f"/api/register/validate/{token_str}")
     assert response.status_code == 200
     assert response.json()["status"] == "success"
 
 
-async def test_validate_token_not_found(unauth_client: TestClient):
-    response = unauth_client.get("/api/register/validate/invalid_token")
+async def test_validate_token_not_found(unauth_client: AsyncClient):
+    response = await unauth_client.get("/api/register/validate/invalid_token")
     assert response.status_code == 404
-    assert response.json()["status"] == "error"
+    assert response.json()["error"]["code"] == "not_found"
 
 
-async def test_validate_token_expired(unauth_client: TestClient, app_context):
+async def test_validate_token_expired(unauth_client: AsyncClient, app_context):
     import time
 
     token_str = "expired_token_123"
@@ -70,12 +74,12 @@ async def test_validate_token_expired(unauth_client: TestClient, app_context):
         db.add(token)
         await db.commit()
 
-    response = unauth_client.get(f"/api/register/validate/{token_str}")
+    response = await unauth_client.get(f"/api/register/validate/{token_str}")
     assert response.status_code == 404
-    assert response.json()["status"] == "error"
+    assert response.json()["error"]["code"] == "not_found"
 
 
-async def test_register_user_success(unauth_client: TestClient, app_context):
+async def test_register_user_success(unauth_client: AsyncClient, app_context):
     import time
 
     token_str = "register_token_123"
@@ -86,7 +90,7 @@ async def test_register_user_success(unauth_client: TestClient, app_context):
         db.add(token)
         await db.commit()
 
-    response = unauth_client.post(
+    response = await unauth_client.post(
         f"/api/register/{token_str}",
         json={"username": "new_user", "password": "new_password"},
     )
@@ -107,17 +111,17 @@ async def test_register_user_success(unauth_client: TestClient, app_context):
         assert user.role == "user"
 
 
-async def test_register_user_invalid_token(unauth_client: TestClient):
-    response = unauth_client.post(
+async def test_register_user_invalid_token(unauth_client: AsyncClient):
+    response = await unauth_client.post(
         "/api/register/bad_token",
         json={"username": "new_user", "password": "new_password"},
     )
     assert response.status_code == 404
-    assert response.json()["detail"]["status"] == "error"
+    assert response.json()["error"]["code"] == "not_found"
 
 
 async def test_register_user_duplicate_username(
-    unauth_client: TestClient, app_context, test_user
+    unauth_client: AsyncClient, app_context, test_user
 ):
     import time
 
@@ -129,10 +133,10 @@ async def test_register_user_duplicate_username(
         db.add(token)
         await db.commit()
 
-    response = unauth_client.post(
+    response = await unauth_client.post(
         f"/api/register/{token_str}",
         json={"username": test_user.username, "password": "new_password"},
     )
     assert response.status_code == 400
-    assert response.json()["detail"]["status"] == "error"
-    assert "already exists" in response.json()["detail"]["message"]
+    assert response.json()["error"]["code"] == "validation_error"
+    assert "already exists" in response.json()["error"]["message"]

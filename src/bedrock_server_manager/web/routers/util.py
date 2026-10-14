@@ -18,7 +18,6 @@ from fastapi import APIRouter, Depends, HTTPException, status
 from fastapi.responses import FileResponse
 
 from ...context import AppContext
-from ...error import AppFileNotFoundError
 from ..deps import get_app_context
 
 STATIC_DIR = bsm_frontend.get_static_dir()
@@ -26,78 +25,52 @@ STATIC_DIR = bsm_frontend.get_static_dir()
 
 logger = logging.getLogger(__name__)
 
-router = APIRouter()
+router = APIRouter(tags=["Appearance"])
 
 
 # --- Route: Serve Custom Panorama ---
-@router.get("/api/panorama", response_class=FileResponse, tags=["Application"])
+# --- Route: Serve Custom Panorama ---
+@router.get(
+    "/api/panorama",
+    operation_id="get_panorama",
+    response_class=FileResponse,
+)
 async def serve_custom_panorama_api(
     app_context: AppContext = Depends(get_app_context),
 ):
-    """Serves a custom `panorama.jpeg` background image if available, otherwise a default.
+    """Serves a custom panorama background image if available, otherwise a default.
 
-    This endpoint attempts to locate a `panorama.jpeg` file in the application's
-    configuration directory. If found, it's served. If not, or if the config
-    directory isn't set, it falls back to serving a default panorama image
-    from the static assets.
+    This endpoint attempts to locate a ``panorama.(jpeg|jpg|png|webp)`` file in the
+    application's configuration directory. If found, it's served. If not, or if the
+    config directory isn't set, it falls back to serving a default panorama image from
+    the static assets.
     """
     logger.debug("Request received to serve custom panorama background.")
-    try:
-        config_dir = app_context.settings.config_dir
-        if not config_dir:
+    config_dir = app_context.settings.config_dir
+    if config_dir:
+        # Check supported file types in order of preference
+        candidate_files = [
+            ("panorama.jpeg", "image/jpeg"),
+            ("panorama.jpg", "image/jpeg"),
+            ("panorama.png", "image/png"),
+            ("panorama.webp", "image/webp"),
+        ]
+        for filename, media_type in candidate_files:
+            candidate_path = os.path.join(config_dir, filename)
+            if await aiofiles.ospath.isfile(candidate_path):
+                logger.debug("Serving custom panorama from: %s", candidate_path)
+                return FileResponse(candidate_path, media_type=media_type)
+    else:
+        logger.warning("Config directory not set in settings.")
 
-            logger.error("Config directory not set in settings.")
-            raise AppFileNotFoundError("CONFIG_DIR not set.", "Setting")
+    # Fallback to default asset if no custom panorama was found or config_dir is missing
+    default_panorama_path = os.path.join(STATIC_DIR, "image", "panorama.png")
+    if await aiofiles.ospath.isfile(default_panorama_path):
+        logger.debug("Serving default panorama from: %s", default_panorama_path)
+        return FileResponse(default_panorama_path, media_type="image/png")
 
-        custom_panorama_path = os.path.join(config_dir, "panorama.jpeg")
-        if await aiofiles.ospath.isfile(custom_panorama_path):
-            logger.debug(f"Serving custom panorama from: {custom_panorama_path}")
-            return FileResponse(custom_panorama_path, media_type="image/jpeg")
-        else:
-            logger.info("Custom panorama not found. Serving default.")
-            raise AppFileNotFoundError(custom_panorama_path, "Custom Panorama")
-
-    except AppFileNotFoundError:
-        default_panorama_path = os.path.join(STATIC_DIR, "image", "panorama.jpeg")
-        if await aiofiles.ospath.isfile(default_panorama_path):
-            logger.debug(f"Serving default panorama from: {default_panorama_path}")
-            return FileResponse(default_panorama_path, media_type="image/jpeg")
-        else:
-            logger.error(f"Default panorama not found at {default_panorama_path}")
-            raise HTTPException(
-                status_code=status.HTTP_404_NOT_FOUND,
-                detail="Default panorama image not found.",
-            )
-    except HTTPException:
-        raise
-    except Exception as e:
-        logger.error(f"Unexpected error serving panorama: {e}", exc_info=True)
-        raise HTTPException(
-            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail="Error serving panorama image.",
-        )
-
-
-@router.get("/favicon.ico", include_in_schema=False)
-async def get_root_favicon():
-    """Serves the `favicon.ico` file from the static directory."""
-    favicon_path = os.path.join(STATIC_DIR, "image", "icon", "favicon.ico")
-    if not await aiofiles.ospath.exists(favicon_path):
-        # If the file genuinely doesn't exist, return a 404
-        logger.warning(f"Favicon not found at expected path: {favicon_path}")
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND, detail="Favicon not found"
-        )
-    # Return the file directly with the correct media type
-    return FileResponse(favicon_path, media_type="image/x-icon")
-
-
-@router.get("/site.webmanifest", include_in_schema=False)
-async def serve_webmanifest():
-    """Serves the site.webmanifest from the static directory."""
-    manifest_path = os.path.join(STATIC_DIR, "site.webmanifest")
-
-    if await aiofiles.ospath.exists(manifest_path):
-        return FileResponse(manifest_path)
-
-    raise HTTPException(status_code=404, detail="Manifest not found.")
+    logger.error("Default panorama not found at %s", default_panorama_path)
+    raise HTTPException(
+        status_code=status.HTTP_404_NOT_FOUND,
+        detail="Default panorama image not found.",
+    )

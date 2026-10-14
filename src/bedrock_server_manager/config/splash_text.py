@@ -1,15 +1,13 @@
 # bedrock_server_manager/config/splash_text.py
-"""
-Defines collections of splash text messages for the application.
+"""Define collections of splash text messages for the application.
 
-These messages are typically displayed in the UI to add a bit of flavor
-and humor, often related to Minecraft, server management, or the application itself.
-The texts are categorized for potential varied use.
+These messages are typically displayed in the UI to add a bit of flavor and humor,
+often related to Minecraft, server management, or the application itself. The texts
+are categorized for potential varied use.
 """
 
 # --- User Interface (UI) Related ---
 SPLASH_TEXTS_UI = [
-    "Based on Ore UI!",
     "Web UI!",
     "CLI",
     "CSS Themes!",
@@ -19,13 +17,14 @@ SPLASH_TEXTS_UI = [
     "GUI Power, Backup, Automate!",
     "Full Control: CLI & Web UI!",
     "Web & CLI Synergy!",
-    "React + Vite Powered!",
+    "React Powered!",
     "Modern Web UI!",
     "New UI, Who Dis?",
-    "NPM Installable UI!",
     "Remote UI Capabilities!",
     "Plugin Pages!",
     "?hidden=true",
+    "Improved Theme Support!",
+    "Improved UI!",
 ]
 
 # --- Core Features  ---
@@ -97,7 +96,7 @@ SPLASH_TEXTS_MINECRAFT = [
 # --- Open Source ---
 SPLASH_TEXTS_OPENSOURCE = [
     "Open Source Power!",
-    "MIT Licenced.",
+    "AGPLv3 Licenced.",
     "Star the Github Project!",
     "Fork it, Fix it, Contribute it!",
     "Join the Open Source Revolution!",
@@ -111,7 +110,7 @@ SPLASH_TEXTS_OPENSOURCE = [
 
 # --- Miscellaneous ---
 SPLASH_TEXTS_MISC = [
-    "Astronomically Accurate!",
+    "Pass!",
 ]
 
 # --- Combined List ---
