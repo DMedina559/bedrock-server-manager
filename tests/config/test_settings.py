@@ -215,3 +215,76 @@ async def test_save_settings_removes_legacy_flat_keys(app_context, db):
         )
         legacy_record = res.scalars().first()
         assert legacy_record is None
+
+
+@pytest.mark.parametrize(
+    "legacy,expected",
+    [
+        (["https://legacy.example/"], ("https://legacy.example",)),
+        ("*", ("*",)),
+        ([], ()),
+    ],
+)
+async def test_bootstrap_cors_migrates_once_without_overwriting_database(
+    app_context, isolated_bcm_config, legacy, expected
+):
+    import json
+
+    # Simulate a database created before the typed CORS field existed.
+    async with app_context.storage.transaction() as session:
+        values = await app_context.storage.settings_repo.get_all_settings(session)
+        values["web"] = dict(values["web"])
+        values["web"].pop("cors_origins")
+        await app_context.storage.settings_repo.save_settings(
+            session, {"web": values["web"]}
+        )
+    config_path = isolated_bcm_config / "bedrock_server_manager.json"
+    bootstrap = json.loads(config_path.read_text())
+    bootstrap["web"] = {"cors_origins": legacy}
+    config_path.write_text(json.dumps(bootstrap))
+    app_context._pre_app_config_cache = None
+    await app_context.load()
+    assert app_context.settings.get("web.cors_origins") == expected
+    assert json.loads(config_path.read_text()) == bootstrap
+
+    # An explicitly empty policy must remain authoritative on later loads.
+    await app_context.settings.set("web.cors_origins", [])
+    await app_context.load()
+    assert app_context.settings.get("web.cors_origins") == ()
+    async with app_context.storage.transaction() as session:
+        values = await app_context.storage.settings_repo.get_all_settings(session)
+        assert values["web"]["cors_origins"] == []
+
+
+async def test_flat_database_cors_precedes_legacy_bootstrap(storage):
+    from bedrock_server_manager.config.settings import migrate_bootstrap_cors
+    from bedrock_server_manager.state.app_state import AppState
+
+    async with storage.transaction() as session:
+        await storage.settings_repo.save_settings(
+            session, {"web.cors_origins": ["https://database.example"]}
+        )
+    await migrate_bootstrap_cors(storage, "*")
+    state = await storage.load_state(AppState())
+    assert state.settings.get("web.cors_origins") == ("https://database.example",)
+
+
+async def test_cors_validation_is_atomic_and_serializes_as_json(app_context):
+    from pydantic import ValidationError
+
+    await app_context.settings.set(
+        "web.cors_origins", ["https://dashboard.example/", "https://dashboard.example"]
+    )
+    assert app_context.settings.get("web.cors_origins") == (
+        "https://dashboard.example",
+    )
+    assert app_context.settings._settings["web"]["cors_origins"] == [
+        "https://dashboard.example"
+    ]
+    for invalid in (["https://dashboard.example/path"], ["javascript:alert(1)"], "*"):
+        with pytest.raises(ValidationError):
+            await app_context.settings.set("web.cors_origins", invalid)
+    await app_context.settings.reload()
+    assert app_context.settings.get("web.cors_origins") == (
+        "https://dashboard.example",
+    )

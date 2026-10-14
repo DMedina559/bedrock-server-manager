@@ -6,18 +6,14 @@ from typing import Any
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
+from ...state.settings import DEFAULT_CORS_ORIGINS
 from .auth import add_user_to_request
 from .ingress import IngressMiddleware
 from .lifecycle import reject_new_mutations
 from .setup import setup_check_middleware
 
 logger = logging.getLogger(__name__)
-DEFAULT_ORIGINS = [
-    "http://localhost:3000",
-    "http://127.0.0.1:3000",
-    "http://localhost:5173",
-    "http://127.0.0.1:5173",
-]
+DEFAULT_ORIGINS = list(DEFAULT_CORS_ORIGINS)
 
 
 def configure_middleware(
@@ -30,6 +26,9 @@ def configure_middleware(
     # If user provided a string (e.g. "*"), wrap it in a list
     if isinstance(allowed_origins, str):
         allowed_origins = [allowed_origins]
+
+    if isinstance(allowed_origins, tuple):
+        allowed_origins = list(allowed_origins)
 
     if not isinstance(allowed_origins, list):
         allowed_origins = []

@@ -8,6 +8,10 @@ When using a reverse proxy, forward ordinary HTTP traffic and WebSocket upgrades
 
 Configure `web.forwarded_allow_ips` for the actual trusted forwarding sources. Its default is `127.0.0.1`; trusting unrelated sources can let clients forge forwarding information. Check authentication and WebSocket behavior through the proxy before making the installation available to users.
 
+CORS origins are stored in database-backed `web.cors_origins` alongside other
+web settings. Configure them through Global Settings; changes require a web
+server restart. Bootstrap CORS values are imported once for existing installs.
+
 ### HTTPS and ingress paths
 
 Terminate TLS at the reverse proxy and forward HTTP to BSM on a private,

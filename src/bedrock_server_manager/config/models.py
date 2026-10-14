@@ -7,7 +7,7 @@ from sqlalchemy.engine import make_url
 
 
 class BootstrapConfig(BaseModel):
-    # Extension settings (CORS, integrations, etc.) are retained as JSON.
+    # Legacy and extension configuration is retained as JSON for migration.
     model_config = ConfigDict(
         extra="allow", strict=True, validate_default=True, allow_inf_nan=False
     )

@@ -223,3 +223,48 @@ async def test_registration_links_use_external_https_prefix(
         assert response.json()["registration_url"].startswith(
             "https://bsm.test/ingress/token/app/register/"
         )
+
+
+@pytest.mark.parametrize(
+    "origins,allowed",
+    [
+        (["https://dashboard.example"], "https://dashboard.example"),
+        (["*"], "https://any.example"),
+        ([], None),
+    ],
+)
+async def test_cors_policy_comes_from_database(app_context, origins, allowed):
+    app_context.pre_app_config["web"] = {"cors_origins": ["https://bootstrap.example"]}
+    await app_context.settings.set("web.cors_origins", origins)
+    async with AsyncClient(
+        transport=ASGITransport(app=create_web_app(app_context)),
+        base_url="http://bsm.test",
+    ) as client:
+        origin = allowed or "http://localhost:5173"
+        response = await client.options(
+            "/api/setup/status",
+            headers={"Origin": origin, "Access-Control-Request-Method": "GET"},
+        )
+        assert response.status_code == (200 if allowed else 400)
+        assert response.headers.get("access-control-allow-origin") == allowed
+        if "*" not in origins:
+            legacy = await client.options(
+                "/api/setup/status",
+                headers={
+                    "Origin": "https://bootstrap.example",
+                    "Access-Control-Request-Method": "GET",
+                },
+            )
+            assert legacy.status_code == 400
+
+
+async def test_cors_setting_available_through_admin_api(admin_auth_client):
+    response = await admin_auth_client.post(
+        "/api/settings/set",
+        json={"key": "web.cors_origins", "value": ["https://dashboard.example"]},
+    )
+    assert response.status_code == 200
+    settings = await admin_auth_client.get("/api/settings/get")
+    assert settings.json()["settings"]["web"]["cors_origins"] == [
+        "https://dashboard.example"
+    ]
