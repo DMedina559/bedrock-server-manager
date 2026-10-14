@@ -29,3 +29,19 @@ Administrators can collect a [sanitized diagnostic report](../extras/diagnostics
 ## Report an issue
 
 Search the [issue tracker](https://github.com/DMedina559/bedrock-server-manager/issues), then use the appropriate report template. Include BSM/Python/OS versions, installation method, the action that failed, reproduction steps and relevant error output. Remove passwords, tokens and private connection strings from logs before sharing them.
+
+## Missing endpoints or frontend assets
+
+Check versions in the environment actually used by the service:
+
+```sh
+python -m pip show bedrock-server-manager bsm-frontend bsm-api-client bsm-cli
+```
+
+A 404 can mean the running backend predates an endpoint or the proxy sent it to another application. Compare `/api/openapi.json` with the intended backend version; restart the service after upgrading its environment. Authentication failures normally use 401 or 403 and require a different fix.
+
+Bundled themes are served under `/app/assets/css/themes/`; custom themes use `/themes/`. Check package contents, the requested URL and ingress/proxy routing when assets return 404. A browser refresh does not install a corrected frontend package.
+
+If a newly published dependency is missing from pip's available-version list, verify the exact release on PyPI and retry against the intended index. Index propagation or caching can temporarily differ from the release page; do not weaken a required contract version.
+
+Stale diagnostic sections retain prior successful data with freshness metadata. Unknown/unavailable values are not zeros. Inspect provider failures and collection age before blaming the monitored subsystem. A plugin drain failure can block reload while an old callback still runs; repeated reload requests cannot terminate its thread.

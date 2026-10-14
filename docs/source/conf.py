@@ -33,6 +33,8 @@ extensions = [
     "sphinx_github_changelog",
 ]
 
+myst_heading_anchors = 3
+
 templates_path = ["_templates"]
 exclude_patterns = ["_build", "Thumbs.db", ".DS_Store"]
 

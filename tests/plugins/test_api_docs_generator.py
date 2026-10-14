@@ -98,3 +98,55 @@ def test_type_labels_ignore_validation_repr_and_normalize_union_syntax():
     assert generator._format_type_hint(Union[int, str]) == generator._format_type_hint(
         int | str
     )
+
+
+def test_reference_bundle_deduplicates_models_and_cleans_only_generated_pages(tmp_path):
+    """Exported navigation and schemas remain deterministic and self-contained."""
+    import ast
+    import json
+    import re
+
+    spec = importlib.util.spec_from_file_location(
+        "api_docs_generator",
+        Path(__file__).parents[2] / "plugins/api_docs_generator.py",
+    )
+    module = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(module)
+    generator = module.APIDocsGenerator.__new__(module.APIDocsGenerator)
+    operations = create_app_api("documentation", None).list_available_apis()
+    references = generator.format_reference_files(operations)
+    assert references == generator.format_reference_files(list(reversed(operations)))
+    for example in re.findall(
+        r"```python\n(.*?)\n```", references["plugin_events.md"], re.S
+    ):
+        ast.parse(example)
+    assert "on_load" in references["plugin_events.md"]
+    model_text = references["api/models.md"]
+    headings = re.findall(r"^## (.+)$", model_text, re.M)
+    assert len(headings) == len(set(headings))
+    for name, content in references.items():
+        if name.startswith("api/") and name != "api/models.md":
+            for target in re.findall(r"\]\(models.md#([^)]+)\)", content):
+                assert target in {heading.lower() for heading in headings}
+            assert '"$defs"' not in content
+    schemas = dict(
+        zip(
+            headings,
+            [
+                json.loads(block)
+                for block in re.findall(r"```json\n(.*?)\n```", model_text, re.S)
+            ],
+            strict=True,
+        )
+    )
+    for schema in schemas.values():
+        for target in re.findall(r'"\$ref": "#\/$defs\/([^\"]+)"', json.dumps(schema)):
+            assert target in schemas
+    (tmp_path / "api").mkdir()
+    (tmp_path / "api/obsolete.md").write_text("old")
+    (tmp_path / "notes.md").write_text("keep")
+    generator.write_reference_files(tmp_path, references)
+    assert not (tmp_path / "api/obsolete.md").exists()
+    assert (tmp_path / "notes.md").read_text() == "keep"
+    for name, content in references.items():
+        assert (tmp_path / name).read_text() == content
