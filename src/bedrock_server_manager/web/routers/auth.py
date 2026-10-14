@@ -14,6 +14,7 @@ from ...utils import (
     authenticate_user,
     create_access_token,
 )
+from ..cookies import clear_session_cookie, set_session_cookie
 from ..deps import get_app_context, get_current_user
 from ..schemas import TokenResponse, UserResponse
 
@@ -72,19 +73,11 @@ async def api_login_for_access_token(
     )
 
     logger.info("User '%s' signed in.", form_data.username)
-    is_secure = (
-        request.url.scheme == "https"
-        or request.headers.get("x-forwarded-proto", "") == "https"
-    )
-
-    response.set_cookie(
-        key="access_token_cookie",
-        value=access_token,
-        httponly=True,
+    set_session_cookie(
+        response,
+        request,
+        access_token,
         max_age=int(expires_delta.total_seconds()),
-        samesite="lax",
-        secure=is_secure,
-        path="/",
     )
     return TokenResponse(
         access_token=access_token,
@@ -150,19 +143,11 @@ async def reauth(
     )
 
     logger.debug("Token refreshed for '%s'.", current_user.username)
-    is_secure = (
-        request.url.scheme == "https"
-        or request.headers.get("x-forwarded-proto", "") == "https"
-    )
-
-    response.set_cookie(
-        key="access_token_cookie",
-        value=access_token,
-        httponly=True,
+    set_session_cookie(
+        response,
+        request,
+        access_token,
         max_age=int(expires_delta.total_seconds()),
-        samesite="lax",
-        secure=is_secure,
-        path="/",
     )
     return TokenResponse(
         access_token=access_token,
@@ -189,16 +174,5 @@ async def logout(
         content={"status": "success", "message": "Successfully logged out."},
         status_code=status.HTTP_200_OK,
     )
-    is_secure = (
-        request.url.scheme == "https"
-        or request.headers.get("x-forwarded-proto", "") == "https"
-    )
-
-    response.delete_cookie(
-        key="access_token_cookie",
-        httponly=True,
-        samesite="lax",
-        secure=is_secure,
-        path="/",
-    )
+    clear_session_cookie(response, request)
     return response

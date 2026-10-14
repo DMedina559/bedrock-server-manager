@@ -20,7 +20,9 @@ DEFAULT_ORIGINS = [
 ]
 
 
-def configure_middleware(app: FastAPI, origins: Any) -> None:
+def configure_middleware(
+    app: FastAPI, origins: Any, trusted_proxies: str = "127.0.0.1"
+) -> None:
     """Register ingress, CORS, identity, setup, and shutdown admission layers."""
     app.middleware("http")(reject_new_mutations)
     allowed_origins = origins
@@ -56,4 +58,4 @@ def configure_middleware(app: FastAPI, origins: Any) -> None:
     app.add_middleware(CORSMiddleware, **cors_kwargs)
 
     # Add ASGI middleware for Ingress support (executes first)
-    app.add_middleware(IngressMiddleware)
+    app.add_middleware(IngressMiddleware, trusted_proxies=trusted_proxies)

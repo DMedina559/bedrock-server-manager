@@ -20,7 +20,11 @@ async def websocket_client(running_app, unauth_client):
     port = listener.getsockname()[1]
     server = uvicorn.Server(
         uvicorn.Config(
-            running_app, lifespan="off", access_log=False, log_level="warning"
+            running_app,
+            lifespan="off",
+            access_log=False,
+            log_level="warning",
+            proxy_headers=False,
         )
     )
     task = asyncio.create_task(server.serve(sockets=[listener]))
@@ -33,11 +37,13 @@ async def websocket_client(running_app, unauth_client):
                 await asyncio.sleep(0.01)
 
         @asynccontextmanager
-        async def open_socket(path="/ws"):
+        async def open_socket(path="/ws", additional_headers=None):
             cookies = "; ".join(
                 f"{name}={value}" for name, value in unauth_client.cookies.items()
             )
-            headers = {"Cookie": cookies} if cookies else None
+            headers = dict(additional_headers or {})
+            if cookies:
+                headers["Cookie"] = cookies
             async with connect(
                 f"ws://127.0.0.1:{port}{path}", additional_headers=headers
             ) as connection:

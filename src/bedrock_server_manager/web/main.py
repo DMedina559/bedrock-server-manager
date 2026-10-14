@@ -30,7 +30,7 @@ def create_server(
         access_log=True,
         workers=1,
         forwarded_allow_ips=settings.get("web.forwarded_allow_ips", "127.0.0.1"),
-        proxy_headers=True,
+        proxy_headers=False,
         timeout_graceful_shutdown=settings.get(
             "lifecycle.request_drain_timeout_seconds", 10.0
         ),

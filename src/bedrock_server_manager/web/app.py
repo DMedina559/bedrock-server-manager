@@ -41,7 +41,9 @@ def create_web_app(
     app_context._web_runtime = runtime
     mount_static(app, app_context.settings.get("paths.themes"))
     configure_middleware(
-        app, app_context.get_pre_app_config("web.cors_origins", DEFAULT_ORIGINS)
+        app,
+        app_context.get_pre_app_config("web.cors_origins", DEFAULT_ORIGINS),
+        app_context.settings.get("web.forwarded_allow_ips", "127.0.0.1"),
     )
     for router in routers.all_routers:
         app.include_router(router)
