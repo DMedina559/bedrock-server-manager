@@ -59,7 +59,12 @@ We recommend using a virtual environment for development.
     ```
 2.  **Install dependencies:**
 
-    For development you should install the dependencies listed in the pyproject.toml
+    ```bash
+    python -m pip install -e '.[dev,docs,cli]'
+    ```
+
+    See [contributor setup and validation](docs/source/developer/development.md)
+    for focused checks, documentation builds and generated contract maintenance.
 
 3.  **Install Pre-commit Hooks:**
     To ensure code quality and prevent failing commits, install the pre-commit hooks. This will automatically run checks (linting, formatting) before every commit.

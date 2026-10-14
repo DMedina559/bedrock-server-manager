@@ -22,16 +22,23 @@ def main():
     module = importlib.util.module_from_spec(spec)
     spec.loader.exec_module(module)
     generator = module.APIDocsGenerator.__new__(module.APIDocsGenerator)
-    references = {
-        "plugin_apis.md": generator._format_api_markdown(
-            create_app_api("documentation", None).list_available_apis()
-        ),
-        "plugin_events.md": generator._format_event_markdown(
-            generator._scan_codebase_for_events()
-        ),
-    }
+    references = generator.format_reference_files(
+        create_app_api("documentation", None).list_available_apis()
+    )
+    output = ROOT / "docs/source/plugins"
+    if not args.check:
+        generator.write_reference_files(output, references)
+        return
+    obsolete = [
+        path
+        for path in (output / "api").glob("*.md")
+        if path.relative_to(output).as_posix() not in references
+    ]
+    if obsolete:
+        parser.exit(1, "Obsolete plugin reference pages; regenerate documentation\n")
+
     for name, content in references.items():
-        path = ROOT / "docs/source/plugins" / name
+        path = output / name
         if args.check:
             if not path.exists() or path.read_text(encoding="utf-8") != content:
                 parser.exit(
