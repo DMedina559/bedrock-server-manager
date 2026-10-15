@@ -49,7 +49,3 @@ Quick links:
 <div style="text-align: center;">
     <img src="https://raw.githubusercontent.com/dmedina559/bedrock-server-manager/main/docs/images/web_install_addons.png" alt="ICON" width="400" height="200">
 </div>
-
-## OpenAPI contract
-
-Install `.[contract]`, then run `python scripts/export_openapi.py --output /tmp/backend-openapi.json` to export the current core routes and models without starting services or loading plugins. No backend snapshot is stored. Clients keep the reviewed schema used to generate their released contracts and compare it directly against backend `dev` in CI.
