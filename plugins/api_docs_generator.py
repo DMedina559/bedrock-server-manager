@@ -1,6 +1,7 @@
+import asyncio
 import inspect
 import json
-import os
+from pathlib import Path
 from types import UnionType
 from typing import Annotated, Any, Dict, List, Literal, Union, get_args, get_origin
 
@@ -11,12 +12,9 @@ from bedrock_server_manager.plugins.api_types import API_METHODS
 
 
 class APIDocsGenerator(PluginBase):
-    """
-    A utility plugin that automatically generates Markdown documentation
-    for all registered plugin API functions and application events.
-    """
+    """Generate navigable plugin API, model, and event references."""
 
-    version = "1.2.0"
+    version = "1.3.0"
     author = "dmedina559"
     description = "A utility plugin that automatically generates Markdown documentation for all registered plugin API functions and application events."
     name = "API Docs Generator"
@@ -29,47 +27,20 @@ class APIDocsGenerator(PluginBase):
 
     @app_event("on_manager_startup")
     async def generate_docs(self, **kwargs: Any):
-        """
-        Triggered once when the application is fully started.
-        This is the perfect time to inspect and document the API and events.
-        """
+        """Export registered contracts after application startup without blocking I/O."""
 
         self.logger.info("Generating API and Event documentation...")
 
         try:
-            # --- API Docs ---
-            api_list = self.api.list_available_apis()
-            api_markdown_content = self._format_api_markdown(api_list)
             backup_dir = (
                 await self.api.settings.get_global_setting({"key": "paths.backups"})
             ).value
             if not isinstance(backup_dir, str):
                 raise ValueError("Backup path must be a string")
-
-            api_output_path = os.path.join(backup_dir, "PLUGIN_API_REFERENCE.md")
-
-            def write_api_file():
-                with open(api_output_path, "w", encoding="utf-8") as f:
-                    f.write(api_markdown_content)
-
-            write_api_file()
-            self.logger.info(
-                "Successfully generated API documentation at: %s", api_output_path
-            )
-
-            # --- Event Docs ---
-            event_list = self._scan_codebase_for_events()
-            event_markdown_content = self._format_event_markdown(event_list)
-            event_output_path = os.path.join(backup_dir, "PLUGIN_EVENT_REFERENCE.md")
-
-            def write_event_file():
-                with open(event_output_path, "w", encoding="utf-8") as f:
-                    f.write(event_markdown_content)
-
-            write_event_file()
-            self.logger.info(
-                "Successfully generated Event documentation at: %s", event_output_path
-            )
+            output = Path(backup_dir) / "plugin-reference"
+            references = self.format_reference_files(self.api.list_available_apis())
+            await asyncio.to_thread(self.write_reference_files, output, references)
+            self.logger.info("Generated plugin reference at %s", output)
 
         except Exception as e:
             self.logger.error("Failed to generate documentation: %s", e, exc_info=True)
@@ -78,8 +49,6 @@ class APIDocsGenerator(PluginBase):
         """Document the live core event contracts, including non-API emitters."""
         events = []
         for definition in builtin_events.catalog().events:
-            if definition.phase not in {"before", "after"}:
-                continue
             parameters: dict[str, dict[str, Any]] = {}
             occurrences: dict[str, int] = {}
             models = builtin_events.payload_models(definition.name)
@@ -148,10 +117,10 @@ class APIDocsGenerator(PluginBase):
             .replace("'>", "")
         )
 
-    def _format_api_markdown(self, api_list: list) -> str:
-        """
-        Takes the list of API details and converts it into a formatted Markdown string.
-        """
+    def _format_api_markdown(
+        self, api_list: list, *, shared_models: bool = False
+    ) -> str:
+        """Render operation signatures, examples and model schema references."""
         lines = [
             "# Available plugin APIs",
             "",
@@ -241,6 +210,12 @@ class APIDocsGenerator(PluginBase):
                 ):
                     schema = api_func.get(schema_key)
                     if schema:
+                        if shared_models:
+                            title = schema.get("title", label)
+                            lines.append(
+                                f"- **{label}:** [{title}](models.md#{title.lower()})"
+                            )
+                            continue
                         lines.append(f"\n**{label}:**\n")
                         lines.append(
                             "```json\n"
@@ -267,10 +242,89 @@ class APIDocsGenerator(PluginBase):
             lines.pop()
         return "\n".join(lines).rstrip() + "\n"
 
+    def format_reference_files(self, api_list: list) -> dict[str, str]:
+        """Build domain pages and deduplicated schemas from registered contracts."""
+        domains: dict[str, list] = {}
+        schemas: dict[str, dict] = {}
+        for operation in api_list:
+            domains.setdefault(operation.get("domain") or "runtime", []).append(
+                operation
+            )
+            for key in ("request_schema", "response_schema", "error_schema"):
+                schema = operation.get(key)
+                if not schema:
+                    continue
+                definitions = dict(schema.get("$defs", {}))
+                definitions[schema["title"]] = {
+                    key: value for key, value in schema.items() if key != "$defs"
+                }
+                for name, definition in definitions.items():
+                    previous = schemas.get(name)
+                    if previous is not None and previous != definition:
+                        raise ValueError(f"Conflicting schema definitions: {name}")
+                    schemas[name] = definition
+        index = [
+            "# Available plugin APIs",
+            "",
+            "Generated from registered contracts. Use typed requests and await asynchronous operations.",
+            "",
+            "```{toctree}",
+            ":maxdepth: 1",
+            "",
+        ]
+        files = {}
+        links = []
+        for domain, operations in sorted(domains.items()):
+            path = f"api/{domain}.md"
+            index.append(path)
+            links.append(f"- [{domain.replace('_', ' ').title()} APIs]({path})")
+            files[path] = self._format_api_markdown(
+                operations, shared_models=True
+            ).replace(
+                "# Available plugin APIs",
+                f"# {domain.replace('_', ' ').title()} plugin APIs",
+                1,
+            )
+        index.extend(["api/models.md", "```", ""])
+        index.insert(index.index(":maxdepth: 1"), ":hidden:")
+        index[4:4] = links + ["- [Shared contract models](api/models.md)", ""]
+        files["plugin_apis.md"] = "\n".join(index)
+        models = [
+            "# Plugin contract models",
+            "",
+            "Schemas are listed once. Local `$defs` references identify other models on this page; assemble them under `$defs` when using a schema validator.",
+            "",
+        ]
+        for name, schema in sorted(schemas.items()):
+            models.extend(
+                [
+                    f"## {name}",
+                    "",
+                    "```json",
+                    json.dumps(schema, indent=2, sort_keys=True),
+                    "```",
+                    "",
+                ]
+            )
+        files["api/models.md"] = "\n".join(models)
+        files["plugin_events.md"] = self._format_event_markdown(
+            self._scan_codebase_for_events()
+        )
+        return files
+
+    @staticmethod
+    def write_reference_files(output: Path, references: dict[str, str]) -> None:
+        """Write generated files, removing obsolete domain pages only."""
+        for path in (output / "api").glob("*.md"):
+            if path.relative_to(output).as_posix() not in references:
+                path.unlink()
+        for name, content in references.items():
+            path = output / name
+            path.parent.mkdir(parents=True, exist_ok=True)
+            path.write_text(content, encoding="utf-8")
+
     def _format_event_markdown(self, event_list: list) -> str:
-        """
-        Takes the list of Event details and converts it into a formatted Markdown string.
-        """
+        """Render registered events and valid listener examples."""
         lines = [
             "# Available plugin events",
             "",
@@ -283,7 +337,7 @@ class APIDocsGenerator(PluginBase):
 
         for event in event_list:
             name = event.get("name", "Unknown Event")
-            docstring = event.get("docstring", "No description.")
+            docstring = event.get("docstring") or "Application lifecycle notification."
             params = event.get("parameters", [])
             is_cancellable = event.get("cancellable", False)
             identity_keys = event.get("identity_keys", [])
@@ -309,8 +363,9 @@ class APIDocsGenerator(PluginBase):
                 if param_str:
                     param_str += ", "
                 param_str += "event"
+            parameters = f"{param_str}, " if param_str else ""
             lines.append(
-                f'```python\n@app_event("{name}")\nasync def some_function(self, {param_str}, **kwargs):\n    pass\n```'
+                f'```python\n@app_event("{name}")\nasync def some_function(self, {parameters}**kwargs):\n    pass\n```'
             )
 
             if params or is_cancellable:

@@ -14,6 +14,15 @@ Application and plugin settings use typed state backed by the database. Administ
 
 Paths select server, backup, content and download locations. Changing a path does not move existing files. Plan and back up a storage move, stop affected activity, move data deliberately, and verify permissions under the service account.
 
+Web settings include `web.cors_origins`, a list of allowed browser origins such
+as `["https://dashboard.example.com"]`. Origins must omit URL paths, credentials,
+queries, and fragments. An empty list disables cross-origin access; `["*"]`
+allows every origin. Same-origin access does not require a CORS entry. Changes
+take effect after restarting the web server. Existing bootstrap JSON
+`web.cors_origins` values are imported only when no database policy exists;
+once imported, the database is authoritative and the legacy JSON entry can be
+removed.
+
 ## Accounts and plugins
 
 Administrators manage accounts and invitation tokens. Use the expiry returned for the generated invitation rather than assuming a fixed lifetime. BSM roles are separate from Bedrock player permissions; see [access and roles](../web/role_access_table.md).

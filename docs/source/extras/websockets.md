@@ -6,7 +6,7 @@ The backend WebSocket implementation is built using FastAPI and is divided into 
 
 ## WebSocket Router
 
-The WebSocket router is defined in `src/bedrock_server_manager/web/routers/websocket_router.py`. It is responsible for the following:
+The WebSocket router is defined in `src/bedrock_server_manager/web/routers/websocket.py`. It is responsible for the following:
 
 -   **Endpoint**: Creates a WebSocket endpoint at `/ws`.
 -   **Authentication**: Authenticates the user on the first message payload. The client must send an authentication message within 5 seconds of connecting, containing their JWT access token (e.g., `{"action": "authenticate", "token": "eyJhb..."}`).
@@ -22,13 +22,15 @@ The `ConnectionManager` is a class defined in `src/bedrock_server_manager/web/we
 -   **Message Broadcasting**: Provides methods for sending messages to a single client, all clients subscribed to a specific topic, or all clients for a specific user.
 -   **Data Provider Registration**: Allows plugins to register real-time topic data providers to handle client request-response messages.
 
-Plugins can access WebSocket capabilities via `self.api.websocket`:
-- `await self.api.websocket.broadcast(topic, data)`
-- `await self.api.websocket.send_to_user(username, data)`
-- `await self.api.websocket.send_to_client(client_id, data)`
-- `await self.api.websocket.register_data_provider(topic, handler)`
-- `await self.api.websocket.unregister_data_provider(topic)`
-- `await self.api.websocket.publish_ws_event(event_name, data)`
+Plugins use typed requests with `self.api.websocket`; provider registration belongs to owned runtime capabilities:
+
+```python
+await self.api.websocket.websocket_broadcast({"topic": "my-plugin:status", "data": {"connected": True}})
+await self.api.websocket.websocket_send_to_user({"username": "admin", "data": {"message": "Ready"}})
+await self.api.runtime.register_data_provider("my-plugin:status", handler)
+```
+
+See the generated [WebSocket API reference](../plugins/api/websocket.md) for exact request fields and delivery results. Providers enforce access to their own data.
 
 ## Request / Response Messaging
 
@@ -94,41 +96,7 @@ The following WebSocket topics are available for subscription:
 
 Event topics broadcast a message when a specific event occurs on the server. The topic name is in the format `event:{event_name}`.
 
--   `event:before_addon_import`
--   `event:after_addon_import`
--   `event:before_backup`
--   `event:after_backup`
--   `event:before_restore`
--   `event:after_restore`
--   `event:before_prune_backups`
--   `event:after_prune_backups`
--   `event:before_players_add`
--   `event:after_players_add`
--   `event:before_player_db_scan`
--   `event:after_player_db_scan`
--   `event:before_server_status_change`
--   `event:after_server_status_change`
--   `event:before_server_statuses_updated`
--   `event:before_server_start`
--   `event:after_server_start`
--   `event:before_server_stop`
--   `event:after_server_stop`
--   `event:before_command_send`
--   `event:after_command_send`
--   `event:before_allowlist_change`
--   `event:after_allowlist_change`
--   `event:before_server_install`
--   `event:after_server_install`
--   `event:before_server_update`
--   `event:after_server_update`
--   `event:before_autostart_change`
--   `event:after_autostart_change`
--   `event:before_world_export`
--   `event:after_world_export`
--   `event:before_world_import`
--   `event:after_world_import`
--   `event:before_world_reset`
--   `event:after_world_reset`
+See the generated [event catalog](../plugins/plugin_events.md) for current names and payloads. Only public event declarations are published; plugin listeners and WebSocket subscriptions have different cancellation capabilities.
 
 ### Resource Monitor Topics
 

@@ -1471,3 +1471,45 @@ async def some_function(self, request, server_name, event, **kwargs):
 | `server_name` | `str` |
 | `event` | `CancellableEvent` |
 | `_triggering_plugin` | `str` (core, or plugin name) |
+
+---
+
+
+## `on_load`
+**Description:** Application lifecycle notification.
+- **Cancellable:** No
+
+### Listener Signature:
+```python
+@app_event("on_load")
+async def some_function(self, **kwargs):
+    pass
+```
+
+---
+
+
+## `on_manager_startup`
+**Description:** Application lifecycle notification.
+- **Cancellable:** No
+
+### Listener Signature:
+```python
+@app_event("on_manager_startup")
+async def some_function(self, **kwargs):
+    pass
+```
+
+---
+
+
+## `on_unload`
+**Description:** Application lifecycle notification.
+- **Cancellable:** No
+
+### Listener Signature:
+```python
+@app_event("on_unload")
+async def some_function(self, **kwargs):
+    pass
+```

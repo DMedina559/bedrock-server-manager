@@ -140,6 +140,11 @@ class AppContext:
         self._server_service = None
         self._plugin_service = None
         self._user_service = None
+        legacy_web = self.pre_app_config.get("web")
+        if isinstance(legacy_web, dict) and "cors_origins" in legacy_web:
+            from .config.settings import migrate_bootstrap_cors
+
+            await migrate_bootstrap_cors(self._storage, legacy_web["cors_origins"])
         await self._storage.load_state(self._state)
 
         if self._settings is not None:

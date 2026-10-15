@@ -1,6 +1,7 @@
 from fastapi import Request
 
 from ..deps.auth import get_current_user_optional
+from .ingress import route_path
 
 
 async def add_user_to_request(request: Request, call_next):
@@ -8,12 +9,14 @@ async def add_user_to_request(request: Request, call_next):
     current user to ``request.state.current_user``.
     """
 
+    path = route_path(request.scope)
+
     # 1. Bypass database lookup for static files to prevent SQLite locking
     if (
-        request.url.path.startswith(
+        path.startswith(
             ("/static", "/assets", "/image", "/app/static", "/app/assets", "/app/image")
         )
-        or request.url.path == "/favicon.ico"
+        or path == "/favicon.ico"
     ):
         request.state.current_user = None
         return await call_next(request)

@@ -10,7 +10,16 @@ import os
 import time
 from typing import Any, Dict, Optional, Set
 
-from pydantic import BaseModel, ConfigDict, Field, JsonValue, PrivateAttr, TypeAdapter
+from pydantic import (
+    AnyHttpUrl,
+    BaseModel,
+    ConfigDict,
+    Field,
+    JsonValue,
+    PrivateAttr,
+    TypeAdapter,
+    field_validator,
+)
 
 from ..diagnostics.models import DiagnosticOptions
 from ..error import ConfigurationError
@@ -52,13 +61,53 @@ class MonitoringSettings(SettingsRecord):
     bedrock_metrics_interval_sec: int = Field(default=3, ge=1, le=3600)
 
 
+DEFAULT_CORS_ORIGINS = (
+    "http://localhost:3000",
+    "http://127.0.0.1:3000",
+    "http://localhost:5173",
+    "http://127.0.0.1:5173",
+)
+
+
 class WebSettings(SettingsRecord):
+    cors_origins: tuple[str, ...] = DEFAULT_CORS_ORIGINS
     outbound_queue_limit: int = Field(default=64, ge=1, le=10000)
     forwarded_allow_ips: str = "127.0.0.1"
     host: str = "127.0.0.1"
     port: int = Field(default=11325, ge=1, le=65535)
     token_expires_weeks: int = Field(default=4, gt=0)
     jwt_secret_key: Optional[str] = None
+
+    @field_validator("cors_origins", mode="before")
+    @classmethod
+    def origins_from_json(cls, value: Any) -> Any:
+        # Store immutable state while accepting ordinary JSON arrays at the API.
+        return tuple(value) if isinstance(value, list) else value
+
+    @field_validator("cors_origins")
+    @classmethod
+    def validate_origins(cls, values: tuple[str, ...]) -> tuple[str, ...]:
+        origins = []
+        adapter = TypeAdapter(AnyHttpUrl)
+        for value in values:
+            if value in ("*", "null"):
+                origin = value
+            else:
+                url = adapter.validate_python(value)
+                if (
+                    url.username is not None
+                    or url.password is not None
+                    or url.query is not None
+                    or url.fragment is not None
+                    or url.path not in (None, "/")
+                ):
+                    raise ValueError(
+                        "CORS origins must not contain credentials, paths, queries, or fragments"
+                    )
+                origin = str(url).rstrip("/")
+            if origin not in origins:
+                origins.append(origin)
+        return tuple(origins)
 
 
 class LifecycleSettings(SettingsRecord):
@@ -260,7 +309,7 @@ class SettingsState(BaseModel):
             "paths": self.paths.model_dump(),
             "retention": self.retention.model_dump(),
             "monitoring": self.monitoring.model_dump(),
-            "web": self.web.model_dump(exclude_none=True),
+            "web": self.web.model_dump(mode="json", exclude_none=True),
             "lifecycle": self.lifecycle.model_dump(),
             "diagnostics": self.diagnostics.model_dump(),
             "custom": copy.deepcopy(self.custom),

@@ -8,7 +8,7 @@ This module provides endpoints for:
 
 import logging
 
-from fastapi import APIRouter, Depends, HTTPException, status
+from fastapi import APIRouter, Depends, HTTPException, Request, status
 from fastapi.responses import JSONResponse
 
 from ...context import AppContext
@@ -16,6 +16,7 @@ from ...utils import (
     create_access_token,
     get_password_hash,
 )
+from ..cookies import set_session_cookie
 from ..deps import get_app_context
 from ..schemas import SetupStatusResponse, UserLoginPayload
 from ..schemas.auth import SetupAccountResponse
@@ -43,6 +44,7 @@ async def get_setup_status(
     response_model=SetupAccountResponse,
 )
 async def create_first_user(
+    request: Request,
     data: UserLoginPayload,
     app_context: AppContext = Depends(get_app_context),
 ):
@@ -74,11 +76,5 @@ async def create_first_user(
             token_type="bearer",
         ).model_dump(mode="json")
     )
-    response.set_cookie(
-        key="access_token_cookie",
-        value=access_token,
-        httponly=True,
-        samesite="lax",
-        path="/",
-    )
+    set_session_cookie(response, request, access_token)
     return response

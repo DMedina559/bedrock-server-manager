@@ -1,6 +1,8 @@
 from fastapi import Request
 from fastapi.responses import RedirectResponse
 
+from .ingress import route_path
+
 
 async def setup_check_middleware(request: Request, call_next):
     """
@@ -21,12 +23,7 @@ async def setup_check_middleware(request: Request, call_next):
         "/openapi.json",
     ]
 
-    req_path = request.scope.get("path", "")
-    root_path = request.scope.get("root_path", "")
-    if root_path and req_path.startswith(root_path):
-        req_path = req_path[len(root_path) :]  # noqa: E203
-        if not req_path:
-            req_path = "/"
+    req_path = route_path(request.scope)
 
     # Allow static assets to pass through
     if (
