@@ -45,7 +45,6 @@ def export_contract() -> dict[str, Any]:
     with tempfile.TemporaryDirectory(prefix="bsm-contract-") as directory:
         context = SimpleNamespace(
             settings={"paths.themes": directory},
-            get_pre_app_config=lambda _key, default: default,
             plugin_manager=SimpleNamespace(bind_web_app=lambda _app: None),
         )
         app = create_web_app(cast(AppContext, context))

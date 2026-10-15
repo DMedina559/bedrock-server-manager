@@ -7,14 +7,12 @@ from ...error import DependencyUnavailableError
 from ...failures import classify_failure
 from ...services.lifecycle import LifecyclePhase
 from ..runtime import WebRuntime
+from .ingress import route_path
 
 
 async def reject_new_mutations(request, call_next):
     control = getattr(request.app.state, "web_runtime", None)
-    path = request.scope.get("path", "")
-    root = request.scope.get("root_path", "")
-    if root and path.startswith(root):
-        path = path[len(root) :]  # noqa: E203
+    path = route_path(request.scope)
     if (
         isinstance(control, WebRuntime)
         and control.snapshot().phase == LifecyclePhase.STOPPING

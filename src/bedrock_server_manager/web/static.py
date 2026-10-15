@@ -3,6 +3,7 @@
 import logging
 import mimetypes
 import os
+import re
 
 import bsm_frontend
 from fastapi import FastAPI
@@ -11,26 +12,25 @@ from fastapi.staticfiles import StaticFiles
 logger = logging.getLogger(__name__)
 
 
-class IngressAwareStaticFiles(StaticFiles):
-    """Strip the ingress prefix for static lookup, then restore the request scope."""
+class CachedStaticFiles(StaticFiles):
+    """Cache fingerprinted bundles permanently; revalidate mutable assets."""
 
-    async def __call__(self, scope, receive, send):
-        original_root_path = scope.get("root_path", "")
+    def __init__(self, *args, cache_bundles=False, **kwargs):
+        super().__init__(*args, **kwargs)
+        self.cache_bundles = cache_bundles
 
-        ingress_path = ""
-        headers = dict(scope.get("headers", []))
-        if b"x-ingress-path" in headers:
-            ingress_path = headers[b"x-ingress-path"].decode("latin-1")
-
-            if original_root_path.startswith(ingress_path):
-                scope["root_path"] = original_root_path[
-                    len(ingress_path) :  # noqa: E203
-                ]
-
-        try:
-            await super().__call__(scope, receive, send)
-        finally:
-            scope["root_path"] = original_root_path
+    async def get_response(self, path, scope):
+        response = await super().get_response(path, scope)
+        # Vite emits name-HASH.ext; public assets retain their original names.
+        fingerprinted = (
+            self.cache_bundles
+            and "/" not in path
+            and re.search(r"-[A-Za-z0-9_-]{8,}\.(?:js|css)$", path)
+        )
+        response.headers["Cache-Control"] = (
+            "public, max-age=31536000, immutable" if fingerprinted else "no-cache"
+        )
+        return response
 
 
 def mount_static(app: FastAPI, themes_path: str) -> None:
@@ -49,11 +49,15 @@ def mount_static(app: FastAPI, themes_path: str) -> None:
                 )
                 continue
             for url, name in mounts:
-                app.mount(url, IngressAwareStaticFiles(directory=directory), name=name)
+                app.mount(
+                    url,
+                    CachedStaticFiles(
+                        directory=directory, cache_bundles=folder == "assets"
+                    ),
+                    name=name,
+                )
             logger.debug("Mounted bsm-frontend %s from %s", folder, directory)
     else:
         logger.warning("bsm-frontend static directory not found at %s", static_dir)
     if os.path.isdir(themes_path):
-        app.mount(
-            "/themes", IngressAwareStaticFiles(directory=themes_path), name="themes"
-        )
+        app.mount("/themes", CachedStaticFiles(directory=themes_path), name="themes")
