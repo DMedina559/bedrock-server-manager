@@ -12,6 +12,15 @@ Keep a configuration backup before broad changes. For the meanings and supported
 
 Set `allow-list=true` in properties when restricting admission to listed players. Add or remove gamertags through the allowlist view. The ignore-player-limit option affects a listed player's admission when the server is full; it does not assign operator permissions.
 
+```{figure} ../../images/web_configure_allowlist.png
+:alt: Server access control interface for managing the allowlist
+:width: 600px
+:align: center
+
+Manage the selected server's allowlist through Access Control.
+```
+
+
 ## Player permissions
 
 Assign Bedrock visitor, member or operator permissions to the intended player identity. BSM's player records and scanned identities help select players; Minecraft permissions do not grant access to the BSM dashboard.

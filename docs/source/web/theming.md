@@ -4,6 +4,15 @@ Bedrock Server Manager lets you customize the web UI through **Appearance**. Cho
 
 The theme engine uses semantic CSS variables for backgrounds, text, controls, borders, status colors, and other shared styles. Plugins can use the same variables to follow the selected theme.
 
+```{figure} ../../images/web_ui_red_theme.png
+:alt: BSM frontend using the red Ember theme
+:width: 600px
+:align: center
+
+The Ember theme applies a red palette across the web interface.
+```
+
+
 ## Appearance settings
 
 Open **Appearance** from the navigation menu to adjust the following settings:
@@ -38,6 +47,23 @@ Each built-in theme has its own colors for page backgrounds, panels, and accents
 | Gold | `yellow` |
 
 With **Use theme default**, Daylight uses light mode and the other built-in themes use dark mode. **System** follows your operating system's light or dark preference.
+
+```{figure} ../../images/web_ui_blue_theme.png
+:alt: BSM frontend using the blue Ocean theme
+:width: 600px
+:align: center
+
+Ocean provides a blue palette.
+```
+
+```{figure} ../../images/web_ui_green_theme.png
+:alt: BSM frontend using the green Forest theme
+:width: 600px
+:align: center
+
+Forest provides an alternative green palette.
+```
+
 
 ## Creating a personal palette
 

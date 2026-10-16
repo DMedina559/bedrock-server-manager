@@ -14,6 +14,15 @@ Reset removes the active world; it does not mean deleting every world belonging 
 
 Place `.mcpack` or `.mcaddon` files in the addon-content library and select them for installation. Packs must be compatible with your Bedrock version and world. Some features require Bedrock experiment settings.
 
+```{figure} ../../images/web_install_addons.png
+:alt: Web interface for installing addons on the selected server
+:width: 600px
+:align: center
+
+Select an addon from the content library for the intended server.
+```
+
+
 Enabling and disabling packs changes the world's activation lists. Disabled packs can remain installed. Pack ordering follows the stored activation order; test behavior and resource interactions rather than assuming a universal conflict-resolution rule. Subpack selection applies only to packs that declare subpacks.
 
 Removing a pack can affect existing world content. Back up the world, check task results and verify it in-game after restarting. The [manual content guide](../extras/install_content.md) explains file placement when the upload/download plugins are unavailable.
