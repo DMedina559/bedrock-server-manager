@@ -1,0 +1,152 @@
+/* Public theme contract. Custom themes can override these semantic tokens or legacy aliases. */
+:root {
+  --bsm-font:
+    Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont,
+    "Segoe UI", sans-serif;
+  --bsm-mono: ui-monospace, SFMono-Regular, Consolas, monospace;
+  --bsm-radius-sm: 6px;
+  --bsm-radius-md: 10px;
+  --bsm-radius-lg: 16px;
+  --bsm-radius-xl: 20px;
+  --bsm-space-1: calc(4px * var(--bsm-spacing-scale, 1));
+  --bsm-space-2: calc(8px * var(--bsm-spacing-scale, 1));
+  --bsm-space-3: calc(12px * var(--bsm-spacing-scale, 1));
+  --bsm-space-4: calc(16px * var(--bsm-spacing-scale, 1));
+  --bsm-space-5: calc(24px * var(--bsm-spacing-scale, 1));
+  --bsm-space-6: calc(32px * var(--bsm-spacing-scale, 1));
+  --bsm-focus: var(--bsm-accent);
+  --bsm-control-height: 42px;
+  --bsm-control-padding: 10px;
+  --bsm-button-padding: 8px;
+  --bsm-nav-padding: 10px;
+  --bsm-panel-padding: 24px;
+  --bsm-form-gap: 22px;
+  --bsm-row-padding: 14px;
+  --bsm-accent: #00ed95;
+  --bsm-accent-strong: #087b57;
+  --bsm-accent-hover: #066447;
+  --bsm-on-accent: #ffffff;
+  --bsm-page: #0b1411;
+  --bsm-surface: #111f19;
+  --bsm-surface-raised: #192a22;
+  --bsm-input: #0c1812;
+  --bsm-text: #edf6f0;
+  --bsm-muted: #a6bdb0;
+  --bsm-border: #344b3e;
+  --bsm-success: #5de4a4;
+  --bsm-danger: #ff9a9f;
+  --bsm-danger-solid: #b62239;
+  --bsm-warning: #efcb72;
+  --bsm-info: #91c3ff;
+  --bsm-overlay: #030905b8;
+  --bsm-shadow: 0 12px 40px #00000024;
+  --bsm-console: #06110b;
+  --bsm-console-text: #83e6b5;
+  --bsm-accent-soft: color-mix(
+    in srgb,
+    var(--bsm-accent) 12%,
+    var(--bsm-surface)
+  );
+  --bsm-chart-1: #a6a2f3;
+  --bsm-chart-2: #50c99e;
+  --bsm-chart-3: #e69e62;
+  --bg-color: var(--bsm-page);
+  --input-bg: var(--bsm-input);
+  --server-card-background-color: var(--bsm-surface);
+  --toggle-switch-off-border-color: var(--bsm-border);
+  --toggle-switch-off-handle-border-color: var(--bsm-border);
+  --toggle-switch-on-border-color: var(--bsm-accent-strong);
+  --toggle-switch-on-handle-border-color: var(--bsm-accent-strong);
+  --primary-color: var(--bsm-accent);
+  --success-color: var(--bsm-success);
+  --danger-color: var(--bsm-danger);
+  --warning-color: var(--bsm-warning);
+  --toggle-switch-off-background-color: var(--bsm-border);
+  --toggle-switch-on-background-color: var(--bsm-accent-strong);
+  --toggle-switch-knob-color: #fff;
+  --toggle-switch-focus-color: var(--bsm-accent);
+  --tab-background-color: var(--bsm-input);
+  --tab-text-color: var(--bsm-muted);
+  --tab-hover-background-color: var(--bsm-surface-raised);
+  --tab-active-background-color: var(--bsm-surface-raised);
+  --tab-active-text-color: var(--bsm-text);
+  --background-overlay-color: transparent;
+  --text-color: var(--bsm-text);
+  --text-color-secondary: var(--bsm-muted);
+  --container-background-color: var(--bsm-surface);
+  --border-color: var(--bsm-border);
+  --header-text-color: var(--bsm-text);
+  --sidebar-bg-custom: var(--bsm-surface);
+  --sidebar-border-color: var(--bsm-border);
+  --button-background-color: var(--bsm-surface-raised);
+  --button-border-color: var(--bsm-border);
+  --button-text-color: var(--bsm-text);
+  --button-hover-background-color: var(--bsm-accent-soft);
+  --button-hover-border-color: var(--bsm-accent);
+  --button-hover-text-color: var(--bsm-text);
+  --button-active-background-color: var(--bsm-surface-raised);
+  --button-active-border-color: var(--bsm-accent);
+  --primary-button-background-color: var(--bsm-accent-strong);
+  --primary-button-border-color: var(--bsm-accent-strong);
+  --primary-button-text-color: var(--bsm-on-accent);
+  --primary-button-hover-background-color: var(--bsm-accent-hover);
+  --primary-button-hover-border-color: var(--bsm-accent-hover);
+  --primary-button-active-background-color: var(--bsm-accent-hover);
+  --primary-button-active-border-color: var(--bsm-accent-hover);
+  --danger-button-background-color: var(--bsm-danger-solid);
+  --danger-button-border-color: var(--bsm-danger-solid);
+  --danger-button-text-color: #fff;
+  --danger-button-hover-background-color: #951a2e;
+  --danger-button-hover-border-color: #951a2e;
+  --danger-button-active-background-color: #951a2e;
+  --danger-button-active-border-color: #951a2e;
+  --form-input-background-color: var(--bsm-input);
+  --input-background-color: var(--bsm-input);
+  --form-input-border-color: var(--bsm-border);
+  --form-input-text-color: var(--bsm-text);
+  --form-input-focus-border-color: var(--bsm-accent);
+  --form-label-text-color: var(--bsm-text);
+  --validation-error-text-color: var(--bsm-danger);
+  --form-input-invalid-border-color: var(--bsm-danger);
+  --form-input-invalid-background-color: color-mix(
+    in srgb,
+    var(--bsm-danger) 8%,
+    var(--bsm-input)
+  );
+  --table-header-background-color: var(--bsm-surface-raised);
+  --table-header-text-color: var(--bsm-muted);
+  --table-border-color: var(--bsm-border);
+  --table-row-hover-background-color: var(--bsm-accent-soft);
+  --monitor-output-background-color: var(--bsm-console);
+  --monitor-output-text-color: var(--bsm-console-text);
+  --monitor-output-border-color: var(--bsm-border);
+  --splash-text-color: var(--bsm-warning);
+}
+:root[data-mode="light"] {
+  --bsm-focus: var(--bsm-accent-strong);
+  --bsm-page: #f3f6f4;
+  --bsm-surface: #ffffff;
+  --bsm-surface-raised: #e9f0ec;
+  --bsm-input: #f8faf9;
+  --bsm-text: #16291e;
+  --bsm-muted: #50685b;
+  --bsm-border: #bdcec3;
+  --bsm-success: #08764e;
+  --bsm-danger: #ad1733;
+  --bsm-warning: #835907;
+  --bsm-info: #2259a3;
+  --bsm-chart-1: #615cbd;
+  --bsm-chart-2: #087d57;
+  --bsm-chart-3: #a35512;
+  --bsm-overlay: #10291f80;
+  --bsm-shadow: 0 10px 30px #19392a0d;
+}
+:root[data-density="compact"] {
+  --bsm-control-height: 32px;
+  --bsm-control-padding: 5px;
+  --bsm-button-padding: 4px;
+  --bsm-nav-padding: 5px;
+  --bsm-panel-padding: 16px;
+  --bsm-form-gap: 14px;
+  --bsm-row-padding: 10px;
+}

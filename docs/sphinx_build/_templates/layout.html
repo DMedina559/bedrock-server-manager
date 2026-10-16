@@ -1,11 +1,39 @@
 {% extends "!layout.html" %}
 
+{%- block htmltitle %}
+  {{ super() }}
+  <script src="{{ pathto('_static/js/docs_appearance.js', 1) }}"></script>
+{%- endblock %}
+
 {%- block extrahead %}
-  {{ super() }} {# Include existing extrahead content from the theme #}
+  {{ super() }}
   <link rel="apple-touch-icon" sizes="180x180" href="{{ pathto('_static/apple-touch-icon.png', 1) }}">
   <link rel="icon" type="image/png" sizes="96x96" href="{{ pathto('_static/favicon-96x96.png', 1) }}">
-  <link rel="icon" type="image/svg+xml" href="{{ pathto('_static/favicon.svg', 1) }}">
   <link rel="manifest" href="{{ pathto('_static/site.webmanifest', 1) }}">
-  {# Add project name as application-name meta tag for consistency, if not handled by manifest #}
   <meta name="application-name" content="{{ project }}">
-{% endblock %}
+{%- endblock %}
+
+{%- block extrabody %}
+  {{ super() }}
+  <a class="bsm-skip-link" href="#bsm-docs-content">Skip to documentation</a>
+{%- endblock %}
+
+{%- block content %}
+  <div class="bsm-docs-toolbar" aria-label="Documentation appearance">
+    <span class="bsm-docs-context">BSM <span aria-hidden="true">/</span> Documentation</span>
+    <div class="bsm-docs-appearance">
+      <label for="bsm-docs-mode">Mode</label>
+      <select id="bsm-docs-mode">
+        <option value="system">System</option>
+        <option value="dark">Dark</option>
+        <option value="light">Light</option>
+      </select>
+      <label for="bsm-docs-density">Density</label>
+      <select id="bsm-docs-density">
+        <option value="comfort">Comfort</option>
+        <option value="compact">Compact</option>
+      </select>
+    </div>
+  </div>
+  <div id="bsm-docs-content" tabindex="-1">{{ super() }}</div>
+{%- endblock %}

@@ -35,7 +35,7 @@ extensions = [
 
 myst_heading_anchors = 3
 
-templates_path = ["_templates"]
+templates_path = ["../sphinx_build/_templates"]
 exclude_patterns = ["_build", "Thumbs.db", ".DS_Store"]
 
 
@@ -46,7 +46,12 @@ html_theme = "sphinx_rtd_theme"
 html_static_path = ["../sphinx_build/_static"]
 html_favicon = "../sphinx_build/_static/favicon.ico"
 html_logo = "../sphinx_build/_static/favicon-96x96.png"
-html_css_files = ["css/custom_sphinx_styles.css"]
+html_css_files = [
+    "css/bsm/tokens.css",
+    "css/bsm/default.css",
+    "css/bsm/density.css",
+    "css/custom_sphinx_styles.css",
+]
 html_js_files = ["js/custom_docs.js"]
 
 html_theme_options = {

@@ -1,0 +1,202 @@
+/* Density changes geometry and typography, independently of color themes. */
+:root {
+  --bsm-spacing-scale: 1;
+  --bsm-type-scale: 1;
+  --bsm-toolbar-height: 36px;
+  --bsm-quick-action-height: 34px;
+  --bsm-body-size: 15px;
+  --bsm-label-size: 14px;
+  --bsm-small-size: 12px;
+  --bsm-nav-size: 14px;
+  --bsm-page-padding: 36px;
+  --bsm-grid-gap: 24px;
+  --bsm-card-min-width: 340px;
+  --bsm-card-padding: 20px;
+  --bsm-theme-card-width: 184px;
+  --bsm-card-title-size: 20px;
+  --bsm-card-icon-size: 56px;
+  --bsm-hero-icon-size: 100px;
+  --bsm-heading-size: 36px;
+  --bsm-section-size: 24px;
+  --bsm-stat-size: 32px;
+  --bsm-line-height: 1.65;
+}
+:root[data-density="compact"] {
+  --bsm-spacing-scale: 0.75;
+  --bsm-type-scale: 0.9;
+  --bsm-toolbar-height: 32px;
+  --bsm-quick-action-height: 30px;
+  --bsm-body-size: 13px;
+  --bsm-label-size: 12px;
+  --bsm-small-size: 11px;
+  --bsm-nav-size: 12px;
+  --bsm-page-padding: 20px;
+  --bsm-grid-gap: 12px;
+  --bsm-card-min-width: 270px;
+  --bsm-card-padding: 12px;
+  --bsm-theme-card-width: 150px;
+  --bsm-card-title-size: 16px;
+  --bsm-card-icon-size: 40px;
+  --bsm-hero-icon-size: 64px;
+  --bsm-heading-size: 28px;
+  --bsm-section-size: 20px;
+  --bsm-stat-size: 24px;
+  --bsm-line-height: 1.45;
+}
+body {
+  font-size: var(--bsm-body-size);
+  line-height: var(--bsm-line-height);
+}
+.workspace-shell .main-content {
+  padding: var(--bsm-page-padding);
+}
+.container:not(.workspace-overview),
+.settings-panel {
+  padding: var(--bsm-panel-padding);
+}
+.container h1,
+.workspace-overview .header h1 {
+  font-size: var(--bsm-heading-size);
+}
+.container h2,
+.workspace-hero h2,
+.fleet-heading h2 {
+  font-size: var(--bsm-section-size);
+}
+.sidebar-nav .nav-link {
+  font-size: var(--bsm-nav-size);
+  line-height: var(--bsm-line-height);
+}
+.sidebar-nav .nav-group {
+  padding-bottom: var(--bsm-grid-gap);
+}
+.sidebar-nav .sidebar-server-picker {
+  padding: var(--bsm-panel-padding) 16px;
+}
+.sidebar-nav .nav-section-label {
+  margin-block: 8px;
+  font-size: var(--bsm-small-size);
+}
+.form-label,
+.form-label-inline,
+.action-button,
+.theme-card strong,
+.workspace-metric > span {
+  font-size: var(--bsm-label-size);
+}
+.form-help-text,
+.theme-card small,
+.workspace-metric small,
+.page-context {
+  font-size: var(--bsm-small-size);
+}
+.form-input {
+  font-size: var(--bsm-body-size);
+}
+.form-grid,
+.theme-grid,
+.workspace-metrics {
+  gap: var(--bsm-grid-gap);
+}
+.theme-card {
+  padding: var(--bsm-card-padding);
+}
+.theme-swatch {
+  height: calc(var(--bsm-card-icon-size) - 6px);
+}
+.workspace-hero {
+  padding: var(--bsm-card-padding);
+  gap: var(--bsm-grid-gap);
+  margin-bottom: var(--bsm-grid-gap);
+}
+.workspace-hero img {
+  width: var(--bsm-hero-icon-size);
+  height: var(--bsm-hero-icon-size);
+}
+.workspace-hero p,
+.workspace-subtitle {
+  font-size: var(--bsm-body-size);
+}
+.workspace-metric {
+  padding: var(--bsm-card-padding);
+  gap: calc(var(--bsm-grid-gap) / 3);
+}
+.workspace-metric strong {
+  font-size: var(--bsm-stat-size);
+}
+.workspace-metrics {
+  margin-bottom: var(--bsm-grid-gap);
+}
+.server-table,
+.data-table {
+  font-size: var(--bsm-body-size);
+}
+.server-table th,
+.data-table th {
+  font-size: var(--bsm-small-size);
+}
+.workspace-topbar {
+  padding: 3px var(--bsm-page-padding);
+}
+.dialog-panel .dialog-body {
+  padding: var(--bsm-panel-padding);
+}
+.personal-palette-card .theme-card {
+  padding-bottom: 44px;
+}
+@media (max-width: 768px) {
+  :root {
+    --bsm-page-padding: 20px;
+    --bsm-card-min-width: 300px;
+    --bsm-heading-size: 30px;
+  }
+  :root[data-density="compact"] {
+    --bsm-page-padding: 12px;
+    --bsm-card-min-width: 260px;
+    --bsm-heading-size: 24px;
+  }
+  .workspace-topbar {
+    padding: 12px;
+  }
+  .form-input:not([type="checkbox"]):not([type="radio"]),
+  .action-button,
+  .icon-button {
+    min-height: 44px;
+  }
+  input.form-input,
+  select.form-input,
+  textarea.form-input {
+    font-size: 16px;
+  }
+  .personal-palette-card .theme-card {
+    padding-bottom: 60px;
+  }
+}
+
+.theme-grid {
+  grid-template-columns: repeat(
+    auto-fill,
+    minmax(min(100%, var(--bsm-theme-card-width)), 1fr)
+  );
+}
+.server-card h3 {
+  font-size: var(--bsm-card-title-size);
+}
+.profile-details dd {
+  font-size: var(--bsm-body-size);
+}
+
+/* Rem-based component typography follows the same density as inherited text. */
+html {
+  font-size: calc(16px * var(--bsm-type-scale));
+}
+@media (max-width: 768px) {
+  :root[data-density] button {
+    min-height: 44px;
+  }
+  :root[data-density] input:not([type="checkbox"]):not([type="radio"]),
+  :root[data-density] select,
+  :root[data-density] textarea {
+    font-size: 16px;
+  }
+}
