@@ -4,14 +4,6 @@ Bedrock Server Manager lets you customize the web UI through **Appearance**. Cho
 
 The theme engine uses semantic CSS variables for backgrounds, text, controls, borders, status colors, and other shared styles. Plugins can use the same variables to follow the selected theme.
 
-```{figure} ../../images/web_ui_red_theme.png
-:alt: BSM frontend using the red Ember theme
-:width: 600px
-:align: center
-
-The Ember theme applies a red palette across the web interface.
-```
-
 
 ## Appearance settings
 
@@ -79,6 +71,14 @@ Names can contain up to 60 characters and descriptions up to 160 characters. Col
 Use a saved palette's card to apply it, **Edit** to change it, or **Remove** to delete it. **Use account theme** turns off the palette override. Selecting a built-in or installed CSS theme also turns off the active palette.
 
 An active personal palette takes priority over the account theme's colors in every display mode. Switching to Light or Dark does not generate a different version of that palette.
+
+```{figure} ../../images/web_ui_red_theme.png
+:alt: BSM frontend using a custom personal red palette
+:width: 600px
+:align: center
+
+A custom personal red palette applied to the web interface.
+```
 
 ### Importing and exporting
 
