@@ -431,13 +431,17 @@ hr {
   border-color: var(--bsm-border);
   font-size: var(--bsm-small-size);
 }
-.rst-content table.docutils td {
+/* Match RTD's stripe specificity so odd rows cannot retain its light background. */
+.rst-content table.docutils td,
+.rst-content table.docutils:not(.field-list) tbody tr:nth-child(n) td,
+.rst-content table.docutils:not(.field-list) tbody tr:nth-child(n) th {
   color: var(--bsm-text);
   background: var(--bsm-surface);
   border-color: var(--bsm-border);
   padding: var(--bsm-row-padding) var(--bsm-space-4);
 }
-.rst-content table.docutils tbody tr:hover td {
+.rst-content table.docutils:not(.field-list) tbody tr:nth-child(n):hover td,
+.rst-content table.docutils:not(.field-list) tbody tr:nth-child(n):hover th {
   background: var(--bsm-accent-soft);
 }
 .wy-table-responsive {
