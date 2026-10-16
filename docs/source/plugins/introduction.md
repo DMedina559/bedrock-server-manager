@@ -8,9 +8,25 @@ Place the plugin's Python file or supported package in the plugin directory unde
 
 Refresh discovery or restart as appropriate, then inspect the plugin management view. Confirm the plugin's internal name, version and status before enabling it. A discovered plugin is not necessarily enabled.
 
+```{figure} ../../images/web_manage_plugins.png
+:alt: Plugin Management showing plugin cards, loaded status, filtering and reload controls
+:width: 600px
+:align: center
+
+Inspect discovered plugins and their status before changing which plugins are enabled.
+```
+
 ## Configure and reload
 
 Change the plugin's declared settings through the management interface. Enable or disable it deliberately, then check logs for initialization or cleanup failures. Reload unloads the old instance before loading a replacement; it is not a way to bypass outstanding callbacks.
+
+```{figure} ../../images/web_plugin_settings.png
+:alt: Plugin Settings with per-plugin tabs and server lifecycle notification options
+:width: 600px
+:align: center
+
+Select a plugin tab to inspect and save its declared settings.
+```
 
 If unload cannot drain synchronous work, replacement loading can remain blocked until that work finishes. Investigate the callback and avoid repeated reload attempts. Custom router availability follows plugin lifecycle; plugin authors must unregister resources on unload.
 

@@ -12,6 +12,14 @@ For Minecraft connections, check the Bedrock process and its UDP game ports sepa
 
 Inspect the task result when an operation was accepted but failed later. Manager log files have per-run names; locate the configured log directory rather than assuming a fixed filename. Use the local command's logging options shown by `bedrock-server-manager --help` to reproduce with more detail.
 
+```{figure} ../../images/web_background_task_operations.png
+:alt: Operations dialog showing completed addon tasks and their result messages
+:width: 600px
+:align: center
+
+Inspect completed operation results; an accepted request alone does not establish success.
+```
+
 An HTTP 503 during shutdown indicates the host is stopping. Shutdown acceptance does not mean cleanup has completed. See [runtime control](../extras/web_runtime.md) for deadlines and service restart behavior.
 
 ## Plugin problems

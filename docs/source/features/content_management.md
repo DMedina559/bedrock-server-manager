@@ -22,7 +22,26 @@ Place `.mcpack` or `.mcaddon` files in the addon-content library and select them
 Select an addon from the content library for the intended server.
 ```
 
+Enabling and disabling packs changes the world's activation lists. Disabled packs can remain installed. Pack ordering follows the stored activation order; test behavior and resource interactions rather than assuming a universal conflict-resolution rule.
 
-Enabling and disabling packs changes the world's activation lists. Disabled packs can remain installed. Pack ordering follows the stored activation order; test behavior and resource interactions rather than assuming a universal conflict-resolution rule. Subpack selection applies only to packs that declare subpacks.
+```{figure} ../../images/web_manage_installed_addons.png
+:alt: Manage Installed Addons dialog showing behavior packs, activation status and ordering controls
+:width: 600px
+:align: center
+
+Inspect installed behavior and resource packs, adjust their order, and enable or disable them.
+```
 
 Removing a pack can affect existing world content. Back up the world, check task results and verify it in-game after restarting. The [manual content guide](../extras/install_content.md) explains file placement when the upload/download plugins are unavailable.
+
+## Choose a subpack
+
+Some resource packs declare multiple subpacks. In **Manage Installed Addons**, open the resource-pack tab and choose an available subpack for the intended pack. Packs without declared subpacks do not offer this selector.
+
+```{figure} ../../images/web_manage_sub_packs.png
+:alt: Resource Packs tab showing an installed pack with a subpack selection dropdown
+:width: 600px
+:align: center
+
+Choose a declared subpack from the installed resource pack's selector.
+```

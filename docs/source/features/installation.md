@@ -6,6 +6,14 @@ Install BSM itself using the [package installation guide](../extras/installation
 
 Create a server with a unique name and choose a release selector: `LATEST`, `PREVIEW`, a supported specific version, or `CUSTOM`. Preview builds may be unsuitable for existing production worlds. Availability of a specific release depends on the download source and local cache.
 
+```{figure} ../../images/web_install_server.png
+:alt: Install New Server form with a server name and Bedrock release selector
+:width: 600px
+:align: center
+
+Choose a server name and release before starting installation.
+```
+
 For `CUSTOM`, put the server ZIP in the configured downloads root's `custom` directory and select that archive. Paths come from application settings; they need not be beside your checkout.
 
 Follow installation progress to completion, then review properties, game ports, allowlist and player permissions before starting. Each simultaneously running server needs distinct game ports. Confirm the process is running and inspect its logs before connecting.
@@ -19,5 +27,13 @@ Review the new Bedrock version's compatibility with your world and packs. Avoid 
 ## Automatic startup and updates
 
 Autostart and update-before-start are plugin-driven policies. Review the enabled plugins and the server's `autostart`/`autoupdate` settings before relying on them. A restart can trigger configured automation; it is not always just relaunching the same binary.
+
+```{figure} ../../images/web_server_settings.png
+:alt: Server Settings showing installed version, status, autostart, autoupdate and target version
+:width: 600px
+:align: center
+
+Per-server manager settings control startup and update policy; they are separate from Bedrock properties.
+```
 
 See [bundled plugins](default_plugins.md), [configuration](configuration.md) and [backup and restore](backups.md).

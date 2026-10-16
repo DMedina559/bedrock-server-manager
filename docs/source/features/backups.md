@@ -14,6 +14,14 @@ A server backup is not a complete BSM installation backup. Preserve the applicat
 
 Use your server's backup page to create a backup and confirm it appears in the appropriate category. The configured backup root contains per-server backups; it need not be inside the server directory.
 
+```{figure} ../../images/web_server_backup_restore.png
+:alt: Server backup page with category-specific backups, restore actions and pruning
+:width: 600px
+:align: center
+
+The backup page lists saved categories and provides individual restore and latest restore-all actions.
+```
+
 ## Restore carefully
 
 Restore replaces the selected current data. Create a fresh backup first, select the intended category and timestamp, and allow BSM's maintenance operation to finish before restarting or changing that server.

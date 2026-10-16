@@ -8,6 +8,14 @@ bedrock-server-manager web start --host 127.0.0.1 --port 11325
 
 Open `http://127.0.0.1:11325`. Complete the initial account setup presented by your installation, then sign in. Keep the host running while using the dashboard.
 
+```{figure} ../../images/web_first_time_setup.png
+:alt: Initial setup form for creating the BSM administrator account
+:width: 600px
+:align: center
+
+Create the initial administrator account before signing in.
+```
+
 ## Create your first server
 
 1. Create a server with a unique name and choose the Bedrock release to install.

@@ -4,7 +4,6 @@ Bedrock Server Manager lets you customize the web UI through **Appearance**. Cho
 
 The theme engine uses semantic CSS variables for backgrounds, text, controls, borders, status colors, and other shared styles. Plugins can use the same variables to follow the selected theme.
 
-
 ## Appearance settings
 
 Open **Appearance** from the navigation menu to adjust the following settings:
@@ -56,7 +55,6 @@ Ocean provides a blue palette.
 Forest provides an alternative green palette.
 ```
 
-
 ## Creating a personal palette
 
 You can create a palette without writing CSS:
@@ -65,6 +63,14 @@ You can create a palette without writing CSS:
 2. Enter a name and an optional description.
 3. Choose the accent, page background, panel background, text, and secondary text colors.
 4. Review the contrast feedback and choose **Save and apply palette**.
+
+```{figure} ../../images/web_palette_creator.png
+:alt: Personal palette editor with color controls, preview and palette export actions
+:width: 600px
+:align: center
+
+Create and preview a personal palette before applying it.
+```
 
 Names can contain up to 60 characters and descriptions up to 160 characters. Colors use six-digit hex values such as `#00ed95`. Up to 30 palettes can be stored in the browser. Saving with an existing name updates that palette.
 

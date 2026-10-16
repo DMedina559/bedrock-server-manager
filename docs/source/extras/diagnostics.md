@@ -2,6 +2,26 @@
 
 Administrators can inspect BSM's current runtime without collecting raw settings, user records, task arguments, or event payloads. Diagnostics are observations, not a replacement for logs or the lightweight health endpoint.
 
+## Inspect diagnostics in the web interface
+
+Open **Metrics → Diagnostics** to inspect the overview, subsystem observations and available history. Check both overall health and readiness, then inspect individual subsystem status and freshness. Use **Download support report** when collecting information for a support request.
+
+```{figure} ../../images/web_ui_green_theme.png
+:alt: Diagnostics overview showing health, readiness, collection time and support report download
+:width: 600px
+:align: center
+
+The diagnostic overview summarizes observations and provides a support-report download.
+```
+
+```{figure} ../../images/web_subsystem_diagnostic.png
+:alt: Diagnostic subsystem cards for Runtime, State, Storage and Events
+:width: 600px
+:align: center
+
+Subsystem cards expose health and observations for individual parts of the application.
+```
+
 ## Read the diagnostic API
 
 Use your normal administrator authentication:
