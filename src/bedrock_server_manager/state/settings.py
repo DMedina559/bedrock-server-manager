@@ -321,6 +321,7 @@ class SettingsState(BaseModel):
         cls, data: Dict[str, Any], data_dir: Optional[str] = None
     ) -> "SettingsState":
         """Reconstructs SettingsState from a dictionary (e.g. from database key/value settings)."""
+        data = copy.deepcopy(data)
         defaults = cls.create_defaults(data_dir) if data_dir else cls()
         merged = defaults.to_dict()
 
@@ -359,6 +360,24 @@ class SettingsState(BaseModel):
                 _deep_merge_dicts(v, merged[k])
             elif v is not None or k not in merged:
                 merged[k] = v
+
+        # Older 3.x databases retained removed fields inside section JSON rows.
+        # Normalize after unflattening so legacy dotted rows are handled too.
+        # Keep this allowlist at the load boundary; updates remain strict.
+        removed_fields = {
+            "paths": ("logs",),
+            "retention": ("logs",),
+            "web": ("threads",),
+        }
+        for section, removed_names in removed_fields.items():
+            values = merged.get(section)
+            if isinstance(values, dict):
+                for name in removed_names:
+                    if name in values:
+                        values.pop(name)
+                        logger.warning(
+                            "Ignoring removed legacy setting %s.%s", section, name
+                        )
 
         monitoring = merged.get("monitoring", {})
         if "max_retiries" in monitoring:
