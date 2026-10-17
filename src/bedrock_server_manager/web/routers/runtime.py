@@ -19,7 +19,9 @@ from ..runtime import RuntimeStatus, ShutdownRequest, ShutdownResponse, WebRunti
 
 router = APIRouter(prefix="/api/runtime", tags=["Runtime"])
 local_key = APIKeyHeader(name="X-BSM-Shutdown-Token", auto_error=False)
-readiness_key = APIKeyHeader(name="X-BSM-Readiness-Token", auto_error=False)
+readiness_key = APIKeyHeader(
+    name="X-BSM-Readiness-Token", scheme_name="LocalReadiness", auto_error=False
+)
 
 
 def get_web_runtime(request: Request) -> WebRuntime:

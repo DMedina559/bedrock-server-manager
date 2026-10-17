@@ -164,3 +164,14 @@ async def test_user_authentication_still_works_and_bad_local_header_is_rejected(
         "/api/health", headers={"X-BSM-Readiness-Token": "invalid"}
     )
     assert rejected.status_code == 401
+
+
+def test_openapi_distinguishes_readiness_and_shutdown_credentials(test_app):
+    schema = test_app.openapi()
+    schemes = schema["components"]["securitySchemes"]
+    assert schemes["LocalReadiness"]["name"] == "X-BSM-Readiness-Token"
+    assert schemes["APIKeyHeader"]["name"] == "X-BSM-Shutdown-Token"
+    health = schema["paths"]["/api/health"]["get"]
+    assert health["operationId"] == "get_application_health"
+    assert {"LocalReadiness": []} in health["security"]
+    assert "/api/runtime/readiness" not in schema["paths"]
