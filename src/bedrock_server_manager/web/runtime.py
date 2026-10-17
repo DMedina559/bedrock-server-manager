@@ -43,6 +43,7 @@ class WebRuntime:
     def __init__(self, instance_id: str | None = None):
         self.instance_id = instance_id or uuid4().hex
         self._token = secrets.token_urlsafe(32)
+        self._readiness_token = secrets.token_urlsafe(32)
         self._lock = RLock()
         self._exit: Callable[[], None] | None = None
         self.on_ready: Callable[[], None] | None = None
@@ -72,6 +73,12 @@ class WebRuntime:
     def authenticate_local(self, token: str) -> bool:
         return secrets.compare_digest(
             token.encode("utf-8"), self._token.encode("ascii")
+        )
+
+    def authenticate_readiness(self, token: str) -> bool:
+        """Validate the read-only capability issued for this runtime."""
+        return secrets.compare_digest(
+            token.encode("utf-8"), self._readiness_token.encode("ascii")
         )
 
     def snapshot(self) -> RuntimeStatus:
