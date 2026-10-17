@@ -55,8 +55,12 @@ async def test_readiness_capability_cannot_shutdown_or_access_user_api(
             "/api/runtime/shutdown", json={}, headers=headers
         )
         assert response.status_code == 401
-        assert (await unauth_client.get("/api/runtime", headers=headers)).status_code == 401
-        assert (await unauth_client.get("/api/health", headers=headers)).status_code == 401
+        assert (
+            await unauth_client.get("/api/runtime", headers=headers)
+        ).status_code == 401
+        assert (
+            await unauth_client.get("/api/health", headers=headers)
+        ).status_code == 401
     assert not server.should_exit
 
 
@@ -134,7 +138,9 @@ def test_control_record_publishes_distinct_private_rotating_capabilities(tmp_pat
         )
         record = read_control(paths)
         assert record.readiness_token.get_secret_value() == runtime._readiness_token
-        assert record.token.get_secret_value() != record.readiness_token.get_secret_value()
+        assert (
+            record.token.get_secret_value() != record.readiness_token.get_secret_value()
+        )
         assert runtime._readiness_token not in repr(record)
         if os.name != "nt":
             assert paths.control_file.stat().st_mode & 0o777 == 0o600
