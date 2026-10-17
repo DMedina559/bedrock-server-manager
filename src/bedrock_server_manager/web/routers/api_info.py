@@ -43,6 +43,7 @@ from ..deps import (
     get_moderator_user,
     validate_server_exists,
 )
+from ..runtime import WebRuntime
 from ..schemas import (
     AddPlayersPayload,
     AddPlayersResponse,
@@ -57,8 +58,6 @@ from ..schemas import (
     ThemeListResponse,
     UserResponse,
 )
-
-from ..runtime import WebRuntime
 from .runtime import require_health_access
 
 logger = logging.getLogger(__name__)
