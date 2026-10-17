@@ -3163,6 +3163,18 @@ Schemas are listed once. Local `$defs` references identify other models on this 
       "title": "Health",
       "type": "string"
     },
+    "instance_id": {
+      "anyOf": [
+        {
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "title": "Instance Id"
+    },
     "lifecycle": {
       "$ref": "#/$defs/LifecyclePhase"
     },
@@ -3178,6 +3190,11 @@ Schemas are listed once. Local `$defs` references identify other models on this 
       "default": null,
       "title": "Message"
     },
+    "pid": {
+      "exclusiveMinimum": 0,
+      "title": "Pid",
+      "type": "integer"
+    },
     "ready": {
       "title": "Ready",
       "type": "boolean"
@@ -3187,9 +3204,15 @@ Schemas are listed once. Local `$defs` references identify other models on this 
       "default": "success",
       "title": "Status",
       "type": "string"
+    },
+    "version": {
+      "title": "Version",
+      "type": "string"
     }
   },
   "required": [
+    "pid",
+    "version",
     "ready",
     "lifecycle",
     "health",
