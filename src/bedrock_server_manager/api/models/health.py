@@ -18,6 +18,9 @@ class HealthCheck(SuccessResponse):
 
 
 class GetApplicationHealthResponse(SuccessResponse):
+    pid: int = Field(gt=0)
+    instance_id: str | None = None
+    version: str
     ready: bool
     lifecycle: LifecyclePhase = Field(strict=False)
     health: Literal["healthy", "degraded"]

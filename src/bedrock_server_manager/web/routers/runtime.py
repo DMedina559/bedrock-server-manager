@@ -13,16 +13,9 @@ from fastapi import (
 )
 from fastapi.security import APIKeyHeader
 
-from ...api.models.health import GetApplicationHealthRequest, HealthCheck
-from ...api.system import get_application_health
-from ...config import get_installed_version
-from ...context import AppContext
 from ...error import DependencyUnavailableError
-from ...services.lifecycle import LifecyclePhase
-from ..deps import get_app_context
 from ..deps.auth import get_admin_user, get_current_user_optional
 from ..runtime import RuntimeStatus, ShutdownRequest, ShutdownResponse, WebRuntime
-from ..schemas.runtime import RuntimeReadinessResponse
 
 router = APIRouter(prefix="/api/runtime", tags=["Runtime"])
 local_key = APIKeyHeader(name="X-BSM-Shutdown-Token", auto_error=False)
@@ -88,12 +81,25 @@ async def shutdown_runtime(
     return receipt
 
 
-async def require_local_readiness(
+async def require_health_access(
     request: Request,
     token: str | None = Security(readiness_key),
-    runtime: WebRuntime = Depends(get_web_runtime),
-) -> WebRuntime:
-    """Require a local peer and a capability scoped to readiness."""
+    user=Security(get_current_user_optional),
+) -> None:
+    """Accept a user credential or the scoped local readiness capability."""
+    if token is None:
+        if user is None:
+            raise HTTPException(
+                status_code=401,
+                detail="Not authenticated",
+                headers={"WWW-Authenticate": "Bearer"},
+            )
+        return
+    runtime = getattr(request.app.state, "web_runtime", None)
+    if not isinstance(runtime, WebRuntime):
+        raise DependencyUnavailableError(
+            "This ASGI host does not expose local readiness"
+        )
     peers = (request.scope.get("bsm.peer"), request.scope.get("client"))
     try:
         local = all(
@@ -104,41 +110,5 @@ async def require_local_readiness(
         local = False
     if not local:
         raise HTTPException(status_code=403, detail="Local readiness access required")
-    if token is None or not runtime.authenticate_readiness(token):
+    if not runtime.authenticate_readiness(token):
         raise HTTPException(status_code=401, detail="Invalid readiness credential")
-    return runtime
-
-
-@router.get(
-    "/readiness",
-    operation_id="get_local_runtime_readiness",
-    response_model=RuntimeReadinessResponse,
-)
-async def local_runtime_readiness(
-    runtime: WebRuntime = Depends(require_local_readiness),
-    app_context: AppContext = Depends(get_app_context),
-) -> RuntimeReadinessResponse:
-    """Return health and runtime identity without a user account."""
-    health = await get_application_health(
-        GetApplicationHealthRequest(), app_context=app_context
-    )
-    snapshot = runtime.snapshot()
-    if snapshot.phase != LifecyclePhase.READY:
-        health = health.model_copy(
-            update={
-                "ready": False,
-                "lifecycle": snapshot.phase,
-                "health": "degraded",
-                "checks": {
-                    **health.checks,
-                    "lifecycle": HealthCheck(
-                        healthy=False, message="Web runtime is not ready"
-                    ),
-                },
-            }
-        )
-    return RuntimeReadinessResponse(
-        runtime=snapshot,
-        version=get_installed_version(),
-        health=health,
-    )

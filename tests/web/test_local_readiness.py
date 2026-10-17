@@ -26,17 +26,16 @@ async def test_local_readiness_works_before_first_user(
     runtime, server = attach_runtime(app_context, test_app)
     assert await app_context.check_setup()
     response = await unauth_client.get(
-        "/api/runtime/readiness",
+        "/api/health",
         headers={"X-BSM-Readiness-Token": runtime._readiness_token},
     )
     assert response.status_code == 200
     payload = response.json()
-    assert payload["runtime"]["instance_id"] == runtime.instance_id
-    assert payload["runtime"]["pid"] == os.getpid()
-    assert payload["runtime"]["phase"] == "ready"
+    assert payload["instance_id"] == runtime.instance_id
+    assert payload["pid"] == os.getpid()
     assert payload["version"] == get_installed_version()
-    assert payload["health"]["ready"] is True
-    assert {"lifecycle", "database", "state"} <= payload["health"]["checks"].keys()
+    assert payload["ready"] is True
+    assert {"lifecycle", "database", "state"} <= payload["checks"].keys()
     assert not server.should_exit
     assert runtime._readiness_token not in response.text
     assert runtime._token not in response.text
@@ -58,9 +57,10 @@ async def test_readiness_capability_cannot_shutdown_or_access_user_api(
         assert (
             await unauth_client.get("/api/runtime", headers=headers)
         ).status_code == 401
-        assert (
-            await unauth_client.get("/api/health", headers=headers)
-        ).status_code == 401
+        response = await unauth_client.get("/api/health", headers=headers)
+        assert response.status_code == (
+            200 if "X-BSM-Readiness-Token" in headers else 401
+        )
     assert not server.should_exit
 
 
@@ -78,7 +78,7 @@ async def test_readiness_rejects_missing_invalid_and_other_capabilities(
         if credential is None
         else {"X-BSM-Readiness-Token": values.get(credential, credential)}
     )
-    response = await unauth_client.get("/api/runtime/readiness", headers=headers)
+    response = await unauth_client.get("/api/health", headers=headers)
     assert response.status_code == 401
 
 
@@ -101,13 +101,13 @@ async def test_remote_or_forwarded_remote_clients_cannot_use_local_readiness(
         transport=ASGITransport(app=running_app, client=(peer, 12345)),
         base_url="http://testserver",
     ) as client:
-        response = await client.get("/api/runtime/readiness", headers=headers)
+        response = await client.get("/api/health", headers=headers)
     assert response.status_code == 403
 
 
 async def test_unmanaged_host_has_no_local_readiness(unauth_client):
     response = await unauth_client.get(
-        "/api/runtime/readiness", headers={"X-BSM-Readiness-Token": "invalid"}
+        "/api/health", headers={"X-BSM-Readiness-Token": "invalid"}
     )
     assert response.status_code == 503
 
@@ -118,13 +118,13 @@ async def test_stopping_runtime_is_reported_without_claiming_ready(
     runtime, _ = attach_runtime(app_context, test_app)
     runtime.accept_shutdown("service")
     response = await unauth_client.get(
-        "/api/runtime/readiness",
+        "/api/health",
         headers={"X-BSM-Readiness-Token": runtime._readiness_token},
     )
     assert response.status_code == 200
-    assert response.json()["runtime"]["phase"] == "stopping"
-    assert response.json()["health"]["ready"] is False
-    assert response.json()["health"]["checks"]["lifecycle"]["healthy"] is False
+    assert response.json()["lifecycle"] == "stopping"
+    assert response.json()["ready"] is False
+    assert response.json()["checks"]["lifecycle"]["healthy"] is False
 
 
 def test_control_record_publishes_distinct_private_rotating_capabilities(tmp_path):
@@ -150,3 +150,17 @@ def test_control_record_publishes_distinct_private_rotating_capabilities(tmp_pat
     finally:
         files.close()
     assert not (tmp_path / "web_server.control.json").exists()
+
+
+async def test_user_authentication_still_works_and_bad_local_header_is_rejected(
+    app_context, test_app, auth_client
+):
+    runtime, _ = attach_runtime(app_context, test_app)
+    response = await auth_client.get("/api/health")
+    assert response.status_code == 200
+    assert response.json()["pid"] == os.getpid()
+    assert response.json()["instance_id"] == runtime.instance_id
+    rejected = await auth_client.get(
+        "/api/health", headers={"X-BSM-Readiness-Token": "invalid"}
+    )
+    assert rejected.status_code == 401

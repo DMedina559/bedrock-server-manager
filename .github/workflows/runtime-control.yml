@@ -7,8 +7,10 @@ on:
       - 'src/bedrock_server_manager/web/runtime.py'
       - 'src/bedrock_server_manager/web/control.py'
       - 'src/bedrock_server_manager/web/routers/runtime.py'
-      - 'src/bedrock_server_manager/web/schemas/runtime.py'
       - 'src/bedrock_server_manager/web/middleware/ingress.py'
+      - 'src/bedrock_server_manager/web/routers/api_info.py'
+      - 'src/bedrock_server_manager/api/models/health.py'
+      - 'src/bedrock_server_manager/api/system.py'
       - 'tests/web/test_runtime.py'
       - 'tests/web/test_local_readiness.py'
       - '.github/workflows/runtime-control.yml'
@@ -43,7 +45,9 @@ jobs:
           src/bedrock_server_manager/web/runtime.py
           src/bedrock_server_manager/web/control.py
           src/bedrock_server_manager/web/routers/runtime.py
-          src/bedrock_server_manager/web/schemas/runtime.py
+          src/bedrock_server_manager/web/routers/api_info.py
+          src/bedrock_server_manager/api/models/health.py
+          src/bedrock_server_manager/api/system.py
           src/bedrock_server_manager/web/middleware/ingress.py
           tests/web/test_local_readiness.py
           docs/source/extras/web_runtime.md
