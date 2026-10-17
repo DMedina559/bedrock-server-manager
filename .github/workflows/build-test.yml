@@ -66,17 +66,17 @@ jobs:
         path: ~/.cache/pre-commit
         key: pre-commit-${{ runner.os }}-${{ steps.python.outputs.python-version }}-${{ hashFiles('.pre-commit-config.yaml', 'pyproject.toml') }}
 
-    - name: Run pre-commit
+    - name: Build package
+      if: matrix.python-version == '3.14' && runner.os == 'Linux'
+      run: python -m build
+
+    - name: Lint and type checks
       if: matrix.python-version == '3.14' && runner.os == 'Linux'
       run: |
         pre-commit run --all-files
-
-    - name: Check API contracts and callers
-      if: matrix.python-version == '3.14' && runner.os == 'Linux'
-      run: |
         python scripts/check_api_callers.py
         python scripts/generate_plugin_api.py --check
         python scripts/export_openapi.py --output "${{ runner.temp }}/backend-openapi.json"
 
-    - name: Run Pytest
+    - name: Run tests
       run: python -m pytest --durations=25
