@@ -75,6 +75,34 @@ async def test_settings_load_merges_existing_db(app_context, db, isolated_bcm_co
     assert settings.get("retention.backups") is not None
 
 
+@pytest.mark.parametrize("dotted", [False, True])
+async def test_settings_reload_accepts_removed_3x_fields(app_context, db, dotted):
+    """Persisted 3.x settings must not prevent application state from loading."""
+    from sqlalchemy.future import select
+
+    async with db.session_manager() as session:
+        for section, name, value in (
+            ("paths", "logs", "/legacy/logs"),
+            ("retention", "logs", 3),
+            ("web", "threads", 4),
+        ):
+            if dotted:
+                session.add(Setting(key=f"{section}.{name}", value=value))
+            else:
+                row = (
+                    await session.execute(select(Setting).filter_by(key=section))
+                ).scalar_one()
+                row.value = {**row.value, name: value}
+        await session.commit()
+
+    original = app_context.state.settings.to_dict()
+    await app_context.load()
+    assert app_context.state.settings.to_dict() == original
+    # A later load must also work while legacy rows remain in the database.
+    await app_context.load()
+    assert app_context.state.settings.to_dict() == original
+
+
 async def test_settings_get(settings):
     """Test getting deeply nested keys and defaults."""
     assert settings.get("paths.servers") is not None
