@@ -23,6 +23,7 @@ class ControlRecord(BaseModel):
     host: str
     port: int = Field(ge=1, le=65535)
     token: SecretStr
+    readiness_token: SecretStr | None = None
 
     @property
     def url(self) -> str:
@@ -92,9 +93,11 @@ class ControlFiles:
             host="127.0.0.1" if host == "0.0.0.0" else "::1" if host == "::" else host,
             port=port,
             token=self.runtime._token,
+            readiness_token=self.runtime._readiness_token,
         )
-        data = record.model_dump(mode="json", exclude={"token"})
+        data = record.model_dump(mode="json", exclude={"token", "readiness_token"})
         data["token"] = record.token.get_secret_value()
+        data["readiness_token"] = self.runtime._readiness_token
         self._write("web_server.control.json", json.dumps(data))
         self._write("web_server.pid", str(record.pid))
 

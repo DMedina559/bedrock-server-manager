@@ -4,6 +4,15 @@ Bedrock Server Manager (BSM) installs and manages Minecraft Bedrock Dedicated Se
 
 BSM is the manager process; each Bedrock server is a separate game process. The packaged frontend provides the browser interface, and the optional CLI client connects to the manager's API. Stopping a game server and shutting down the manager are separate actions.
 
+```{figure} ../../images/main_index.png
+:alt: BSM web overview showing application metrics and server cards
+:width: 600px
+:align: center
+
+The web overview brings application health and the server fleet together.
+```
+
+
 ## Find the right guide
 
 - [Install BSM](../extras/installation.md) and complete [first startup](quickstart.md).

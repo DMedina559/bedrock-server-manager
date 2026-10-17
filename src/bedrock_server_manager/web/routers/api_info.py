@@ -8,7 +8,7 @@ import logging
 import os
 
 import aiofiles.ospath
-from fastapi import APIRouter, Depends, HTTPException, status
+from fastapi import APIRouter, Depends, HTTPException, Request, status
 
 from bedrock_server_manager.api.models import (
     AddPlayersManuallyRequest,
@@ -35,6 +35,7 @@ from ...api.models.metrics import (
 )
 from ...context import AppContext
 from ...error import BSMError
+from ...services.lifecycle import LifecyclePhase
 from ..deps import (
     get_admin_user,
     get_app_context,
@@ -42,6 +43,7 @@ from ..deps import (
     get_moderator_user,
     validate_server_exists,
 )
+from ..runtime import WebRuntime
 from ..schemas import (
     AddPlayersPayload,
     AddPlayersResponse,
@@ -56,6 +58,7 @@ from ..schemas import (
     ThemeListResponse,
     UserResponse,
 )
+from .runtime import require_health_access
 
 logger = logging.getLogger(__name__)
 
@@ -426,12 +429,35 @@ async def get_application_metrics(
     operation_id="get_application_health",
     tags=["Application"],
     response_model=GetApplicationHealthResponse,
+    dependencies=[Depends(require_health_access)],
 )
 async def get_application_health(
-    current_user: UserResponse = Depends(get_current_user),
+    request: Request,
     app_context: AppContext = Depends(get_app_context),
 ) -> GetApplicationHealthResponse:
-    """Dependency readiness. A degraded response remains HTTP 200 for UI clients."""
-    return await system_api.get_application_health(
+    """Return health and process identity for a user or local supervisor."""
+    health = await system_api.get_application_health(
         GetApplicationHealthRequest(), app_context=app_context
     )
+    runtime = getattr(request.app.state, "web_runtime", None)
+    if isinstance(runtime, WebRuntime):
+        snapshot = runtime.snapshot()
+        health = health.model_copy(update={"instance_id": snapshot.instance_id})
+        if snapshot.phase != LifecyclePhase.READY:
+            health = health.model_copy(
+                update={
+                    "ready": False,
+                    "lifecycle": snapshot.phase,
+                    "health": "degraded",
+                    "checks": {
+                        **health.checks,
+                        "lifecycle": health.checks["lifecycle"].model_copy(
+                            update={
+                                "healthy": False,
+                                "message": "Web runtime is not ready",
+                            }
+                        ),
+                    },
+                }
+            )
+    return health

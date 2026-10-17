@@ -50,6 +50,7 @@ class IngressMiddleware:
             return await self.app(scope, receive, send)
         scope = dict(scope)
         peer = scope.get("client")
+        scope["bsm.peer"] = peer
         # Reuse Uvicorn's exact host/network policy for every forwarding header.
         scope["bsm.trusted_proxy"] = (
             peer[0] if peer else None

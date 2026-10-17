@@ -1,5 +1,6 @@
 """HTTP control of the hosting runtime; no process spawning API."""
 
+import ipaddress
 from typing import Literal
 
 from fastapi import (
@@ -18,6 +19,9 @@ from ..runtime import RuntimeStatus, ShutdownRequest, ShutdownResponse, WebRunti
 
 router = APIRouter(prefix="/api/runtime", tags=["Runtime"])
 local_key = APIKeyHeader(name="X-BSM-Shutdown-Token", auto_error=False)
+readiness_key = APIKeyHeader(
+    name="X-BSM-Readiness-Token", scheme_name="LocalReadiness", auto_error=False
+)
 
 
 def get_web_runtime(request: Request) -> WebRuntime:
@@ -77,3 +81,36 @@ async def shutdown_runtime(
     receipt = runtime.accept_shutdown(actor)
     background.add_task(runtime.signal_exit)
     return receipt
+
+
+async def require_health_access(
+    request: Request,
+    token: str | None = Security(readiness_key),
+    user=Security(get_current_user_optional),
+) -> None:
+    """Accept a user credential or the scoped local readiness capability."""
+    if token is None:
+        if user is None:
+            raise HTTPException(
+                status_code=401,
+                detail="Not authenticated",
+                headers={"WWW-Authenticate": "Bearer"},
+            )
+        return
+    runtime = getattr(request.app.state, "web_runtime", None)
+    if not isinstance(runtime, WebRuntime):
+        raise DependencyUnavailableError(
+            "This ASGI host does not expose local readiness"
+        )
+    peers = (request.scope.get("bsm.peer"), request.scope.get("client"))
+    try:
+        local = all(
+            peer is not None and ipaddress.ip_address(peer[0]).is_loopback
+            for peer in peers
+        )
+    except ValueError:
+        local = False
+    if not local:
+        raise HTTPException(status_code=403, detail="Local readiness access required")
+    if not runtime.authenticate_readiness(token):
+        raise HTTPException(status_code=401, detail="Invalid readiness credential")

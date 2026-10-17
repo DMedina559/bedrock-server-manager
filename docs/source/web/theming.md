@@ -39,6 +39,22 @@ Each built-in theme has its own colors for page backgrounds, panels, and accents
 
 With **Use theme default**, Daylight uses light mode and the other built-in themes use dark mode. **System** follows your operating system's light or dark preference.
 
+```{figure} ../../images/web_ui_blue_theme.png
+:alt: BSM frontend using the blue Ocean theme
+:width: 600px
+:align: center
+
+Ocean provides a blue palette.
+```
+
+```{figure} ../../images/web_ui_green_theme.png
+:alt: BSM frontend using the green Forest theme
+:width: 600px
+:align: center
+
+Forest provides an alternative green palette.
+```
+
 ## Creating a personal palette
 
 You can create a palette without writing CSS:
@@ -48,11 +64,27 @@ You can create a palette without writing CSS:
 3. Choose the accent, page background, panel background, text, and secondary text colors.
 4. Review the contrast feedback and choose **Save and apply palette**.
 
+```{figure} ../../images/web_palette_creator.png
+:alt: Personal palette editor with color controls, preview and palette export actions
+:width: 600px
+:align: center
+
+Create and preview a personal palette before applying it.
+```
+
 Names can contain up to 60 characters and descriptions up to 160 characters. Colors use six-digit hex values such as `#00ed95`. Up to 30 palettes can be stored in the browser. Saving with an existing name updates that palette.
 
 Use a saved palette's card to apply it, **Edit** to change it, or **Remove** to delete it. **Use account theme** turns off the palette override. Selecting a built-in or installed CSS theme also turns off the active palette.
 
 An active personal palette takes priority over the account theme's colors in every display mode. Switching to Light or Dark does not generate a different version of that palette.
+
+```{figure} ../../images/web_ui_red_theme.png
+:alt: BSM frontend using a custom personal red palette
+:width: 600px
+:align: center
+
+A custom personal red palette applied to the web interface.
+```
 
 ### Importing and exporting
 

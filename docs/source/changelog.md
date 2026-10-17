@@ -1,6 +1,6 @@
 # Changelog
 
-```{image} https://raw.githubusercontent.com/DMedina559/bsm-frontend/main/frontend/public/image/icon/favicon.svg
+```{image} https://raw.githubusercontent.com/DMedina559/bsm-frontend/main/frontend/public/image/icon/web-app-manifest-512x512.png
 :alt: Bedrock Server Manager Icon
 :width: 200px
 :align: center

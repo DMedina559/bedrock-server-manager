@@ -1,0 +1,15 @@
+:root {
+  --bsm-accent: #00ed95;
+  --bsm-accent-strong: #087b57;
+  --bsm-accent-hover: #066447;
+}
+:root[data-theme="default"][data-mode="dark"] {
+  --bsm-page: #030b0d;
+  --bsm-surface: #082223;
+  --bsm-surface-raised: #0c2e2b;
+  --bsm-input: #101f22;
+  --bsm-text: #edfff8;
+  --bsm-muted: #a8c3bc;
+  --bsm-border: #215548;
+  --sidebar-bg-custom: #041014;
+}

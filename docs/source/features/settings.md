@@ -12,6 +12,14 @@ The default configuration directory is platform-specific. Keep services, manual 
 
 Application and plugin settings use typed state backed by the database. Administrators can inspect and change supported settings through the management interface. Invalid values are rejected rather than silently becoming runtime configuration.
 
+```{figure} ../../images/web_global_settings.png
+:alt: Global settings showing backup retention and monitoring intervals
+:width: 600px
+:align: center
+
+Application settings include retention limits and monitoring intervals.
+```
+
 Paths select server, backup, content and download locations. Changing a path does not move existing files. Plan and back up a storage move, stop affected activity, move data deliberately, and verify permissions under the service account.
 
 Web settings include `web.cors_origins`, a list of allowed browser origins such

@@ -2,8 +2,10 @@
 """Provide API functions for system-level server interactions and information."""
 
 import logging
+import os
 import time
 
+from ..config import get_installed_version
 from ..context import AppContext
 from ..error import (
     BSMError,
@@ -145,6 +147,8 @@ async def get_application_health(
         for name, (healthy, ok, failed) in results.items()
     }
     return GetApplicationHealthResponse(
+        pid=os.getpid(),
+        version=get_installed_version(),
         ready=app_context.is_ready,
         lifecycle=app_context.lifecycle_phase,
         health=(
