@@ -38,11 +38,10 @@ The hosting process owns `web_server.pid`, `web_server.control.json` and an OS-h
 lock. Runtime records are written atomically and removed after cleanup, including
 startup failures. A second host using the same configuration is rejected.
 
-The control record contains a random per-instance shutdown credential. POSIX
+The control record contains separate random per-instance shutdown and readiness credentials. POSIX
 records have owner-only permissions; Windows records inherit the configuration
 directory's ACL. Protect that directory as you would other application credentials.
-The credential authorizes only the shutdown route and is never returned by the
-HTTP status endpoint. It is rotated at every runtime start.
+The shutdown credential authorizes only the shutdown route. The readiness\ncredential authorizes only the local readiness route described below. Neither\ncredential is returned by an HTTP endpoint; both rotate at every runtime start.
 
 `web stop` uses this credential, waits for the owner's control record to disappear,
 and retains records if graceful stop fails. `--force` permits verified process
@@ -81,3 +80,26 @@ termination. If process introspection is unavailable or an older control record
 lacks generation information, graceful shutdown still works but forced
 termination is refused. Legacy PID-only processes require an explicit matching
 configuration argument; a PID alone is insufficient.
+
+## Local supervisor readiness
+
+A local supervisor can read `readiness_token` from the private
+`web_server.control.json` record and send it as `X-BSM-Readiness-Token` to
+`GET /api/runtime/readiness` (`get_local_runtime_readiness`). No user account or
+user bearer token is required, so this works before first-user setup.
+
+The typed response contains `runtime` (instance ID, PID, phase and shutdown state),
+`version`, and `health` (the same checks as the authenticated application health
+API). HTTP 200 reports observations; callers must inspect readiness, lifecycle,
+each check, the version, and runtime identity before accepting a startup.
+
+Both the immediate socket peer and the effective client must be loopback
+addresses. Forwarded headers cannot turn a remote peer into a local one. Use the
+loopback address in the control record directly, without a proxy. The credential
+does not authorize shutdown, runtime administration, or other application APIs.
+The existing user-authenticated `GET /api/health` route is unchanged.
+
+Supervisors should verify control-record ownership, PID/process generation and
+configuration identity before using its credentials, refuse redirects, and reread
+identity after a health request. Older BSM releases have no readiness credential;
+their clients can continue using the user-authenticated health API.
