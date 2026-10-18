@@ -1,5 +1,8 @@
 """Scoped event capabilities capture their bus lifetime, never AppContext."""
 
+import inspect
+from contextlib import contextmanager
+from functools import wraps
 from typing import Any, Callable
 
 from pydantic import BaseModel
@@ -18,12 +21,115 @@ def create_event_capabilities(
             raise RuntimeError("Event bus is unavailable")
         bus.check_owner(event_owner, event_generation)
 
+    def normalize_options(options: dict[str, Any]) -> dict[str, Any]:
+        options = dict(options)
+        identifier = options.get("listener_id")
+        if identifier is not None:
+            if not isinstance(identifier, str) or not identifier:
+                raise ValueError("Listener IDs must be nonempty strings")
+            if ":" not in identifier:
+                identifier = f"{plugin_name}:{identifier}"
+            if not is_core and not identifier.startswith(f"{plugin_name}:"):
+                raise ValueError("Listener IDs must use the plugin namespace")
+            options["listener_id"] = identifier
+        for key in ("before", "after"):
+            values = options.get(key, ())
+            if isinstance(values, str):
+                raise TypeError(
+                    "Ordering references must be a sequence of listener IDs"
+                )
+            options[key] = tuple(
+                value if ":" in value else f"{plugin_name}:{value}" for value in values
+            )
+        return options
+
+    def typed_listener(
+        name: str,
+        callback: Callable[..., Any],
+        *,
+        observer: bool = False,
+        payload_model: type[BaseModel] | None = None,
+        **options: Any,
+    ):
+        require_event_owner()
+        if bus is None:
+            raise RuntimeError("Event bus is unavailable")
+        if not callable(callback):
+            raise TypeError("Event listener must be callable")
+        definition = bus.registry.definition(name) if name != "*" else None
+        if (
+            definition is not None
+            and bus.registry.declared(name)
+            and not (
+                is_core
+                or definition.public
+                or definition.owner == event_owner
+                or (
+                    definition.owner == "application"
+                    and definition.phase == "lifecycle"
+                )
+            )
+        ):
+            raise PermissionError("Event contract is private to another plugin")
+        if payload_model is not None and (
+            not isinstance(payload_model, type)
+            or not issubclass(payload_model, BaseModel)
+        ):
+            raise TypeError("Typed handlers require a Pydantic payload model")
+        if inspect.iscoroutinefunction(callback):
+
+            @wraps(callback)
+            async def wrapped(*_args: Any, **_data: Any):
+                await callback(bus.handler(payload_model))
+
+        else:
+
+            @wraps(callback)
+            def wrapped(*_args: Any, **_data: Any):
+                result = callback(bus.handler(payload_model))
+                if inspect.isawaitable(result):
+
+                    async def discard():
+                        await result
+
+                    return discard()
+                return None
+
+        return event_listener(
+            name,
+            wrapped,
+            observer=observer,
+            kind="observer" if observer else "hook",
+            **options,
+        )
+
+    @contextmanager
+    def operation_scope(name: str, *, server_name: str | None = None):
+        require_event_owner()
+        if bus is None:
+            raise RuntimeError("Event bus is unavailable")
+        if (
+            not isinstance(name, str)
+            or not name.startswith(f"{plugin_name}:")
+            or len(name) <= len(plugin_name) + 1
+            or len(name) > 160
+        ):
+            raise ValueError("Plugin operations must use the plugin namespace")
+        from ..operations import operation_source
+
+        with (
+            operation_source(event_owner),
+            bus.operations.scope(name, server_name=server_name) as operation,
+        ):
+            yield operation.snapshot
+
     def event_listener(
         event_name: str,
-        callback: Callable[..., None],
+        callback: Callable[..., Any],
         *,
         once: bool = False,
         priority: int = 0,
+        **options: Any,
     ):
         require_event_owner()
         if bus is None:
@@ -36,6 +142,7 @@ def create_event_capabilities(
             generation=event_generation,
             once=once,
             priority=priority,
+            **normalize_options(options),
         )
 
     async def event_sender(event_name: str, *args: Any, **kwargs: Any):
@@ -53,29 +160,57 @@ def create_event_capabilities(
         return await bus.emit(event_name, kwargs, *args, source=event_owner)
 
     def event_dispatcher(action: str, *args: Any, **kwargs: Any):
+        if action == "cleanup_subscription":
+            if bus is not None:
+                bus.unsubscribe(args[0], owner=event_owner)
+            return None
         require_event_owner()
         if bus is None:
             raise RuntimeError("Event bus is unavailable")
         if action == "current":
-            from .models import EventContext
+            return bus.event_context()
+        if action == "handler":
+            return bus.handler(*args, **kwargs)
+        if action == "hook":
+            return typed_listener(*args, **kwargs)
+        if action == "observe":
+            return typed_listener(*args, observer=True, **kwargs)
+        if action == "catalog":
+            from .models import EventCatalog
 
-            event = bus.current()
-            if event is None:
-                return None
-            operation = bus.operations.current()
-            return EventContext(
-                **event.model_dump(
-                    include={
-                        "event_id",
-                        "name",
-                        "parent_event_id",
-                        "correlation_id",
-                        "source",
-                    }
-                ),
-                operation_id=operation.operation_id if operation else None,
-                sequence_id=operation.sequence_id if operation else None,
+            return EventCatalog(
+                events=[
+                    definition
+                    for definition in bus.registry.catalog().events
+                    if is_core
+                    or definition.public
+                    or definition.owner == event_owner
+                    or (
+                        definition.owner == "application"
+                        and definition.phase == "lifecycle"
+                    )
+                ]
             )
+        if action == "describe":
+            name = args[0]
+            if not bus.registry.declared(name):
+                raise KeyError(name)
+            definition = bus.registry.definition(name)
+            if not (
+                is_core
+                or definition.public
+                or definition.owner == event_owner
+                or (
+                    definition.owner == "application"
+                    and definition.phase == "lifecycle"
+                )
+            ):
+                raise PermissionError("Event contract is private to another plugin")
+            return definition
+        if action == "subscriptions":
+            return bus.subscriptions(event_owner)
+        if action == "operation_scope":
+            return operation_scope(*args, **kwargs)
         if action == "operation_current":
             return bus.operations.current()
         if action == "operation_sequence":

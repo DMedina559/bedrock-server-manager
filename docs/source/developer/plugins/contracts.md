@@ -165,3 +165,16 @@ inspect unrelated sequences through this capability. Capabilities retained after
 unload/reload fail rather than attaching to a replacement plugin generation.
 Sequences are in-memory and end when the root call exits. Detached background
 work starts an independent sequence when it invokes a tracked operation.
+
+### Additional event capabilities
+
+Existing 4.0 callbacks keep their signatures. Opt into typed hooks with
+`events.listen_typed` or `events.hook`, and immutable notification data with
+`events.observe`. Discover contracts through `events.catalog`/`describe`, inspect
+owned listeners through `events.subscriptions`, and manage temporary registrations
+with `with` or `async with events.subscription(...)`. Filters and ordering are also
+optional additions to existing listeners and decorators. Namespaced custom work
+can use `with api.operations.scope("plugin_name:operation")`.
+
+See [typed event access, filtering, and lifecycle cleanup](custom_events.md#opt-in-typed-hooks-and-observers)
+for complete examples, visibility rules, deadlines, and compatibility guarantees.

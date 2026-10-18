@@ -668,6 +668,7 @@ class PluginManager:
                                 event_name,
                                 method,
                                 priority=getattr(method, "_app_event_priority", 0),
+                                **getattr(method, "_app_event_options", {}),
                             )
 
                     # Dispatch on_load so plugins initialize internal state (e.g. self.router)
@@ -1256,6 +1257,7 @@ class PluginManager:
                             event_name,
                             method,
                             priority=getattr(method, "_app_event_priority", 0),
+                            **getattr(method, "_app_event_options", {}),
                         )
 
                 await self.dispatch_event(instance, "on_load")

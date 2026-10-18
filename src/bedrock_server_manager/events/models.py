@@ -23,6 +23,35 @@ class EventDefinition(EventModel):
     payload_schema: dict[str, JsonValue] = Field(default_factory=dict)
 
 
+class EventFilter(EventModel):
+    model_config = ConfigDict(frozen=True, extra="forbid")
+    server_name: str | None = None
+    source: str | None = None
+    plugin_name: str | None = None
+    operation_name: str | None = None
+    sequence_id: str | None = None
+    correlation_id: str | None = None
+
+
+class EventSubscriptionInfo(EventModel):
+    subscription_id: str
+    listener_id: str
+    name: str
+    owner: str
+    kind: Literal["legacy", "hook", "observer"]
+    priority: int
+    before: tuple[str, ...] = ()
+    after: tuple[str, ...] = ()
+    filters: EventFilter | None = None
+    once: bool
+    active: bool
+    calls: int = 0
+    failures: int = 0
+    timeouts: int = 0
+    last_status: str | None = None
+    last_duration_ms: float = 0
+
+
 class EventContext(EventModel):
     model_config = ConfigDict(frozen=True, extra="forbid")
     event_id: str
@@ -30,6 +59,8 @@ class EventContext(EventModel):
     parent_event_id: str | None = None
     correlation_id: str
     source: str
+    phase: Literal["before", "after", "custom", "lifecycle"] = "custom"
+    observer: bool = False
     operation_id: str | None = None
     sequence_id: str | None = None
 

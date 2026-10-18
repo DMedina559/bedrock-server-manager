@@ -1,6 +1,7 @@
 """Owner-scoped read access to the caller's live operation sequence."""
 
-from typing import Any, Callable, cast
+from contextlib import contextmanager
+from typing import Any, Callable, Iterator, cast
 
 from ..operations import OperationResultQuery, OperationSequence, OperationSnapshot
 
@@ -24,3 +25,13 @@ class PluginOperationAPI:
         return cast(
             tuple[OperationSnapshot, ...], self._dispatch("operation_results", query)
         )
+
+    @contextmanager
+    def scope(
+        self, name: str, *, server_name: str | None = None
+    ) -> Iterator[OperationSnapshot]:
+        """Track namespaced plugin work; core operation names remain unavailable."""
+        with self._dispatch(
+            "operation_scope", name, server_name=server_name
+        ) as operation:
+            yield operation
