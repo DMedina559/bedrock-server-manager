@@ -1,4 +1,5 @@
 from .event_api import PluginEventAPI
+from .operation_api import PluginOperationAPI
 
 # bedrock_server_manager/plugins/api_bridge.py
 """A bridge to safely expose core application APIs to plugins."""
@@ -253,7 +254,12 @@ def create_app_api(
             @functools.wraps(api_function)
             async def async_wrapper(*args: Any, **kwargs: Any) -> Any:
                 kwargs = inject_runtime(args, kwargs)
-                return await api_function(*args, **kwargs)
+                from ..operations import operation_source
+
+                with operation_source(
+                    "application" if is_core else f"plugin:{plugin_name}"
+                ):
+                    return await api_function(*args, **kwargs)
 
             setattr(async_wrapper, "__signature__", public_signature)
             return async_wrapper
@@ -320,6 +326,13 @@ class CapabilityNamespace:
 
 class AppAPI:
     """Safe, dynamic, and decoupled interface for plugins to access core APIs."""
+
+    @property
+    def operations(self) -> PluginOperationAPI:
+        """Read operation ancestry and results within the current sequence."""
+        if self._event_dispatcher is None:
+            raise RuntimeError("Operation capabilities are unavailable")
+        return PluginOperationAPI(self._event_dispatcher)
 
     @property
     def events(self) -> PluginEventAPI:

@@ -664,7 +664,11 @@ class PluginManager:
                             else []
                         )
                         for event_name in event_names:
-                            instance.api.listen_for_event(event_name, method)
+                            instance.api.events.listen(
+                                event_name,
+                                method,
+                                priority=getattr(method, "_app_event_priority", 0),
+                            )
 
                     # Dispatch on_load so plugins initialize internal state (e.g. self.router)
                     await self.dispatch_event(instance, "on_load")
@@ -1248,7 +1252,11 @@ class PluginManager:
                         else []
                     )
                     for event_name in event_names:
-                        instance.api.listen_for_event(event_name, method)
+                        instance.api.events.listen(
+                            event_name,
+                            method,
+                            priority=getattr(method, "_app_event_priority", 0),
+                        )
 
                 await self.dispatch_event(instance, "on_load")
 

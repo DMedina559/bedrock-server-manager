@@ -16,6 +16,7 @@ from ..error import (
 from ..events import trigger_event
 from ..failures import classify_failure
 from ..logging import log_operation_error
+from ..operations import OperationName, track_operation
 from ..plugins.api_bridge import api_method
 from ..plugins.runtime_capabilities import server_lifecycle_manager
 from ..results import CleanupResult
@@ -71,6 +72,7 @@ async def list_backup_files(
 
 
 @api_method("backup_world")
+@track_operation(OperationName.BACKUP_REQUEST)
 @trigger_event(
     before="before_backup",
     after="after_backup",
@@ -122,6 +124,7 @@ async def backup_world(
 
 
 @api_method("backup_config_file")
+@track_operation(OperationName.BACKUP_REQUEST)
 @trigger_event(
     before="before_backup",
     after="after_backup",
@@ -186,6 +189,7 @@ async def backup_config_file(
 
 
 @api_method("backup_all")
+@track_operation(OperationName.BACKUP_REQUEST)
 @trigger_event(
     before="before_backup",
     after="after_backup",
@@ -212,7 +216,14 @@ async def backup_all(
     try:
         logger.debug("Initiating full backup for server '%s'.", server_name)
         try:
-            backup_results = await server.backups.backup_all_data()
+            sequence = app_context.operations.sequence()
+            names = {item.name for item in sequence.ancestry} if sequence else set()
+            purpose = (
+                "pre_update"
+                if OperationName.SERVER_UPDATE in names
+                else "pre_start" if OperationName.SERVER_START in names else "manual"
+            )
+            backup_results = await server.backups.backup_all_data(purpose=purpose)
             return BackupAllResponse(
                 server_name=server_name,
                 status="partial" if backup_results.outcome == "partial" else "success",

@@ -56,6 +56,32 @@ def create_event_capabilities(
         require_event_owner()
         if bus is None:
             raise RuntimeError("Event bus is unavailable")
+        if action == "current":
+            from .models import EventContext
+
+            event = bus.current()
+            if event is None:
+                return None
+            operation = bus.operations.current()
+            return EventContext(
+                **event.model_dump(
+                    include={
+                        "event_id",
+                        "name",
+                        "parent_event_id",
+                        "correlation_id",
+                        "source",
+                    }
+                ),
+                operation_id=operation.operation_id if operation else None,
+                sequence_id=operation.sequence_id if operation else None,
+            )
+        if action == "operation_current":
+            return bus.operations.current()
+        if action == "operation_sequence":
+            return bus.operations.sequence()
+        if action == "operation_results":
+            return bus.operations.results(*args, **kwargs)
         if action == "listen":
             return event_listener(*args, **kwargs)
         if action == "once":

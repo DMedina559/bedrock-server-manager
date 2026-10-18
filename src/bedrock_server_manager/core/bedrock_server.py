@@ -22,6 +22,7 @@ if TYPE_CHECKING:
     from ..config.settings import Settings
     from ..db.storage import Storage
     from ..events.publisher import EventPublisher
+    from ..operations import OperationService
     from ..state.app_state import AppState
 
 
@@ -34,6 +35,7 @@ class BedrockServer(ServerResources):
         *,
         settings: "Settings | None" = None,
         events: "EventPublisher | None" = None,
+        operations: "OperationService | None" = None,
         state: "AppState | None" = None,
         storage: "Storage | None" = None,
     ) -> None:
@@ -41,6 +43,7 @@ class BedrockServer(ServerResources):
             server_name,
             settings=settings,
             events=events,
+            operations=operations,
             state=state,
             storage=storage,
         )

@@ -16,6 +16,7 @@ from uuid import uuid4
 
 from pydantic import BaseModel
 
+from ..operations import OperationService
 from .control import CancellableEvent
 from .models import (
     EventActivityQuery,
@@ -77,6 +78,10 @@ class EventBus:
         revision_provider: Callable[[], Mapping[str, Any]] | None = None,
     ):
         self.options = options or EventOptions()
+        self.operations = OperationService()
+        self._current: ContextVar[
+            tuple[EventEnvelope, asyncio.Task[Any] | None] | None
+        ] = ContextVar("current_event", default=None)
         self.diagnostic_recorder: Callable[[EventRecord], None] | None = None
         self.registry = EventRegistry(builtin_events)
         self._revision_provider = revision_provider
@@ -304,7 +309,36 @@ class EventBus:
                     seen.add(identity)
             return sorted(selected, key=lambda item: -item.priority)
 
+    def current(self) -> EventEnvelope | None:
+        """Return copied metadata only for an active callback in this bus."""
+        entry = self._current.get()
+        if entry is None:
+            return None
+        event, owner = entry
+        try:
+            task = asyncio.current_task()
+        except RuntimeError:
+            task = None
+        if (
+            task is not None and task is not owner
+        ) or event.event_id not in self._active:
+            return None
+        return event.model_copy(update={"data": {}})
+
     async def _invoke(
+        self,
+        subscription: Subscription,
+        envelope: EventEnvelope,
+        args: tuple[Any, ...],
+        data: dict[str, Any],
+    ) -> Any:
+        token = self._current.set((envelope, asyncio.current_task()))
+        try:
+            return await self._invoke_callback(subscription, envelope, args, data)
+        finally:
+            self._current.reset(token)
+
+    async def _invoke_callback(
         self,
         subscription: Subscription,
         envelope: EventEnvelope,

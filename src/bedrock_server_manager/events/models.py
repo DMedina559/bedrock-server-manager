@@ -23,6 +23,17 @@ class EventDefinition(EventModel):
     payload_schema: dict[str, JsonValue] = Field(default_factory=dict)
 
 
+class EventContext(EventModel):
+    model_config = ConfigDict(frozen=True, extra="forbid")
+    event_id: str
+    name: str
+    parent_event_id: str | None = None
+    correlation_id: str
+    source: str
+    operation_id: str | None = None
+    sequence_id: str | None = None
+
+
 class EventEnvelope(EventModel):
     event_id: str
     correlation_id: str

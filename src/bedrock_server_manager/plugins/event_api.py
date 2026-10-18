@@ -6,6 +6,7 @@ from pydantic import BaseModel
 
 from ..events.models import (
     EventActivityQuery,
+    EventContext,
     EventDefinition,
     EventDiagnostics,
     EventRecord,
@@ -15,6 +16,10 @@ from ..events.models import (
 class PluginEventAPI:
     def __init__(self, dispatch: Callable[..., Any]):
         self._dispatch = dispatch
+
+    def current(self) -> EventContext | None:
+        """Read immutable current-event metadata without retaining payloads."""
+        return cast(EventContext | None, self._dispatch("current"))
 
     def listen(
         self, name: str, callback: Callable[..., Any], *, priority: int = 0
