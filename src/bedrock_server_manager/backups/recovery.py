@@ -27,7 +27,8 @@ def sync_tree(path: Path) -> None:
     paths = [path, *path.rglob("*")] if path.is_dir() else [path]
     for item in paths:
         if item.is_file():
-            with item.open("rb") as stream:
+            # Windows cannot flush a read-only file handle. Do not truncate content.
+            with item.open("r+b") as stream:
                 os.fsync(stream.fileno())
     if os.name != "nt":
         for item in reversed(paths):

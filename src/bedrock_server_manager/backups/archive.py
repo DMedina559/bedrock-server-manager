@@ -122,7 +122,8 @@ def write_archive(
                 info.size = item.size
                 with source.open("rb") as stream:
                     payload.addfile(info, stream)
-    with target.open("rb") as stream:
+    # Windows requires a writable handle for its underlying FlushFileBuffers call.
+    with target.open("r+b") as stream:
         os.fsync(stream.fileno())
 
 

@@ -435,3 +435,38 @@ async def test_safety_metadata_failure_after_commit_reports_restored_data(
         for item in await server.backups.list_snapshots()
         if item.backup_id == result.safety_backup_id
     ).pinned
+
+
+@pytest.mark.parametrize("encrypted", [False, True])
+async def test_capture_and_restore_flush_writable_file_handles(
+    populated_server, monkeypatch, encrypted
+):
+    """Enforce Windows' writable-descriptor requirement even on POSIX runners."""
+    import os
+    import stat
+
+    server = populated_server
+    if encrypted:
+        server.backups.credentials.rotate()
+    original_fsync = os.fsync
+    flushed = []
+
+    def windows_fsync(descriptor):
+        if stat.S_ISREG(os.fstat(descriptor).st_mode):
+            # A zero-byte write leaves content unchanged and rejects read-only FDs.
+            os.write(descriptor, b"")
+            flushed.append(descriptor)
+        return original_fsync(descriptor)
+
+    monkeypatch.setattr(os, "fsync", windows_fsync)
+    snapshot = await server.backups.create_snapshot(encrypted=encrypted)
+    properties = Path(server.paths.server_properties_path)
+    original = properties.read_bytes()
+    properties.write_text(properties.read_text() + "\nserver-name=changed\n")
+    plan = await server.backups.plan_restore(snapshot.backup_id, ["server.properties"])
+    result = await server.backups.restore_snapshot(
+        snapshot.backup_id, plan.components, plan.token
+    )
+    assert result.committed and result.safety_backup_id
+    assert properties.read_bytes() == original
+    assert len(flushed) >= 3
