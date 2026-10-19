@@ -671,3 +671,79 @@ async def test_ordering_diagnostics_track_forward_reference_removal(
     assert plugin.api.events.subscriptions()[0].unresolved_after == ()
     plugin.api.events.unsubscribe(target)
     assert plugin.api.events.subscriptions()[0].unresolved_after == ("access:first",)
+
+
+@pytest.mark.parametrize("existing_operation", [False, True])
+async def test_custom_event_operations_inherit_correlation_and_match_filters(
+    app_context, plugin_factory, existing_operation
+):
+    from contextlib import nullcontext
+
+    from bedrock_server_manager.events.bus import current_correlation_id
+
+    plugin = await plugin_factory("access", SOURCE)
+    plugin.api.events.define("access:root", ValuePayload)
+    plugin.api.events.define("access:child", ValuePayload)
+    operations, children, filtered, receipts = [], [], [], []
+
+    async def selected(event):
+        filtered.append(event.context.correlation_id)
+
+    async def child(event):
+        children.append((event.context.correlation_id, event.operation.correlation_id))
+
+    async def root(event):
+        with plugin.api.operations.scope("access:work") as operation:
+            operations.append(operation)
+            plugin.api.events.hook(
+                "access:child",
+                selected,
+                filters=EventFilter(correlation_id=operation.correlation_id),
+            )
+            receipts.append(await plugin.api.events.emit("access:child", value=2))
+
+    plugin.api.events.hook("access:root", root)
+    plugin.api.events.hook("access:child", child)
+    scope = (
+        app_context.operations.scope("existing")
+        if existing_operation
+        else nullcontext()
+    )
+    with scope:
+        caller_correlation = current_correlation_id()
+        receipt = await plugin.api.events.emit("access:root", value=1)
+        assert current_correlation_id() == caller_correlation
+    assert not receipt.failures
+    assert len(receipts) == 1 and not receipts[0].failures
+    assert operations[0].correlation_id == receipt.correlation_id
+    assert children == [(receipt.correlation_id, receipt.correlation_id)]
+    assert filtered == [receipt.correlation_id]
+    assert current_correlation_id() is None
+
+
+async def test_api_called_from_custom_event_keeps_correlation(
+    app_context, plugin_factory, real_bedrock_server
+):
+    from bedrock_server_manager.events.bus import current_correlation_id
+
+    plugin = await plugin_factory("access", SOURCE)
+    plugin.api.events.define("access:launch", ValuePayload)
+    seen, responses = [], []
+
+    async def before_start(event):
+        seen.append((event.context.correlation_id, event.operation.correlation_id))
+
+    async def launch(event):
+        responses.append(
+            await plugin.api.server.start(
+                {"server_name": real_bedrock_server.server_name}
+            )
+        )
+
+    plugin.api.events.hook("before_server_start", before_start)
+    plugin.api.events.hook("access:launch", launch)
+    receipt = await plugin.api.events.emit("access:launch", value=1)
+    assert not receipt.failures
+    assert len(responses) == 1 and responses[0].outcome == "started"
+    assert seen == [(receipt.correlation_id, receipt.correlation_id)]
+    assert current_correlation_id() is None

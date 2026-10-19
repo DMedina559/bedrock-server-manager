@@ -400,3 +400,79 @@ async def test_ordering_diagnostics_resolve_anonymous_subscription_tokens():
     )
     assert info.unresolved_after == (target,)
     await bus.close()
+
+
+async def test_sync_listener_operation_inherits_event_correlation():
+    from bedrock_server_manager.events.bus import current_correlation_id
+
+    bus = EventBus()
+    seen = []
+
+    def listener():
+        with bus.operations.scope("sync:work") as operation:
+            seen.append((current_correlation_id(), operation.snapshot.correlation_id))
+
+    bus.subscribe("root", listener)
+    receipt = await bus.emit("root")
+    assert not receipt.failures
+    assert seen == [(receipt.correlation_id, receipt.correlation_id)]
+    assert current_correlation_id() is None
+    await bus.close()
+
+
+@pytest.mark.parametrize("cancelled", [False, True])
+@pytest.mark.parametrize("outer_correlation", [None, "existing-caller"])
+async def test_dispatch_restores_correlation_after_failure(
+    cancelled, outer_correlation
+):
+    from contextlib import nullcontext
+
+    from bedrock_server_manager.events.bus import current_correlation_id
+
+    bus = EventBus()
+    seen = []
+    error = asyncio.CancelledError if cancelled else RuntimeError
+
+    async def listener():
+        seen.append(current_correlation_id())
+        raise error()
+
+    bus.subscribe("root", listener)
+    scope = correlation_scope(outer_correlation) if outer_correlation else nullcontext()
+    with scope:
+        with pytest.raises(error):
+            await bus.emit("root", strict=True)
+        assert current_correlation_id() == outer_correlation
+    assert seen == [bus.diagnostics().recent[-1].correlation_id]
+    assert current_correlation_id() is None
+    await bus.close()
+
+
+async def test_concurrent_dispatches_keep_separate_correlation_contexts():
+    from bedrock_server_manager.events.bus import current_correlation_id
+
+    bus = EventBus()
+    barrier = asyncio.Barrier(2)
+    seen = {}
+
+    async def listener(index):
+        with bus.operations.scope("concurrent:work") as operation:
+            before = current_correlation_id()
+            await barrier.wait()
+            seen[index] = (
+                before,
+                operation.snapshot.correlation_id,
+                current_correlation_id(),
+            )
+
+    bus.subscribe("root", listener)
+    async with asyncio.timeout(5):
+        receipts = await asyncio.gather(
+            bus.emit("root", {"index": 0}), bus.emit("root", {"index": 1})
+        )
+    assert receipts[0].correlation_id != receipts[1].correlation_id
+    for index, receipt in enumerate(receipts):
+        assert not receipt.failures
+        assert seen[index] == (receipt.correlation_id,) * 3
+    assert current_correlation_id() is None
+    await bus.close()

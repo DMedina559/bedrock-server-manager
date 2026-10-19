@@ -1099,6 +1099,7 @@ class EventBus:
         if task is not None:
             self._tasks.add(task)
         token = _stack.set(_stack.get() + ((id(self), identity, envelope),))
+        correlation_token = _correlation.set(envelope.correlation_id)
         started = monotonic()
         try:
             await self._dispatch(
@@ -1129,6 +1130,7 @@ class EventBus:
             if task is not None and not already_owned:
                 self._tasks.discard(task)
             _stack.reset(token)
+            _correlation.reset(correlation_token)
         return record.model_copy(deep=True)
 
     def diagnostics(self, query: EventActivityQuery | None = None) -> EventDiagnostics:
