@@ -69,6 +69,7 @@ from .backup_restore import (
     RestoreSnapshotResponse,
     RestoreWorldRequest,
     RestoreWorldResponse,
+    SnapshotReuseResponse,
 )
 from .ban import (
     AddServerBanRequest,
@@ -232,6 +233,7 @@ from .world import (
 )
 
 __all__ = [
+    "SnapshotReuseResponse",
     "BackupHealthResponse",
     "ManageSnapshotRequest",
     "ManageSnapshotResponse",

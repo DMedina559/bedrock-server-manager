@@ -389,3 +389,52 @@ async def test_active_results_capacity_concurrency_and_cancellation():
 
     await asyncio.gather(concurrent("one"), concurrent("two"))
     assert len(set(ids)) == 2
+
+
+async def test_complete_snapshot_with_absent_components_is_reused(
+    app_context, populated_server, plugin_factory
+):
+    server = populated_server
+    for name in ("allowlist.json", "permissions.json"):
+        (Path(server.paths.server_dir) / name).unlink(missing_ok=True)
+    await load_default(plugin_factory, "backup_on_start")
+    with app_context.operations.scope("batch"):
+        await backup_all({"server_name": server.server_name}, app_context=app_context)
+        await start_server({"server_name": server.server_name}, app_context=app_context)
+    assert len(backups(server)) == 1
+
+
+async def test_legacy_component_scope_does_not_claim_script_configuration_coverage(
+    app_context, populated_server, plugin_factory
+):
+    server = populated_server
+    config = Path(server.paths.server_dir) / "config"
+    config.mkdir(exist_ok=True)
+    (config / "secrets.json").write_text('{"secret":"preserve"}')
+    await load_default(plugin_factory, "backup_on_start")
+    with app_context.operations.scope("batch"):
+        with app_context.operations.scope(
+            "backup.create", server_name=server.server_name
+        ) as operation:
+            operation.finish(
+                "completed",
+                scope=(
+                    "world",
+                    "server.properties",
+                    "allowlist.json",
+                    "permissions.json",
+                    "bsm_settings",
+                ),
+            )
+        await start_server({"server_name": server.server_name}, app_context=app_context)
+    assert len(backups(server)) == 1
+    inspected = await server.backups.inspect_snapshot(backups(server)[0].name)
+    assert inspected.manifest.components["script_config"] == "included"
+
+
+async def test_deleted_sequence_snapshot_is_not_reusable(app_context, populated_server):
+    with app_context.operations.scope("batch"):
+        snapshot = await populated_server.backups.create_snapshot()
+        assert await populated_server.backups.can_reuse_sequence_snapshot()
+        populated_server.backups.resolve_backup(snapshot.backup_id).unlink()
+        assert not await populated_server.backups.can_reuse_sequence_snapshot()

@@ -9661,6 +9661,43 @@ Schemas are listed once. Local `$defs` references identify other models on this 
 }
 ```
 
+## SnapshotReuseResponse
+
+```json
+{
+  "additionalProperties": false,
+  "properties": {
+    "message": {
+      "anyOf": [
+        {
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "title": "Message"
+    },
+    "reusable": {
+      "title": "Reusable",
+      "type": "boolean"
+    },
+    "status": {
+      "const": "success",
+      "default": "success",
+      "title": "Status",
+      "type": "string"
+    }
+  },
+  "required": [
+    "reusable"
+  ],
+  "title": "SnapshotReuseResponse",
+  "type": "object"
+}
+```
+
 ## StartServerRequest
 
 ```json

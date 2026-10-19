@@ -177,3 +177,7 @@ class PrepareBackupCopyResponse(SuccessResponse):
     server_name: str
     backup_id: str
     message: str
+
+
+class SnapshotReuseResponse(SuccessResponse):
+    reusable: bool

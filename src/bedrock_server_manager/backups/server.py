@@ -443,10 +443,14 @@ class UnifiedServerBackups(ManagedBackups):
                 await run_in_thread(self.catalog.save, catalog_state)
                 operation.finish(
                     "completed",
-                    scope=tuple(
-                        name
-                        for name, state in components.items()
-                        if state == "included"
+                    scope=(
+                        "server_snapshot",
+                        f"archive:{filename}",
+                        *(
+                            name
+                            for name, state in components.items()
+                            if state == "included"
+                        ),
                     ),
                 )
                 await self._notify_backup(filename, "capture", "completed")
@@ -488,6 +492,61 @@ class UnifiedServerBackups(ManagedBackups):
                 UnifiedServerBackups._check_tree(child)
         elif not source.is_file():
             raise BackupRestoreError("Backup sources must be regular files.")
+
+    async def can_reuse_sequence_snapshot(self) -> bool:
+        """Require a complete capture covering every component currently present."""
+        from ..operations import OperationResultQuery
+
+        async with self.server.operation_lock:
+            required = {"bsm_settings"}
+            try:
+                world = await self.server.get_world_name()
+                sources = {
+                    "world": f"worlds/{world}",
+                    "server.properties": "server.properties",
+                    "allowlist.json": "allowlist.json",
+                    "permissions.json": "permissions.json",
+                    "script_config": "config",
+                }
+                for component, name in sources.items():
+                    target = self._safe_target(name)
+                    if target.exists():
+                        if is_link(target):
+                            return False
+                        required.add(component)
+            except Exception:
+                return False
+            metadata = (await run_in_thread(self.catalog.load))["archives"]
+            for item in self.server.operations.results(
+                OperationResultQuery(
+                    name=OperationName.BACKUP_CREATE,
+                    server_name=self.server.server_name,
+                    status="finished",
+                    outcome="completed",
+                )
+            ):
+                if "server_snapshot" not in item.scope or not required.issubset(
+                    item.scope
+                ):
+                    continue
+                for marker in item.scope:
+                    if not marker.startswith("archive:"):
+                        continue
+                    identifier = marker.removeprefix("archive:")
+                    try:
+                        path = self.resolve_backup(identifier)
+                        record = metadata.get(identifier, {})
+                        current = await run_in_thread(path.stat)
+                        if record.get("verification", {}).get(
+                            "status"
+                        ) == "verified" and record.get("fingerprint") == [
+                            current.st_size,
+                            current.st_mtime_ns,
+                        ]:
+                            return True
+                    except (BackupRestoreError, OSError):
+                        continue
+            return False
 
     async def backup_all_data(
         self, *, purpose: Literal["manual", "pre_start", "pre_update"] = "manual"

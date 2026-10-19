@@ -53,6 +53,7 @@ from .models.backup_restore import (
     RestoreSnapshotResponse,
     RestoreWorldRequest,
     RestoreWorldResponse,
+    SnapshotReuseResponse,
 )
 
 logger = logging.getLogger(__name__)
@@ -700,3 +701,14 @@ async def prepare_backup_copy(
     from ..backups.clone import prepare_copy
 
     return await prepare_copy(request, app_context)
+
+
+@api_method("can_reuse_server_backup")
+async def can_reuse_server_backup(
+    request: ListSnapshotsRequest, *, app_context: AppContext
+) -> SnapshotReuseResponse:
+    """Check coverage and availability without exposing archive paths or file values."""
+    server = app_context.get_server(request.server_name, require_installation=False)
+    return SnapshotReuseResponse(
+        reusable=await server.backups.can_reuse_sequence_snapshot()
+    )

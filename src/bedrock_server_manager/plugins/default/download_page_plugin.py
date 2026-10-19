@@ -2,9 +2,10 @@ import os
 import re
 from pathlib import Path
 from typing import Annotated, Any, List, Literal, Optional
+from urllib.parse import quote
 
-from fastapi import APIRouter, Depends, HTTPException, Query
-from fastapi.responses import FileResponse, JSONResponse
+from fastapi import APIRouter, Depends, HTTPException, Query, Request
+from fastapi.responses import FileResponse, JSONResponse, RedirectResponse
 from pydantic import BaseModel, ConfigDict, Field
 
 from bedrock_server_manager import PluginBase, app_event
@@ -37,7 +38,7 @@ class DownloadFileQuery(BaseModel):
 class DownloadPagePlugin(PluginBase):
     """Adds a download page to the web interface for server backups and content."""
 
-    version = "1.1.0"
+    version = "1.2.0"
     description = (
         "Adds a download page to the web interface for server backups and content."
     )
@@ -285,6 +286,7 @@ class DownloadPagePlugin(PluginBase):
         )
         async def download_file(
             query: Annotated[DownloadFileQuery, Query()],
+            request: Request,
             current_user: UserResponse = Depends(get_admin_user),
         ):
             file_type = query.file_type
@@ -307,6 +309,42 @@ class DownloadPagePlugin(PluginBase):
             if file_type in ("backup_snapshot", "backup_world", "backup_config"):
                 if not server:
                     raise HTTPException(400, "Server name required for backups")
+                if file_type == "backup_snapshot":
+                    snapshot_listing = (
+                        await self.api.backup_restore.list_server_snapshots(
+                            request={"server_name": server}
+                        )
+                    )
+                    if filename not in {
+                        item.filename for item in snapshot_listing.backups
+                    }:
+                        raise HTTPException(404, "Backup archive not found")
+                    prefix = request.scope.get("root_path", "").rstrip("/")
+                    return RedirectResponse(
+                        f"{prefix}/api/server/{quote(server, safe='')}/backups/{quote(filename, safe='')}/download",
+                        status_code=307,
+                    )
+                legacy_listing = await self.api.backup_restore.list_backup_files(
+                    request={
+                        "server_name": server,
+                        "backup_type": (
+                            "world" if file_type == "backup_world" else "all"
+                        ),
+                    }
+                )
+                grouped = legacy_listing.backups
+                allowed = (
+                    grouped
+                    if isinstance(grouped, list)
+                    else [
+                        path
+                        for name, paths in grouped.items()
+                        if name != "world_backups"
+                        for path in paths
+                    ]
+                )
+                if filename not in {os.path.basename(path) for path in allowed}:
+                    raise HTTPException(404, "Legacy backup file not found")
                 result = await self.api.settings.get_global_setting(
                     request={"key": "paths.backups"}
                 )
@@ -359,6 +397,8 @@ class DownloadPagePlugin(PluginBase):
             # Secure path joining
             try:
                 # Join filename and resolve
+                if (base_path / filename).is_symlink():
+                    raise HTTPException(403, "File links are not supported")
                 file_path = (base_path / filename).resolve()
 
                 # Check traversal using Path.relative_to to ensure containment
@@ -411,7 +451,11 @@ class DownloadPagePlugin(PluginBase):
                         "type": "FileDownload",
                         "props": {
                             "label": "Download",
-                            "endpoint": f"/api/download_page/download?file_type={file_type}&filename={f}&server={server or ''}",
+                            "endpoint": (
+                                f"/api/server/{quote(server or '', safe='')}/backups/{quote(f, safe='')}/download"
+                                if file_type == "backup_snapshot"
+                                else f"/api/download_page/download?file_type={file_type}&filename={quote(f, safe='')}&server={quote(server or '', safe='')}"
+                            ),
                             "filename": f,
                             "style": {
                                 "marginLeft": "auto"
