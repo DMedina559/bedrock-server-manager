@@ -130,6 +130,37 @@ data = result.model_dump(mode="json")
 ---
 
 
+## `backup_restore.cleanup_backup_destination`
+```python
+await self.api.backup_restore.cleanup_backup_destination(request: bedrock_server_manager.api.models.backup_restore.CleanupBackupDestinationRequest)
+```
+- **Async (Requires await):** Yes
+
+- **Description:** Preview external copy cleanup, or apply an unchanged reviewed plan.
+
+- **Returns:** `CleanupBackupDestinationResponse`
+
+Runtime context and plugin identity are injected by the bridge. Failures raise application exceptions; plugin cancellation raises `APICancelledError`.
+
+```python
+from bedrock_server_manager.api.models import CleanupBackupDestinationRequest
+payload = {...}  # Supply required request fields below.
+request = CleanupBackupDestinationRequest(**payload)
+result = await self.api.backup_restore.cleanup_backup_destination(request)
+data = result.model_dump(mode="json")
+```
+- **Request schema:** [CleanupBackupDestinationRequest](models.md#cleanupbackupdestinationrequest)
+- **Response schema:** [CleanupBackupDestinationResponse](models.md#cleanupbackupdestinationresponse)
+- **Transport error schema:** [APIErrorResponse](models.md#apierrorresponse)
+**Parameters:**
+
+| Name | Type | Default |
+|------|------|---------|
+| `request` | `bedrock_server_manager.api.models.backup_restore.CleanupBackupDestinationRequest` | `REQUIRED` |
+
+---
+
+
 ## `backup_restore.create_server_backup`
 ```python
 await self.api.backup_restore.create_server_backup(request: bedrock_server_manager.api.models.backup_restore.CreateSnapshotRequest)

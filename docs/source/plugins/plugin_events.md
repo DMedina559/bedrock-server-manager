@@ -787,6 +787,28 @@ async def some_function(self, server_name, backup_id, action, status, destinatio
 ---
 
 
+## `backup_attention`
+**Description:** Deduplicated recovery readiness alert without secret values.
+- **Cancellable:** No
+- **Identity Keys (for re-entrancy):** `server_name, alert_id`
+
+### Listener Signature:
+```python
+@app_event("backup_attention")
+async def some_function(self, server_name, alert_id, message, **kwargs):
+    pass
+```
+### Available `kwargs`:
+| Key Name | Type |
+|----------|------|
+| `server_name` | `str` |
+| `alert_id` | `str` |
+| `message` | `str` |
+| `_triggering_plugin` | `str` (core, or plugin name) |
+
+---
+
+
 ## `before_add_server_ban`
 **Description:** Triggered before 'add_server_ban'. Adds a player to the server ban list.
 - **Cancellable:** Yes (`event.cancel()`)

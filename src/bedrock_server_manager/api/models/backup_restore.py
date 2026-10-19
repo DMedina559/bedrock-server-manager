@@ -9,6 +9,7 @@ from ...backups.models import (
     BackupSummary,
     Component,
     ConfigComponent,
+    DestinationCleanupPlan,
     RestorePlan,
     RestoreRecoveryState,
     RestoreResult,
@@ -161,7 +162,7 @@ class BackupHealthResponse(SuccessResponse):
 
 
 class ManageSnapshotRequest(InspectSnapshotRequest):
-    action: Literal["verify", "pin", "unpin", "copy", "test_key", "annotate"]
+    action: Literal["verify", "pin", "unpin", "copy", "test_key", "annotate", "drill"]
     destination: str | None = None
     label: str | None = Field(default=None, max_length=120)
     notes: str | None = Field(default=None, max_length=2000)
@@ -186,3 +187,12 @@ class PrepareBackupCopyResponse(SuccessResponse):
 
 class SnapshotReuseResponse(SuccessResponse):
     reusable: bool
+
+
+class CleanupBackupDestinationRequest(ListSnapshotsRequest):
+    destination: NonEmptyStr
+    token: str | None = None
+
+
+class CleanupBackupDestinationResponse(SuccessResponse):
+    plan: DestinationCleanupPlan

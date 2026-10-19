@@ -28,6 +28,8 @@ from .models.backup_restore import (
     BackupHealthResponse,
     BackupWorldRequest,
     BackupWorldResponse,
+    CleanupBackupDestinationRequest,
+    CleanupBackupDestinationResponse,
     CreateSnapshotRequest,
     CreateSnapshotResponse,
     InspectSnapshotRequest,
@@ -687,6 +689,10 @@ async def manage_server_snapshot(
         await backups.verify_snapshot(
             request.backup_id, key, record_failure=request.action != "test_key"
         )
+    elif request.action == "drill":
+        from ..backups.assurance import recovery_drill
+
+        await recovery_drill(backups, request.backup_id, key)
     elif request.action == "annotate":
         await backups.annotate_snapshot(request.backup_id, request.label, request.notes)
     elif request.action in ("pin", "unpin"):
@@ -733,4 +739,19 @@ async def dry_run_server_restore(
             request.recovery_key.get_secret_value() if request.recovery_key else None,
             dry_run=True,
         )
+    )
+
+
+@api_method("cleanup_backup_destination")
+async def cleanup_backup_destination(
+    request: CleanupBackupDestinationRequest, *, app_context: AppContext
+) -> CleanupBackupDestinationResponse:
+    """Preview external copy cleanup, or apply an unchanged reviewed plan."""
+    from ..backups.assurance import cleanup_destination
+
+    backups = app_context.get_server(
+        request.server_name, require_installation=False
+    ).backups
+    return CleanupBackupDestinationResponse(
+        plan=await cleanup_destination(backups, request.destination, request.token)
     )

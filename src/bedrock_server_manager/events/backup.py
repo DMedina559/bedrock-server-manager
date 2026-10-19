@@ -23,3 +23,20 @@ builtin_events.register(
     ),
     BackupActivity,
 )
+
+
+class BackupAttention(EventModel):
+    server_name: str
+    alert_id: str
+    message: str
+
+
+builtin_events.register(
+    EventDefinition(
+        name="backup_attention",
+        phase="after",
+        identity_keys=("server_name", "alert_id"),
+        description="Deduplicated recovery readiness alert without secret values.",
+    ),
+    BackupAttention,
+)

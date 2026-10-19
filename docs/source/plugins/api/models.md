@@ -551,7 +551,8 @@ Schemas are listed once. Local `$defs` references identify other models on this 
       "enum": [
         "pending",
         "completed",
-        "failed"
+        "failed",
+        "pruned"
       ],
       "title": "Status",
       "type": "string"
@@ -619,6 +620,16 @@ Schemas are listed once. Local `$defs` references identify other models on this 
 {
   "additionalProperties": false,
   "properties": {
+    "alerts": {
+      "items": {
+        "additionalProperties": {
+          "$ref": "#/$defs/JsonValue"
+        },
+        "type": "object"
+      },
+      "title": "Alerts",
+      "type": "array"
+    },
     "count": {
       "title": "Count",
       "type": "integer"
@@ -627,6 +638,28 @@ Schemas are listed once. Local `$defs` references identify other models on this 
       "default": 0,
       "title": "Destination Failures",
       "type": "integer"
+    },
+    "destinations": {
+      "additionalProperties": {
+        "$ref": "#/$defs/JsonValue"
+      },
+      "title": "Destinations",
+      "type": "object"
+    },
+    "drill": {
+      "anyOf": [
+        {
+          "additionalProperties": {
+            "$ref": "#/$defs/JsonValue"
+          },
+          "type": "object"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "title": "Drill"
     },
     "failed_count": {
       "default": 0,
@@ -694,6 +727,35 @@ Schemas are listed once. Local `$defs` references identify other models on this 
       },
       "title": "Older Key Ids",
       "type": "array"
+    },
+    "readiness": {
+      "default": "unavailable",
+      "enum": [
+        "ready",
+        "attention",
+        "unavailable"
+      ],
+      "title": "Readiness",
+      "type": "string"
+    },
+    "readiness_reasons": {
+      "items": {
+        "type": "string"
+      },
+      "title": "Readiness Reasons",
+      "type": "array"
+    },
+    "recovery_backup_id": {
+      "anyOf": [
+        {
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "title": "Recovery Backup Id"
     },
     "schedule": {
       "anyOf": [
@@ -925,6 +987,33 @@ Schemas are listed once. Local `$defs` references identify other models on this 
       },
       "title": "Copies",
       "type": "object"
+    },
+    "created_at": {
+      "anyOf": [
+        {
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "title": "Created At"
+    },
+    "drill": {
+      "anyOf": [
+        {
+          "additionalProperties": {
+            "$ref": "#/$defs/JsonValue"
+          },
+          "type": "object"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "title": "Drill"
     },
     "encrypted": {
       "title": "Encrypted",
@@ -1301,6 +1390,85 @@ Schemas are listed once. Local `$defs` references identify other models on this 
     "message"
   ],
   "title": "BroadcastResponse",
+  "type": "object"
+}
+```
+
+## CleanupBackupDestinationRequest
+
+```json
+{
+  "additionalProperties": false,
+  "properties": {
+    "destination": {
+      "minLength": 1,
+      "pattern": ".*\\S.*",
+      "title": "Destination",
+      "type": "string"
+    },
+    "server_name": {
+      "examples": [
+        "example"
+      ],
+      "minLength": 1,
+      "pattern": "^[a-zA-Z0-9_-]+$",
+      "title": "Server Name",
+      "type": "string"
+    },
+    "token": {
+      "anyOf": [
+        {
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "title": "Token"
+    }
+  },
+  "required": [
+    "server_name",
+    "destination"
+  ],
+  "title": "CleanupBackupDestinationRequest",
+  "type": "object"
+}
+```
+
+## CleanupBackupDestinationResponse
+
+```json
+{
+  "additionalProperties": false,
+  "properties": {
+    "message": {
+      "anyOf": [
+        {
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "title": "Message"
+    },
+    "plan": {
+      "$ref": "#/$defs/DestinationCleanupPlan"
+    },
+    "status": {
+      "const": "success",
+      "default": "success",
+      "title": "Status",
+      "type": "string"
+    }
+  },
+  "required": [
+    "plan"
+  ],
+  "title": "CleanupBackupDestinationResponse",
   "type": "object"
 }
 ```
@@ -1804,6 +1972,68 @@ Schemas are listed once. Local `$defs` references identify other models on this 
     }
   },
   "title": "DeliveryResult",
+  "type": "object"
+}
+```
+
+## DestinationCleanupPlan
+
+```json
+{
+  "additionalProperties": false,
+  "properties": {
+    "applied": {
+      "default": false,
+      "title": "Applied",
+      "type": "boolean"
+    },
+    "available_bytes": {
+      "title": "Available Bytes",
+      "type": "integer"
+    },
+    "delete": {
+      "items": {
+        "type": "string"
+      },
+      "title": "Delete",
+      "type": "array"
+    },
+    "destination": {
+      "title": "Destination",
+      "type": "string"
+    },
+    "reclaim_bytes": {
+      "title": "Reclaim Bytes",
+      "type": "integer"
+    },
+    "retain": {
+      "items": {
+        "type": "string"
+      },
+      "title": "Retain",
+      "type": "array"
+    },
+    "token": {
+      "title": "Token",
+      "type": "string"
+    },
+    "warnings": {
+      "items": {
+        "type": "string"
+      },
+      "title": "Warnings",
+      "type": "array"
+    }
+  },
+  "required": [
+    "destination",
+    "token",
+    "delete",
+    "retain",
+    "reclaim_bytes",
+    "available_bytes"
+  ],
+  "title": "DestinationCleanupPlan",
   "type": "object"
 }
 ```
@@ -6299,7 +6529,8 @@ Schemas are listed once. Local `$defs` references identify other models on this 
         "unpin",
         "copy",
         "test_key",
-        "annotate"
+        "annotate",
+        "drill"
       ],
       "title": "Action",
       "type": "string"

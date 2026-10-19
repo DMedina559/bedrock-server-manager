@@ -279,12 +279,15 @@ class ManagedBackups:
             attempts = previous.get("attempts", 0) if automatic else 0
             copies[destination] = {"status": "pending", "attempts": attempts + 1}
             await run_in_thread(self.catalog.update, identifier, copies=copies)
+            from .assurance import remember_copy
+
             try:
                 await run_in_thread(
                     DirectoryDestination(item["path"]).publish,
                     path,
                     self.server.server_name,
                 )
+                await run_in_thread(remember_copy, self, identifier, destination, path)
                 copies[destination] = {
                     "status": "completed",
                     "completed_at": now(),
@@ -316,9 +319,12 @@ class ManagedBackups:
             keys = await run_in_thread(self.credentials.metadata)
             known = {item["key_id"] for item in keys["keys"]}
             used = {item.key_id for item in summaries if item.encrypted and item.key_id}
+            from .assurance import readiness
             from .schedule import status
 
+            assurance = await run_in_thread(readiness, self, summaries, value, known)
             return BackupHealth(
+                **assurance,
                 schedule=status(self, value),
                 count=len(summaries),
                 total_bytes=sum(item.size for item in summaries),
@@ -347,9 +353,11 @@ class ManagedBackups:
                 missing_key_ids=sorted(used - known),
                 older_key_ids=sorted(used - {keys["active"]}),
                 destination_failures=sum(
-                    copy.status != "completed"
+                    copy.status not in ("completed", "pruned")
                     for i in summaries
-                    for copy in i.copies.values()
+                    for name, copy in i.copies.items()
+                    if name in self.destination_configs()
+                    and self.destination_configs()[name].get("enabled", True)
                 ),
                 verification_interval_hours=self.server.settings.get(
                     "backups.verification_interval_hours", 168
@@ -359,6 +367,10 @@ class ManagedBackups:
     async def maintain_backups(self):
         """Perform one bounded unit, leaving queued interactive work first in line."""
         if self.server.operation_lock.locked() or self.server.operation_lock.waiting:
+            return
+        from .assurance import maintain_assurance
+
+        if await maintain_assurance(self):
             return
         interval = self.server.settings.get("backups.verification_interval_hours", 168)
         # Listing releases its lock before any expensive work starts.
@@ -383,14 +395,28 @@ class ManagedBackups:
                     )
                 return
             for name, config in self.destination_configs().items():
+                from .assurance import copy_current
+
                 copy = item.copies.get(name)
-                due_copy = copy is None or (
-                    copy.status != "completed"
-                    and copy.attempts < 3
-                    and (
-                        copy.next_retry_at is None
-                        or datetime.now(timezone.utc)
-                        >= datetime.fromisoformat(copy.next_retry_at)
+                current = await run_in_thread(
+                    copy_current,
+                    self,
+                    item.backup_id,
+                    name,
+                    config,
+                    await run_in_thread(self.catalog.load),
+                )
+                due_copy = (
+                    copy is None
+                    or (copy.status == "completed" and not current)
+                    or (
+                        copy.status not in ("completed", "pruned")
+                        and copy.attempts < 3
+                        and (
+                            copy.next_retry_at is None
+                            or datetime.now(timezone.utc)
+                            >= datetime.fromisoformat(copy.next_retry_at)
+                        )
                     )
                 )
                 if config.get("enabled", True) and due_copy:
@@ -579,6 +605,29 @@ class ManagedBackups:
                                 action=action,
                             )
                         )
+            if component in ("permissions.json", "allowlist.json"):
+                try:
+                    before = json.loads(target.read_bytes()) if target.exists() else []
+                except (ValueError, UnicodeError):
+                    before = None
+                after = json.loads(source.read_bytes())
+                if before != after:
+                    settings.append(
+                        RestoreValueChange(
+                            component=component,
+                            key=(
+                                "player access"
+                                if component == "allowlist.json"
+                                else "operator permissions"
+                            ),
+                            before=(
+                                f"{len(before)} entries (values hidden)"
+                                if isinstance(before, list)
+                                else "Invalid current JSON (values hidden)"
+                            ),
+                            after=f"{len(after)} entries (values hidden)",
+                        )
+                    )
             if component == "server.properties":
 
                 def properties(path):

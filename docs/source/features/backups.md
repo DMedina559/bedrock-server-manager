@@ -281,3 +281,49 @@ They do not travel with downloaded archives. Search by label, notes, or filename
 and filter by capture reason, imported archives, pins, or verification failures.
 Imported archives retain their original manifest reason and also receive an
 imported-origin marker in the manager catalog.
+
+## Recovery readiness and drills
+
+The backup page reports recovery readiness for the selected server. It checks
+for a recent verified archive and an available recovery key. If external
+destinations are configured, it also checks for a completed current-location
+copy, unavailable storage, and free-space warnings. An available key does not
+prove that you have stored its emergency kit safely; keep that kit separately.
+The maximum acceptable backup age defaults to 48 hours and is configurable in
+**Settings → Backups**.
+
+BSM runs an isolated recovery drill every 168 hours by default. Set the interval
+to zero to disable periodic drills, or run **Recovery drill** for an archive.
+A drill authenticates the archive and stages all included components on the
+server filesystem, checks copied-file hashes, and records the result. It does
+not stop Minecraft, replace live files, or prove that Minecraft will start with
+those contents. A failed or interrupted drill needs attention in readiness.
+
+Before a restore, the review lists added, replaced, and removed files and
+changes to server settings and player-access configuration. Script secrets,
+custom values, player identities, and permission values remain hidden.
+History groups recovery points by capture date and labels the capture reason.
+
+## External-copy retention
+
+Each destination has independent count and storage-budget limits and a
+free-space warning threshold. Saving those limits does not delete files.
+Choose the server, save the policy, then use **Preview external cleanup** to
+review the eligible copies. Explicitly confirm **Delete reviewed copies** to
+apply the unchanged preview. If content, protection, or policy changes, create
+a new preview.
+
+Cleanup only removes unchanged copies recorded by BSM at that destination.
+Untracked files, pins, active safety protection, and the newest recorded copy
+are retained. Local retention preserves the external-copy index, so external
+cleanup still works after a local archive has been removed. Copies deliberately
+pruned externally are not immediately recreated by maintenance. A new manual
+copy can recreate them. Changing a destination's directory requires a new copy
+before readiness considers the new location protected.
+
+Readiness conditions produce notifications when they first appear: missed or
+failed scheduled backups, failed verification, missing keys, destination
+problems, and failed drills. Persisted condition IDs prevent repeated minute-by-
+minute notifications and survive BSM restarts. Once a condition clears, a later
+recurrence can notify again. Connected browsers receive notifications in their
+notification history; unresolved conditions remain visible on the backup page.

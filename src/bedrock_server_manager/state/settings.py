@@ -123,6 +123,9 @@ class LifecycleSettings(SettingsRecord):
 class BackupDestination(SettingsRecord):
     path: str = Field(min_length=1)
     enabled: bool = True
+    keep_count: int = Field(default=0, ge=0)
+    storage_budget_bytes: int = Field(default=0, ge=0)
+    min_free_bytes: int = Field(default=1073741824, ge=0)
 
 
 class BackupSchedule(SettingsRecord):
@@ -155,6 +158,8 @@ class BackupSchedule(SettingsRecord):
 
 
 class BackupSettings(SettingsRecord):
+    readiness_max_age_hours: int = Field(default=48, ge=1, le=8760)
+    recovery_drill_interval_hours: int = Field(default=168, ge=0, le=8760)
     encryption: bool = False
     include_server_packs: bool = True
     schedules: dict[str, BackupSchedule] = Field(default_factory=dict)

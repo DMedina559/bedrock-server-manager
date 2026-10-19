@@ -640,6 +640,8 @@ class UnifiedServerBackups(ManagedBackups):
                         BackupSummary(
                             backup_id=path.name,
                             filename=path.name,
+                            created_at=metadata.get("created_at"),
+                            drill=metadata.get("drill"),
                             size=path.stat().st_size,
                             verification=metadata.get("verification", {}),
                             pinned=metadata.get("pinned", False),
@@ -658,6 +660,8 @@ class UnifiedServerBackups(ManagedBackups):
                         BackupSummary(
                             backup_id=path.name,
                             filename=path.name,
+                            created_at=metadata.get("created_at"),
+                            drill=metadata.get("drill"),
                             size=path.stat().st_size,
                             encrypted=False,
                             verification=metadata.get("verification", {}),
@@ -747,6 +751,13 @@ class UnifiedServerBackups(ManagedBackups):
         if "script_config" in components:
             warnings.append(
                 "Script configuration replaces the complete config directory, including secrets and module permissions."
+            )
+        if any(
+            component in components
+            for component in ("permissions.json", "allowlist.json", "bsm_settings")
+        ):
+            warnings.append(
+                "Selected settings may change player access, operator permissions, automatic startup, or custom secrets. Sensitive values are hidden in this review."
             )
         targets: dict[Component, str] = {}
         for component in components:

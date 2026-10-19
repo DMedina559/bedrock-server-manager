@@ -37,6 +37,7 @@ from bedrock_server_manager.api.models import (
 from ...api import backup_restore as backup_restore_api
 from ...api.models.backup_restore import (
     BackupHealthResponse,
+    CleanupBackupDestinationRequest,
     CreateSnapshotRequest,
     InspectSnapshotRequest,
     ListSnapshotsRequest,
@@ -760,7 +761,7 @@ async def backup_health(
 
 
 class SnapshotManagePayload(SnapshotInspectPayload):
-    action: Literal["verify", "pin", "unpin", "copy", "test_key", "annotate"]
+    action: Literal["verify", "pin", "unpin", "copy", "test_key", "annotate", "drill"]
     destination: str | None = None
     label: str | None = Field(default=None, max_length=120)
     notes: str | None = Field(default=None, max_length=2000)
@@ -836,4 +837,32 @@ async def dry_run_restore(
         current_user,
         backup_restore_api.dry_run_server_restore,
         _request(payload, PlanSnapshotRestoreRequest, server_name, backup_id=backup_id),
+    )
+
+
+class DestinationCleanupPayload(APIRequest):
+    token: str | None = None
+
+
+@router.post(
+    "/api/server/{server_name}/backup-destinations/{destination}/cleanup",
+    operation_id="cleanup_backup_destination",
+    response_model=TaskAcceptedResponse,
+    status_code=202,
+)
+async def cleanup_destination(
+    destination: str,
+    payload: DestinationCleanupPayload,
+    server_name: str = Depends(validate_server_registered),
+    current_user: UserResponse = Depends(get_admin_user),
+    app_context: AppContext = Depends(get_app_context),
+) -> TaskAcceptedResponse:
+    """Preview external cleanup; a reviewed token explicitly authorizes deletion."""
+    return await _accepted(
+        app_context,
+        current_user,
+        backup_restore_api.cleanup_backup_destination,
+        CleanupBackupDestinationRequest(
+            server_name=server_name, destination=destination, token=payload.token
+        ),
     )

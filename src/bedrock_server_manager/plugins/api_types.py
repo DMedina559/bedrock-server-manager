@@ -18,6 +18,8 @@ from bedrock_server_manager.api.models import (
     BackupWorldResponse,
     BroadcastRequest,
     BroadcastResponse,
+    CleanupBackupDestinationRequest,
+    CleanupBackupDestinationResponse,
     CompareDiagnosticSnapshotsRequest,
     CompareDiagnosticSnapshotsResponse,
     CreateSnapshotRequest,
@@ -242,6 +244,10 @@ class BackupRestoreAPI(Protocol):
     async def can_reuse_server_backup(
         self, request: ListSnapshotsRequest | Mapping[str, object]
     ) -> SnapshotReuseResponse: ...
+
+    async def cleanup_backup_destination(
+        self, request: CleanupBackupDestinationRequest | Mapping[str, object]
+    ) -> CleanupBackupDestinationResponse: ...
 
     async def create_server_backup(
         self, request: CreateSnapshotRequest | Mapping[str, object]
@@ -591,6 +597,7 @@ API_METHODS: dict[str, dict[str, str]] = {
         "backup_config_file": "backup_config_file",
         "backup_world": "backup_world",
         "can_reuse_server_backup": "can_reuse_server_backup",
+        "cleanup_backup_destination": "cleanup_backup_destination",
         "create_server_backup": "create_server_backup",
         "dry_run_server_restore": "dry_run_server_restore",
         "get_backup_health": "get_backup_health",

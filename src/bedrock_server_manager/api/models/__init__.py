@@ -44,6 +44,8 @@ from .backup_restore import (
     BackupHealthResponse,
     BackupWorldRequest,
     BackupWorldResponse,
+    CleanupBackupDestinationRequest,
+    CleanupBackupDestinationResponse,
     CreateSnapshotRequest,
     CreateSnapshotResponse,
     InspectSnapshotRequest,
@@ -235,6 +237,8 @@ from .world import (
 __all__ = [
     "SnapshotReuseResponse",
     "BackupHealthResponse",
+    "CleanupBackupDestinationRequest",
+    "CleanupBackupDestinationResponse",
     "ManageSnapshotRequest",
     "ManageSnapshotResponse",
     "PrepareBackupCopyRequest",

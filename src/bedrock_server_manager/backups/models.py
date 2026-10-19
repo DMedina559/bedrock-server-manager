@@ -101,7 +101,7 @@ class BackupVerification(Record):
 
 
 class BackupCopy(Record):
-    status: Literal["pending", "completed", "failed"]
+    status: Literal["pending", "completed", "failed", "pruned"]
     completed_at: str | None = None
     error: str | None = None
     attempts: int = 0
@@ -111,6 +111,8 @@ class BackupCopy(Record):
 class BackupSummary(Record):
     backup_id: str
     filename: str
+    created_at: str | None = None
+    drill: dict[str, JsonValue] | None = None
     size: int
     encrypted: bool
     key_id: str | None = None
@@ -193,3 +195,20 @@ class BackupHealth(Record):
     destination_failures: int = 0
     schedule: dict[str, JsonValue] | None = None
     verification_interval_hours: int
+    readiness: Literal["ready", "attention", "unavailable"] = "unavailable"
+    readiness_reasons: list[str] = Field(default_factory=list)
+    recovery_backup_id: str | None = None
+    drill: dict[str, JsonValue] | None = None
+    destinations: dict[str, JsonValue] = Field(default_factory=dict)
+    alerts: list[dict[str, JsonValue]] = Field(default_factory=list)
+
+
+class DestinationCleanupPlan(Record):
+    destination: str
+    token: str
+    delete: list[str]
+    retain: list[str]
+    reclaim_bytes: int
+    available_bytes: int
+    warnings: list[str] = Field(default_factory=list)
+    applied: bool = False
