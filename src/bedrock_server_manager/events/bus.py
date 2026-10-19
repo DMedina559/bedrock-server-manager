@@ -427,9 +427,8 @@ class EventBus:
     def subscriptions(self, owner: str) -> tuple[EventSubscriptionInfo, ...]:
         with self._lock:
             by_id = {
-                item.listener_id: item
+                item.listener_id or item.token: item
                 for item in self._subscriptions.values()
-                if item.listener_id
             }
 
             def unresolved(

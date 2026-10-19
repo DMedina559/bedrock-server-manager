@@ -373,3 +373,30 @@ async def test_listener_priority_is_stable_and_hooks_precede_observers():
     bus.subscribe("ordered", second, priority=10)
     await bus.emit("ordered")
     assert calls == ["first", "second", "last", "observer"]
+
+
+async def test_ordering_diagnostics_resolve_anonymous_subscription_tokens():
+    bus = EventBus()
+
+    async def first():
+        pass
+
+    async def second():
+        pass
+
+    target = bus.subscribe("ordered", first)
+    dependent = bus.subscribe("ordered", second, after=(target,))
+    info = next(
+        item
+        for item in bus.subscriptions("application")
+        if item.subscription_id == dependent
+    )
+    assert info.unresolved_after == ()
+    bus.unsubscribe(target)
+    info = next(
+        item
+        for item in bus.subscriptions("application")
+        if item.subscription_id == dependent
+    )
+    assert info.unresolved_after == (target,)
+    await bus.close()
