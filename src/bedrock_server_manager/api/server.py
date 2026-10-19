@@ -22,6 +22,7 @@ from ..error import (
 )
 from ..events import trigger_event
 from ..logging import log_operation_error
+from ..operations import OperationName, track_operation
 from ..plugins.api_bridge import api_method
 from ..plugins.api_contract import validate_contract
 from ..state_revision import revision_clock
@@ -236,36 +237,43 @@ async def get_server_summary(
 
 
 @api_method("start_server")
+@track_operation(OperationName.SERVER_START)
+async def start_server(
+    request: StartServerRequest, *, app_context: AppContext
+) -> StartServerResponse:
+    """Start an offline server under its lock, dispatching hooks only when needed."""
+    server = app_context.get_server(request.server_name)
+    async with server.operation_lock:
+        if await server.is_running():
+            return StartServerResponse(
+                server_name=request.server_name,
+                outcome="already_running",
+                message=f"Server '{request.server_name}' is already running.",
+            )
+        return await _start_server(request, app_context=app_context)
+
+
 @trigger_event(
     before="before_server_start",
     after="after_server_start",
     identity_keys=("server_name",),
 )
-async def start_server(
+async def _start_server(
     request: StartServerRequest, *, app_context: AppContext
 ) -> StartServerResponse:
     """Start a server, or report that it is already running; failures raise."""
-    server_name = request.server_name
-    server = app_context.get_server(server_name)
-    async with server.operation_lock:
-        if await server.is_running():
-            return StartServerResponse(
-                server_name=server_name,
-                outcome="already_running",
-                message=f"Server '{server_name}' is already running.",
-            )
-
-        await server.start()
-        await app_context.bedrock_process_manager.add_server(server)
-        logger.debug("Start for server '%s' completed.", server_name)
-        return StartServerResponse(
-            server_name=server_name,
-            outcome="started",
-            message=f"Server '{server_name}' process started.",
-        )
+    server = app_context.get_server(request.server_name)
+    await server.start()
+    await app_context.bedrock_process_manager.add_server(server)
+    return StartServerResponse(
+        server_name=request.server_name,
+        outcome="started",
+        message=f"Server '{request.server_name}' process started.",
+    )
 
 
 @api_method("stop_server")
+@track_operation(OperationName.SERVER_STOP)
 @trigger_event(
     before="before_server_stop",
     after="after_server_stop",
@@ -317,6 +325,7 @@ async def stop_server(
 
 
 @api_method("restart_server")
+@track_operation(OperationName.SERVER_RESTART)
 async def restart_server(
     request: RestartServerRequest, *, app_context: AppContext
 ) -> RestartServerResponse:

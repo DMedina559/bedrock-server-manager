@@ -9,6 +9,7 @@ from ..error import (
 )
 from ..events import trigger_event
 from ..logging import log_operation_error
+from ..operations import OperationName, track_operation
 from ..plugins.api_bridge import api_method
 from ..plugins.runtime_capabilities import server_lifecycle_manager
 from .models.install import (
@@ -93,6 +94,7 @@ async def install_new_server(
 
 
 @api_method("update_server")
+@track_operation(OperationName.SERVER_UPDATE)
 @trigger_event(
     before="before_server_update",
     after="after_server_update",
@@ -150,8 +152,17 @@ async def update_server(
             app_context=app_context,
         ):
             logger.debug("Backing up '%s' before update...", server_name)
-            backup = await server.backups.backup_all_data()
-            if backup.outcome != "completed":
+            from .backup_restore import backup_all
+            from .models.backup_restore import BackupAllRequest
+
+            backup = await backup_all(
+                BackupAllRequest(server_name=server_name), app_context=app_context
+            )
+            if (
+                backup.status != "success"
+                or backup.details is None
+                or backup.details.outcome != "completed"
+            ):
                 from ..error import IncompleteOperationError
 
                 raise IncompleteOperationError(

@@ -114,3 +114,67 @@ Await server start, stop, and restart directly. Use background tasks for operati
 whose progress must outlive an HTTP request. See [Background tasks](task_manager.md).
 Use `get_plugin_setting` and `set_plugin_setting` for persistent plugin settings;
 see [Plugin settings](settings.md).
+
+## Operation context
+
+Read the current callback and operation without changing callback signatures:
+
+```python
+from bedrock_server_manager import app_event
+from bedrock_server_manager.operations import OperationResultQuery
+
+@app_event("before_server_start", priority=-10)
+async def inspect_start(self, server_name, **kwargs):
+    event_context = self.api.events.current()
+    operation = self.api.operations.current()
+    sequence = self.api.operations.sequence()
+    completed = self.api.operations.results(OperationResultQuery(
+        name="backup.create",
+        server_name=server_name,
+        status="finished",
+        outcome="completed",
+    ))
+    required = {"world", "server.properties", "allowlist.json", "permissions.json"}
+    protected = any(required.issubset(item.scope) for item in completed)
+    self.logger.debug("Sequence %s has a complete backup: %s",
+                      sequence.sequence_id, protected)
+```
+
+`events.current()` returns event ID, name, parent-event ID, correlation ID,
+source, and associated operation/sequence IDs. It excludes payloads and returns
+`None` outside a callback. `operations.current()` and `operations.sequence()`
+return `None` outside an operation; `operations.results()` returns an empty tuple.
+
+Operation snapshots include IDs, ancestry links, server, source/owner, purpose,
+execution status, domain outcome, component scope, and timing. Snapshots and result
+tuples are immutable. Results are restricted to the current sequence, oldest first,
+and may be filtered by name, server, status, outcome, or purpose. The query `limit`
+defaults to 200. `sequence.results_truncated` reports sequence retention loss;
+missing or insufficient evidence must never be treated as successful work.
+
+A `finished` operation can still have a partial or skipped domain outcome.
+Successful update results distinguish `updated` from `up_to_date`. A backup
+operation ID identifies its logical batch; use the backup inventory API for files.
+For backups, require `outcome="completed"` and the necessary component scope.
+A pre-update backup has purpose `pre_update`; a standalone pre-start backup has
+purpose `pre_start`. Its files represent the server at that point in the sequence.
+Do not use event delivery status or recent-backup timestamps as proof.
+
+Plugins cannot register core completion records, mutate the live sequence, or
+inspect unrelated sequences through this capability. Capabilities retained after
+unload/reload fail rather than attaching to a replacement plugin generation.
+Sequences are in-memory and end when the root call exits. Detached background
+work starts an independent sequence when it invokes a tracked operation.
+
+### Additional event capabilities
+
+Existing 4.0 callbacks keep their signatures. Opt into typed hooks with
+`events.listen_typed` or `events.hook`, and immutable notification data with
+`events.observe`. Discover contracts through `events.catalog`/`describe`, inspect
+owned listeners through `events.subscriptions`, and manage temporary registrations
+with `with` or `async with events.subscription(...)`. Filters and ordering are also
+optional additions to existing listeners and decorators. Namespaced custom work
+can use `with api.operations.scope("plugin_name:operation")`.
+
+See [typed event access, filtering, and lifecycle cleanup](custom_events.md#opt-in-typed-hooks-and-observers)
+for complete examples, visibility rules, deadlines, and compatibility guarantees.

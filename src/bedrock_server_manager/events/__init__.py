@@ -1,6 +1,7 @@
 """Application event subsystem; usable without plugins or a web server."""
 
 from .bus import EventBus, EventDispatchRejected
+from .context import EventNotification, EventPayload, PluginEvent
 from .control import CancellableEvent
 from .decorator import trigger_event
 from .models import (
@@ -8,7 +9,9 @@ from .models import (
     EventDefinition,
     EventDiagnostics,
     EventEnvelope,
+    EventFilter,
     EventOptions,
+    EventSubscriptionInfo,
 )
 from .player import PlayerSnapshot
 from .publisher import EventPublisher
@@ -17,6 +20,11 @@ from .server import StatusRequest, StatusResult
 
 __all__ = [
     "EventBus",
+    "EventFilter",
+    "EventSubscriptionInfo",
+    "EventNotification",
+    "EventPayload",
+    "PluginEvent",
     "EventPublisher",
     "PlayerSnapshot",
     "EventActivityQuery",

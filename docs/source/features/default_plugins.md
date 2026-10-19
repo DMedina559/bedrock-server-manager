@@ -22,3 +22,21 @@ Notification delays are part of the operation's timeline, not the game process's
 Content tools add plugin-owned routes and interface components. Their availability follows plugin state. Use the [manual content library](../extras/install_content.md) if upload tools are unavailable.
 
 See [plugin management](../plugins/introduction.md) for installation/reload and [plugin development](../developer/plugins/introduction.md) for hook contracts.
+
+## Backup reuse within an operation
+
+Update-before-start runs before backup-on-start. If an update creates a complete
+backup, backup-on-start can reuse it within that same operation sequence rather
+than create another copy. Only finished backups for the same server covering the
+world and all supported configuration files qualify. Failed, partial, skipped,
+active, incomplete-scope, or unrelated backups do not suppress required work.
+
+The backup-on-start setting `reuse_sequence_backup` defaults to `true`. A reused
+pre-update backup preserves the installation before updating. Set it to `false`
+if you also want a separate snapshot after updating and before launch. Independent
+later starts require their own backup. `require_complete_backup` continues to
+control cancellation when a required pre-start backup cannot complete.
+
+Starting an already-running server skips pre-start automation. An update's own
+restart does not trigger another automatic update check. Logs explain when a
+qualifying backup is reused.

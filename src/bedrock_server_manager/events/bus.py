@@ -7,7 +7,7 @@ from collections import Counter, deque
 from contextlib import contextmanager
 from contextvars import ContextVar
 from copy import deepcopy
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from threading import Event as ThreadEvent
 from threading import RLock
 from time import monotonic, time
@@ -16,15 +16,20 @@ from uuid import uuid4
 
 from pydantic import BaseModel
 
+from ..operations import OperationService
+from .context import EventNotification, EventPayload, PluginEvent, freeze
 from .control import CancellableEvent
 from .models import (
     EventActivityQuery,
+    EventContext,
     EventDefinition,
     EventDelivery,
     EventDiagnostics,
     EventEnvelope,
+    EventFilter,
     EventOptions,
     EventRecord,
+    EventSubscriptionInfo,
     ListenerFailure,
     ListenerRecord,
 )
@@ -67,6 +72,29 @@ class Subscription:
     observer: bool = False
     once: bool = False
     priority: int = 0
+    filters: EventFilter | None = None
+    predicate: Callable[[EventNotification], bool] | None = None
+    listener_id: str | None = None
+    before: tuple[str, ...] = ()
+    after: tuple[str, ...] = ()
+    kind: str = "legacy"
+    callback_identity: tuple[int, ...] | None = None
+
+
+@dataclass
+class CallbackState:
+    subscription: Subscription
+    envelope: EventEnvelope
+    control: CancellableEvent | None
+    deadline: float
+    generation: int
+    arguments: tuple[Any, ...] = ()
+    active: bool = True
+    once_claimed: bool = False
+    clock: Callable[[], float] = monotonic
+
+
+_FILTERED = object()
 
 
 class EventBus:
@@ -77,6 +105,16 @@ class EventBus:
         revision_provider: Callable[[], Mapping[str, Any]] | None = None,
     ):
         self.options = options or EventOptions()
+        self.operations = OperationService()
+        self._current: ContextVar[
+            tuple[EventEnvelope, asyncio.Task[Any] | None] | None
+        ] = ContextVar("current_event", default=None)
+        self._handler: ContextVar[CallbackState | None] = ContextVar(
+            "event_handler", default=None
+        )
+        self._subscription_stats: dict[str, dict[str, Any]] = {}
+        self._subscription_leases: Counter[str] = Counter()
+        self._persistent_subscriptions: set[str] = set()
         self.diagnostic_recorder: Callable[[EventRecord], None] | None = None
         self.registry = EventRegistry(builtin_events)
         self._revision_provider = revision_provider
@@ -109,34 +147,124 @@ class EventBus:
         generation: int | None = None,
         once: bool = False,
         priority: int = 0,
+        filters: EventFilter | None = None,
+        predicate: Callable[[EventNotification], bool] | None = None,
+        listener_id: str | None = None,
+        before: tuple[str, ...] = (),
+        after: tuple[str, ...] = (),
+        kind: str = "legacy",
+        callback_identity: tuple[int, ...] | None = None,
+        temporary: bool = False,
     ) -> str:
         with self._lock:
             self.check_owner(owner, generation)
             if not callable(callback):
                 raise TypeError("Event listener must be callable")
+            if filters is not None and not isinstance(filters, EventFilter):
+                raise TypeError("Use an EventFilter for subscription filters")
+            if predicate is not None and (
+                not callable(predicate) or inspect.iscoroutinefunction(predicate)
+            ):
+                raise TypeError("Subscription predicates must be synchronous callables")
+            before, after = tuple(before), tuple(after)
             if active:
                 self.activate_owner(owner)
             for subscription in self._subscriptions.values():
                 if (
                     subscription.name,
                     subscription.owner,
-                    _callback_identity(subscription.callback),
+                    subscription.callback_identity
+                    or _callback_identity(subscription.callback),
                     subscription.observer,
                     subscription.once,
                     subscription.priority,
+                    subscription.filters,
+                    subscription.predicate,
+                    subscription.listener_id,
+                    subscription.before,
+                    subscription.after,
+                    subscription.kind,
                 ) == (
                     name,
                     owner,
-                    _callback_identity(callback),
+                    callback_identity or _callback_identity(callback),
                     observer,
                     once,
                     priority,
+                    filters,
+                    predicate,
+                    listener_id,
+                    before,
+                    after,
+                    kind,
                 ):
+                    if temporary:
+                        self._subscription_leases[subscription.token] += 1
+                    else:
+                        self._persistent_subscriptions.add(subscription.token)
                     return subscription.token
             token = uuid4().hex
+            if listener_id is not None and any(
+                item.listener_id == listener_id for item in self._subscriptions.values()
+            ):
+                raise ValueError("Listener ID is already registered")
             self._subscriptions[token] = Subscription(
-                token, name, owner, callback, observer, once, priority
+                token,
+                name,
+                owner,
+                callback,
+                observer,
+                once,
+                priority,
+                filters,
+                predicate,
+                listener_id,
+                before,
+                after,
+                kind,
+                callback_identity,
             )
+            try:
+                if listener_id or before or after:
+                    by_id = {
+                        item.listener_id or item.token: item
+                        for item in self._subscriptions.values()
+                    }
+                    for item in self._subscriptions.values():
+                        for reference in item.before + item.after:
+                            target = by_id.get(reference)
+                            if (
+                                target is not None
+                                and item.observer != target.observer
+                                and (
+                                    item.name == target.name
+                                    or "*" in {item.name, target.name}
+                                )
+                            ):
+                                raise ValueError(
+                                    "Ordering cannot cross hook and observer stages"
+                                )
+                    for event_name in {
+                        item.name for item in self._subscriptions.values()
+                    }:
+                        for stage in (False, True):
+                            candidates = [
+                                item
+                                for item in self._subscriptions.values()
+                                if item.name in {event_name, "*"}
+                                and item.observer == stage
+                            ]
+                            self._ordered(candidates)
+            except Exception:
+                self._subscriptions.pop(token, None)
+                raise
+            self._subscription_stats[token] = dict(
+                calls=0, failures=0, timeouts=0, last_status=None, last_duration_ms=0
+            )
+            if temporary:
+                self._subscription_leases[token] += 1
+            else:
+                self._persistent_subscriptions.add(token)
             return token
 
     def define(
@@ -212,6 +340,25 @@ class EventBus:
             ):
                 raise PermissionError("Subscription belongs to another owner")
             self._subscriptions.pop(token, None)
+            self._subscription_stats.pop(token, None)
+            self._subscription_leases.pop(token, None)
+            self._persistent_subscriptions.discard(token)
+
+    def release_subscription(self, token: str, *, owner: str) -> None:
+        """Release one temporary registration without removing another owner's lease."""
+        with self._lock:
+            subscription = self._subscriptions.get(token)
+            if subscription is None:
+                return
+            if subscription.owner != owner:
+                raise PermissionError("Subscription belongs to another owner")
+            if self._subscription_leases.get(token, 0) == 0:
+                return
+            self._subscription_leases[token] -= 1
+            if not self._subscription_leases[token]:
+                self._subscription_leases.pop(token, None)
+                if token not in self._persistent_subscriptions:
+                    self.unsubscribe(token, owner=owner)
 
     def open_owner(self, owner: str) -> int:
         with self._lock:
@@ -277,19 +424,128 @@ class EventBus:
                 {s.name for s in self._subscriptions.values() if s.owner == owner}
             )
 
+    def subscriptions(self, owner: str) -> tuple[EventSubscriptionInfo, ...]:
+        with self._lock:
+            by_id = {
+                item.listener_id or item.token: item
+                for item in self._subscriptions.values()
+            }
+
+            def unresolved(
+                item: Subscription, references: tuple[str, ...]
+            ) -> tuple[str, ...]:
+                return tuple(
+                    reference
+                    for reference in references
+                    if (target := by_id.get(reference)) is None
+                    or target.observer != item.observer
+                    or (
+                        item.name != target.name and "*" not in {item.name, target.name}
+                    )
+                )
+
+            return tuple(
+                EventSubscriptionInfo(
+                    subscription_id=item.token,
+                    listener_id=item.listener_id or item.token,
+                    name=item.name,
+                    owner=item.owner,
+                    kind="observer" if item.observer else item.kind,
+                    priority=item.priority,
+                    before=item.before,
+                    after=item.after,
+                    unresolved_before=unresolved(item, item.before),
+                    unresolved_after=unresolved(item, item.after),
+                    filters=item.filters,
+                    once=item.once,
+                    active=owner in self._owners,
+                    **self._subscription_stats.get(item.token, {}),
+                )
+                for item in self._subscriptions.values()
+                if item.owner == owner
+            )
+
+    @staticmethod
+    def _ordered(items: list[Subscription]) -> list[Subscription]:
+        if not any(item.before or item.after for item in items):
+            return sorted(items, key=lambda item: -item.priority)
+        by_id = {item.listener_id or item.token: item for item in items}
+        edges: dict[str, set[str]] = {key: set() for key in by_id}
+        for key, item in by_id.items():
+            for target in item.before:
+                if target in by_id:
+                    edges[key].add(target)
+            for target in item.after:
+                if target in by_id:
+                    edges[target].add(key)
+        remaining = list(items)
+        ordered = []
+        while remaining:
+            ready = [
+                item
+                for item in remaining
+                if not any(
+                    (item.listener_id or item.token) in targets
+                    for targets in edges.values()
+                )
+            ]
+            if not ready:
+                raise ValueError("Event listener ordering contains a cycle")
+            chosen = max(ready, key=lambda item: item.priority)
+            ordered.append(chosen)
+            remaining.remove(chosen)
+            edges.pop(chosen.listener_id or chosen.token)
+        return ordered
+
+    def _matches(
+        self, subscription: Subscription, envelope: EventEnvelope, data: dict[str, Any]
+    ) -> bool:
+        filters = subscription.filters
+        if filters is None:
+            return True
+        operation = self.operations.current()
+        actual = dict(
+            server_name=data.get("server_name"),
+            source=envelope.source,
+            plugin_name=data.get("_triggering_plugin")
+            or (
+                envelope.source.removeprefix("plugin:")
+                if envelope.source.startswith("plugin:")
+                else None
+            ),
+            operation_name=operation.name if operation else None,
+            sequence_id=operation.sequence_id if operation else None,
+            correlation_id=envelope.correlation_id,
+        )
+        return all(
+            value is None or actual[key] == value
+            for key, value in filters.model_dump().items()
+        )
+
     def _selected(
         self, name: str, observer: bool, owners: set[str] | None
     ) -> list[Subscription]:
         with self._lock:
             selected = []
-            seen: set[tuple[str, tuple[int, int], bool]] = set()
+            seen: set[tuple[Any, ...]] = set()
             for subscription in sorted(
                 self._subscriptions.values(), key=lambda item: -item.priority
             ):
                 identity = (
                     subscription.owner,
-                    _callback_identity(subscription.callback),
+                    subscription.callback_identity
+                    or _callback_identity(subscription.callback),
                     subscription.once,
+                    subscription.filters,
+                    (
+                        id(subscription.predicate)
+                        if subscription.predicate is not None
+                        else None
+                    ),
+                    subscription.listener_id,
+                    subscription.before,
+                    subscription.after,
+                    subscription.kind,
                 )
                 allowed = subscription.owner in (
                     owners if owners is not None else self._owners
@@ -302,9 +558,183 @@ class EventBus:
                 ):
                     selected.append(subscription)
                     seen.add(identity)
-            return sorted(selected, key=lambda item: -item.priority)
+            return self._ordered(selected)
+
+    def current(self) -> EventEnvelope | None:
+        """Return copied metadata only for an active callback in this bus."""
+        entry = self._current.get()
+        if entry is None:
+            return None
+        event, owner = entry
+        try:
+            task = asyncio.current_task()
+        except RuntimeError:
+            task = None
+        if (
+            task is not None and task is not owner
+        ) or event.event_id not in self._active:
+            return None
+        return event.model_copy(update={"data": {}})
+
+    def event_context(self) -> EventContext | None:
+        event = self.current()
+        state = self._handler.get()
+        if event is None or state is None or not state.active:
+            return None
+        operation = self.operations.current()
+        return EventContext(
+            **event.model_dump(
+                include={
+                    "event_id",
+                    "name",
+                    "parent_event_id",
+                    "correlation_id",
+                    "source",
+                }
+            ),
+            phase=self.registry.definition(event.name).phase,
+            observer=state.subscription.observer,
+            operation_id=operation.operation_id if operation else None,
+            sequence_id=operation.sequence_id if operation else None,
+        )
+
+    def notification(self) -> EventNotification:
+        context = self.event_context()
+        state = self._handler.get()
+        if context is None or state is None:
+            raise RuntimeError("Event context requires a live callback")
+        return EventNotification(
+            context,
+            freeze(state.envelope.data),
+            self.operations.current(),
+            self.operations.sequence(),
+            freeze(state.arguments),
+        )
+
+    def handler(self, payload_model: type[BaseModel] | None = None) -> PluginEvent[Any]:
+        notification = self.notification()
+        state = self._handler.get()
+        assert state is not None
+
+        def can_cancel() -> bool:
+            return (
+                state.active
+                and self._handler.get() is state
+                and self.current() is not None
+                and not state.subscription.observer
+                and notification.context.phase == "before"
+                and state.clock() < state.deadline
+                and state.control is not None
+                and not state.control.is_sealed
+            )
+
+        def cancel(reason: str) -> None:
+            self.check_owner(state.subscription.owner, state.generation)
+            if not can_cancel():
+                raise RuntimeError("Cancellation requires a live before-hook")
+            assert state.control is not None
+            state.control.cancel(reason)
+
+        def cancelled() -> tuple[bool, str | None]:
+            control = state.control
+            return (
+                (control.is_cancelled, control.cancel_reason)
+                if control
+                else (False, None)
+            )
+
+        model = payload_model or EventPayload
+        payload = model.model_validate(deepcopy(state.envelope.data))
+        return PluginEvent(
+            notification.context,
+            notification.data,
+            notification.operation,
+            notification.sequence,
+            notification.arguments,
+            payload,
+            state.deadline,
+            can_cancel,
+            cancel,
+            cancelled,
+            state.clock,
+        )
 
     async def _invoke(
+        self,
+        subscription: Subscription,
+        envelope: EventEnvelope,
+        args: tuple[Any, ...],
+        data: dict[str, Any],
+        *,
+        targeted: bool = False,
+    ) -> Any:
+        previous = self._current.get()
+        token = self._current.set((envelope, asyncio.current_task()))
+        parent = self._handler.get()
+        timeout = (
+            self.options.hook_timeout_seconds
+            if self.registry.definition(envelope.name).phase == "before"
+            and not subscription.observer
+            else self.options.listener_timeout_seconds
+        )
+        clock = asyncio.get_running_loop().time
+        deadline = clock() + timeout
+        if (
+            parent is not None
+            and parent.active
+            and previous is not None
+            and previous[1] is asyncio.current_task()
+        ):
+            deadline = min(deadline, parent.deadline)
+        state = CallbackState(
+            subscription,
+            envelope,
+            data.get("event"),
+            deadline,
+            self.owner_generation(subscription.owner),
+            arguments=tuple(sanitize(argument) for argument in args),
+            clock=clock,
+        )
+        handler_token = self._handler.set(state)
+        try:
+            if subscription.predicate is not None:
+
+                def evaluate(_event: EventEnvelope) -> bool:
+                    assert subscription.predicate is not None
+                    result = subscription.predicate(self.notification())
+                    if inspect.isawaitable(result):
+                        if inspect.iscoroutine(result):
+                            result.close()
+                        raise TypeError("Subscription predicates must be synchronous")
+                    return bool(result)
+
+                matched = await self._invoke_callback(
+                    replace(subscription, callback=evaluate, observer=True),
+                    envelope,
+                    args,
+                    data,
+                )
+                if not matched:
+                    return _FILTERED
+            with self._lock:
+                if (
+                    self._subscriptions.get(subscription.token) is not subscription
+                    or not self.accepting
+                    or subscription.owner in self._closed_owners
+                    or state.generation != self.owner_generation(subscription.owner)
+                    or (not targeted and subscription.owner not in self._owners)
+                ):
+                    return _FILTERED
+                if subscription.once and not state.once_claimed:
+                    self.unsubscribe(subscription.token, owner=subscription.owner)
+                    state.once_claimed = True
+            return await self._invoke_callback(subscription, envelope, args, data)
+        finally:
+            state.active = False
+            self._handler.reset(handler_token)
+            self._current.reset(token)
+
+    async def _invoke_callback(
         self,
         subscription: Subscription,
         envelope: EventEnvelope,
@@ -416,6 +846,8 @@ class EventBus:
         args: tuple[Any, ...],
         data: dict[str, Any],
         strict: bool,
+        *,
+        targeted: bool = False,
     ) -> None:
         pending = asyncio.get_running_loop().create_future()
         owned = self._inflight.setdefault(subscription.owner, {})
@@ -434,6 +866,7 @@ class EventBus:
         )
         record.listeners.append(listener)
         started = monotonic()
+        stats = self._subscription_stats.get(subscription.token)
         try:
             timeout = (
                 self.options.hook_timeout_seconds
@@ -441,7 +874,13 @@ class EventBus:
                 else self.options.listener_timeout_seconds
             )
             async with asyncio.timeout(timeout):
-                result = await self._invoke(subscription, envelope, args, data)
+                result = await self._invoke(
+                    subscription, envelope, args, data, targeted=targeted
+                )
+            if result is _FILTERED:
+                record.listeners_called -= 1
+                record.listeners.remove(listener)
+                return
             if subscription.observer and isinstance(result, BaseModel):
                 delivery = EventDelivery(
                     owner=subscription.owner, **result.model_dump(mode="json")
@@ -477,6 +916,12 @@ class EventBus:
                 raise
         finally:
             listener.duration_ms = (monotonic() - started) * 1000
+            if stats is not None and listener in record.listeners:
+                stats["calls"] += 1
+                stats["failures"] += int(listener.status in {"failed", "timed_out"})
+                stats["timeouts"] += int(listener.status == "timed_out")
+                stats["last_status"] = listener.status
+                stats["last_duration_ms"] = listener.duration_ms
             owned.pop(pending, None)
             pending.set_result(None)
             if not owned:
@@ -493,18 +938,37 @@ class EventBus:
         strict: bool,
     ) -> None:
         for observer in (False, True):
-            if observer and (
-                not public or not self.registry.definition(envelope.name).public
-            ):
-                continue
+            private = not public or not self.registry.definition(envelope.name).public
             for subscription in self._selected(envelope.name, observer, owners):
+                definition = self.registry.definition(envelope.name)
+                visible = (
+                    subscription.owner == definition.owner
+                    or (
+                        definition.owner == "application"
+                        and definition.phase == "lifecycle"
+                    )
+                    or (owners is not None and subscription.owner in owners)
+                )
+                if private and (
+                    (observer and not (subscription.kind == "observer" and visible))
+                    or (not observer and subscription.kind == "hook" and not visible)
+                ):
+                    continue
                 if subscription.token not in self._subscriptions or (
                     owners is None and subscription.owner not in self._owners
                 ):
                     continue
-                if subscription.once:
-                    self.unsubscribe(subscription.token, owner=subscription.owner)
-                await self._deliver(subscription, envelope, record, args, data, strict)
+                if not self._matches(subscription, envelope, data):
+                    continue
+                await self._deliver(
+                    subscription,
+                    envelope,
+                    record,
+                    args,
+                    data,
+                    strict,
+                    targeted=owners is not None,
+                )
 
     async def emit(
         self,
@@ -635,6 +1099,7 @@ class EventBus:
         if task is not None:
             self._tasks.add(task)
         token = _stack.set(_stack.get() + ((id(self), identity, envelope),))
+        correlation_token = _correlation.set(envelope.correlation_id)
         started = monotonic()
         try:
             await self._dispatch(
@@ -665,6 +1130,7 @@ class EventBus:
             if task is not None and not already_owned:
                 self._tasks.discard(task)
             _stack.reset(token)
+            _correlation.reset(correlation_token)
         return record.model_copy(deep=True)
 
     def diagnostics(self, query: EventActivityQuery | None = None) -> EventDiagnostics:
@@ -747,6 +1213,9 @@ class EventBus:
         if pending_workers:
             await asyncio.wait(pending_workers, timeout=max(0, deadline - monotonic()))
         self._subscriptions.clear()
+        self._subscription_stats.clear()
+        self._subscription_leases.clear()
+        self._persistent_subscriptions.clear()
         self._owners.clear()
 
 

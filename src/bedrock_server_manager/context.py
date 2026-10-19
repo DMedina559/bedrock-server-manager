@@ -21,6 +21,7 @@ if TYPE_CHECKING:
     from .db.storage import Storage
     from .diagnostics.service import Diagnostics
     from .events import EventBus
+    from .operations import OperationService
     from .plugins.api_bridge import AppAPI
     from .plugins.plugin_manager import PluginManager
     from .services.metrics_service import MetricsService
@@ -588,6 +589,11 @@ class AppContext:
         return self._settings
 
     @property
+    def operations(self) -> "OperationService":
+        """Application-owned live operation sequences."""
+        return self.events.operations
+
+    @property
     def events(self) -> EventBus:
         """Application-owned events remain available without plugins or HTTP."""
         if self._events is None:
@@ -857,6 +863,7 @@ class AppContext:
             self._servers[server_name] = BedrockServer(
                 server_name=server_name,
                 events=self.events,
+                operations=self.operations,
                 settings=self.settings,
                 state=self._state,
                 storage=self._storage,
