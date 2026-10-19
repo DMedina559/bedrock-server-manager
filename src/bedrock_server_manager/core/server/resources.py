@@ -9,6 +9,7 @@ from .paths import ServerPaths
 
 if TYPE_CHECKING:
     from ...events.publisher import EventPublisher
+    from ...operations import OperationService
     from ...config.settings import Settings
     from ...state.app_state import AppState
     from ...db.storage import Storage
@@ -27,6 +28,7 @@ class ServerResources:
         *,
         settings: Optional["Settings"] = None,
         events: Optional["EventPublisher"] = None,
+        operations: "OperationService | None" = None,
         state: Optional["AppState"] = None,
         storage: Optional["Storage"] = None,
     ) -> None:
@@ -44,6 +46,9 @@ class ServerResources:
         self._runtime_state = state.runtime if state is not None else RuntimeState()
         self.storage = storage
         self.events = events
+        from ...operations import OperationService
+
+        self.operations = operations if operations is not None else OperationService()
         self.logger.debug("Server resources for '%s' initialized", server_name)
         _base_dir_val = self.settings.get("paths.servers")
         if not _base_dir_val:

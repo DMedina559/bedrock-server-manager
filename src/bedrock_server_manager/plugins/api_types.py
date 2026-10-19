@@ -146,6 +146,9 @@ from bedrock_server_manager.api.models import (
     ValidatePropertyValueRequest,
     ValidatePropertyValueResponse,
 )
+from bedrock_server_manager.plugins.operation_api import (  # noqa: F401
+    PluginOperationAPI as PluginOperationAPI,
+)
 
 
 class AddonAPI(Protocol):

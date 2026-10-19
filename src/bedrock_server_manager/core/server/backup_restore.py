@@ -20,6 +20,7 @@ from ...error import (
     UserInputError,
 )
 from ...failures import classify_failure
+from ...operations import OperationName
 from ...results import (
     CleanupResult,
     CompletedItem,
@@ -206,7 +207,35 @@ class ServerBackups:
             self.logger.debug("Configuration backup created: '%s'.", destination)
             return destination
 
-    async def backup_all_data(self) -> ComponentResults:
+    async def backup_all_data(self, *, purpose: str = "manual") -> ComponentResults:
+        """Record one full-backup result for API and internal callers alike."""
+        with self.server.operations.scope(
+            OperationName.BACKUP_CREATE,
+            server_name=self.server.server_name,
+            purpose=purpose,
+        ) as operation:
+            try:
+                result = await self._backup_all_data()
+            except IncompleteOperationError as error:
+                result = ComponentResults.model_validate(error.result)
+                operation.finish(
+                    result.outcome,
+                    scope=tuple(
+                        name
+                        for name, item in result.components.items()
+                        if item.outcome == "completed"
+                    ),
+                )
+                raise
+            complete = tuple(
+                name
+                for name, item in result.components.items()
+                if item.outcome == "completed"
+            )
+            operation.finish(result.outcome, scope=complete)
+            return result
+
+    async def _backup_all_data(self) -> ComponentResults:
         async with self.server.operation_lock:
             components: dict[str, ItemResult] = {}
             world_error = None

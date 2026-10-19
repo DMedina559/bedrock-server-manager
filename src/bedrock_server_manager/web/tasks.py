@@ -283,7 +283,12 @@ class TaskManager:
             finally:
                 _current_task_id.reset(token)
 
-        task = asyncio.create_task(_runner())
+        from contextvars import copy_context
+
+        from ..operations import detached_operations
+
+        with detached_operations():
+            task = asyncio.create_task(_runner(), context=copy_context())
         self.futures[task_id] = task
         task.add_done_callback(lambda f: self._task_done_callback(task_id, f))
 

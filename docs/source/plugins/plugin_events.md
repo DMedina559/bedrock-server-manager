@@ -525,7 +525,7 @@ async def some_function(self, server_name, player_count, players, request, resul
 
 
 ## `after_server_start`
-**Description:** Triggered after 'start_server'. Start a server, or report that it is already running; failures raise.
+**Description:** Triggered after '_start_server'. Start a server, or report that it is already running; failures raise.
 - **Cancellable:** No
 - **Identity Keys (for re-entrancy):** `server_name`
 
@@ -1247,7 +1247,7 @@ async def some_function(self, server_name, player_count, players, request, event
 
 
 ## `before_server_start`
-**Description:** Triggered before 'start_server'. Start a server, or report that it is already running; failures raise.
+**Description:** Triggered before '_start_server'. Start a server, or report that it is already running; failures raise.
 - **Cancellable:** Yes (`event.cancel()`)
 - **Identity Keys (for re-entrancy):** `server_name`
 

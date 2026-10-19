@@ -229,7 +229,7 @@ await self.api.server.start(request: bedrock_server_manager.api.models.server.St
 ```
 - **Async (Requires await):** Yes
 
-- **Description:** Start a server, or report that it is already running; failures raise.
+- **Description:** Start an offline server under its lock, dispatching hooks only when needed.
 
 - **Returns:** `StartServerResponse`
 

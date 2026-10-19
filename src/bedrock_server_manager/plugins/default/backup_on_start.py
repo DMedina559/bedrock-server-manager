@@ -20,21 +20,25 @@ class PluginSettings(BaseModel):
     require_complete_backup: bool = Field(
         default=False, description="Cancel server start if the backup cannot complete."
     )
+    reuse_sequence_backup: bool = Field(
+        default=True,
+        description="Reuse a complete backup from the same operation sequence, including a pre-update backup.",
+    )
     enable_backup_on_start: bool = Field(
         default=True, description="Back up this server before starting it."
     )
 
 
 class AutoBackupOnStart(PluginBase):
-    """Performs a full backup of a server each time a start command is initiated. This
+    """Ensures a complete backup before starting a server. This
     plugin hooks into the ``before_server_start`` event to ensure a recent backup
     exists before the server goes online.
     """
 
     settings_model = PluginSettings
 
-    version = "1.2.0"
-    description = "Performs a full backup of a server each time a start command is initiated. This plugin hooks into the `before_server_start` event."
+    version = "1.3.0"
+    description = "Ensures a complete backup before starting a server. This plugin hooks into the `before_server_start` event."
     author = "dmedina559"
     name = "Auto Backup On Start"
 
@@ -42,7 +46,7 @@ class AutoBackupOnStart(PluginBase):
     async def plugin_loaded(self):
         """Logs a message when the plugin is loaded."""
         self.logger.debug(
-            "Plugin loaded. Will perform a full backup before any server starts."
+            "Plugin loaded. Will ensure a complete backup before server starts."
         )
 
     @app_event("before_server_start")
@@ -61,11 +65,37 @@ class AutoBackupOnStart(PluginBase):
         if selected and server_name not in selected:
             return
 
+        if await self.get_plugin_setting("reuse_sequence_backup", default=True):
+            from bedrock_server_manager.operations import (
+                OperationName,
+                OperationResultQuery,
+            )
+
+            required = {
+                "world",
+                "server.properties",
+                "allowlist.json",
+                "permissions.json",
+            }
+            backups = self.api.operations.results(
+                OperationResultQuery(
+                    name=OperationName.BACKUP_CREATE,
+                    server_name=server_name,
+                    status="finished",
+                    outcome="completed",
+                )
+            )
+            if any(required.issubset(item.scope) for item in backups):
+                self.logger.info(
+                    "Skipping pre-start backup for '%s': a complete backup already finished in this operation sequence.",
+                    server_name,
+                )
+                return
+
         self.logger.info("Performing pre-start backup for server '%s'...", server_name)
 
         try:
-            # The server is guaranteed to be offline at this point, so it is safe
-            # to run a backup without stopping it first.
+            # The start operation holds the server lock and verified it is offline.
 
             result = await self.api.backup_restore.backup_all(
                 request={"server_name": server_name}
