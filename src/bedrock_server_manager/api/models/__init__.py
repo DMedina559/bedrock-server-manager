@@ -41,6 +41,7 @@ from .backup_restore import (
     BackupAllResponse,
     BackupConfigFileRequest,
     BackupConfigFileResponse,
+    BackupHealthResponse,
     BackupWorldRequest,
     BackupWorldResponse,
     CreateSnapshotRequest,
@@ -51,8 +52,12 @@ from .backup_restore import (
     ListBackupFilesResponse,
     ListSnapshotsRequest,
     ListSnapshotsResponse,
+    ManageSnapshotRequest,
+    ManageSnapshotResponse,
     PlanSnapshotRestoreRequest,
     PlanSnapshotRestoreResponse,
+    PrepareBackupCopyRequest,
+    PrepareBackupCopyResponse,
     PruneOldBackupsRequest,
     PruneOldBackupsResponse,
     RestoreAllRequest,
@@ -227,6 +232,11 @@ from .world import (
 )
 
 __all__ = [
+    "BackupHealthResponse",
+    "ManageSnapshotRequest",
+    "ManageSnapshotResponse",
+    "PrepareBackupCopyRequest",
+    "PrepareBackupCopyResponse",
     "RestoreRecoveryResponse",
     "CreateSnapshotRequest",
     "CreateSnapshotResponse",

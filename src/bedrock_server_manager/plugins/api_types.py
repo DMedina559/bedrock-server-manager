@@ -13,6 +13,7 @@ from bedrock_server_manager.api.models import (
     BackupAllResponse,
     BackupConfigFileRequest,
     BackupConfigFileResponse,
+    BackupHealthResponse,
     BackupWorldRequest,
     BackupWorldResponse,
     BroadcastRequest,
@@ -97,8 +98,12 @@ from bedrock_server_manager.api.models import (
     ListInstalledAddonsResponse,
     ListSnapshotsRequest,
     ListSnapshotsResponse,
+    ManageSnapshotRequest,
+    ManageSnapshotResponse,
     PlanSnapshotRestoreRequest,
     PlanSnapshotRestoreResponse,
+    PrepareBackupCopyRequest,
+    PrepareBackupCopyResponse,
     PruneDownloadCacheRequest,
     PruneDownloadCacheResponse,
     PruneOldBackupsRequest,
@@ -237,6 +242,10 @@ class BackupRestoreAPI(Protocol):
         self, request: CreateSnapshotRequest | Mapping[str, object]
     ) -> CreateSnapshotResponse: ...
 
+    async def get_backup_health(
+        self, request: ListSnapshotsRequest | Mapping[str, object]
+    ) -> BackupHealthResponse: ...
+
     async def get_restore_recovery(
         self, request: ListSnapshotsRequest | Mapping[str, object]
     ) -> RestoreRecoveryResponse: ...
@@ -253,9 +262,17 @@ class BackupRestoreAPI(Protocol):
         self, request: ListSnapshotsRequest | Mapping[str, object]
     ) -> ListSnapshotsResponse: ...
 
+    async def manage_server_snapshot(
+        self, request: ManageSnapshotRequest | Mapping[str, object]
+    ) -> ManageSnapshotResponse: ...
+
     async def plan_server_restore(
         self, request: PlanSnapshotRestoreRequest | Mapping[str, object]
     ) -> PlanSnapshotRestoreResponse: ...
+
+    async def prepare_backup_copy(
+        self, request: PrepareBackupCopyRequest | Mapping[str, object]
+    ) -> PrepareBackupCopyResponse: ...
 
     async def prune_old_backups(
         self, request: PruneOldBackupsRequest | Mapping[str, object]
@@ -565,11 +582,14 @@ API_METHODS: dict[str, dict[str, str]] = {
         "backup_config_file": "backup_config_file",
         "backup_world": "backup_world",
         "create_server_backup": "create_server_backup",
+        "get_backup_health": "get_backup_health",
         "get_restore_recovery": "get_restore_recovery",
         "inspect_server_backup": "inspect_server_backup",
         "list_backup_files": "list_backup_files",
         "list_server_snapshots": "list_server_snapshots",
+        "manage_server_snapshot": "manage_server_snapshot",
         "plan_server_restore": "plan_server_restore",
+        "prepare_backup_copy": "prepare_backup_copy",
         "prune_old_backups": "prune_old_backups",
         "recover_server_backup": "recover_server_backup",
         "restore_all": "restore_all",

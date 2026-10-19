@@ -1,8 +1,11 @@
 """Serializable backup_restore API request and response contracts."""
 
+from typing import Literal
+
 from pydantic import Field, SecretStr
 
 from ...backups.models import (
+    BackupHealth,
     BackupSummary,
     Component,
     ConfigComponent,
@@ -148,3 +151,29 @@ class RestoreSnapshotResponse(ActionResponse):
 
 class RestoreRecoveryResponse(SuccessResponse):
     recovery: RestoreRecoveryState
+
+
+class BackupHealthResponse(SuccessResponse):
+    health: BackupHealth
+
+
+class ManageSnapshotRequest(InspectSnapshotRequest):
+    action: Literal["verify", "pin", "unpin", "copy", "test_key"]
+    destination: str | None = None
+
+
+class ManageSnapshotResponse(SuccessResponse):
+    message: str
+
+
+class PrepareBackupCopyRequest(InspectSnapshotRequest):
+    target_server: ServerName
+    target_version: NonEmptyStr = "LATEST"
+    server_port: int = Field(ge=1, le=65535)
+    server_portv6: int = Field(ge=1, le=65535)
+
+
+class PrepareBackupCopyResponse(SuccessResponse):
+    server_name: str
+    backup_id: str
+    message: str

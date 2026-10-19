@@ -760,6 +760,30 @@ async def some_function(self, request, server_name, result, **kwargs):
 ---
 
 
+## `backup_activity`
+**Description:** Backup capture, verification, or destination copy outcome; no credentials or file values.
+- **Cancellable:** No
+- **Identity Keys (for re-entrancy):** `server_name, backup_id, action`
+
+### Listener Signature:
+```python
+@app_event("backup_activity")
+async def some_function(self, server_name, backup_id, action, status, destination, **kwargs):
+    pass
+```
+### Available `kwargs`:
+| Key Name | Type |
+|----------|------|
+| `server_name` | `str` |
+| `backup_id` | `str` |
+| `action` | `Literal['capture', 'verify', 'copy']` |
+| `status` | `Literal['completed', 'failed']` |
+| `destination` | `str | None` |
+| `_triggering_plugin` | `str` (core, or plugin name) |
+
+---
+
+
 ## `before_add_server_ban`
 **Description:** Triggered before 'add_server_ban'. Adds a player to the server ban list.
 - **Cancellable:** Yes (`event.cancel()`)

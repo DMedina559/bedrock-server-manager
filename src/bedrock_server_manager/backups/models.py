@@ -65,7 +65,7 @@ class BackupManifest(Record):
     source_server: str
     source_world: str
     capture_method: Literal["offline", "live"]
-    reason: Literal["manual", "pre_start", "pre_update"] = "manual"
+    reason: Literal["manual", "pre_start", "pre_update", "pre_restore"] = "manual"
     components: dict[Component, Literal["included", "absent"]]
     files: list[BackupFile]
     directories: list[str] = Field(default_factory=list)
@@ -79,14 +79,44 @@ class BackupHeader(Record):
     key_id: str | None = None
 
 
+class BackupVerification(Record):
+    verified_at: str | None = None
+    status: Literal["unverified", "verified", "failed"] = "unverified"
+    error: str | None = None
+
+
+class BackupCopy(Record):
+    status: Literal["pending", "completed", "failed"]
+    completed_at: str | None = None
+    error: str | None = None
+
+
 class BackupSummary(Record):
     backup_id: str
     filename: str
     size: int
     encrypted: bool
     key_id: str | None = None
+    verification: BackupVerification = Field(default_factory=BackupVerification)
+    pinned: bool = False
+    protected_until: str | None = None
+    purpose: str | None = None
+    copies: dict[str, BackupCopy] = Field(default_factory=dict)
     manifest: BackupManifest | None = None
     error: str | None = None
+
+
+class RestoreFileChange(Record):
+    component: Component
+    path: str
+    action: Literal["added", "replaced", "removed"]
+
+
+class RestoreValueChange(Record):
+    component: Component
+    key: str
+    before: str | None
+    after: str | None
 
 
 class RestorePlan(Record):
@@ -95,10 +125,16 @@ class RestorePlan(Record):
     components: list[Component]
     destinations: dict[Component, str]
     warnings: list[str]
+    changes: list[RestoreFileChange] = Field(default_factory=list)
+    changes_truncated: bool = False
+    change_counts: dict[str, int] = Field(default_factory=dict)
+    setting_changes: list[RestoreValueChange] = Field(default_factory=list)
+    safety_backup: bool = True
     required_bytes: int
 
 
 class RestoreResult(Record):
+    safety_backup_id: str | None = None
     restored: list[Component]
     committed: bool = True
     restarted: bool = False
@@ -110,3 +146,18 @@ class RestoreRecoveryState(Record):
     active: bool
     committed: bool | None = None
     error: str | None = None
+
+
+class BackupHealth(Record):
+    count: int
+    total_bytes: int
+    last_success_at: str | None = None
+    last_verified_at: str | None = None
+    last_failure_at: str | None = None
+    last_error: str | None = None
+    unverified_count: int = 0
+    failed_count: int = 0
+    missing_key_ids: list[str] = Field(default_factory=list)
+    older_key_ids: list[str] = Field(default_factory=list)
+    destination_failures: int = 0
+    verification_interval_hours: int

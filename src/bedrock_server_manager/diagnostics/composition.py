@@ -9,6 +9,7 @@ from .. import __version__
 from ..state_revision import revision_clock
 from .history import DiagnosticHistoryStore
 from .models import (
+    BackupsDiagnostics,
     DiagnosticOptions,
     EventsDiagnostics,
     MetricsDiagnostics,
@@ -178,6 +179,23 @@ def configure_diagnostics(context: "AppContext") -> Diagnostics:
             return MetricsDiagnostics()
         return manager.diagnostic_snapshot()
 
+    async def backups():
+        health = []
+        for name in list(context.state.servers.servers)[:100]:
+            server = context.get_server(name, require_installation=False)
+            if server.operation_lock.locked():
+                continue
+            health.append(await server.backups.backup_health())
+        return BackupsDiagnostics(
+            servers=len(health),
+            archives=sum(h.count for h in health),
+            total_bytes=sum(h.total_bytes for h in health),
+            failed=sum(h.failed_count for h in health),
+            missing_keys=sum(len(h.missing_key_ids) for h in health),
+            destination_failures=sum(h.destination_failures for h in health),
+            without_backup=sum(h.count == 0 for h in health),
+        )
+
     for name, provider in (
         ("runtime", runtime),
         ("state", state),
@@ -188,6 +206,7 @@ def configure_diagnostics(context: "AppContext") -> Diagnostics:
         ("tasks", tasks),
         ("processes", processes),
         ("metrics", metrics),
+        ("backups", backups),
     ):
         service.register(name, provider)
     if context._events is not None:

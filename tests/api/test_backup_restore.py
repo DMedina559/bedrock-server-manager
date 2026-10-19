@@ -79,7 +79,8 @@ async def test_api_prunes_unified_archives(app_context, populated_server):
         PruneOldBackupsRequest(server_name=server.server_name), app_context=app_context
     )
     assert result.status == "success"
-    assert len(await server.backups.list_snapshots()) == 1
+    snapshots = await server.backups.list_snapshots()
+    assert len(snapshots) == 1
 
 
 async def test_restore_running_server_skips_start_backup_and_update(
@@ -112,5 +113,7 @@ async def test_restore_running_server_skips_start_backup_and_update(
     assert result.result.restarted
     assert result.result.restart_error is None
     assert original_process.returncode is not None
-    assert len(await server.backups.list_snapshots()) == 1
+    snapshots = await server.backups.list_snapshots()
+    assert len(snapshots) == 2
+    assert sum(item.purpose == "pre_restore" for item in snapshots) == 1
     assert server.configuration.snapshot().autoupdate

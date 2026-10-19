@@ -8,18 +8,18 @@ import shutil
 import stat
 import tempfile
 from contextlib import AsyncExitStack
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from typing import TYPE_CHECKING, Awaitable, Callable, Literal
 from uuid import uuid4
 
 from ..config.const import get_installed_version
 from ..error import BackupRestoreError, ConfigurationError
-from ..failures import classify_failure
 from ..operations import OperationName
 from ..results import CleanupResult, CompletedItem, ComponentResults, SkippedItem
 from ..utils.threads import run_in_thread
 from .archive import digest, header, safe_name, unpack, write_archive
+from .catalog import ManagedBackups, now
 from .credentials import BackupCredentials, private_directory, protect
 from .models import (
     COMPONENTS,
@@ -87,7 +87,7 @@ def inventory(staging: Path, components) -> tuple[list[BackupFile], list[str]]:
     return files, directories
 
 
-class UnifiedServerBackups:
+class UnifiedServerBackups(ManagedBackups):
     """Share one capture implementation between manual and automatic callers."""
 
     server: "BedrockServer"
@@ -173,8 +173,34 @@ class UnifiedServerBackups:
         self,
         *,
         encrypted: bool | None = None,
-        purpose: Literal["manual", "pre_start", "pre_update"] = "manual",
+        purpose: Literal["manual", "pre_start", "pre_update", "pre_restore"] = "manual",
         progress: Callable[[str], Awaitable[None]] | None = None,
+        _safety_world: str | None = None,
+    ) -> BackupSummary:
+        try:
+            return await self._create_snapshot(
+                encrypted=encrypted,
+                purpose=purpose,
+                progress=progress,
+                _safety_world=_safety_world,
+            )
+        except Exception:
+            async with self.server.operation_lock:
+                value = await run_in_thread(self.catalog.load)
+                value.update(
+                    last_failure_at=now(),
+                    last_error="Backup capture failed; inspect application logs.",
+                )
+                await run_in_thread(self.catalog.save, value)
+            raise
+
+    async def _create_snapshot(
+        self,
+        *,
+        encrypted: bool | None = None,
+        purpose: Literal["manual", "pre_start", "pre_update", "pre_restore"] = "manual",
+        progress: Callable[[str], Awaitable[None]] | None = None,
+        _safety_world: str | None = None,
     ) -> BackupSummary:
         with self.server.operations.scope(
             OperationName.BACKUP_CREATE,
@@ -226,7 +252,22 @@ class UnifiedServerBackups:
                                     str(Path(self.server.paths.server_dir) / name)
                                 )
                             )
-                        world = await self.server.get_world_name()
+                        capture_warnings = []
+                        try:
+                            world = await self.server.get_world_name()
+                        except Exception:
+                            if purpose != "pre_restore":
+                                raise
+                            world = "unconfigured"
+                            capture_warnings.append(
+                                "Current properties do not identify an active world. The safety archive preserves configuration; other worlds remain on disk."
+                            )
+                        if _safety_world is not None:
+                            if purpose != "pre_restore":
+                                raise BackupRestoreError(
+                                    "World overrides are reserved for restore safety captures."
+                                )
+                            world = _safety_world
                         safe_name(world)
                         if Path(world).name != world:
                             raise BackupRestoreError("Invalid active world name.")
@@ -252,8 +293,10 @@ class UnifiedServerBackups:
                                     copy_source, source_world, staging / "world"
                                 )
                             components["world"] = "included"
-                        elif source_world.parent.exists() and any(
-                            source_world.parent.iterdir()
+                        elif (
+                            purpose != "pre_restore"
+                            and source_world.parent.exists()
+                            and any(source_world.parent.iterdir())
                         ):
                             raise BackupRestoreError(
                                 "The active world is unexpectedly missing."
@@ -303,7 +346,8 @@ class UnifiedServerBackups:
                         source_world=world,
                         capture_method="live" if running else "offline",
                         reason=purpose,
-                        warnings=(
+                        warnings=capture_warnings
+                        + (
                             [
                                 "Server-level packs outside the active world are not included; preserve them separately."
                             ]
@@ -350,7 +394,53 @@ class UnifiedServerBackups:
                     await run_in_thread(
                         self.unpack_snapshot, temporary, verification, password
                     )
+                    structure_valid = True
+                    try:
+                        await run_in_thread(
+                            self._validate_recovery_contents, staging, manifest
+                        )
+                    except Exception:
+                        if purpose != "pre_restore":
+                            raise
+                        structure_valid = False
+                    await run_in_thread(sync_tree, temporary)
                     await run_in_thread(os.replace, temporary, destination)
+                await run_in_thread(self._record_verified, destination, manifest)
+                if not structure_valid:
+                    await run_in_thread(
+                        self.catalog.update,
+                        filename,
+                        verification={
+                            "status": "failed",
+                            "verified_at": now(),
+                            "error": "Safety archive preserves damaged configuration; offline extraction may be needed.",
+                        },
+                    )
+                if purpose == "pre_restore":
+                    await run_in_thread(
+                        self.catalog.update,
+                        filename,
+                        pinned=True,
+                        protected_until=(
+                            datetime.now(timezone.utc)
+                            + timedelta(
+                                hours=self.server.settings.get(
+                                    "backups.safety_window_hours", 168
+                                )
+                            )
+                        ).isoformat(),
+                    )
+                for name, config in self.destination_configs().items():
+                    if config.get("enabled", True):
+                        try:
+                            await self.copy_snapshot(filename, name)
+                        except BackupRestoreError:
+                            self.logger.warning(
+                                "Backup created locally; destination copy requires attention."
+                            )
+                catalog_state = await run_in_thread(self.catalog.load)
+                catalog_state["last_error"] = None
+                await run_in_thread(self.catalog.save, catalog_state)
                 operation.finish(
                     "completed",
                     scope=tuple(
@@ -359,13 +449,22 @@ class UnifiedServerBackups:
                         if state == "included"
                     ),
                 )
+                await self._notify_backup(filename, "capture", "completed")
                 retention = await self.prune_snapshots()
                 if retention.failures:
                     self.logger.warning(
                         "Backup created; retention could not remove %s archives.",
                         len(retention.failures),
                     )
+                metadata = (await run_in_thread(self.catalog.load))["archives"][
+                    filename
+                ]
                 return BackupSummary(
+                    verification=metadata.get("verification", {}),
+                    pinned=metadata.get("pinned", False),
+                    protected_until=metadata.get("protected_until"),
+                    purpose=purpose,
+                    copies=metadata.get("copies", {}),
                     backup_id=filename,
                     filename=filename,
                     size=destination.stat().st_size,
@@ -437,9 +536,16 @@ class UnifiedServerBackups:
             if not root.exists():
                 return []
             result = []
+            catalog = await run_in_thread(self.catalog.load)
             for path in sorted(root.glob("*.bsmbackup"), reverse=True):
                 if path.is_symlink() or not path.is_file():
                     continue
+                metadata = dict(catalog["archives"].get(path.name, {}))
+                if metadata.get("fingerprint") != [
+                    path.stat().st_size,
+                    path.stat().st_mtime_ns,
+                ]:
+                    metadata.pop("verification", None)
                 try:
                     info = await run_in_thread(header, path)
                     result.append(
@@ -447,6 +553,11 @@ class UnifiedServerBackups:
                             backup_id=path.name,
                             filename=path.name,
                             size=path.stat().st_size,
+                            verification=metadata.get("verification", {}),
+                            pinned=metadata.get("pinned", False),
+                            protected_until=metadata.get("protected_until"),
+                            purpose=metadata.get("purpose"),
+                            copies=metadata.get("copies", {}),
                             encrypted=info.encrypted,
                             key_id=info.key_id,
                         )
@@ -458,29 +569,18 @@ class UnifiedServerBackups:
                             filename=path.name,
                             size=path.stat().st_size,
                             encrypted=False,
+                            verification=metadata.get("verification", {}),
+                            pinned=metadata.get("pinned", False),
+                            protected_until=metadata.get("protected_until"),
+                            purpose=metadata.get("purpose"),
+                            copies=metadata.get("copies", {}),
                             error="Invalid backup header.",
                         )
                     )
             return result
 
     async def prune_snapshots(self) -> CleanupResult:
-        async with self.server.operation_lock:
-            files = [item for item in await self.list_snapshots() if item.error is None]
-            keep = self.server.settings.get("retention.backups", 3)
-            retained = files if keep == 0 else files[:keep]
-            failures = {}
-            deleted = []
-            for item in ([] if keep == 0 else files[keep:]):
-                try:
-                    await run_in_thread(self.resolve_backup(item.backup_id).unlink)
-                    deleted.append(item.filename)
-                except OSError as error:
-                    failures[item.filename] = classify_failure(error).error
-            return CleanupResult(
-                deleted=deleted,
-                retained=[item.filename for item in retained],
-                failures=failures,
-            )
+        return await self.prune_managed_snapshots()
 
     def _destinations(
         self, staging: Path, manifest: BackupManifest, components: list[Component]
@@ -518,6 +618,10 @@ class UnifiedServerBackups:
             if "world" in components or "server.properties" in components
             else manifest.source_world
         )
+        if manifest.reason == "pre_restore" and "world" in components:
+            world = manifest.source_world
+            if Path(safe_name(world)).name != world:
+                raise BackupRestoreError("Invalid safety world destination.")
         warnings = list(manifest.warnings)
         if manifest.source_server != self.server.server_name:
             warnings.append(
@@ -661,13 +765,20 @@ class UnifiedServerBackups:
                 )
                 token, old_bytes = await run_in_thread(self._plan_token, path, targets)
                 size = sum(item.size for item in manifest.files) + old_bytes
+                changes, counts, settings = await run_in_thread(
+                    self.restore_comparison, staging, targets
+                )
                 return RestorePlan(
                     backup_id=identifier,
                     token=token,
                     components=components,
                     destinations=targets,
                     warnings=warnings,
-                    required_bytes=size,
+                    required_bytes=size * 2,
+                    changes=changes,
+                    change_counts=counts,
+                    setting_changes=settings,
+                    changes_truncated=sum(counts.values()) > len(changes),
                 )
 
     async def restore_snapshot(
@@ -748,6 +859,30 @@ class UnifiedServerBackups:
                     await stop_server()
                     if await self.server.is_running():
                         raise BackupRestoreError("The server did not stop.")
+                await run_in_thread(
+                    self.catalog.update,
+                    identifier,
+                    protected_until=(
+                        datetime.now(timezone.utc)
+                        + timedelta(
+                            hours=self.server.settings.get(
+                                "backups.safety_window_hours", 168
+                            )
+                        )
+                    ).isoformat(),
+                )
+                await self._stage(
+                    progress, "Creating protected pre-restore safety backup"
+                )
+                safety = await self.create_snapshot(
+                    purpose="pre_restore",
+                    _safety_world=(
+                        Path(targets["world"]).name if "world" in targets else None
+                    ),
+                    encrypted=header(path).encrypted
+                    or self.server.settings.get("backups.encryption", False),
+                )
+                # Safety capture is independent from the recovery journal and survives a successful restore.
                 async with AsyncExitStack() as locks:
                     for name in sorted(
                         target
@@ -810,6 +945,22 @@ class UnifiedServerBackups:
                         raise
                 cleanup_warning = None
                 try:
+                    await run_in_thread(
+                        self.catalog.update,
+                        safety.backup_id,
+                        pinned=safety.verification.status != "verified",
+                        protected_until=(
+                            datetime.now(timezone.utc)
+                            + timedelta(
+                                hours=self.server.settings.get(
+                                    "backups.safety_window_hours", 168
+                                )
+                            )
+                        ).isoformat(),
+                    )
+                except Exception:
+                    cleanup_warning = "Data restored; safety archive protection metadata needs attention. Its pin remains in place."
+                try:
                     await run_in_thread(shutil.rmtree, journal.path)
                 except OSError:
                     cleanup_warning = "Restore committed; recovery journal cleanup will be retried at startup."
@@ -826,6 +977,7 @@ class UnifiedServerBackups:
                         restart_error = "Data restored successfully, but the server could not restart."
                 return RestoreResult(
                     restored=components,
+                    safety_backup_id=safety.backup_id,
                     restarted=restarted,
                     restart_error=restart_error,
                     cleanup_warning=cleanup_warning,

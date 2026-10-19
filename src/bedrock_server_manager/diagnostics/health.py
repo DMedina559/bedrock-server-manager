@@ -4,6 +4,7 @@ from collections import Counter
 from typing import Literal
 
 from .models import (
+    BackupsDiagnostics,
     CollectionDiagnostics,
     DiagnosticData,
     DiagnosticFinding,
@@ -29,6 +30,21 @@ def evaluate_health(
     data: DiagnosticData, options: DiagnosticOptions
 ) -> tuple[Status, list[DiagnosticIssue]]:
     """Explain current evidence without inferring health from lifetime failure totals."""
+    if isinstance(data, BackupsDiagnostics):
+        if (
+            data.failed
+            or data.missing_keys
+            or data.destination_failures
+            or data.without_backup
+        ):
+            return "degraded", [
+                DiagnosticIssue(
+                    code="backup_attention",
+                    message="Backup verification, recovery keys, or storage copies need attention.",
+                    action="check_configuration",
+                )
+            ]
+        return "ok", []
     if isinstance(data, PluginValues):
         issues = (
             [

@@ -231,6 +231,17 @@ class MetricsDiagnostics(DiagnosticModel):
     warming_up: bool = True
 
 
+class BackupsDiagnostics(DiagnosticModel):
+    kind: Literal["backups"] = "backups"
+    servers: int
+    archives: int
+    total_bytes: int
+    failed: int
+    missing_keys: int
+    destination_failures: int
+    without_backup: int
+
+
 class PluginValues(DiagnosticModel):
     """Explicit observations; string dumps and secrets are excluded."""
 
@@ -263,6 +274,7 @@ DiagnosticData = (
     | ProcessesDiagnostics
     | MetricsDiagnostics
     | PluginValues
+    | BackupsDiagnostics
 )
 
 

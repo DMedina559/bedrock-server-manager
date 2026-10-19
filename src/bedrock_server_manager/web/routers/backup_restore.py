@@ -5,7 +5,7 @@ import logging
 import os
 import tempfile
 from pathlib import Path
-from typing import Any, Callable
+from typing import Any, Callable, Literal
 from uuid import uuid4
 
 import aiofiles.ospath
@@ -20,7 +20,7 @@ from fastapi import (
     status,
 )
 from fastapi.responses import Response, StreamingResponse
-from pydantic import SecretStr
+from pydantic import Field, SecretStr
 
 from bedrock_server_manager.api.models import (
     APIRequest,
@@ -36,17 +36,21 @@ from bedrock_server_manager.api.models import (
 
 from ...api import backup_restore as backup_restore_api
 from ...api.models.backup_restore import (
+    BackupHealthResponse,
     CreateSnapshotRequest,
     InspectSnapshotRequest,
     ListSnapshotsRequest,
     ListSnapshotsResponse,
+    ManageSnapshotRequest,
     PlanSnapshotRestoreRequest,
+    PrepareBackupCopyRequest,
     RestoreRecoveryResponse,
     RestoreSnapshotRequest,
 )
 from ...backups.archive import MAX_BYTES, write_archive
 from ...backups.credentials import BackupCredentials, private_directory
 from ...backups.models import Component, ConfigComponent
+from ...backups.recovery import sync_tree
 from ...context import AppContext
 from ...utils.threads import run_in_thread
 from ..deps import (
@@ -514,6 +518,7 @@ async def download_snapshot(
     try:
         path = backups.resolve_backup(backup_id)
         stream = await run_in_thread(path.open, "rb")
+        size = os.fstat(stream.fileno()).st_size
         backups.server.operation_lock.release()
     except BaseException:
         backups.server.operation_lock.release()
@@ -531,6 +536,7 @@ async def download_snapshot(
         media_type="application/octet-stream",
         headers={
             "Content-Disposition": f'attachment; filename="{path.name}"',
+            "Content-Length": str(size),
             "Cache-Control": "no-store",
         },
     )
@@ -578,7 +584,12 @@ async def import_snapshot(
                     + uuid4().hex
                     + ".bsmbackup"
                 )
+                await run_in_thread(
+                    backups._validate_recovery_contents, contents, manifest
+                )
+                await run_in_thread(sync_tree, archive)
                 await run_in_thread(os.replace, archive, root / filename)
+                await run_in_thread(backups._record_verified, root / filename, manifest)
             return ListSnapshotsResponse(backups=await backups.list_snapshots())
     finally:
         await file.close()
@@ -727,4 +738,76 @@ async def retry_recovery(
         current_user,
         backup_restore_api.recover_server_backup,
         ListSnapshotsRequest(server_name=server_name),
+    )
+
+
+@router.get(
+    "/api/server/{server_name}/backups/health",
+    operation_id="get_backup_health",
+    response_model=BackupHealthResponse,
+)
+async def backup_health(
+    server_name: str = Depends(validate_server_registered),
+    current_user: UserResponse = Depends(get_moderator_user),
+    app_context: AppContext = Depends(get_app_context),
+) -> BackupHealthResponse:
+    """Read backup verification, storage and key health."""
+    return await backup_restore_api.get_backup_health(
+        ListSnapshotsRequest(server_name=server_name), app_context=app_context
+    )
+
+
+class SnapshotManagePayload(SnapshotInspectPayload):
+    action: Literal["verify", "pin", "unpin", "copy", "test_key"]
+    destination: str | None = None
+
+
+@router.post(
+    "/api/server/{server_name}/backups/{backup_id}/manage",
+    operation_id="manage_server_snapshot",
+    response_model=TaskAcceptedResponse,
+    status_code=202,
+)
+async def manage_snapshot(
+    backup_id: str,
+    payload: SnapshotManagePayload,
+    server_name: str = Depends(validate_server_registered),
+    current_user: UserResponse = Depends(get_moderator_user),
+    app_context: AppContext = Depends(get_app_context),
+) -> TaskAcceptedResponse:
+    """Verify, pin, retry a destination copy, or test an emergency recovery key."""
+    return await _accepted(
+        app_context,
+        current_user,
+        backup_restore_api.manage_server_snapshot,
+        _request(payload, ManageSnapshotRequest, server_name, backup_id=backup_id),
+    )
+
+
+class SnapshotCopyPayload(SnapshotInspectPayload):
+    target_server: str
+    target_version: str = "LATEST"
+    server_port: int = Field(ge=1, le=65535)
+    server_portv6: int = Field(ge=1, le=65535)
+
+
+@router.post(
+    "/api/server/{server_name}/backups/{backup_id}/prepare-copy",
+    operation_id="prepare_backup_copy",
+    response_model=TaskAcceptedResponse,
+    status_code=202,
+)
+async def prepare_backup_copy(
+    backup_id: str,
+    payload: SnapshotCopyPayload,
+    server_name: str = Depends(validate_server_registered),
+    current_user: UserResponse = Depends(get_admin_user),
+    app_context: AppContext = Depends(get_app_context),
+) -> TaskAcceptedResponse:
+    """Prepare a stopped new server; review its component restore separately."""
+    return await _accepted(
+        app_context,
+        current_user,
+        backup_restore_api.prepare_backup_copy,
+        _request(payload, PrepareBackupCopyRequest, server_name, backup_id=backup_id),
     )

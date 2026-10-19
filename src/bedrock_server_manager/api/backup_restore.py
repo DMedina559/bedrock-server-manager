@@ -11,6 +11,7 @@ import aiofiles.ospath
 from ..context import AppContext
 from ..error import (
     AppFileNotFoundError,
+    BackupRestoreError,
     BSMError,
     IncompleteOperationError,
 )
@@ -24,6 +25,7 @@ from .models.backup_restore import (
     BackupAllResponse,
     BackupConfigFileRequest,
     BackupConfigFileResponse,
+    BackupHealthResponse,
     BackupWorldRequest,
     BackupWorldResponse,
     CreateSnapshotRequest,
@@ -34,8 +36,12 @@ from .models.backup_restore import (
     ListBackupFilesResponse,
     ListSnapshotsRequest,
     ListSnapshotsResponse,
+    ManageSnapshotRequest,
+    ManageSnapshotResponse,
     PlanSnapshotRestoreRequest,
     PlanSnapshotRestoreResponse,
+    PrepareBackupCopyRequest,
+    PrepareBackupCopyResponse,
     PruneOldBackupsRequest,
     PruneOldBackupsResponse,
     RestoreAllRequest,
@@ -650,3 +656,47 @@ async def recover_server_backup(
     return RestoreRecoveryResponse(
         recovery=await server.backups.recover_pending_restore()
     )
+
+
+@api_method("get_backup_health")
+async def get_backup_health(
+    request: ListSnapshotsRequest, *, app_context: AppContext
+) -> BackupHealthResponse:
+    """Report durable backup health without opening secret archive contents."""
+    server = app_context.get_server(request.server_name, require_installation=False)
+    return BackupHealthResponse(health=await server.backups.backup_health())
+
+
+@api_method("manage_server_snapshot")
+async def manage_server_snapshot(
+    request: ManageSnapshotRequest, *, app_context: AppContext
+) -> ManageSnapshotResponse:
+    """Verify, pin, copy, or test a recovery key against an authenticated archive."""
+    backups = app_context.get_server(
+        request.server_name, require_installation=False
+    ).backups
+    key = request.recovery_key.get_secret_value() if request.recovery_key else None
+    if request.action in ("verify", "test_key"):
+        if request.action == "test_key" and not key:
+            raise BackupRestoreError("Enter the recovery key from your emergency kit.")
+        await backups.verify_snapshot(
+            request.backup_id, key, record_failure=request.action != "test_key"
+        )
+    elif request.action in ("pin", "unpin"):
+        await backups.pin_snapshot(request.backup_id, request.action == "pin")
+    else:
+        if not request.destination:
+            raise BackupRestoreError("Select a configured backup destination.")
+        await backups.copy_snapshot(request.backup_id, request.destination)
+    return ManageSnapshotResponse(message="Backup operation completed.")
+
+
+@api_method("prepare_backup_copy")
+@track_operation(OperationName.BACKUP_RESTORE)
+async def prepare_backup_copy(
+    request: PrepareBackupCopyRequest, *, app_context: AppContext
+) -> PrepareBackupCopyResponse:
+    """Install a stopped destination and publish a port-remapped archive for review."""
+    from ..backups.clone import prepare_copy
+
+    return await prepare_copy(request, app_context)

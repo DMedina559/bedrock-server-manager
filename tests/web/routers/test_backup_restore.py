@@ -88,7 +88,8 @@ async def test_http_create_inspect_plan_restore(
         },
     )
     assert uploaded.status_code == 200, uploaded.text
-    assert len(uploaded.json()["backups"]) == 2
+    assert len(uploaded.json()["backups"]) == 3
+    assert restored["result"]["safety_backup_id"]
 
 
 async def test_recovery_key_is_not_in_tasks_or_diagnostics(
@@ -149,3 +150,28 @@ async def test_http_recovery_inspection_and_retry(
     )
     assert not result["recovery"]["active"]
     assert Path(server.paths.allowlist_json_path).read_bytes() == original
+
+
+async def test_backup_health_management_and_native_upload_limit(
+    admin_auth_client, app_context, populated_server, wait_for_task
+):
+    client = admin_auth_client
+    base = f"/api/server/{populated_server.server_name}/backups"
+    created = await task_result(
+        client, app_context, await client.post(base, json={}), wait_for_task
+    )
+    identifier = created["backup"]["backup_id"]
+    for action in ("verify", "pin", "unpin"):
+        await task_result(
+            client,
+            app_context,
+            await client.post(f"{base}/{identifier}/manage", json={"action": action}),
+            wait_for_task,
+        )
+    health = await client.get(f"{base}/health")
+    assert health.status_code == 200 and health.json()["health"]["last_verified_at"]
+    await app_context.settings.set("backups.max_archive_bytes", 1)
+    too_large = await client.post(
+        f"{base}/import", files={"file": ("huge.bsmbackup", b"x" * 70000)}
+    )
+    assert too_large.status_code == 413

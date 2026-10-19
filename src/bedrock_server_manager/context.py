@@ -66,6 +66,9 @@ class AppContext:
         self._plugin_manager: Optional["PluginManager"] = None
         self._task_manager: Optional["TaskManager"] = None
         self._connection_manager: Optional["ConnectionManager"] = None
+        from .backups.maintenance import BackupMaintenance
+
+        self._backup_maintenance = BackupMaintenance(self)
         self._metrics_service: Optional["MetricsService"] = None
         self._resource_monitor: Optional["ResourceMonitor"] = None
         self._log_streamer: Optional["LogStreamer"] = None
@@ -258,6 +261,7 @@ class AppContext:
             ),
             ("resources", lambda: self.resource_monitor.start()),
             ("metrics", lambda: self.metrics_service.start()),
+            ("backup maintenance", lambda: self._backup_maintenance.start()),
             ("metrics readiness", lambda: self.metrics_service.snapshot()),
             (
                 "startup hooks",
@@ -355,6 +359,7 @@ class AppContext:
             self._task_manager.begin_shutdown()
         # Observers release process and websocket dependencies before teardown.
         for name, component in (
+            ("backup maintenance", self._backup_maintenance),
             ("metrics", self._metrics_service),
             ("resources", self._resource_monitor),
             ("logs", self._log_streamer),

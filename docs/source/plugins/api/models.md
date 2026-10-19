@@ -500,6 +500,54 @@ Schemas are listed once. Local `$defs` references identify other models on this 
 }
 ```
 
+## BackupCopy
+
+```json
+{
+  "additionalProperties": false,
+  "properties": {
+    "completed_at": {
+      "anyOf": [
+        {
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "title": "Completed At"
+    },
+    "error": {
+      "anyOf": [
+        {
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "title": "Error"
+    },
+    "status": {
+      "enum": [
+        "pending",
+        "completed",
+        "failed"
+      ],
+      "title": "Status",
+      "type": "string"
+    }
+  },
+  "required": [
+    "status"
+  ],
+  "title": "BackupCopy",
+  "type": "object"
+}
+```
+
 ## BackupFile
 
 ```json
@@ -540,6 +588,148 @@ Schemas are listed once. Local `$defs` references identify other models on this 
     "sha256"
   ],
   "title": "BackupFile",
+  "type": "object"
+}
+```
+
+## BackupHealth
+
+```json
+{
+  "additionalProperties": false,
+  "properties": {
+    "count": {
+      "title": "Count",
+      "type": "integer"
+    },
+    "destination_failures": {
+      "default": 0,
+      "title": "Destination Failures",
+      "type": "integer"
+    },
+    "failed_count": {
+      "default": 0,
+      "title": "Failed Count",
+      "type": "integer"
+    },
+    "last_error": {
+      "anyOf": [
+        {
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "title": "Last Error"
+    },
+    "last_failure_at": {
+      "anyOf": [
+        {
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "title": "Last Failure At"
+    },
+    "last_success_at": {
+      "anyOf": [
+        {
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "title": "Last Success At"
+    },
+    "last_verified_at": {
+      "anyOf": [
+        {
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "title": "Last Verified At"
+    },
+    "missing_key_ids": {
+      "items": {
+        "type": "string"
+      },
+      "title": "Missing Key Ids",
+      "type": "array"
+    },
+    "older_key_ids": {
+      "items": {
+        "type": "string"
+      },
+      "title": "Older Key Ids",
+      "type": "array"
+    },
+    "total_bytes": {
+      "title": "Total Bytes",
+      "type": "integer"
+    },
+    "unverified_count": {
+      "default": 0,
+      "title": "Unverified Count",
+      "type": "integer"
+    },
+    "verification_interval_hours": {
+      "title": "Verification Interval Hours",
+      "type": "integer"
+    }
+  },
+  "required": [
+    "count",
+    "total_bytes",
+    "verification_interval_hours"
+  ],
+  "title": "BackupHealth",
+  "type": "object"
+}
+```
+
+## BackupHealthResponse
+
+```json
+{
+  "additionalProperties": false,
+  "properties": {
+    "health": {
+      "$ref": "#/$defs/BackupHealth"
+    },
+    "message": {
+      "anyOf": [
+        {
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "title": "Message"
+    },
+    "status": {
+      "const": "success",
+      "default": "success",
+      "title": "Status",
+      "type": "string"
+    }
+  },
+  "required": [
+    "health"
+  ],
+  "title": "BackupHealthResponse",
   "type": "object"
 }
 ```
@@ -638,7 +828,8 @@ Schemas are listed once. Local `$defs` references identify other models on this 
       "enum": [
         "manual",
         "pre_start",
-        "pre_update"
+        "pre_update",
+        "pre_restore"
       ],
       "title": "Reason",
       "type": "string"
@@ -687,6 +878,13 @@ Schemas are listed once. Local `$defs` references identify other models on this 
       "title": "Backup Id",
       "type": "string"
     },
+    "copies": {
+      "additionalProperties": {
+        "$ref": "#/$defs/BackupCopy"
+      },
+      "title": "Copies",
+      "type": "object"
+    },
     "encrypted": {
       "title": "Encrypted",
       "type": "boolean"
@@ -730,9 +928,41 @@ Schemas are listed once. Local `$defs` references identify other models on this 
       ],
       "default": null
     },
+    "pinned": {
+      "default": false,
+      "title": "Pinned",
+      "type": "boolean"
+    },
+    "protected_until": {
+      "anyOf": [
+        {
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "title": "Protected Until"
+    },
+    "purpose": {
+      "anyOf": [
+        {
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "title": "Purpose"
+    },
     "size": {
       "title": "Size",
       "type": "integer"
+    },
+    "verification": {
+      "$ref": "#/$defs/BackupVerification"
     }
   },
   "required": [
@@ -742,6 +972,52 @@ Schemas are listed once. Local `$defs` references identify other models on this 
     "encrypted"
   ],
   "title": "BackupSummary",
+  "type": "object"
+}
+```
+
+## BackupVerification
+
+```json
+{
+  "additionalProperties": false,
+  "properties": {
+    "error": {
+      "anyOf": [
+        {
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "title": "Error"
+    },
+    "status": {
+      "default": "unverified",
+      "enum": [
+        "unverified",
+        "verified",
+        "failed"
+      ],
+      "title": "Status",
+      "type": "string"
+    },
+    "verified_at": {
+      "anyOf": [
+        {
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "title": "Verified At"
+    }
+  },
+  "title": "BackupVerification",
   "type": "object"
 }
 ```
@@ -805,6 +1081,61 @@ Schemas are listed once. Local `$defs` references identify other models on this 
     "server_name"
   ],
   "title": "BackupWorldResponse",
+  "type": "object"
+}
+```
+
+## BackupsDiagnostics
+
+```json
+{
+  "additionalProperties": false,
+  "properties": {
+    "archives": {
+      "title": "Archives",
+      "type": "integer"
+    },
+    "destination_failures": {
+      "title": "Destination Failures",
+      "type": "integer"
+    },
+    "failed": {
+      "title": "Failed",
+      "type": "integer"
+    },
+    "kind": {
+      "const": "backups",
+      "default": "backups",
+      "title": "Kind",
+      "type": "string"
+    },
+    "missing_keys": {
+      "title": "Missing Keys",
+      "type": "integer"
+    },
+    "servers": {
+      "title": "Servers",
+      "type": "integer"
+    },
+    "total_bytes": {
+      "title": "Total Bytes",
+      "type": "integer"
+    },
+    "without_backup": {
+      "title": "Without Backup",
+      "type": "integer"
+    }
+  },
+  "required": [
+    "servers",
+    "archives",
+    "total_bytes",
+    "failed",
+    "missing_keys",
+    "destination_failures",
+    "without_backup"
+  ],
+  "title": "BackupsDiagnostics",
   "type": "object"
 }
 ```
@@ -2010,6 +2341,7 @@ Schemas are listed once. Local `$defs` references identify other models on this 
         {
           "discriminator": {
             "mapping": {
+              "backups": "#/$defs/BackupsDiagnostics",
               "events": "#/$defs/EventsDiagnostics",
               "metrics": "#/$defs/MetricsDiagnostics",
               "plugin_values": "#/$defs/PluginValues",
@@ -2053,6 +2385,9 @@ Schemas are listed once. Local `$defs` references identify other models on this 
             },
             {
               "$ref": "#/$defs/PluginValues"
+            },
+            {
+              "$ref": "#/$defs/BackupsDiagnostics"
             }
           ]
         },
@@ -5857,6 +6192,100 @@ Schemas are listed once. Local `$defs` references identify other models on this 
 }
 ```
 
+## ManageSnapshotRequest
+
+```json
+{
+  "additionalProperties": false,
+  "properties": {
+    "action": {
+      "enum": [
+        "verify",
+        "pin",
+        "unpin",
+        "copy",
+        "test_key"
+      ],
+      "title": "Action",
+      "type": "string"
+    },
+    "backup_id": {
+      "minLength": 1,
+      "pattern": ".*\\S.*",
+      "title": "Backup Id",
+      "type": "string"
+    },
+    "destination": {
+      "anyOf": [
+        {
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "title": "Destination"
+    },
+    "recovery_key": {
+      "anyOf": [
+        {
+          "format": "password",
+          "type": "string",
+          "writeOnly": true
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "title": "Recovery Key"
+    },
+    "server_name": {
+      "examples": [
+        "example"
+      ],
+      "minLength": 1,
+      "pattern": "^[a-zA-Z0-9_-]+$",
+      "title": "Server Name",
+      "type": "string"
+    }
+  },
+  "required": [
+    "server_name",
+    "backup_id",
+    "action"
+  ],
+  "title": "ManageSnapshotRequest",
+  "type": "object"
+}
+```
+
+## ManageSnapshotResponse
+
+```json
+{
+  "additionalProperties": false,
+  "properties": {
+    "message": {
+      "title": "Message",
+      "type": "string"
+    },
+    "status": {
+      "const": "success",
+      "default": "success",
+      "title": "Status",
+      "type": "string"
+    }
+  },
+  "required": [
+    "message"
+  ],
+  "title": "ManageSnapshotResponse",
+  "type": "object"
+}
+```
+
 ## MetricsDiagnostics
 
 ```json
@@ -6765,6 +7194,117 @@ Schemas are listed once. Local `$defs` references identify other models on this 
     }
   },
   "title": "PluginsDiagnostics",
+  "type": "object"
+}
+```
+
+## PrepareBackupCopyRequest
+
+```json
+{
+  "additionalProperties": false,
+  "properties": {
+    "backup_id": {
+      "minLength": 1,
+      "pattern": ".*\\S.*",
+      "title": "Backup Id",
+      "type": "string"
+    },
+    "recovery_key": {
+      "anyOf": [
+        {
+          "format": "password",
+          "type": "string",
+          "writeOnly": true
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "title": "Recovery Key"
+    },
+    "server_name": {
+      "examples": [
+        "example"
+      ],
+      "minLength": 1,
+      "pattern": "^[a-zA-Z0-9_-]+$",
+      "title": "Server Name",
+      "type": "string"
+    },
+    "server_port": {
+      "maximum": 65535,
+      "minimum": 1,
+      "title": "Server Port",
+      "type": "integer"
+    },
+    "server_portv6": {
+      "maximum": 65535,
+      "minimum": 1,
+      "title": "Server Portv6",
+      "type": "integer"
+    },
+    "target_server": {
+      "examples": [
+        "example"
+      ],
+      "minLength": 1,
+      "pattern": "^[a-zA-Z0-9_-]+$",
+      "title": "Target Server",
+      "type": "string"
+    },
+    "target_version": {
+      "default": "LATEST",
+      "minLength": 1,
+      "pattern": ".*\\S.*",
+      "title": "Target Version",
+      "type": "string"
+    }
+  },
+  "required": [
+    "server_name",
+    "backup_id",
+    "target_server",
+    "server_port",
+    "server_portv6"
+  ],
+  "title": "PrepareBackupCopyRequest",
+  "type": "object"
+}
+```
+
+## PrepareBackupCopyResponse
+
+```json
+{
+  "additionalProperties": false,
+  "properties": {
+    "backup_id": {
+      "title": "Backup Id",
+      "type": "string"
+    },
+    "message": {
+      "title": "Message",
+      "type": "string"
+    },
+    "server_name": {
+      "title": "Server Name",
+      "type": "string"
+    },
+    "status": {
+      "const": "success",
+      "default": "success",
+      "title": "Status",
+      "type": "string"
+    }
+  },
+  "required": [
+    "message",
+    "server_name",
+    "backup_id"
+  ],
+  "title": "PrepareBackupCopyResponse",
   "type": "object"
 }
 ```
@@ -7695,6 +8235,48 @@ Schemas are listed once. Local `$defs` references identify other models on this 
 }
 ```
 
+## RestoreFileChange
+
+```json
+{
+  "additionalProperties": false,
+  "properties": {
+    "action": {
+      "enum": [
+        "added",
+        "replaced",
+        "removed"
+      ],
+      "title": "Action",
+      "type": "string"
+    },
+    "component": {
+      "enum": [
+        "world",
+        "server.properties",
+        "allowlist.json",
+        "permissions.json",
+        "script_config",
+        "bsm_settings"
+      ],
+      "title": "Component",
+      "type": "string"
+    },
+    "path": {
+      "title": "Path",
+      "type": "string"
+    }
+  },
+  "required": [
+    "component",
+    "path",
+    "action"
+  ],
+  "title": "RestoreFileChange",
+  "type": "object"
+}
+```
+
 ## RestorePlan
 
 ```json
@@ -7704,6 +8286,25 @@ Schemas are listed once. Local `$defs` references identify other models on this 
     "backup_id": {
       "title": "Backup Id",
       "type": "string"
+    },
+    "change_counts": {
+      "additionalProperties": {
+        "type": "integer"
+      },
+      "title": "Change Counts",
+      "type": "object"
+    },
+    "changes": {
+      "items": {
+        "$ref": "#/$defs/RestoreFileChange"
+      },
+      "title": "Changes",
+      "type": "array"
+    },
+    "changes_truncated": {
+      "default": false,
+      "title": "Changes Truncated",
+      "type": "boolean"
     },
     "components": {
       "items": {
@@ -7740,6 +8341,18 @@ Schemas are listed once. Local `$defs` references identify other models on this 
     "required_bytes": {
       "title": "Required Bytes",
       "type": "integer"
+    },
+    "safety_backup": {
+      "default": true,
+      "title": "Safety Backup",
+      "type": "boolean"
+    },
+    "setting_changes": {
+      "items": {
+        "$ref": "#/$defs/RestoreValueChange"
+      },
+      "title": "Setting Changes",
+      "type": "array"
     },
     "token": {
       "title": "Token",
@@ -7899,6 +8512,18 @@ Schemas are listed once. Local `$defs` references identify other models on this 
       },
       "title": "Restored",
       "type": "array"
+    },
+    "safety_backup_id": {
+      "anyOf": [
+        {
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "title": "Safety Backup Id"
     }
   },
   "required": [
@@ -8027,6 +8652,62 @@ Schemas are listed once. Local `$defs` references identify other models on this 
     "result"
   ],
   "title": "RestoreSnapshotResponse",
+  "type": "object"
+}
+```
+
+## RestoreValueChange
+
+```json
+{
+  "additionalProperties": false,
+  "properties": {
+    "after": {
+      "anyOf": [
+        {
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "title": "After"
+    },
+    "before": {
+      "anyOf": [
+        {
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "title": "Before"
+    },
+    "component": {
+      "enum": [
+        "world",
+        "server.properties",
+        "allowlist.json",
+        "permissions.json",
+        "script_config",
+        "bsm_settings"
+      ],
+      "title": "Component",
+      "type": "string"
+    },
+    "key": {
+      "title": "Key",
+      "type": "string"
+    }
+  },
+  "required": [
+    "component",
+    "key",
+    "before",
+    "after"
+  ],
+  "title": "RestoreValueChange",
   "type": "object"
 }
 ```

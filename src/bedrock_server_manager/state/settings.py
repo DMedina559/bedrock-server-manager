@@ -120,8 +120,20 @@ class LifecycleSettings(SettingsRecord):
     request_drain_timeout_seconds: float = Field(default=10.0, gt=0, le=600)
 
 
+class BackupDestination(SettingsRecord):
+    path: str = Field(min_length=1)
+    enabled: bool = True
+
+
 class BackupSettings(SettingsRecord):
     encryption: bool = False
+    verification_interval_hours: int = Field(default=168, ge=0, le=8760)
+    safety_window_hours: int = Field(default=168, ge=1, le=8760)
+    keep_daily: int = Field(default=0, ge=0, le=365)
+    keep_weekly: int = Field(default=0, ge=0, le=520)
+    keep_monthly: int = Field(default=0, ge=0, le=120)
+    storage_budget_bytes: int = Field(default=0, ge=0)
+    destinations: dict[str, BackupDestination] = Field(default_factory=dict)
     max_files: int = Field(default=1_000_000, ge=1, le=1_000_000)
     max_expanded_bytes: int = Field(default=1024**4, ge=1)
     max_archive_bytes: int = Field(default=1024**4, ge=1)
