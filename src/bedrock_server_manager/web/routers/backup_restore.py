@@ -45,6 +45,7 @@ from ...api.models.backup_restore import (
     ManageSnapshotRequest,
     PlanSnapshotRestoreRequest,
     PrepareBackupCopyRequest,
+    RecoveryReportResponse,
     RestoreRecoveryResponse,
     RestoreSnapshotRequest,
 )
@@ -865,4 +866,28 @@ async def cleanup_destination(
         CleanupBackupDestinationRequest(
             server_name=server_name, destination=destination, token=payload.token
         ),
+    )
+
+
+@router.get(
+    "/api/server/{server_name}/backups/report",
+    operation_id="download_backup_recovery_report",
+    response_model=RecoveryReportResponse,
+)
+async def download_recovery_report(
+    server_name: str = Depends(validate_server_registered),
+    current_user: UserResponse = Depends(get_moderator_user),
+    app_context: AppContext = Depends(get_app_context),
+) -> Response:
+    """Download a redacted JSON recovery report."""
+    result = await backup_restore_api.download_backup_recovery_report(
+        ListSnapshotsRequest(server_name=server_name), app_context=app_context
+    )
+    return Response(
+        content=result.model_dump_json(indent=2),
+        media_type="application/json",
+        headers={
+            "Content-Disposition": 'attachment; filename="bsm-recovery-report.json"',
+            "Cache-Control": "no-store",
+        },
     )

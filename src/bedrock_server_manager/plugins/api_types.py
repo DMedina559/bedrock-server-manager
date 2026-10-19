@@ -112,6 +112,7 @@ from bedrock_server_manager.api.models import (
     PruneOldBackupsResponse,
     PublishWsEventRequest,
     PublishWsEventResponse,
+    RecoveryReportResponse,
     ReloadSinglePluginRequest,
     ReloadSinglePluginResponse,
     RemoveFromAllowlistRequest,
@@ -252,6 +253,10 @@ class BackupRestoreAPI(Protocol):
     async def create_server_backup(
         self, request: CreateSnapshotRequest | Mapping[str, object]
     ) -> CreateSnapshotResponse: ...
+
+    async def download_backup_recovery_report(
+        self, request: ListSnapshotsRequest | Mapping[str, object]
+    ) -> RecoveryReportResponse: ...
 
     async def dry_run_server_restore(
         self, request: PlanSnapshotRestoreRequest | Mapping[str, object]
@@ -599,6 +604,7 @@ API_METHODS: dict[str, dict[str, str]] = {
         "can_reuse_server_backup": "can_reuse_server_backup",
         "cleanup_backup_destination": "cleanup_backup_destination",
         "create_server_backup": "create_server_backup",
+        "download_backup_recovery_report": "download_backup_recovery_report",
         "dry_run_server_restore": "dry_run_server_restore",
         "get_backup_health": "get_backup_health",
         "get_restore_recovery": "get_restore_recovery",

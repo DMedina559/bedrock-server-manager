@@ -46,6 +46,7 @@ from .models.backup_restore import (
     PrepareBackupCopyResponse,
     PruneOldBackupsRequest,
     PruneOldBackupsResponse,
+    RecoveryReportResponse,
     RestoreAllRequest,
     RestoreAllResponse,
     RestoreConfigFileRequest,
@@ -755,3 +756,14 @@ async def cleanup_backup_destination(
     return CleanupBackupDestinationResponse(
         plan=await cleanup_destination(backups, request.destination, request.token)
     )
+
+
+@api_method("download_backup_recovery_report")
+async def download_backup_recovery_report(
+    request: ListSnapshotsRequest, *, app_context: AppContext
+) -> RecoveryReportResponse:
+    """Export allowlisted recovery evidence without file paths or secret values."""
+    from ..backups.reports import recovery_report
+
+    server = app_context.get_server(request.server_name, require_installation=False)
+    return RecoveryReportResponse(report=await recovery_report(server.backups))

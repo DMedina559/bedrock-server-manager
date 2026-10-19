@@ -212,3 +212,57 @@ class DestinationCleanupPlan(Record):
     available_bytes: int
     warnings: list[str] = Field(default_factory=list)
     applied: bool = False
+
+
+class RecoveryReportReview(Record):
+    recorded_at: str
+    archive_reference: str
+    components: list[Component]
+    dry_run: bool
+    checked_files: int
+    change_counts: dict[str, int]
+    sufficient_space: bool
+    volumes: list[RestoreVolume]
+
+
+class RecoveryReportOutcome(Record):
+    recorded_at: str
+    archive_reference: str
+    status: Literal["completed", "failed", "cancelled"]
+    committed: bool | None = None
+    components: list[Component]
+    restarted: bool = False
+    restart_failed: bool = False
+    cleanup_needed: bool = False
+
+
+class RecoveryReportArchive(Record):
+    archive_reference: str
+    encrypted: bool
+    key_available: bool
+    verification_status: Literal["unverified", "verified", "failed"]
+    verified_at: str | None = None
+    copies_completed: int
+    copies_failed: int
+
+
+class RecoveryReportDrill(Record):
+    archive_reference: str
+    status: Literal["passed", "failed", "running"]
+    checked_at: str | None = None
+    checked_files: int = 0
+
+
+class RecoveryReport(Record):
+    report_version: Literal[1] = 1
+    generated_at: str
+    readiness: Literal["ready", "attention", "unavailable"]
+    archive_count: int
+    archives_omitted: int
+    missing_key_count: int
+    destination_failures: int
+    recovery_pending: bool
+    archives: list[RecoveryReportArchive]
+    last_review: RecoveryReportReview | None = None
+    last_restore: RecoveryReportOutcome | None = None
+    last_drill: RecoveryReportDrill | None = None

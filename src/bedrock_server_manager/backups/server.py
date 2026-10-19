@@ -13,6 +13,8 @@ from pathlib import Path
 from typing import TYPE_CHECKING, Awaitable, Callable, Literal
 from uuid import uuid4
 
+from pydantic import SecretStr
+
 from ..config.const import get_installed_version
 from ..error import BackupRestoreError, ConfigurationError
 from ..operations import OperationName
@@ -20,7 +22,13 @@ from ..results import CleanupResult, CompletedItem, ComponentResults, SkippedIte
 from ..utils.threads import run_in_thread
 from .archive import digest, header, safe_name, unpack, write_archive
 from .catalog import ManagedBackups, now
-from .credentials import BackupCredentials, private_directory, protect
+from .credentials import (
+    BackupCredentials,
+    KeyRecord,
+    key_id,
+    private_directory,
+    protect,
+)
 from .models import (
     COMPONENTS,
     PACK_COMPONENTS,
@@ -179,6 +187,7 @@ class UnifiedServerBackups(ManagedBackups):
         ] = "manual",
         progress: Callable[[str], Awaitable[None]] | None = None,
         _safety_world: str | None = None,
+        _safety_password: str | None = None,
         _schedule_slot: str | None = None,
         include_packs: bool | None = None,
     ) -> BackupSummary:
@@ -188,6 +197,7 @@ class UnifiedServerBackups(ManagedBackups):
                 purpose=purpose,
                 progress=progress,
                 _safety_world=_safety_world,
+                _safety_password=_safety_password,
                 _schedule_slot=_schedule_slot,
                 include_packs=include_packs,
             )
@@ -210,6 +220,7 @@ class UnifiedServerBackups(ManagedBackups):
         ] = "manual",
         progress: Callable[[str], Awaitable[None]] | None = None,
         _safety_world: str | None = None,
+        _safety_password: str | None = None,
         _schedule_slot: str | None = None,
         include_packs: bool | None = None,
     ) -> BackupSummary:
@@ -226,11 +237,20 @@ class UnifiedServerBackups(ManagedBackups):
                     if encrypted is None
                     else encrypted
                 )
-                record = (
-                    await run_in_thread(self.credentials.get)
-                    if use_encryption
-                    else None
-                )
+                record = None
+                if use_encryption:
+                    try:
+                        record = await run_in_thread(self.credentials.get)
+                    except ConfigurationError:
+                        if purpose != "pre_restore" or _safety_password is None:
+                            raise
+                        # Disaster recovery may have only the archive and its kit.
+                        # Keep safety data encrypted without persisting that supplied key.
+                        record = KeyRecord(
+                            key_id=key_id(_safety_password),
+                            secret=SecretStr(_safety_password),
+                            created_at=now(),
+                        )
                 root = await run_in_thread(private_directory, Path(self._directory()))
                 started = datetime.now(timezone.utc)
                 identifier = uuid4()
@@ -901,7 +921,7 @@ class UnifiedServerBackups(ManagedBackups):
                 changes, counts, settings = await run_in_thread(
                     self.restore_comparison, staging, targets
                 )
-                return RestorePlan(
+                plan = RestorePlan(
                     backup_id=identifier,
                     token=token,
                     components=components,
@@ -917,6 +937,10 @@ class UnifiedServerBackups(ManagedBackups):
                     setting_changes=settings,
                     changes_truncated=sum(counts.values()) > len(changes),
                 )
+                from .reports import record_review
+
+                await run_in_thread(record_review, self, plan)
+                return plan
 
     async def restore_snapshot(
         self,
@@ -934,16 +958,24 @@ class UnifiedServerBackups(ManagedBackups):
             raise BackupRestoreError("Server state is unavailable.")
         async with self.server.operation_lock:
             with self.server.state.servers.maintenance(self.server.server_name).hold():
-                return await self._restore_snapshot(
-                    identifier,
-                    components,
-                    token,
-                    recovery_key,
-                    stop_server=stop_server,
-                    start_server=start_server,
-                    restart=restart,
-                    progress=progress,
-                )
+                from .reports import record_outcome
+
+                try:
+                    result = await self._restore_snapshot(
+                        identifier,
+                        components,
+                        token,
+                        recovery_key,
+                        stop_server=stop_server,
+                        start_server=start_server,
+                        restart=restart,
+                        progress=progress,
+                    )
+                except BaseException as error:
+                    await record_outcome(self, identifier, components, error=error)
+                    raise
+                await record_outcome(self, identifier, components, result=result)
+                return result
 
     async def _restore_snapshot(
         self,
@@ -1018,6 +1050,7 @@ class UnifiedServerBackups(ManagedBackups):
                 )
                 safety = await self.create_snapshot(
                     purpose="pre_restore",
+                    _safety_password=password if header(path).encrypted else None,
                     _safety_world=(
                         Path(targets["world"]).name if "world" in targets else None
                     ),

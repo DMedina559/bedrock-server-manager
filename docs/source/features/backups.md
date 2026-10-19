@@ -327,3 +327,47 @@ problems, and failed drills. Persisted condition IDs prevent repeated minute-by-
 minute notifications and survive BSM restarts. Once a condition clears, a later
 recurrence can notify again. Connected browsers receive notifications in their
 notification history; unresolved conditions remain visible on the backup page.
+
+## Recovering on a fresh installation
+
+Keep the `.bsmbackup` archive and its emergency kit separately. On a fresh BSM
+installation, install the appropriate Bedrock version, select the destination
+server, and import the archive using the kit's recovery key. Review components
+and capacity, optionally run a dry run, and confirm the restore. The destination
+server keeps its identity; components you leave unselected remain unchanged.
+The source BSM database and host credentials file are not required.
+
+If the fresh host has no backup encryption key, BSM encrypts the pre-restore
+safety archive with the supplied, validated emergency-kit key. That key is used
+in memory and is not added to the host's credentials file. Keep the same kit to
+recover that safety archive. Configure a host key and download its emergency kit
+before enabling future automatic encrypted captures.
+
+## Recovery reports
+
+Use **Recovery report** on the backup page to download a JSON report, or use
+`bsm-cli backup report --server SERVER --output recovery-report.json`.
+The report contains verification evidence, the latest isolated drill, the latest
+component review and capacity checks, and the latest restore outcome. Archive
+references are hashes. Archive filenames, per-file paths, keys, labels, notes, player
+identities, file contents, and configuration values are excluded. Reports contain
+sizes, timestamps, and operation outcomes; they do not contain an archive or
+replace an emergency kit. The most recent 100 archive entries are included;
+`archives_omitted` identifies any additional entries.
+
+A report records a committed restore separately from restart or cleanup problems.
+An interrupted restore still has its recovery journal as the source of truth.
+Reports do not claim that Minecraft has successfully loaded the restored world.
+
+## Capacity and responsiveness
+
+Captures and dry runs stream archive data through background workers. Operations
+that change the same server wait for an active capture to finish so files remain
+consistent; read-only application work can continue. Large worlds and many small
+files can require substantial temporary space. Restore previews report capacity
+for the server and backup volumes before Minecraft is stopped.
+
+External cleanup records approved deletion intent before removing files. After
+an interruption, maintenance does not recreate a copy already deleted by that
+cleanup. Open a new cleanup preview to reconcile the recorded intent and review
+any remaining work; recovery does not silently delete more external files.

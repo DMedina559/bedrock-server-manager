@@ -60,6 +60,8 @@ def remember_copy(backups, identifier, name, source):
         "pinned": record.get("pinned", False),
         "protected_until": record.get("protected_until"),
     }
+    if identifier in index.get("pending_delete", []):
+        index["pending_delete"].remove(identifier)
     backups.catalog.save(value)
 
 
@@ -126,6 +128,14 @@ def readiness(backups, summaries, value, known):
     if any(item.encrypted and item.key_id not in known for item in summaries):
         reasons.append("Some archives need missing recovery keys.")
     destinations = destination_health(backups)
+    for name, item in destinations.items():
+        item["cleanup_pending"] = len(
+            value.get("destinations", {}).get(name, {}).get("pending_delete", [])
+        )
+    if any(item.get("cleanup_pending") for item in destinations.values()):
+        reasons.append(
+            "External cleanup was interrupted. Review a new cleanup preview."
+        )
     enabled = [
         name
         for name, config in backups.destination_configs().items()
@@ -355,6 +365,7 @@ def cleanup_preview(backups, name, *, bound=None):
 
 async def cleanup_destination(backups: Any, name: str, token: str | None = None):
     async with backups.server.operation_lock:
+        await run_in_thread(reconcile_cleanup, backups, name)
         plan = await run_in_thread(cleanup_preview, backups, name)
         if token is None:
             return plan
@@ -372,15 +383,56 @@ def apply_cleanup(backups, name, plan):
     if cleanup_preview(backups, name, bound=bound).token != plan.token:
         raise BackupRestoreError("Destination changed. Review cleanup again.")
     value = backups.catalog.load()
-    records = value.get("destinations", {}).get(name, {}).get("archives", {})
+    index = value.get("destinations", {}).get(name, {})
+    records = index.get("archives", {})
+    # Persist the approved intent before unlinking. A killed process must not
+    # cause maintenance to recreate a copy whose deletion already happened.
+    index["pending_delete"] = list(plan.delete)
+    for identifier in plan.delete:
+        copy = value["archives"].get(identifier, {}).get("copies", {}).get(name)
+        if copy is not None:
+            copy.update(status="pruned", next_retry_at=None)
+    backups.catalog.save(value)
     for identifier in plan.delete:
         target = root / identifier
         if target.is_symlink() or digest(target) != records[identifier]["sha256"]:
             raise BackupRestoreError("External copy changed. Review cleanup again.")
         target.unlink()
         records.pop(identifier, None)
+        index["pending_delete"].remove(identifier)
         # Mark pruned copies so maintenance does not immediately recreate them.
         copy = value["archives"].get(identifier, {}).get("copies", {}).get(name)
         if copy is not None:
             copy.update(status="pruned", next_retry_at=None)
         backups.catalog.save(value)
+
+
+def reconcile_cleanup(backups, name):
+    """Resolve recorded deletion intent without deleting any additional files."""
+    config, root = destination_root(backups, name)
+    value = backups.catalog.load()
+    index = value.get("destinations", {}).get(name, {})
+    pending = index.get("pending_delete", [])
+    if not pending or index.get("location") != location_id(config):
+        return
+    for identifier in pending:
+        if Path(safe_name(identifier)).name != identifier:
+            raise BackupRestoreError("Invalid external archive name.")
+        target = root / identifier
+        record = index.get("archives", {}).get(identifier)
+        if target.exists():
+            if (
+                target.is_symlink()
+                or record is None
+                or digest(target) != record["sha256"]
+            ):
+                raise BackupRestoreError(
+                    "An interrupted cleanup copy changed; preserve it for inspection."
+                )
+            copy = value["archives"].get(identifier, {}).get("copies", {}).get(name)
+            if copy is not None:
+                copy.update(status="completed")
+        else:
+            index.get("archives", {}).pop(identifier, None)
+    index["pending_delete"] = []
+    backups.catalog.save(value)

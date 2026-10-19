@@ -175,3 +175,28 @@ async def test_backup_health_management_and_native_upload_limit(
         f"{base}/import", files={"file": ("huge.bsmbackup", b"x" * 70000)}
     )
     assert too_large.status_code == 413
+
+
+async def test_recovery_report_download_is_redacted_and_not_cached(
+    admin_auth_client, populated_server
+):
+    snapshot = await populated_server.backups.create_snapshot()
+    response = await admin_auth_client.get(
+        f"/api/server/{populated_server.server_name}/backups/report"
+    )
+    assert response.status_code == 200
+    assert (
+        response.headers["content-disposition"]
+        == 'attachment; filename="bsm-recovery-report.json"'
+    )
+    assert response.headers["cache-control"] == "no-store"
+    assert snapshot.filename not in response.text
+    assert populated_server.paths.server_dir not in response.text
+    assert response.json()["report"]["report_version"] == 1
+
+
+async def test_recovery_report_requires_moderation(auth_client, real_bedrock_server):
+    response = await auth_client.get(
+        f"/api/server/{real_bedrock_server.server_name}/backups/report"
+    )
+    assert response.status_code == 403

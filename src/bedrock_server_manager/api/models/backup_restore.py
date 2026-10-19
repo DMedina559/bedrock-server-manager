@@ -10,6 +10,7 @@ from ...backups.models import (
     Component,
     ConfigComponent,
     DestinationCleanupPlan,
+    RecoveryReport,
     RestorePlan,
     RestoreRecoveryState,
     RestoreResult,
@@ -196,3 +197,7 @@ class CleanupBackupDestinationRequest(ListSnapshotsRequest):
 
 class CleanupBackupDestinationResponse(SuccessResponse):
     plan: DestinationCleanupPlan
+
+
+class RecoveryReportResponse(SuccessResponse):
+    report: RecoveryReport
