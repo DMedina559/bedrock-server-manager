@@ -506,6 +506,11 @@ Schemas are listed once. Local `$defs` references identify other models on this 
 {
   "additionalProperties": false,
   "properties": {
+    "attempts": {
+      "default": 0,
+      "title": "Attempts",
+      "type": "integer"
+    },
     "completed_at": {
       "anyOf": [
         {
@@ -529,6 +534,18 @@ Schemas are listed once. Local `$defs` references identify other models on this 
       ],
       "default": null,
       "title": "Error"
+    },
+    "next_retry_at": {
+      "anyOf": [
+        {
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "title": "Next Retry At"
     },
     "status": {
       "enum": [
@@ -561,7 +578,11 @@ Schemas are listed once. Local `$defs` references identify other models on this 
         "allowlist.json",
         "permissions.json",
         "script_config",
-        "bsm_settings"
+        "bsm_settings",
+        "behavior_packs",
+        "resource_packs",
+        "development_behavior_packs",
+        "development_resource_packs"
       ],
       "title": "Component",
       "type": "string"
@@ -673,6 +694,21 @@ Schemas are listed once. Local `$defs` references identify other models on this 
       },
       "title": "Older Key Ids",
       "type": "array"
+    },
+    "schedule": {
+      "anyOf": [
+        {
+          "additionalProperties": {
+            "$ref": "#/$defs/JsonValue"
+          },
+          "type": "object"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "title": "Schedule"
     },
     "total_bytes": {
       "title": "Total Bytes",
@@ -786,7 +822,11 @@ Schemas are listed once. Local `$defs` references identify other models on this 
           "allowlist.json",
           "permissions.json",
           "script_config",
-          "bsm_settings"
+          "bsm_settings",
+          "behavior_packs",
+          "resource_packs",
+          "development_behavior_packs",
+          "development_resource_packs"
         ]
       },
       "title": "Components",
@@ -829,7 +869,8 @@ Schemas are listed once. Local `$defs` references identify other models on this 
         "manual",
         "pre_start",
         "pre_update",
-        "pre_restore"
+        "pre_restore",
+        "scheduled"
       ],
       "title": "Reason",
       "type": "string"
@@ -917,6 +958,11 @@ Schemas are listed once. Local `$defs` references identify other models on this 
       "default": null,
       "title": "Key Id"
     },
+    "label": {
+      "default": "",
+      "title": "Label",
+      "type": "string"
+    },
     "manifest": {
       "anyOf": [
         {
@@ -927,6 +973,20 @@ Schemas are listed once. Local `$defs` references identify other models on this 
         }
       ],
       "default": null
+    },
+    "notes": {
+      "default": "",
+      "title": "Notes",
+      "type": "string"
+    },
+    "origin": {
+      "default": "captured",
+      "enum": [
+        "captured",
+        "imported"
+      ],
+      "title": "Origin",
+      "type": "string"
     },
     "pinned": {
       "default": false,
@@ -1616,6 +1676,40 @@ Schemas are listed once. Local `$defs` references identify other models on this 
       ],
       "default": null,
       "title": "Encrypted"
+    },
+    "include_packs": {
+      "anyOf": [
+        {
+          "type": "boolean"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "title": "Include Packs"
+    },
+    "purpose": {
+      "default": "manual",
+      "enum": [
+        "manual",
+        "scheduled"
+      ],
+      "title": "Purpose",
+      "type": "string"
+    },
+    "schedule_slot": {
+      "anyOf": [
+        {
+          "maxLength": 128,
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "title": "Schedule Slot"
     },
     "server_name": {
       "examples": [
@@ -6204,7 +6298,8 @@ Schemas are listed once. Local `$defs` references identify other models on this 
         "pin",
         "unpin",
         "copy",
-        "test_key"
+        "test_key",
+        "annotate"
       ],
       "title": "Action",
       "type": "string"
@@ -6226,6 +6321,32 @@ Schemas are listed once. Local `$defs` references identify other models on this 
       ],
       "default": null,
       "title": "Destination"
+    },
+    "label": {
+      "anyOf": [
+        {
+          "maxLength": 120,
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "title": "Label"
+    },
+    "notes": {
+      "anyOf": [
+        {
+          "maxLength": 2000,
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "title": "Notes"
     },
     "recovery_key": {
       "anyOf": [
@@ -6756,7 +6877,11 @@ Schemas are listed once. Local `$defs` references identify other models on this 
           "allowlist.json",
           "permissions.json",
           "script_config",
-          "bsm_settings"
+          "bsm_settings",
+          "behavior_packs",
+          "resource_packs",
+          "development_behavior_packs",
+          "development_resource_packs"
         ],
         "type": "string"
       },
@@ -8257,7 +8382,11 @@ Schemas are listed once. Local `$defs` references identify other models on this 
         "allowlist.json",
         "permissions.json",
         "script_config",
-        "bsm_settings"
+        "bsm_settings",
+        "behavior_packs",
+        "resource_packs",
+        "development_behavior_packs",
+        "development_resource_packs"
       ],
       "title": "Component",
       "type": "string"
@@ -8306,6 +8435,11 @@ Schemas are listed once. Local `$defs` references identify other models on this 
       "title": "Changes Truncated",
       "type": "boolean"
     },
+    "checked_files": {
+      "default": 0,
+      "title": "Checked Files",
+      "type": "integer"
+    },
     "components": {
       "items": {
         "enum": [
@@ -8314,7 +8448,11 @@ Schemas are listed once. Local `$defs` references identify other models on this 
           "allowlist.json",
           "permissions.json",
           "script_config",
-          "bsm_settings"
+          "bsm_settings",
+          "behavior_packs",
+          "resource_packs",
+          "development_behavior_packs",
+          "development_resource_packs"
         ],
         "type": "string"
       },
@@ -8332,11 +8470,20 @@ Schemas are listed once. Local `$defs` references identify other models on this 
           "allowlist.json",
           "permissions.json",
           "script_config",
-          "bsm_settings"
+          "bsm_settings",
+          "behavior_packs",
+          "resource_packs",
+          "development_behavior_packs",
+          "development_resource_packs"
         ]
       },
       "title": "Destinations",
       "type": "object"
+    },
+    "dry_run": {
+      "default": false,
+      "title": "Dry Run",
+      "type": "boolean"
     },
     "required_bytes": {
       "title": "Required Bytes",
@@ -8354,9 +8501,21 @@ Schemas are listed once. Local `$defs` references identify other models on this 
       "title": "Setting Changes",
       "type": "array"
     },
+    "sufficient_space": {
+      "default": true,
+      "title": "Sufficient Space",
+      "type": "boolean"
+    },
     "token": {
       "title": "Token",
       "type": "string"
+    },
+    "volumes": {
+      "items": {
+        "$ref": "#/$defs/RestoreVolume"
+      },
+      "title": "Volumes",
+      "type": "array"
     },
     "warnings": {
       "items": {
@@ -8506,7 +8665,11 @@ Schemas are listed once. Local `$defs` references identify other models on this 
           "allowlist.json",
           "permissions.json",
           "script_config",
-          "bsm_settings"
+          "bsm_settings",
+          "behavior_packs",
+          "resource_packs",
+          "development_behavior_packs",
+          "development_resource_packs"
         ],
         "type": "string"
       },
@@ -8554,7 +8717,11 @@ Schemas are listed once. Local `$defs` references identify other models on this 
           "allowlist.json",
           "permissions.json",
           "script_config",
-          "bsm_settings"
+          "bsm_settings",
+          "behavior_packs",
+          "resource_packs",
+          "development_behavior_packs",
+          "development_resource_packs"
         ],
         "type": "string"
       },
@@ -8691,7 +8858,11 @@ Schemas are listed once. Local `$defs` references identify other models on this 
         "allowlist.json",
         "permissions.json",
         "script_config",
-        "bsm_settings"
+        "bsm_settings",
+        "behavior_packs",
+        "resource_packs",
+        "development_behavior_packs",
+        "development_resource_packs"
       ],
       "title": "Component",
       "type": "string"
@@ -8708,6 +8879,43 @@ Schemas are listed once. Local `$defs` references identify other models on this 
     "after"
   ],
   "title": "RestoreValueChange",
+  "type": "object"
+}
+```
+
+## RestoreVolume
+
+```json
+{
+  "additionalProperties": false,
+  "properties": {
+    "available_bytes": {
+      "title": "Available Bytes",
+      "type": "integer"
+    },
+    "required_bytes": {
+      "title": "Required Bytes",
+      "type": "integer"
+    },
+    "roles": {
+      "items": {
+        "type": "string"
+      },
+      "title": "Roles",
+      "type": "array"
+    },
+    "sufficient": {
+      "title": "Sufficient",
+      "type": "boolean"
+    }
+  },
+  "required": [
+    "roles",
+    "required_bytes",
+    "available_bytes",
+    "sufficient"
+  ],
+  "title": "RestoreVolume",
   "type": "object"
 }
 ```

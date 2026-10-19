@@ -233,6 +233,24 @@ class ManagedBackups:
                 (staging / PREFIXES["bsm_settings"]).read_bytes()
             )
 
+    async def annotate_snapshot(self, identifier, label=None, notes=None):
+        async with self.server.operation_lock:
+            self.resolve_backup(identifier)
+            updates = {}
+            if label is not None:
+                if len(label) > 120:
+                    raise BackupRestoreError(
+                        "Backup labels are limited to 120 characters."
+                    )
+                updates["label"] = label
+            if notes is not None:
+                if len(notes) > 2000:
+                    raise BackupRestoreError(
+                        "Backup notes are limited to 2,000 characters."
+                    )
+                updates["notes"] = notes
+            await run_in_thread(self.catalog.update, identifier, **updates)
+
     async def pin_snapshot(self, identifier: str, pinned: bool):
         async with self.server.operation_lock:
             self.resolve_backup(identifier)
@@ -246,7 +264,9 @@ class ManagedBackups:
             ).items()
         }
 
-    async def copy_snapshot(self, identifier: str, destination: str):
+    async def copy_snapshot(
+        self, identifier: str, destination: str, *, automatic=False
+    ):
         async with self.server.operation_lock:
             configured = self.destination_configs()
             item = configured.get(destination)
@@ -255,7 +275,9 @@ class ManagedBackups:
             path = self.resolve_backup(identifier)
             value = await run_in_thread(self.catalog.load)
             copies = value["archives"].get(identifier, {}).get("copies", {})
-            copies[destination] = {"status": "pending"}
+            previous = copies.get(destination, {})
+            attempts = previous.get("attempts", 0) if automatic else 0
+            copies[destination] = {"status": "pending", "attempts": attempts + 1}
             await run_in_thread(self.catalog.update, identifier, copies=copies)
             try:
                 await run_in_thread(
@@ -263,10 +285,19 @@ class ManagedBackups:
                     path,
                     self.server.server_name,
                 )
-                copies[destination] = {"status": "completed", "completed_at": now()}
+                copies[destination] = {
+                    "status": "completed",
+                    "completed_at": now(),
+                    "attempts": attempts + 1,
+                }
             except Exception:
                 copies[destination] = {
                     "status": "failed",
+                    "attempts": attempts + 1,
+                    "next_retry_at": (
+                        datetime.now(timezone.utc)
+                        + timedelta(seconds=min(3600, 60 * 2 ** (attempts + 1)))
+                    ).isoformat(),
                     "error": "Destination copy failed; check availability and free space.",
                 }
                 await run_in_thread(self.catalog.update, identifier, copies=copies)
@@ -285,7 +316,10 @@ class ManagedBackups:
             keys = await run_in_thread(self.credentials.metadata)
             known = {item["key_id"] for item in keys["keys"]}
             used = {item.key_id for item in summaries if item.encrypted and item.key_id}
+            from .schedule import status
+
             return BackupHealth(
+                schedule=status(self, value),
                 count=len(summaries),
                 total_bytes=sum(item.size for item in summaries),
                 last_success_at=max(
@@ -323,30 +357,51 @@ class ManagedBackups:
             )
 
     async def maintain_backups(self):
-        """Verify overdue archives and retry incomplete copies without making new backups."""
-        async with self.server.operation_lock:
-            interval = self.server.settings.get(
-                "backups.verification_interval_hours", 168
-            )
-            for item in await self.list_snapshots():
+        """Perform one bounded unit, leaving queued interactive work first in line."""
+        if self.server.operation_lock.locked() or self.server.operation_lock.waiting:
+            return
+        interval = self.server.settings.get("backups.verification_interval_hours", 168)
+        # Listing releases its lock before any expensive work starts.
+        summaries = await self.list_snapshots()
+        for item in summaries:
+            if (
+                self.server.operation_lock.locked()
+                or self.server.operation_lock.waiting
+            ):
+                return
+            due = item.verification.verified_at is None or (
+                datetime.now(timezone.utc)
+                - datetime.fromisoformat(item.verification.verified_at)
+            ) >= timedelta(hours=interval)
+            if interval and due:
                 try:
-                    due = item.verification.verified_at is None or (
-                        datetime.now(timezone.utc)
-                        - datetime.fromisoformat(item.verification.verified_at)
-                    ) >= timedelta(hours=interval)
-                    if interval and due:
-                        await self.verify_snapshot(item.backup_id)
-                    for name, config in self.destination_configs().items():
-                        if config.get("enabled", True) and (
-                            name not in item.copies
-                            or item.copies[name].status != "completed"
-                        ):
-                            await self.copy_snapshot(item.backup_id, name)
+                    await self.verify_snapshot(item.backup_id)
                 except Exception:
                     self.logger.warning(
-                        "Backup verification or destination retry needs attention for '%s'.",
+                        "Periodic backup verification needs attention for '%s'.",
                         item.filename,
                     )
+                return
+            for name, config in self.destination_configs().items():
+                copy = item.copies.get(name)
+                due_copy = copy is None or (
+                    copy.status != "completed"
+                    and copy.attempts < 3
+                    and (
+                        copy.next_retry_at is None
+                        or datetime.now(timezone.utc)
+                        >= datetime.fromisoformat(copy.next_retry_at)
+                    )
+                )
+                if config.get("enabled", True) and due_copy:
+                    try:
+                        await self.copy_snapshot(item.backup_id, name, automatic=True)
+                    except Exception:
+                        self.logger.warning(
+                            "Backup destination retry needs attention for '%s'.",
+                            item.filename,
+                        )
+                    return
 
     async def prune_managed_snapshots(self) -> CleanupResult:
         async with self.server.operation_lock:

@@ -125,8 +125,39 @@ class BackupDestination(SettingsRecord):
     enabled: bool = True
 
 
+class BackupSchedule(SettingsRecord):
+    enabled: bool = True
+    time: str = Field(default="03:00", pattern=r"^(?:[01][0-9]|2[0-3]):[0-5][0-9]$")
+    timezone: str = "UTC"
+    weekdays: list[int] = Field(
+        default_factory=lambda: list(range(7)), min_length=1, max_length=7
+    )
+    catch_up: bool = True
+    stagger_minutes: int = Field(default=15, ge=0, le=120)
+
+    @field_validator("timezone")
+    @classmethod
+    def known_timezone(cls, value):
+        from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
+
+        try:
+            ZoneInfo(value)
+        except (ZoneInfoNotFoundError, ValueError):
+            raise ValueError("Choose a valid IANA timezone") from None
+        return value
+
+    @field_validator("weekdays")
+    @classmethod
+    def valid_weekdays(cls, value):
+        if len(set(value)) != len(value) or any(day < 0 or day > 6 for day in value):
+            raise ValueError("Weekdays must be unique integers from 0 through 6")
+        return value
+
+
 class BackupSettings(SettingsRecord):
     encryption: bool = False
+    include_server_packs: bool = True
+    schedules: dict[str, BackupSchedule] = Field(default_factory=dict)
     verification_interval_hours: int = Field(default=168, ge=0, le=8760)
     safety_window_hours: int = Field(default=168, ge=1, le=8760)
     keep_daily: int = Field(default=0, ge=0, le=365)

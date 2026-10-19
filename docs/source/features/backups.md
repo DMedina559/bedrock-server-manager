@@ -11,11 +11,12 @@ BSM creates one portable `.bsmbackup` archive for each backup operation. The sam
 | Allowlist | `allowlist.json`, when present |
 | Player permissions | `permissions.json`, when present |
 | Script configuration | The server's complete `config/` directory, including variables, secrets, and module permissions |
+| Server packs | Optional server-level behavior, resource, and development pack directories |
 | BSM server settings | Autostart, autoupdate, target version, and custom settings for this server |
 
-Missing optional components are recorded as absent. An unreadable existing source fails creation. A newly installed server without a generated world can have a configuration-only backup; the manifest shows its actual coverage.
+Components not present in an archive are recorded as absent. An unreadable existing source fails creation. A newly installed server without a generated world can have a configuration-only backup; the manifest shows its actual coverage.
 
-Executables, logs, running-process state, global BSM users and settings, other servers, and backup encryption keys are excluded. Packs and other dependencies outside the active world's directory are not included. Keep such external content separately.
+Executables, logs, running-process state, global BSM users and settings, other servers, and backup encryption keys are excluded. Server-level pack directories are included by default and can be excluded for an individual capture or through `backups.include_server_packs`. Dependencies stored elsewhere on the host still need separate preservation.
 
 This is a server backup, not a complete BSM installation backup. Preserve the BSM database and host credentials separately when migrating the manager itself.
 
@@ -124,7 +125,7 @@ section. A failed destination copy does not invalidate a completed local backup.
 A changed archive loses its previous verified status until checked again.
 
 By default, lifecycle-owned maintenance checks for overdue verification every
-hour. `backups.verification_interval_hours` defaults to 168; zero disables
+minute after the application becomes ready. `backups.verification_interval_hours` defaults to 168; zero disables
 periodic verification. Maintenance skips servers with active operations and
 retries incomplete copies. Checks can also be run manually with **Verify** or
 `bsm-cli backup manage verify`. Verification uses temporary disk space for the
@@ -213,3 +214,70 @@ archive puts the world back at its original destination. Unrelated worlds remain
 on disk. If current configuration is damaged, BSM can still preserve its raw files
 before a repair restore; that safety archive remains pinned and is flagged for
 manual inspection or offline extraction.
+
+
+## Scheduled backups
+
+Administrators can configure a schedule per server under **Backup policy and
+destinations**. Choose a local daily time, IANA timezone (for example
+`America/Los_Angeles`), weekdays (Monday through Sunday), and a staggering window.
+Schedules follow daylight-saving changes: repeated hours run once, and a missing
+local time shifts forward through the daylight-saving gap.
+
+A new or changed schedule starts with its next occurrence. After a restart,
+catch-up mode runs one backup for the latest missed occurrence rather than
+replaying a backlog. Disable catch-up to skip runs more than two minutes late.
+BSM assigns a stable server-specific offset within the staggering window and
+executes automatic work serially to avoid competing large captures. Pausing and
+re-enabling a schedule starts a new activation window.
+
+Schedule checkpoints survive restarts. Published scheduled archives carry a
+manager-local slot identifier, preventing duplicate creation when a process dies
+between archive publication and completion bookkeeping. Failed attempts back off
+and stop after three tries for that occurrence. The next scheduled occurrence
+gets a new retry allowance. Scheduled captures use the normal backup hooks,
+encryption default, pack policy, verification, and retention.
+
+Verification and destination maintenance perform at most one archive operation
+per server per pass and yield to queued interactive work between operations.
+A running archive operation completes its current safe unit before releasing
+resources; cancellation does not abandon worker threads with open archives.
+Destination copies back off and stop after three automatic attempts. A manual
+retry starts a fresh attempt allowance. Configuring a destination under a new
+name starts an independent copy history.
+
+## Capacity reports and dry runs
+
+Restore review reports required and available space separately for the server
+and backup filesystems. If both locations share a filesystem, their requirements
+are combined. Estimates conservatively include extraction, safety capture,
+compression, verification, metadata overhead, and headroom. Existing destination
+files already occupy disk; journal renames do not duplicate their full contents.
+Space is checked again before Minecraft stops. Other programs can consume space
+after a check, so disk-write failures still use ordinary restore recovery.
+
+**Run dry run** authenticates the archive, validates the selection, copies selected
+contents into a private temporary directory on the destination filesystem,
+flushes the copies, and checks their hashes. It leaves server files and process
+state untouched and removes temporary data afterward. An insufficient-space
+report blocks the exercise and restoration. This checks filesystem readiness;
+it does not start Minecraft or validate every world chunk in the game engine.
+
+## Pack coverage and archive compatibility
+
+Archives remain manifest version **1**. The four server-level pack components are
+optional additions to that inventory. Readers accept older version-1 archives
+without those entries and show only components actually present. Each pack
+directory can be restored independently. Selected directories replace their
+complete destination contents and participate in the same journal and safety
+backup as world and configuration restores. Safety captures include server-level
+packs even when ordinary capture defaults exclude them.
+
+## Labels and finding recovery points
+
+Edit a backup's label and notes from its inspection dialog. These are manager-local
+catalog metadata; editing them does not rewrite an archive or change its checksum.
+They do not travel with downloaded archives. Search by label, notes, or filename,
+and filter by capture reason, imported archives, pins, or verification failures.
+Imported archives retain their original manifest reason and also receive an
+imported-origin marker in the manager catalog.

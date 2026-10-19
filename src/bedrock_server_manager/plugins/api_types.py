@@ -247,6 +247,10 @@ class BackupRestoreAPI(Protocol):
         self, request: CreateSnapshotRequest | Mapping[str, object]
     ) -> CreateSnapshotResponse: ...
 
+    async def dry_run_server_restore(
+        self, request: PlanSnapshotRestoreRequest | Mapping[str, object]
+    ) -> PlanSnapshotRestoreResponse: ...
+
     async def get_backup_health(
         self, request: ListSnapshotsRequest | Mapping[str, object]
     ) -> BackupHealthResponse: ...
@@ -588,6 +592,7 @@ API_METHODS: dict[str, dict[str, str]] = {
         "backup_world": "backup_world",
         "can_reuse_server_backup": "can_reuse_server_backup",
         "create_server_backup": "create_server_backup",
+        "dry_run_server_restore": "dry_run_server_restore",
         "get_backup_health": "get_backup_health",
         "get_restore_recovery": "get_restore_recovery",
         "inspect_server_backup": "inspect_server_backup",

@@ -23,6 +23,7 @@ from .catalog import ManagedBackups, now
 from .credentials import BackupCredentials, private_directory, protect
 from .models import (
     COMPONENTS,
+    PACK_COMPONENTS,
     PREFIXES,
     BackupFile,
     BackupManifest,
@@ -173,9 +174,13 @@ class UnifiedServerBackups(ManagedBackups):
         self,
         *,
         encrypted: bool | None = None,
-        purpose: Literal["manual", "pre_start", "pre_update", "pre_restore"] = "manual",
+        purpose: Literal[
+            "manual", "pre_start", "pre_update", "pre_restore", "scheduled"
+        ] = "manual",
         progress: Callable[[str], Awaitable[None]] | None = None,
         _safety_world: str | None = None,
+        _schedule_slot: str | None = None,
+        include_packs: bool | None = None,
     ) -> BackupSummary:
         try:
             return await self._create_snapshot(
@@ -183,6 +188,8 @@ class UnifiedServerBackups(ManagedBackups):
                 purpose=purpose,
                 progress=progress,
                 _safety_world=_safety_world,
+                _schedule_slot=_schedule_slot,
+                include_packs=include_packs,
             )
         except Exception:
             async with self.server.operation_lock:
@@ -198,9 +205,13 @@ class UnifiedServerBackups(ManagedBackups):
         self,
         *,
         encrypted: bool | None = None,
-        purpose: Literal["manual", "pre_start", "pre_update", "pre_restore"] = "manual",
+        purpose: Literal[
+            "manual", "pre_start", "pre_update", "pre_restore", "scheduled"
+        ] = "manual",
         progress: Callable[[str], Awaitable[None]] | None = None,
         _safety_world: str | None = None,
+        _schedule_slot: str | None = None,
+        include_packs: bool | None = None,
     ) -> BackupSummary:
         with self.server.operations.scope(
             OperationName.BACKUP_CREATE,
@@ -230,6 +241,19 @@ class UnifiedServerBackups(ManagedBackups):
                     + ".bsmbackup"
                 )
                 destination = root / filename
+                if _schedule_slot:
+                    await run_in_thread(
+                        self.catalog.update, filename, schedule_slot=_schedule_slot
+                    )
+                with_packs = (
+                    True
+                    if purpose == "pre_restore"
+                    else (
+                        self.server.settings.get("backups.include_server_packs", True)
+                        if include_packs is None
+                        else include_packs
+                    )
+                )
                 with tempfile.TemporaryDirectory(
                     prefix=".bsm-capture-", dir=root
                 ) as directory:
@@ -245,6 +269,7 @@ class UnifiedServerBackups(ManagedBackups):
                                 "allowlist.json",
                                 "permissions.json",
                                 "config",
+                                *PACK_COMPONENTS,
                             )
                         ):
                             await locks.enter_async_context(
@@ -306,6 +331,7 @@ class UnifiedServerBackups(ManagedBackups):
                             ("allowlist.json", "allowlist.json"),
                             ("permissions.json", "permissions.json"),
                             ("script_config", "config"),
+                            *((name, name) for name in PACK_COMPONENTS if with_packs),
                         )
                         for component, source_name in sources:
                             source = Path(self.server.paths.server_dir) / source_name
@@ -351,7 +377,8 @@ class UnifiedServerBackups(ManagedBackups):
                             [
                                 "Server-level packs outside the active world are not included; preserve them separately."
                             ]
-                            if any(
+                            if not with_packs
+                            and any(
                                 (Path(self.server.paths.server_dir) / name).is_dir()
                                 and any(
                                     (
@@ -431,9 +458,9 @@ class UnifiedServerBackups(ManagedBackups):
                         ).isoformat(),
                     )
                 for name, config in self.destination_configs().items():
-                    if config.get("enabled", True):
+                    if purpose != "scheduled" and config.get("enabled", True):
                         try:
-                            await self.copy_snapshot(filename, name)
+                            await self.copy_snapshot(filename, name, automatic=True)
                         except BackupRestoreError:
                             self.logger.warning(
                                 "Backup created locally; destination copy requires attention."
@@ -508,6 +535,8 @@ class UnifiedServerBackups(ManagedBackups):
                     "permissions.json": "permissions.json",
                     "script_config": "config",
                 }
+                if self.server.settings.get("backups.include_server_packs", True):
+                    sources.update({name: name for name in PACK_COMPONENTS})
                 for component, name in sources.items():
                     target = self._safe_target(name)
                     if target.exists():
@@ -617,6 +646,9 @@ class UnifiedServerBackups(ManagedBackups):
                             protected_until=metadata.get("protected_until"),
                             purpose=metadata.get("purpose"),
                             copies=metadata.get("copies", {}),
+                            label=metadata.get("label", ""),
+                            notes=metadata.get("notes", ""),
+                            origin=metadata.get("origin", "captured"),
                             encrypted=info.encrypted,
                             key_id=info.key_id,
                         )
@@ -633,6 +665,9 @@ class UnifiedServerBackups(ManagedBackups):
                             protected_until=metadata.get("protected_until"),
                             purpose=metadata.get("purpose"),
                             copies=metadata.get("copies", {}),
+                            label=metadata.get("label", ""),
+                            notes=metadata.get("notes", ""),
+                            origin=metadata.get("origin", "captured"),
                             error="Invalid backup header.",
                         )
                     )
@@ -807,6 +842,8 @@ class UnifiedServerBackups(ManagedBackups):
         identifier: str,
         components: list[Component],
         recovery_key: str | None = None,
+        *,
+        dry_run: bool = False,
     ) -> RestorePlan:
         async with self.server.operation_lock:
             RestoreJournal(self.server).ensure_clear()
@@ -823,7 +860,33 @@ class UnifiedServerBackups(ManagedBackups):
                     self._destinations, staging, manifest, components
                 )
                 token, old_bytes = await run_in_thread(self._plan_token, path, targets)
-                size = sum(item.size for item in manifest.files) + old_bytes
+                from .space import existing_parent, restore_capacity
+
+                volumes = await run_in_thread(restore_capacity, self, manifest, targets)
+                checked = 0
+                if dry_run and all(volume.sufficient for volume in volumes):
+                    # Exercise replacement copies on the destination filesystem in isolation.
+                    target_root = Path(self.server.paths.server_dir)
+                    with tempfile.TemporaryDirectory(
+                        prefix=".bsm-dry-run-", dir=existing_parent(target_root)
+                    ) as probe:
+                        for component in components:
+                            await run_in_thread(
+                                copy_source,
+                                staging / PREFIXES[component],
+                                Path(probe) / PREFIXES[component],
+                            )
+                        await run_in_thread(sync_tree, Path(probe))
+                        for item in manifest.files:
+                            if item.component in components:
+                                if (
+                                    await run_in_thread(digest, Path(probe) / item.path)
+                                    != item.sha256
+                                ):
+                                    raise BackupRestoreError(
+                                        "Dry-run replacement checksum validation failed."
+                                    )
+                                checked += 1
                 changes, counts, settings = await run_in_thread(
                     self.restore_comparison, staging, targets
                 )
@@ -833,7 +896,11 @@ class UnifiedServerBackups(ManagedBackups):
                     components=components,
                     destinations=targets,
                     warnings=warnings,
-                    required_bytes=size * 2,
+                    required_bytes=sum(v.required_bytes for v in volumes),
+                    volumes=volumes,
+                    sufficient_space=all(v.sufficient for v in volumes),
+                    dry_run=dry_run,
+                    checked_files=checked,
                     changes=changes,
                     change_counts=counts,
                     setting_changes=settings,
@@ -904,10 +971,15 @@ class UnifiedServerBackups(ManagedBackups):
                     raise BackupRestoreError(
                         "Restore plan is stale. Review a new plan before restoring."
                     )
-                if shutil.disk_usage(root.parent).free < old_bytes + sum(
-                    item.size for item in manifest.files
-                ):
-                    raise BackupRestoreError("Insufficient space for restore recovery.")
+                from .space import restore_capacity
+
+                capacity = await run_in_thread(
+                    restore_capacity, self, manifest, targets, staged=True
+                )
+                if not all(volume.sufficient for volume in capacity):
+                    raise BackupRestoreError(
+                        "Insufficient space on the server or backup volume for staging and a safety archive."
+                    )
                 await run_in_thread(sync_tree, staging)
                 was_running = await self.server.is_running()
                 await self._stage(progress, "Preparing restore recovery")

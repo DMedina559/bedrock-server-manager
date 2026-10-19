@@ -161,6 +161,37 @@ data = result.model_dump(mode="json")
 ---
 
 
+## `backup_restore.dry_run_server_restore`
+```python
+await self.api.backup_restore.dry_run_server_restore(request: bedrock_server_manager.api.models.backup_restore.PlanSnapshotRestoreRequest)
+```
+- **Async (Requires await):** Yes
+
+- **Description:** Validate and copy selected contents in isolation without stopping Minecraft.
+
+- **Returns:** `PlanSnapshotRestoreResponse`
+
+Runtime context and plugin identity are injected by the bridge. Failures raise application exceptions; plugin cancellation raises `APICancelledError`.
+
+```python
+from bedrock_server_manager.api.models import PlanSnapshotRestoreRequest
+payload = {...}  # Supply required request fields below.
+request = PlanSnapshotRestoreRequest(**payload)
+result = await self.api.backup_restore.dry_run_server_restore(request)
+data = result.model_dump(mode="json")
+```
+- **Request schema:** [PlanSnapshotRestoreRequest](models.md#plansnapshotrestorerequest)
+- **Response schema:** [PlanSnapshotRestoreResponse](models.md#plansnapshotrestoreresponse)
+- **Transport error schema:** [APIErrorResponse](models.md#apierrorresponse)
+**Parameters:**
+
+| Name | Type | Default |
+|------|------|---------|
+| `request` | `bedrock_server_manager.api.models.backup_restore.PlanSnapshotRestoreRequest` | `REQUIRED` |
+
+---
+
+
 ## `backup_restore.get_backup_health`
 ```python
 await self.api.backup_restore.get_backup_health(request: bedrock_server_manager.api.models.backup_restore.ListSnapshotsRequest)

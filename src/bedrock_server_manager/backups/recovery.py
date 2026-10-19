@@ -9,7 +9,7 @@ from typing import TYPE_CHECKING
 from ..error import BackupRestoreError
 from .archive import safe_name
 from .credentials import atomic_json, private_directory
-from .models import ServerSettingsExport
+from .models import PACK_COMPONENTS, ServerSettingsExport
 
 if TYPE_CHECKING:
     from ..core.bedrock_server import BedrockServer
@@ -142,6 +142,7 @@ class RestoreJournal:
                 "allowlist.json",
                 "permissions.json",
                 "config",
+                *PACK_COMPONENTS,
             ) and not (name.startswith("worlds/") and len(Path(name).parts) == 2):
                 raise BackupRestoreError("Invalid recovery destination.")
             target = self.root / name

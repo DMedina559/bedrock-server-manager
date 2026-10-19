@@ -210,7 +210,7 @@ async def some_function(self, *, request, server_name, new_players_data=None, re
 ### Listener Signature:
 ```python
 @app_event("after_backup")
-async def some_function(self, *, request, server_name, result, file_to_backup=None, encrypted=None, **kwargs):
+async def some_function(self, *, request, server_name, result, file_to_backup=None, encrypted=None, include_packs=None, purpose=None, schedule_slot=None, **kwargs):
     pass
 ```
 ### Available `kwargs`:
@@ -221,6 +221,9 @@ async def some_function(self, *, request, server_name, result, file_to_backup=No
 | `result` | `BackupWorldResponse | BackupConfigFileResponse | BackupAllResponse | CreateSnapshotResponse` |
 | `file_to_backup` | `str` |
 | `encrypted` | `bool | None` |
+| `include_packs` | `bool | None` |
+| `purpose` | `Literal['manual', 'scheduled']` |
+| `schedule_slot` | `str | None` |
 | `_triggering_plugin` | `str` (core, or plugin name) |
 
 ---
@@ -475,7 +478,7 @@ async def some_function(self, *, request, server_name, stop_start_server=None, r
 | `backup_file_path` | `str` |
 | `component` | `Literal['server.properties', 'allowlist.json', 'permissions.json'] | None` |
 | `backup_id` | `str` |
-| `components` | `list[Literal['world', 'server.properties', 'allowlist.json', 'permissions.json', 'script_config', 'bsm_settings']]` |
+| `components` | `list[Literal['world', 'server.properties', 'allowlist.json', 'permissions.json', 'script_config', 'bsm_settings', 'behavior_packs', 'resource_packs', 'development_behavior_packs', 'development_resource_packs']]` |
 | `token` | `str` |
 | `restart` | `bool` |
 | `stop_running` | `bool` |
@@ -987,7 +990,7 @@ async def some_function(self, *, request, server_name, new_players_data=None, pl
 ### Listener Signature:
 ```python
 @app_event("before_backup")
-async def some_function(self, *, request, server_name, file_to_backup=None, encrypted=None, event, **kwargs):
+async def some_function(self, *, request, server_name, file_to_backup=None, encrypted=None, include_packs=None, purpose=None, schedule_slot=None, event, **kwargs):
     pass
 ```
 ### Available `kwargs`:
@@ -997,6 +1000,9 @@ async def some_function(self, *, request, server_name, file_to_backup=None, encr
 | `server_name` | `str` |
 | `file_to_backup` | `str` |
 | `encrypted` | `bool | None` |
+| `include_packs` | `bool | None` |
+| `purpose` | `Literal['manual', 'scheduled']` |
+| `schedule_slot` | `str | None` |
 | `event` | `CancellableEvent` |
 | `_triggering_plugin` | `str` (core, or plugin name) |
 
@@ -1227,7 +1233,7 @@ async def some_function(self, *, request, server_name, stop_start_server=None, b
 | `backup_file_path` | `str` |
 | `component` | `Literal['server.properties', 'allowlist.json', 'permissions.json'] | None` |
 | `backup_id` | `str` |
-| `components` | `list[Literal['world', 'server.properties', 'allowlist.json', 'permissions.json', 'script_config', 'bsm_settings']]` |
+| `components` | `list[Literal['world', 'server.properties', 'allowlist.json', 'permissions.json', 'script_config', 'bsm_settings', 'behavior_packs', 'resource_packs', 'development_behavior_packs', 'development_resource_packs']]` |
 | `token` | `str` |
 | `restart` | `bool` |
 | `stop_running` | `bool` |

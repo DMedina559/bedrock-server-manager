@@ -357,6 +357,7 @@ async def post_restore_action(  # noqa: C901
 
 class SnapshotCreatePayload(APIRequest):
     encrypted: bool | None = None
+    include_packs: bool | None = None
 
 
 class SnapshotInspectPayload(APIRequest):
@@ -590,6 +591,7 @@ async def import_snapshot(
                 await run_in_thread(sync_tree, archive)
                 await run_in_thread(os.replace, archive, root / filename)
                 await run_in_thread(backups._record_verified, root / filename, manifest)
+                await run_in_thread(backups.catalog.update, filename, origin="imported")
             return ListSnapshotsResponse(backups=await backups.list_snapshots())
     finally:
         await file.close()
@@ -758,8 +760,10 @@ async def backup_health(
 
 
 class SnapshotManagePayload(SnapshotInspectPayload):
-    action: Literal["verify", "pin", "unpin", "copy", "test_key"]
+    action: Literal["verify", "pin", "unpin", "copy", "test_key", "annotate"]
     destination: str | None = None
+    label: str | None = Field(default=None, max_length=120)
+    notes: str | None = Field(default=None, max_length=2000)
 
 
 @router.post(
@@ -810,4 +814,26 @@ async def prepare_backup_copy(
         current_user,
         backup_restore_api.prepare_backup_copy,
         _request(payload, PrepareBackupCopyRequest, server_name, backup_id=backup_id),
+    )
+
+
+@router.post(
+    "/api/server/{server_name}/backups/{backup_id}/dry-run",
+    operation_id="dry_run_server_restore",
+    response_model=TaskAcceptedResponse,
+    status_code=202,
+)
+async def dry_run_restore(
+    backup_id: str,
+    payload: SnapshotPlanPayload,
+    server_name: str = Depends(validate_server_registered),
+    current_user: UserResponse = Depends(get_moderator_user),
+    app_context: AppContext = Depends(get_app_context),
+) -> TaskAcceptedResponse:
+    """Validate an isolated restore without stopping or modifying the server."""
+    return await _accepted(
+        app_context,
+        current_user,
+        backup_restore_api.dry_run_server_restore,
+        _request(payload, PlanSnapshotRestoreRequest, server_name, backup_id=backup_id),
     )

@@ -544,7 +544,11 @@ async def create_server_backup(
     """Capture one coherent, optionally encrypted server archive."""
     server = app_context.get_server(request.server_name)
     snapshot = await server.backups.create_snapshot(
-        encrypted=request.encrypted, progress=app_context.task_manager.report_stage
+        encrypted=request.encrypted,
+        include_packs=request.include_packs,
+        purpose=request.purpose,
+        _schedule_slot=request.schedule_slot,
+        progress=app_context.task_manager.report_stage,
     )
     return CreateSnapshotResponse(
         server_name=request.server_name,
@@ -683,6 +687,8 @@ async def manage_server_snapshot(
         await backups.verify_snapshot(
             request.backup_id, key, record_failure=request.action != "test_key"
         )
+    elif request.action == "annotate":
+        await backups.annotate_snapshot(request.backup_id, request.label, request.notes)
     elif request.action in ("pin", "unpin"):
         await backups.pin_snapshot(request.backup_id, request.action == "pin")
     else:
@@ -711,4 +717,20 @@ async def can_reuse_server_backup(
     server = app_context.get_server(request.server_name, require_installation=False)
     return SnapshotReuseResponse(
         reusable=await server.backups.can_reuse_sequence_snapshot()
+    )
+
+
+@api_method("dry_run_server_restore")
+async def dry_run_server_restore(
+    request: PlanSnapshotRestoreRequest, *, app_context: AppContext
+) -> PlanSnapshotRestoreResponse:
+    """Validate and copy selected contents in isolation without stopping Minecraft."""
+    server = app_context.get_server(request.server_name, require_installation=False)
+    return PlanSnapshotRestoreResponse(
+        plan=await server.backups.plan_restore(
+            request.backup_id,
+            request.components,
+            request.recovery_key.get_secret_value() if request.recovery_key else None,
+            dry_run=True,
+        )
     )

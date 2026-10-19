@@ -105,6 +105,9 @@ class PruneOldBackupsResponse(ActionResponse):
 class CreateSnapshotRequest(APIRequest):
     server_name: ServerName
     encrypted: bool | None = None
+    include_packs: bool | None = None
+    purpose: Literal["manual", "scheduled"] = "manual"
+    schedule_slot: str | None = Field(default=None, max_length=128)
 
 
 class CreateSnapshotResponse(ActionResponse):
@@ -158,8 +161,10 @@ class BackupHealthResponse(SuccessResponse):
 
 
 class ManageSnapshotRequest(InspectSnapshotRequest):
-    action: Literal["verify", "pin", "unpin", "copy", "test_key"]
+    action: Literal["verify", "pin", "unpin", "copy", "test_key", "annotate"]
     destination: str | None = None
+    label: str | None = Field(default=None, max_length=120)
+    notes: str | None = Field(default=None, max_length=2000)
 
 
 class ManageSnapshotResponse(SuccessResponse):

@@ -259,9 +259,11 @@ def unpack(
 
 
 def validate_manifest(manifest: BackupManifest) -> None:
-    from .models import COMPONENTS
+    from .models import BASE_COMPONENTS, COMPONENTS, DIRECTORY_COMPONENTS
 
-    if set(manifest.components) != set(COMPONENTS):
+    if not set(BASE_COMPONENTS).issubset(manifest.components) or not set(
+        manifest.components
+    ).issubset(COMPONENTS):
         raise ValueError("Incomplete component inventory")
     names = [safe_name(item.path).casefold() for item in manifest.files]
     names += [safe_name(name).casefold() for name in manifest.directories]
@@ -272,14 +274,15 @@ def validate_manifest(manifest: BackupManifest) -> None:
         if manifest.components[item.component] != "included" or not (
             item.path == prefix
             or item.path.startswith(prefix + "/")
-            and item.component in ("world", "script_config")
+            and item.component in DIRECTORY_COMPONENTS
         ):
             raise ValueError("Invalid component path")
     for name in manifest.directories:
         if not any(
             manifest.components[c] == "included"
             and (name == PREFIXES[c] or name.startswith(PREFIXES[c] + "/"))
-            for c in ("world", "script_config")
+            for c in DIRECTORY_COMPONENTS
+            if c in manifest.components
         ):
             raise ValueError("Invalid directory")
     for component, state in manifest.components.items():

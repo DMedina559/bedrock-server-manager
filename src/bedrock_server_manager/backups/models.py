@@ -15,8 +15,12 @@ Component = Literal[
     "permissions.json",
     "script_config",
     "bsm_settings",
+    "behavior_packs",
+    "resource_packs",
+    "development_behavior_packs",
+    "development_resource_packs",
 ]
-COMPONENTS: tuple[Component, ...] = (
+BASE_COMPONENTS: tuple[Component, ...] = (
     "world",
     "server.properties",
     "allowlist.json",
@@ -24,6 +28,14 @@ COMPONENTS: tuple[Component, ...] = (
     "script_config",
     "bsm_settings",
 )
+PACK_COMPONENTS: tuple[Component, ...] = (
+    "behavior_packs",
+    "resource_packs",
+    "development_behavior_packs",
+    "development_resource_packs",
+)
+COMPONENTS = BASE_COMPONENTS + PACK_COMPONENTS
+DIRECTORY_COMPONENTS = ("world", "script_config", *PACK_COMPONENTS)
 PREFIXES = {
     "world": "world",
     "server.properties": "config/server.properties",
@@ -31,6 +43,7 @@ PREFIXES = {
     "permissions.json": "config/permissions.json",
     "script_config": "server-config",
     "bsm_settings": "bsm/server-settings.json",
+    **{name: "packs/" + name for name in PACK_COMPONENTS},
 }
 
 
@@ -65,7 +78,9 @@ class BackupManifest(Record):
     source_server: str
     source_world: str
     capture_method: Literal["offline", "live"]
-    reason: Literal["manual", "pre_start", "pre_update", "pre_restore"] = "manual"
+    reason: Literal["manual", "pre_start", "pre_update", "pre_restore", "scheduled"] = (
+        "manual"
+    )
     components: dict[Component, Literal["included", "absent"]]
     files: list[BackupFile]
     directories: list[str] = Field(default_factory=list)
@@ -89,6 +104,8 @@ class BackupCopy(Record):
     status: Literal["pending", "completed", "failed"]
     completed_at: str | None = None
     error: str | None = None
+    attempts: int = 0
+    next_retry_at: str | None = None
 
 
 class BackupSummary(Record):
@@ -102,6 +119,9 @@ class BackupSummary(Record):
     protected_until: str | None = None
     purpose: str | None = None
     copies: dict[str, BackupCopy] = Field(default_factory=dict)
+    label: str = ""
+    notes: str = ""
+    origin: Literal["captured", "imported"] = "captured"
     manifest: BackupManifest | None = None
     error: str | None = None
 
@@ -119,6 +139,13 @@ class RestoreValueChange(Record):
     after: str | None
 
 
+class RestoreVolume(Record):
+    roles: list[str]
+    required_bytes: int
+    available_bytes: int
+    sufficient: bool
+
+
 class RestorePlan(Record):
     backup_id: str
     token: str
@@ -131,6 +158,10 @@ class RestorePlan(Record):
     setting_changes: list[RestoreValueChange] = Field(default_factory=list)
     safety_backup: bool = True
     required_bytes: int
+    volumes: list[RestoreVolume] = Field(default_factory=list)
+    sufficient_space: bool = True
+    dry_run: bool = False
+    checked_files: int = 0
 
 
 class RestoreResult(Record):
@@ -160,4 +191,5 @@ class BackupHealth(Record):
     missing_key_ids: list[str] = Field(default_factory=list)
     older_key_ids: list[str] = Field(default_factory=list)
     destination_failures: int = 0
+    schedule: dict[str, JsonValue] | None = None
     verification_interval_hours: int
