@@ -47,10 +47,11 @@ class PluginEvent(EventNotification, Generic[T]):
     _can_cancel: Callable[[], bool]
     _cancel: Callable[[str], None]
     _cancelled: Callable[[], tuple[bool, str | None]]
+    _clock: Callable[[], float] = monotonic
 
     @property
     def remaining_seconds(self) -> float:
-        return max(0.0, self._deadline - monotonic())
+        return max(0.0, self._deadline - self._clock())
 
     @property
     def can_cancel(self) -> bool:

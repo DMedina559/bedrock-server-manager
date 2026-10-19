@@ -482,3 +482,192 @@ async def test_cancellation_capability_cannot_escape_to_a_child_task(
         await start_server(
             {"server_name": real_bedrock_server.server_name}, app_context=app_context
         )
+
+
+@pytest.mark.parametrize("mode", ["legacy", "hook", "observer"])
+@pytest.mark.parametrize("permanent_first", [False, True])
+async def test_subscription_scopes_preserve_permanent_registration(
+    app_context, plugin_factory, mode, permanent_first
+):
+    plugin = await plugin_factory("access", SOURCE)
+    seen = []
+
+    async def callback(*args, **kwargs):
+        seen.append(1)
+
+    register = {
+        "legacy": plugin.api.events.listen,
+        "hook": plugin.api.events.hook,
+        "observer": plugin.api.events.observe,
+    }[mode]
+    options = dict(listener_id="shared")
+    if permanent_first:
+        permanent = register("shared", callback, **options)
+    with plugin.api.events.subscription(
+        "shared", callback, mode=mode, **options
+    ) as outer:
+        if not permanent_first:
+            permanent = register("shared", callback, **options)
+        with plugin.api.events.subscription(
+            "shared", callback, mode=mode, **options
+        ) as inner:
+            assert outer == inner == permanent
+            await app_context.events.emit("shared")
+        await app_context.events.emit("shared")
+    await app_context.events.emit("shared")
+    assert seen == [1, 1, 1]
+    assert [item.subscription_id for item in plugin.api.events.subscriptions()] == [
+        permanent
+    ]
+
+
+@pytest.mark.parametrize("mode", ["legacy", "hook", "observer"])
+async def test_overlapping_scopes_release_only_their_own_registration(
+    app_context, plugin_factory, mode
+):
+    plugin = await plugin_factory("access", SOURCE)
+    seen = []
+
+    async def callback(*args, **kwargs):
+        seen.append(1)
+
+    first = plugin.api.events.subscription("shared", callback, mode=mode)
+    second = plugin.api.events.subscription("shared", callback, mode=mode)
+    first_token = first.__enter__()
+    try:
+        with second as second_token:
+            assert first_token == second_token
+            first.__exit__(None, None, None)
+            await app_context.events.emit("shared")
+        await app_context.events.emit("shared")
+    finally:
+        first.__exit__(None, None, None)
+    assert seen == [1]
+    assert not plugin.api.events.subscriptions()
+
+
+@pytest.mark.parametrize("mode", ["hook", "observer"])
+async def test_typed_duplicate_registration_and_payload_identity(
+    app_context, plugin_factory, mode
+):
+    plugin = await plugin_factory("access", SOURCE)
+    seen = []
+
+    class Handler:
+        async def callback(self, event):
+            seen.append(type(event.payload))
+
+    handler = Handler()
+    register = getattr(plugin.api.events, "observe" if mode == "observer" else mode)
+    first = register("typed", handler.callback, payload_model=ValuePayload)
+    assert register("typed", handler.callback, payload_model=ValuePayload) == first
+    assert register("typed", handler.callback, payload_model=StartPayload) != first
+    await app_context.events.emit("typed", {"value": 3, "server_name": "example"})
+    assert seen == [ValuePayload, StartPayload]
+
+
+@pytest.mark.parametrize("removal", ["unsubscribe", "deactivate", "remove"])
+async def test_listener_removed_during_predicate_does_not_start(
+    app_context, plugin_factory, removal
+):
+    from threading import Event
+
+    plugin = await plugin_factory("access", SOURCE)
+    entered, release = Event(), Event()
+    seen = []
+
+    def predicate(event):
+        entered.set()
+        assert release.wait(5)
+        return True
+
+    async def callback(event):
+        seen.append(1)
+
+    token = plugin.api.events.hook("pending", callback, predicate=predicate)
+    emission = asyncio.create_task(app_context.events.emit("pending"))
+    try:
+        assert await asyncio.to_thread(entered.wait, 5)
+        if removal == "unsubscribe":
+            plugin.api.events.unsubscribe(token)
+        elif removal == "deactivate":
+            app_context.events.deactivate_owner("plugin:access")
+        else:
+            app_context.events.remove_owner("plugin:access")
+    finally:
+        release.set()
+        record = await emission
+    assert seen == []
+    assert record.listeners_called == 0
+    assert not record.failures
+
+
+@pytest.mark.parametrize("offset", [-10000, 10000])
+async def test_handler_uses_event_loop_deadline_clock(
+    app_context, plugin_factory, monkeypatch, offset
+):
+    from bedrock_server_manager.events import CancellableEvent, EventDefinition
+
+    plugin = await plugin_factory("access", SOURCE)
+    app_context.events.registry.register(
+        EventDefinition(name="clock_before", phase="before")
+    )
+    seen = []
+
+    async def callback(event):
+        assert (
+            0
+            < event.remaining_seconds
+            <= app_context.events.options.hook_timeout_seconds
+        )
+        assert event.can_cancel
+        event.cancel("Clock test")
+        seen.append(event.is_cancelled)
+
+    plugin.api.events.hook("clock_before", callback)
+    loop = asyncio.get_running_loop()
+    original = loop.time
+    with monkeypatch.context() as patch:
+        patch.setattr(loop, "time", lambda: original() + offset)
+        record = await app_context.events.emit(
+            "clock_before", {"event": CancellableEvent()}
+        )
+    assert seen == [True]
+    assert record.cancellation_reason == "Clock test"
+
+
+@pytest.mark.parametrize("option", ["before", "after"])
+@pytest.mark.parametrize(
+    "value,error",
+    [
+        ("listener", TypeError),
+        ((None,), TypeError),
+        (("",), ValueError),
+        (("foreign:",), ValueError),
+    ],
+)
+async def test_invalid_ordering_references_fail_at_registration(
+    plugin_factory, option, value, error
+):
+    plugin = await plugin_factory("access", SOURCE)
+    with pytest.raises(error):
+        plugin.api.events.listen("ordered", lambda **data: None, **{option: value})
+    assert not plugin.api.events.subscriptions()
+
+
+async def test_ordering_diagnostics_track_forward_reference_removal(
+    app_context, plugin_factory
+):
+    plugin = await plugin_factory("access", SOURCE)
+
+    async def callback(**kwargs):
+        pass
+
+    plugin.api.events.listen(
+        "ordered", callback, listener_id="second", after=("first",)
+    )
+    assert plugin.api.events.subscriptions()[0].unresolved_after == ("access:first",)
+    target = plugin.api.events.listen("ordered", callback, listener_id="first")
+    assert plugin.api.events.subscriptions()[0].unresolved_after == ()
+    plugin.api.events.unsubscribe(target)
+    assert plugin.api.events.subscriptions()[0].unresolved_after == ("access:first",)

@@ -42,6 +42,8 @@ class EventSubscriptionInfo(EventModel):
     priority: int
     before: tuple[str, ...] = ()
     after: tuple[str, ...] = ()
+    unresolved_before: tuple[str, ...] = ()
+    unresolved_after: tuple[str, ...] = ()
     filters: EventFilter | None = None
     once: bool
     active: bool

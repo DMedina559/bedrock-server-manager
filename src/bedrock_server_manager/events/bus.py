@@ -78,6 +78,7 @@ class Subscription:
     before: tuple[str, ...] = ()
     after: tuple[str, ...] = ()
     kind: str = "legacy"
+    callback_identity: tuple[int, ...] | None = None
 
 
 @dataclass
@@ -90,6 +91,7 @@ class CallbackState:
     arguments: tuple[Any, ...] = ()
     active: bool = True
     once_claimed: bool = False
+    clock: Callable[[], float] = monotonic
 
 
 _FILTERED = object()
@@ -111,6 +113,8 @@ class EventBus:
             "event_handler", default=None
         )
         self._subscription_stats: dict[str, dict[str, Any]] = {}
+        self._subscription_leases: Counter[str] = Counter()
+        self._persistent_subscriptions: set[str] = set()
         self.diagnostic_recorder: Callable[[EventRecord], None] | None = None
         self.registry = EventRegistry(builtin_events)
         self._revision_provider = revision_provider
@@ -149,6 +153,8 @@ class EventBus:
         before: tuple[str, ...] = (),
         after: tuple[str, ...] = (),
         kind: str = "legacy",
+        callback_identity: tuple[int, ...] | None = None,
+        temporary: bool = False,
     ) -> str:
         with self._lock:
             self.check_owner(owner, generation)
@@ -167,7 +173,8 @@ class EventBus:
                 if (
                     subscription.name,
                     subscription.owner,
-                    _callback_identity(subscription.callback),
+                    subscription.callback_identity
+                    or _callback_identity(subscription.callback),
                     subscription.observer,
                     subscription.once,
                     subscription.priority,
@@ -180,7 +187,7 @@ class EventBus:
                 ) == (
                     name,
                     owner,
-                    _callback_identity(callback),
+                    callback_identity or _callback_identity(callback),
                     observer,
                     once,
                     priority,
@@ -191,6 +198,10 @@ class EventBus:
                     after,
                     kind,
                 ):
+                    if temporary:
+                        self._subscription_leases[subscription.token] += 1
+                    else:
+                        self._persistent_subscriptions.add(subscription.token)
                     return subscription.token
             token = uuid4().hex
             if listener_id is not None and any(
@@ -211,6 +222,7 @@ class EventBus:
                 before,
                 after,
                 kind,
+                callback_identity,
             )
             try:
                 if listener_id or before or after:
@@ -249,6 +261,10 @@ class EventBus:
             self._subscription_stats[token] = dict(
                 calls=0, failures=0, timeouts=0, last_status=None, last_duration_ms=0
             )
+            if temporary:
+                self._subscription_leases[token] += 1
+            else:
+                self._persistent_subscriptions.add(token)
             return token
 
     def define(
@@ -325,6 +341,24 @@ class EventBus:
                 raise PermissionError("Subscription belongs to another owner")
             self._subscriptions.pop(token, None)
             self._subscription_stats.pop(token, None)
+            self._subscription_leases.pop(token, None)
+            self._persistent_subscriptions.discard(token)
+
+    def release_subscription(self, token: str, *, owner: str) -> None:
+        """Release one temporary registration without removing another owner's lease."""
+        with self._lock:
+            subscription = self._subscriptions.get(token)
+            if subscription is None:
+                return
+            if subscription.owner != owner:
+                raise PermissionError("Subscription belongs to another owner")
+            if self._subscription_leases.get(token, 0) == 0:
+                return
+            self._subscription_leases[token] -= 1
+            if not self._subscription_leases[token]:
+                self._subscription_leases.pop(token, None)
+                if token not in self._persistent_subscriptions:
+                    self.unsubscribe(token, owner=owner)
 
     def open_owner(self, owner: str) -> int:
         with self._lock:
@@ -392,6 +426,25 @@ class EventBus:
 
     def subscriptions(self, owner: str) -> tuple[EventSubscriptionInfo, ...]:
         with self._lock:
+            by_id = {
+                item.listener_id: item
+                for item in self._subscriptions.values()
+                if item.listener_id
+            }
+
+            def unresolved(
+                item: Subscription, references: tuple[str, ...]
+            ) -> tuple[str, ...]:
+                return tuple(
+                    reference
+                    for reference in references
+                    if (target := by_id.get(reference)) is None
+                    or target.observer != item.observer
+                    or (
+                        item.name != target.name and "*" not in {item.name, target.name}
+                    )
+                )
+
             return tuple(
                 EventSubscriptionInfo(
                     subscription_id=item.token,
@@ -402,6 +455,8 @@ class EventBus:
                     priority=item.priority,
                     before=item.before,
                     after=item.after,
+                    unresolved_before=unresolved(item, item.before),
+                    unresolved_after=unresolved(item, item.after),
                     filters=item.filters,
                     once=item.once,
                     active=owner in self._owners,
@@ -479,7 +534,8 @@ class EventBus:
             ):
                 identity = (
                     subscription.owner,
-                    _callback_identity(subscription.callback),
+                    subscription.callback_identity
+                    or _callback_identity(subscription.callback),
                     subscription.once,
                     subscription.filters,
                     (
@@ -568,7 +624,7 @@ class EventBus:
                 and self.current() is not None
                 and not state.subscription.observer
                 and notification.context.phase == "before"
-                and monotonic() < state.deadline
+                and state.clock() < state.deadline
                 and state.control is not None
                 and not state.control.is_sealed
             )
@@ -601,6 +657,7 @@ class EventBus:
             can_cancel,
             cancel,
             cancelled,
+            state.clock,
         )
 
     async def _invoke(
@@ -609,6 +666,8 @@ class EventBus:
         envelope: EventEnvelope,
         args: tuple[Any, ...],
         data: dict[str, Any],
+        *,
+        targeted: bool = False,
     ) -> Any:
         previous = self._current.get()
         token = self._current.set((envelope, asyncio.current_task()))
@@ -619,7 +678,8 @@ class EventBus:
             and not subscription.observer
             else self.options.listener_timeout_seconds
         )
-        deadline = asyncio.get_running_loop().time() + timeout
+        clock = asyncio.get_running_loop().time
+        deadline = clock() + timeout
         if (
             parent is not None
             and parent.active
@@ -634,6 +694,7 @@ class EventBus:
             deadline,
             self.owner_generation(subscription.owner),
             arguments=tuple(sanitize(argument) for argument in args),
+            clock=clock,
         )
         handler_token = self._handler.set(state)
         try:
@@ -656,10 +717,16 @@ class EventBus:
                 )
                 if not matched:
                     return _FILTERED
-            if subscription.once and not state.once_claimed:
-                with self._lock:
-                    if subscription.token not in self._subscriptions:
-                        return _FILTERED
+            with self._lock:
+                if (
+                    self._subscriptions.get(subscription.token) is not subscription
+                    or not self.accepting
+                    or subscription.owner in self._closed_owners
+                    or state.generation != self.owner_generation(subscription.owner)
+                    or (not targeted and subscription.owner not in self._owners)
+                ):
+                    return _FILTERED
+                if subscription.once and not state.once_claimed:
                     self.unsubscribe(subscription.token, owner=subscription.owner)
                     state.once_claimed = True
             return await self._invoke_callback(subscription, envelope, args, data)
@@ -780,6 +847,8 @@ class EventBus:
         args: tuple[Any, ...],
         data: dict[str, Any],
         strict: bool,
+        *,
+        targeted: bool = False,
     ) -> None:
         pending = asyncio.get_running_loop().create_future()
         owned = self._inflight.setdefault(subscription.owner, {})
@@ -806,7 +875,9 @@ class EventBus:
                 else self.options.listener_timeout_seconds
             )
             async with asyncio.timeout(timeout):
-                result = await self._invoke(subscription, envelope, args, data)
+                result = await self._invoke(
+                    subscription, envelope, args, data, targeted=targeted
+                )
             if result is _FILTERED:
                 record.listeners_called -= 1
                 record.listeners.remove(listener)
@@ -890,7 +961,15 @@ class EventBus:
                     continue
                 if not self._matches(subscription, envelope, data):
                     continue
-                await self._deliver(subscription, envelope, record, args, data, strict)
+                await self._deliver(
+                    subscription,
+                    envelope,
+                    record,
+                    args,
+                    data,
+                    strict,
+                    targeted=owners is not None,
+                )
 
     async def emit(
         self,
@@ -1134,6 +1213,8 @@ class EventBus:
             await asyncio.wait(pending_workers, timeout=max(0, deadline - monotonic()))
         self._subscriptions.clear()
         self._subscription_stats.clear()
+        self._subscription_leases.clear()
+        self._persistent_subscriptions.clear()
         self._owners.clear()
 
 

@@ -314,6 +314,10 @@ copies. Unsubscription removes these live statistics; bounded event diagnostics
 remain the place to inspect completed one-shot deliveries. All saved capabilities
 remain tied to their original plugin generation.
 
+The `unresolved_before` and `unresolved_after` fields list ordering references that
+have no registered target for the same event and delivery stage. They update when
+listeners register or leave; an unresolved reference does not prevent delivery.
+
 ## Filtering and ordering listeners
 
 `listen`, `once`, `hook`, and `observe` accept `filters=EventFilter(...)`. Supported
@@ -324,6 +328,9 @@ receives one `EventNotification` with immutable data and no cancellation method.
 Predicates run within the existing worker/deadline bounds and must be synchronous.
 Unmatched filters and predicates do not consume a one-shot registration. Predicate
 failures follow listener failure policy, including cancelling a before-hook.
+If a subscription is removed or its owner deactivated while its predicate runs,
+its callback does not start. Removing a subscription does not interrupt a callback
+that has already started; plugin unload retains its existing draining behavior.
 
 This is separate from `wait_for(predicate=...)`, whose existing predicate continues
 to receive ordinary positional/keyword callback arguments and retains its existing
@@ -340,6 +347,11 @@ explicit ordering cannot cross those stages. Equal-priority unconstrained listen
 retain registration order. Constraints order listeners; they do not activate or
 require another plugin.
 
+IDs and ordering references must be nonempty identifiers of at most 160 characters
+including their namespace. Repeating the same typed callback registration with the
+same payload model and options reuses its token, as legacy registration does.
+Different payload models remain distinct registrations.
+
 `@app_event` accepts the same `filters`, `listener_id`, `before`, and `after`
 options while keeping its existing callback convention.
 
@@ -354,10 +366,13 @@ async with self.api.events.subscription(
 ```
 
 Scopes also support ordinary `with`. Modes are `legacy` (the default), `hook`, and
-`observer`. Registration happens on entry. Exit removes the subscription on success,
-exceptions, task cancellation, or plugin unload; cleanup remains harmless if unload
-already removed it. A scope is entered once and cannot attach to a replacement
-plugin generation.
+`observer`. Registration happens on entry. Exit releases that scope's registration
+on success, exceptions, or task cancellation. Identical overlapping scopes share a
+listener until their last scope exits. A permanent registration of the same
+listener survives scope exit, whether it was registered before or during the scope.
+Explicit unsubscription, one-shot delivery, and plugin unload still remove the
+listener; later scope cleanup remains harmless. A scope is entered once and cannot
+attach to a replacement plugin generation.
 
 ## Plugin-owned operation scopes
 

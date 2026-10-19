@@ -185,11 +185,10 @@ class PluginEventAPI:
         """Temporarily register with `with` or `async with`; always clean up on exit."""
         if mode not in {"legacy", "hook", "observer"}:
             raise ValueError("Subscription mode must be legacy, hook, or observer")
-        register = {"legacy": self.listen, "hook": self.hook, "observer": self.observe}[
-            mode
-        ]
         return EventSubscriptionScope(
-            lambda: register(name, callback, **options),
+            lambda: self._dispatch(
+                "subscription", name, callback, mode=mode, **options
+            ),
             lambda token: self._dispatch("cleanup_subscription", token),
         )
 

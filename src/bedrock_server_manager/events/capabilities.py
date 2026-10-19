@@ -1,13 +1,14 @@
 """Scoped event capabilities capture their bus lifetime, never AppContext."""
 
 import inspect
+import re
 from contextlib import contextmanager
 from functools import wraps
 from typing import Any, Callable
 
 from pydantic import BaseModel
 
-from .bus import EventBus
+from .bus import EventBus, _callback_identity
 
 
 def create_event_capabilities(
@@ -23,24 +24,35 @@ def create_event_capabilities(
 
     def normalize_options(options: dict[str, Any]) -> dict[str, Any]:
         options = dict(options)
+
+        def normalize_identifier(value: Any) -> str:
+            if not isinstance(value, str):
+                raise TypeError("Listener IDs and ordering references must be strings")
+            if not value or not re.fullmatch(r"[a-zA-Z0-9_][a-zA-Z0-9_.:-]*", value):
+                raise ValueError(
+                    "Listener IDs and ordering references must be nonempty identifiers"
+                )
+            normalized: str = value if ":" in value else f"{plugin_name}:{value}"
+            namespace, _, suffix = normalized.partition(":")
+            if not namespace or not suffix or len(normalized) > 160:
+                raise ValueError(
+                    "Listener identifiers require a namespace and name within 160 characters"
+                )
+            return normalized
+
         identifier = options.get("listener_id")
         if identifier is not None:
-            if not isinstance(identifier, str) or not identifier:
-                raise ValueError("Listener IDs must be nonempty strings")
-            if ":" not in identifier:
-                identifier = f"{plugin_name}:{identifier}"
+            identifier = normalize_identifier(identifier)
             if not is_core and not identifier.startswith(f"{plugin_name}:"):
                 raise ValueError("Listener IDs must use the plugin namespace")
             options["listener_id"] = identifier
         for key in ("before", "after"):
             values = options.get(key, ())
-            if isinstance(values, str):
+            if isinstance(values, (str, bytes)) or values is None:
                 raise TypeError(
                     "Ordering references must be a sequence of listener IDs"
                 )
-            options[key] = tuple(
-                value if ":" in value else f"{plugin_name}:{value}" for value in values
-            )
+            options[key] = tuple(normalize_identifier(value) for value in values)
         return options
 
     def typed_listener(
@@ -100,6 +112,7 @@ def create_event_capabilities(
             wrapped,
             observer=observer,
             kind="observer" if observer else "hook",
+            callback_identity=(*_callback_identity(callback), id(payload_model)),
             **options,
         )
 
@@ -162,7 +175,7 @@ def create_event_capabilities(
     def event_dispatcher(action: str, *args: Any, **kwargs: Any):
         if action == "cleanup_subscription":
             if bus is not None:
-                bus.unsubscribe(args[0], owner=event_owner)
+                bus.release_subscription(args[0], owner=event_owner)
             return None
         require_event_owner()
         if bus is None:
@@ -173,6 +186,13 @@ def create_event_capabilities(
             return bus.handler(*args, **kwargs)
         if action == "hook":
             return typed_listener(*args, **kwargs)
+        if action == "subscription":
+            mode = kwargs.pop("mode")
+            if mode == "legacy":
+                return event_listener(*args, temporary=True, **kwargs)
+            return typed_listener(
+                *args, observer=mode == "observer", temporary=True, **kwargs
+            )
         if action == "observe":
             return typed_listener(*args, observer=True, **kwargs)
         if action == "catalog":
