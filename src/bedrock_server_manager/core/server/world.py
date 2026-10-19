@@ -140,6 +140,7 @@ class ServerWorlds:
         target_mcworld_file_path: str,
         poll_interval: float = 1.0,
         timeout: float = 30.0,
+        capture_directory: str | None = None,
     ) -> None:
         """Executes a live world backup using Bedrock server's save hold/query/resume protocol."""
         log_path = self.server.paths.server_log_path
@@ -208,12 +209,20 @@ class ServerWorlds:
             )
 
             def _copy_and_truncate_world() -> None:
-                with tempfile.TemporaryDirectory() as temp_dir:
+                from contextlib import nullcontext
+
+                with (
+                    nullcontext(capture_directory)
+                    if capture_directory
+                    else tempfile.TemporaryDirectory()
+                ) as temp_dir:
                     if os.path.exists(full_source_world_dir):
                         shutil.copytree(
                             full_source_world_dir, temp_dir, dirs_exist_ok=True
                         )
                     for rpath, rsize in file_list_with_sizes:
+                        if rsize < 0:
+                            raise BackupRestoreError("Invalid live backup file size.")
                         clean_rel_path = rpath
                         if clean_rel_path.startswith(
                             world_dir_name + "/"
@@ -229,7 +238,23 @@ class ServerWorlds:
                                     os.path.join(full_source_world_dir, parts[1])
                                 ):
                                     clean_rel_path = parts[1]
+                        from ...backups.archive import safe_name
+
+                        safe_name(clean_rel_path.replace("\\", "/"))
                         src_file = os.path.join(full_source_world_dir, clean_rel_path)
+                        if (
+                            not Path(src_file)
+                            .resolve()
+                            .is_relative_to(Path(full_source_world_dir).resolve())
+                        ):
+                            raise BackupRestoreError("Unsafe live backup source.")
+                        if (
+                            not os.path.isfile(src_file)
+                            or os.path.getsize(src_file) < rsize
+                        ):
+                            raise BackupRestoreError(
+                                "Live backup source is missing or shorter than reported."
+                            )
                         dest_file = os.path.join(temp_dir, clean_rel_path)
                         os.makedirs(os.path.dirname(dest_file), exist_ok=True)
                         if os.path.exists(src_file):
@@ -237,7 +262,8 @@ class ServerWorlds:
                         if os.path.exists(dest_file):
                             with open(dest_file, "r+b") as f:
                                 f.truncate(rsize)
-                    atomic_world_archive(temp_dir, target_mcworld_file_path)
+                    if capture_directory is None:
+                        atomic_world_archive(temp_dir, target_mcworld_file_path)
 
             await run_in_thread(_copy_and_truncate_world)
             self.logger.info(

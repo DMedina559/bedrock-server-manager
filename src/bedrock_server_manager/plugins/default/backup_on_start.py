@@ -54,6 +54,13 @@ class AutoBackupOnStart(PluginBase):
         """
         Triggers a full backup of the server before it starts.
         """
+        from bedrock_server_manager.operations import OperationName
+
+        sequence = self.api.operations.sequence()
+        if sequence and any(
+            item.name == OperationName.BACKUP_RESTORE for item in sequence.ancestry
+        ):
+            return
         if not await self.get_plugin_setting("enable_backup_on_start", default=True):
             self.logger.debug("Backup on start is disabled in plugin settings.")
             return
@@ -76,6 +83,7 @@ class AutoBackupOnStart(PluginBase):
                 "server.properties",
                 "allowlist.json",
                 "permissions.json",
+                "bsm_settings",
             }
             backups = self.api.operations.results(
                 OperationResultQuery(

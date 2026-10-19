@@ -45,9 +45,7 @@ def test_setup_interactive_workflow(
     assert "Setup complete!" in result.output
     assert "Using the default SQLite database" in result.output
 
-    persisted = json.loads(
-        (Path(bcm_config.get_config_dir()) / "bedrock_server_manager.json").read_text()
-    )
+    persisted = json.loads(Path(bcm_config.get_config_path()).read_text())
     assert persisted["data_dir"] == str(tmp_path / "configured_data")
     assert "db_url" not in persisted
     assert app_context.settings.get("web.host") == "0.0.0.0"

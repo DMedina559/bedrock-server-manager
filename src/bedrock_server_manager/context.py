@@ -236,7 +236,20 @@ class AppContext:
             if not os.environ.get(GUARD_VARIABLE):
                 await self.events.emit("on_manager_startup", public=False)
 
+        async def recover_backups() -> None:
+            for name in self.state.servers.servers:
+                try:
+                    await self.get_server(
+                        name, require_installation=False
+                    ).backups.recover_pending_restore()
+                except Exception:
+                    getLogger(__name__).warning(
+                        "Restore recovery for '%s' requires attention; the server remains blocked from starting.",
+                        name,
+                    )
+
         steps = (
+            ("backup recovery", recover_backups),
             ("plugins", lambda: self.plugin_manager.load_plugins()),
             ("servers", lambda: self.bedrock_process_manager.start()),
             (

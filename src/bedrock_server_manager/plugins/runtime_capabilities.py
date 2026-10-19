@@ -190,3 +190,25 @@ async def report_task_progress(
 ) -> None:
     """Report progress for the plugin's current managed task without exposing a context."""
     app_context.task_manager.report_progress(percent, plugin_owner=plugin_name)
+
+
+async def read_plugin_file(filename: str, *, app_context: AppContext, plugin_name: str):
+    """Read a JSON file from this plugin's configuration directory."""
+    from ..utils.threads import run_in_thread
+    from .files import read_plugin_json
+
+    return await run_in_thread(
+        read_plugin_json, app_context.config_dir, plugin_name, filename
+    )
+
+
+async def write_plugin_file(
+    filename: str, value: Any, *, app_context: AppContext, plugin_name: str
+) -> None:
+    """Atomically write JSON inside this plugin's configuration directory."""
+    from ..utils.threads import run_in_thread
+    from .files import write_plugin_json
+
+    await run_in_thread(
+        write_plugin_json, app_context.config_dir, plugin_name, filename, value
+    )

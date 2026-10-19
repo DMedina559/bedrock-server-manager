@@ -120,6 +120,13 @@ class LifecycleSettings(SettingsRecord):
     request_drain_timeout_seconds: float = Field(default=10.0, gt=0, le=600)
 
 
+class BackupSettings(SettingsRecord):
+    encryption: bool = False
+    max_files: int = Field(default=1_000_000, ge=1, le=1_000_000)
+    max_expanded_bytes: int = Field(default=1024**4, ge=1)
+    max_archive_bytes: int = Field(default=1024**4, ge=1)
+
+
 class SettingsState(BaseModel):
     model_config = ConfigDict(
         extra="forbid",
@@ -131,6 +138,7 @@ class SettingsState(BaseModel):
     )
     paths: PathsSettings = Field(default_factory=PathsSettings)
     retention: RetentionSettings = Field(default_factory=RetentionSettings)
+    backups: BackupSettings = Field(default_factory=BackupSettings)
     monitoring: MonitoringSettings = Field(default_factory=MonitoringSettings)
     web: WebSettings = Field(default_factory=WebSettings)
     lifecycle: LifecycleSettings = Field(default_factory=LifecycleSettings)
@@ -308,6 +316,7 @@ class SettingsState(BaseModel):
         return {
             "paths": self.paths.model_dump(),
             "retention": self.retention.model_dump(),
+            "backups": self.backups.model_dump(),
             "monitoring": self.monitoring.model_dump(),
             "web": self.web.model_dump(mode="json", exclude_none=True),
             "lifecycle": self.lifecycle.model_dump(),

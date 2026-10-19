@@ -44,7 +44,8 @@ class AutoupdatePlugin(PluginBase):
 
         sequence = self.api.operations.sequence()
         if sequence and any(
-            item.name == OperationName.SERVER_UPDATE and item.server_name == server_name
+            item.name in (OperationName.SERVER_UPDATE, OperationName.BACKUP_RESTORE)
+            and item.server_name == server_name
             for item in sequence.ancestry
         ):
             return

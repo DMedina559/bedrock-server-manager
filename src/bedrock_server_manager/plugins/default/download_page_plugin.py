@@ -24,7 +24,11 @@ class DownloadPageQuery(BaseModel):
 class DownloadFileQuery(BaseModel):
     model_config = ConfigDict(extra="forbid")
     file_type: Literal[
-        "backup_world", "backup_config", "content_world", "content_addon"
+        "backup_snapshot",
+        "backup_world",
+        "backup_config",
+        "content_world",
+        "content_addon",
     ]
     filename: str = Field(min_length=1, max_length=255, pattern=r"^[A-Za-z0-9._\- ]+$")
     server: str | None = None
@@ -107,22 +111,22 @@ class DownloadPagePlugin(PluginBase):
                     if not isinstance(file_list.backups, dict):
                         raise ValueError("Expected grouped backup files")
                     # World Backups
-                    wb_res = file_list.backups["world_backups"]
+                    wb_res = file_list.backups.get("world_backups", [])
                     if file_list.status == "success":
                         world_backups = [os.path.basename(p) for p in wb_res]
 
                     # Properties Backups
-                    pb_res = file_list.backups["properties_backups"]
+                    pb_res = file_list.backups.get("properties_backups", [])
                     if file_list.status == "success":
                         properties_backups = [os.path.basename(p) for p in pb_res]
 
                     # Allowlist Backups
-                    ab_res = file_list.backups["allowlist_backups"]
+                    ab_res = file_list.backups.get("allowlist_backups", [])
                     if file_list.status == "success":
                         allowlist_backups = [os.path.basename(p) for p in ab_res]
 
                     # Permissions Backups
-                    prm_res = file_list.backups["permissions_backups"]
+                    prm_res = file_list.backups.get("permissions_backups", [])
                     if file_list.status == "success":
                         permissions_backups = [os.path.basename(p) for p in prm_res]
 
@@ -132,7 +136,21 @@ class DownloadPagePlugin(PluginBase):
                     )
                     raise
 
+                snapshots = await self.api.backup_restore.list_server_snapshots(
+                    request={"server_name": server}
+                )
                 tabs_children = [
+                    {
+                        "type": "Tab",
+                        "props": {"id": "snapshots", "label": "Server backups"},
+                        "children": [
+                            self._create_file_list_table(
+                                [item.filename for item in snapshots.backups],
+                                "backup_snapshot",
+                                server,
+                            )
+                        ],
+                    },
                     {
                         "type": "Tab",
                         "props": {"id": "world_backups", "label": "Worlds"},
@@ -286,7 +304,7 @@ class DownloadPagePlugin(PluginBase):
 
             base_path = None
             # Resolve root directories first to establish trust anchors
-            if file_type in ("backup_world", "backup_config"):
+            if file_type in ("backup_snapshot", "backup_world", "backup_config"):
                 if not server:
                     raise HTTPException(400, "Server name required for backups")
                 result = await self.api.settings.get_global_setting(
@@ -364,7 +382,11 @@ class DownloadPagePlugin(PluginBase):
         self,
         files: List[str],
         file_type: Literal[
-            "backup_world", "backup_config", "content_world", "content_addon"
+            "backup_snapshot",
+            "backup_world",
+            "backup_config",
+            "content_world",
+            "content_addon",
         ],
         server: Optional[str],
     ) -> dict:

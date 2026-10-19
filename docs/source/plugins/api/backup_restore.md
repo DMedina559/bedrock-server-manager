@@ -99,6 +99,99 @@ data = result.model_dump(mode="json")
 ---
 
 
+## `backup_restore.create_server_backup`
+```python
+await self.api.backup_restore.create_server_backup(request: bedrock_server_manager.api.models.backup_restore.CreateSnapshotRequest)
+```
+- **Async (Requires await):** Yes
+
+- **Description:** Capture one coherent, optionally encrypted server archive.
+
+- **Returns:** `CreateSnapshotResponse`
+
+Runtime context and plugin identity are injected by the bridge. Failures raise application exceptions; plugin cancellation raises `APICancelledError`.
+
+```python
+from bedrock_server_manager.api.models import CreateSnapshotRequest
+payload = {'server_name': 'example'}
+request = CreateSnapshotRequest(**payload)
+result = await self.api.backup_restore.create_server_backup(request)
+data = result.model_dump(mode="json")
+```
+- **Request schema:** [CreateSnapshotRequest](models.md#createsnapshotrequest)
+- **Response schema:** [CreateSnapshotResponse](models.md#createsnapshotresponse)
+- **Transport error schema:** [APIErrorResponse](models.md#apierrorresponse)
+**Parameters:**
+
+| Name | Type | Default |
+|------|------|---------|
+| `request` | `bedrock_server_manager.api.models.backup_restore.CreateSnapshotRequest` | `REQUIRED` |
+
+---
+
+
+## `backup_restore.get_restore_recovery`
+```python
+await self.api.backup_restore.get_restore_recovery(request: bedrock_server_manager.api.models.backup_restore.ListSnapshotsRequest)
+```
+- **Async (Requires await):** Yes
+
+- **Description:** Inspect recovery state without exposing journal files or secret settings.
+
+- **Returns:** `RestoreRecoveryResponse`
+
+Runtime context and plugin identity are injected by the bridge. Failures raise application exceptions; plugin cancellation raises `APICancelledError`.
+
+```python
+from bedrock_server_manager.api.models import ListSnapshotsRequest
+payload = {'server_name': 'example'}
+request = ListSnapshotsRequest(**payload)
+result = await self.api.backup_restore.get_restore_recovery(request)
+data = result.model_dump(mode="json")
+```
+- **Request schema:** [ListSnapshotsRequest](models.md#listsnapshotsrequest)
+- **Response schema:** [RestoreRecoveryResponse](models.md#restorerecoveryresponse)
+- **Transport error schema:** [APIErrorResponse](models.md#apierrorresponse)
+**Parameters:**
+
+| Name | Type | Default |
+|------|------|---------|
+| `request` | `bedrock_server_manager.api.models.backup_restore.ListSnapshotsRequest` | `REQUIRED` |
+
+---
+
+
+## `backup_restore.inspect_server_backup`
+```python
+await self.api.backup_restore.inspect_server_backup(request: bedrock_server_manager.api.models.backup_restore.InspectSnapshotRequest)
+```
+- **Async (Requires await):** Yes
+
+- **Description:** Authenticate a backup and return its manifest without secret file values.
+
+- **Returns:** `InspectSnapshotResponse`
+
+Runtime context and plugin identity are injected by the bridge. Failures raise application exceptions; plugin cancellation raises `APICancelledError`.
+
+```python
+from bedrock_server_manager.api.models import InspectSnapshotRequest
+payload = {...}  # Supply required request fields below.
+request = InspectSnapshotRequest(**payload)
+result = await self.api.backup_restore.inspect_server_backup(request)
+data = result.model_dump(mode="json")
+```
+- **Request schema:** [InspectSnapshotRequest](models.md#inspectsnapshotrequest)
+- **Response schema:** [InspectSnapshotResponse](models.md#inspectsnapshotresponse)
+- **Transport error schema:** [APIErrorResponse](models.md#apierrorresponse)
+**Parameters:**
+
+| Name | Type | Default |
+|------|------|---------|
+| `request` | `bedrock_server_manager.api.models.backup_restore.InspectSnapshotRequest` | `REQUIRED` |
+
+---
+
+
 ## `backup_restore.list_backup_files`
 ```python
 await self.api.backup_restore.list_backup_files(request: bedrock_server_manager.api.models.backup_restore.ListBackupFilesRequest)
@@ -130,6 +223,68 @@ data = result.model_dump(mode="json")
 ---
 
 
+## `backup_restore.list_server_snapshots`
+```python
+await self.api.backup_restore.list_server_snapshots(request: bedrock_server_manager.api.models.backup_restore.ListSnapshotsRequest)
+```
+- **Async (Requires await):** Yes
+
+- **Description:** List portable archives without decrypting their private manifests.
+
+- **Returns:** `ListSnapshotsResponse`
+
+Runtime context and plugin identity are injected by the bridge. Failures raise application exceptions; plugin cancellation raises `APICancelledError`.
+
+```python
+from bedrock_server_manager.api.models import ListSnapshotsRequest
+payload = {'server_name': 'example'}
+request = ListSnapshotsRequest(**payload)
+result = await self.api.backup_restore.list_server_snapshots(request)
+data = result.model_dump(mode="json")
+```
+- **Request schema:** [ListSnapshotsRequest](models.md#listsnapshotsrequest)
+- **Response schema:** [ListSnapshotsResponse](models.md#listsnapshotsresponse)
+- **Transport error schema:** [APIErrorResponse](models.md#apierrorresponse)
+**Parameters:**
+
+| Name | Type | Default |
+|------|------|---------|
+| `request` | `bedrock_server_manager.api.models.backup_restore.ListSnapshotsRequest` | `REQUIRED` |
+
+---
+
+
+## `backup_restore.plan_server_restore`
+```python
+await self.api.backup_restore.plan_server_restore(request: bedrock_server_manager.api.models.backup_restore.PlanSnapshotRestoreRequest)
+```
+- **Async (Requires await):** Yes
+
+- **Description:** Validate selected contents and bind a restore plan to current destinations.
+
+- **Returns:** `PlanSnapshotRestoreResponse`
+
+Runtime context and plugin identity are injected by the bridge. Failures raise application exceptions; plugin cancellation raises `APICancelledError`.
+
+```python
+from bedrock_server_manager.api.models import PlanSnapshotRestoreRequest
+payload = {...}  # Supply required request fields below.
+request = PlanSnapshotRestoreRequest(**payload)
+result = await self.api.backup_restore.plan_server_restore(request)
+data = result.model_dump(mode="json")
+```
+- **Request schema:** [PlanSnapshotRestoreRequest](models.md#plansnapshotrestorerequest)
+- **Response schema:** [PlanSnapshotRestoreResponse](models.md#plansnapshotrestoreresponse)
+- **Transport error schema:** [APIErrorResponse](models.md#apierrorresponse)
+**Parameters:**
+
+| Name | Type | Default |
+|------|------|---------|
+| `request` | `bedrock_server_manager.api.models.backup_restore.PlanSnapshotRestoreRequest` | `REQUIRED` |
+
+---
+
+
 ## `backup_restore.prune_old_backups`
 ```python
 await self.api.backup_restore.prune_old_backups(request: bedrock_server_manager.api.models.backup_restore.PruneOldBackupsRequest)
@@ -157,6 +312,37 @@ data = result.model_dump(mode="json")
 | Name | Type | Default |
 |------|------|---------|
 | `request` | `bedrock_server_manager.api.models.backup_restore.PruneOldBackupsRequest` | `REQUIRED` |
+
+---
+
+
+## `backup_restore.recover_server_backup`
+```python
+await self.api.backup_restore.recover_server_backup(request: bedrock_server_manager.api.models.backup_restore.ListSnapshotsRequest)
+```
+- **Async (Requires await):** Yes
+
+- **Description:** Retry an interrupted restore's recovery while preserving its journal on failure.
+
+- **Returns:** `RestoreRecoveryResponse`
+
+Runtime context and plugin identity are injected by the bridge. Failures raise application exceptions; plugin cancellation raises `APICancelledError`.
+
+```python
+from bedrock_server_manager.api.models import ListSnapshotsRequest
+payload = {'server_name': 'example'}
+request = ListSnapshotsRequest(**payload)
+result = await self.api.backup_restore.recover_server_backup(request)
+data = result.model_dump(mode="json")
+```
+- **Request schema:** [ListSnapshotsRequest](models.md#listsnapshotsrequest)
+- **Response schema:** [RestoreRecoveryResponse](models.md#restorerecoveryresponse)
+- **Transport error schema:** [APIErrorResponse](models.md#apierrorresponse)
+**Parameters:**
+
+| Name | Type | Default |
+|------|------|---------|
+| `request` | `bedrock_server_manager.api.models.backup_restore.ListSnapshotsRequest` | `REQUIRED` |
 
 ---
 
@@ -219,6 +405,37 @@ data = result.model_dump(mode="json")
 | Name | Type | Default |
 |------|------|---------|
 | `request` | `bedrock_server_manager.api.models.backup_restore.RestoreConfigFileRequest` | `REQUIRED` |
+
+---
+
+
+## `backup_restore.restore_server_snapshot`
+```python
+await self.api.backup_restore.restore_server_snapshot(request: bedrock_server_manager.api.models.backup_restore.RestoreSnapshotRequest)
+```
+- **Async (Requires await):** Yes
+
+- **Description:** Apply a reviewed restore and keep restart failures separate from data recovery.
+
+- **Returns:** `RestoreSnapshotResponse`
+
+Runtime context and plugin identity are injected by the bridge. Failures raise application exceptions; plugin cancellation raises `APICancelledError`.
+
+```python
+from bedrock_server_manager.api.models import RestoreSnapshotRequest
+payload = {...}  # Supply required request fields below.
+request = RestoreSnapshotRequest(**payload)
+result = await self.api.backup_restore.restore_server_snapshot(request)
+data = result.model_dump(mode="json")
+```
+- **Request schema:** [RestoreSnapshotRequest](models.md#restoresnapshotrequest)
+- **Response schema:** [RestoreSnapshotResponse](models.md#restoresnapshotresponse)
+- **Transport error schema:** [APIErrorResponse](models.md#apierrorresponse)
+**Parameters:**
+
+| Name | Type | Default |
+|------|------|---------|
+| `request` | `bedrock_server_manager.api.models.backup_restore.RestoreSnapshotRequest` | `REQUIRED` |
 
 ---
 

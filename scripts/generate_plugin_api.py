@@ -67,6 +67,10 @@ def generate():
 
     async def report_task_progress(self, percent: float) -> None: ...
 
+    async def read_plugin_file(self, filename: str) -> Any: ...
+
+    async def write_plugin_file(self, filename: str, value: Any) -> None: ...
+
 """
         + "API_METHODS: dict[str, dict[str, str]] = "
         + repr(mapping)

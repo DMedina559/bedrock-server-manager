@@ -203,23 +203,24 @@ async def some_function(self, *, request, server_name, new_players_data=None, re
 
 
 ## `after_backup`
-**Description:** Triggered after 'backup_all'. Performs a full backup of the server's world and configuration files.
+**Description:** Triggered after 'create_server_backup'. Capture one coherent, optionally encrypted server archive.
 - **Cancellable:** No
 - **Identity Keys (for re-entrancy):** `server_name`
 
 ### Listener Signature:
 ```python
 @app_event("after_backup")
-async def some_function(self, *, request, server_name, result, file_to_backup=None, **kwargs):
+async def some_function(self, *, request, server_name, result, file_to_backup=None, encrypted=None, **kwargs):
     pass
 ```
 ### Available `kwargs`:
 | Key Name | Type |
 |----------|------|
-| `request` | `BackupWorldRequest | BackupConfigFileRequest | BackupAllRequest` |
+| `request` | `BackupWorldRequest | BackupConfigFileRequest | BackupAllRequest | CreateSnapshotRequest` |
 | `server_name` | `str` |
-| `result` | `BackupWorldResponse | BackupConfigFileResponse | BackupAllResponse` |
+| `result` | `BackupWorldResponse | BackupConfigFileResponse | BackupAllResponse | CreateSnapshotResponse` |
 | `file_to_backup` | `str` |
+| `encrypted` | `bool | None` |
 | `_triggering_plugin` | `str` (core, or plugin name) |
 
 ---
@@ -454,24 +455,30 @@ async def some_function(self, request, server_name, xuid, result, **kwargs):
 
 
 ## `after_restore`
-**Description:** Triggered after 'restore_config_file'. Restores a specific config file from a backup.
+**Description:** Triggered after 'recover_server_backup'. Retry an interrupted restore's recovery while preserving its journal on failure.
 - **Cancellable:** No
 - **Identity Keys (for re-entrancy):** `server_name`
 
 ### Listener Signature:
 ```python
 @app_event("after_restore")
-async def some_function(self, *, request, server_name, stop_start_server, result, backup_file_path=None, **kwargs):
+async def some_function(self, *, request, server_name, stop_start_server=None, result, backup_file_path=None, component=None, backup_id=None, components=None, token=None, restart=None, stop_running=None, **kwargs):
     pass
 ```
 ### Available `kwargs`:
 | Key Name | Type |
 |----------|------|
-| `request` | `RestoreAllRequest | RestoreWorldRequest | RestoreConfigFileRequest` |
+| `request` | `RestoreAllRequest | RestoreWorldRequest | RestoreConfigFileRequest | RestoreSnapshotRequest | ListSnapshotsRequest` |
 | `server_name` | `str` |
 | `stop_start_server` | `bool` |
-| `result` | `RestoreAllResponse | RestoreWorldResponse | RestoreConfigFileResponse` |
+| `result` | `RestoreAllResponse | RestoreWorldResponse | RestoreConfigFileResponse | RestoreSnapshotResponse | RestoreRecoveryResponse` |
 | `backup_file_path` | `str` |
+| `component` | `Literal['server.properties', 'allowlist.json', 'permissions.json'] | None` |
+| `backup_id` | `str` |
+| `components` | `list[Literal['world', 'server.properties', 'allowlist.json', 'permissions.json', 'script_config', 'bsm_settings']]` |
+| `token` | `str` |
+| `restart` | `bool` |
+| `stop_running` | `bool` |
 | `_triggering_plugin` | `str` (core, or plugin name) |
 
 ---
@@ -949,22 +956,23 @@ async def some_function(self, *, request, server_name, new_players_data=None, pl
 
 
 ## `before_backup`
-**Description:** Triggered before 'backup_all'. Performs a full backup of the server's world and configuration files.
+**Description:** Triggered before 'create_server_backup'. Capture one coherent, optionally encrypted server archive.
 - **Cancellable:** Yes (`event.cancel()`)
 - **Identity Keys (for re-entrancy):** `server_name`
 
 ### Listener Signature:
 ```python
 @app_event("before_backup")
-async def some_function(self, *, request, server_name, file_to_backup=None, event, **kwargs):
+async def some_function(self, *, request, server_name, file_to_backup=None, encrypted=None, event, **kwargs):
     pass
 ```
 ### Available `kwargs`:
 | Key Name | Type |
 |----------|------|
-| `request` | `BackupWorldRequest | BackupConfigFileRequest | BackupAllRequest` |
+| `request` | `BackupWorldRequest | BackupConfigFileRequest | BackupAllRequest | CreateSnapshotRequest` |
 | `server_name` | `str` |
 | `file_to_backup` | `str` |
+| `encrypted` | `bool | None` |
 | `event` | `CancellableEvent` |
 | `_triggering_plugin` | `str` (core, or plugin name) |
 
@@ -1176,23 +1184,29 @@ async def some_function(self, request, server_name, xuid, event, **kwargs):
 
 
 ## `before_restore`
-**Description:** Triggered before 'restore_config_file'. Restores a specific config file from a backup.
+**Description:** Triggered before 'recover_server_backup'. Retry an interrupted restore's recovery while preserving its journal on failure.
 - **Cancellable:** Yes (`event.cancel()`)
 - **Identity Keys (for re-entrancy):** `server_name`
 
 ### Listener Signature:
 ```python
 @app_event("before_restore")
-async def some_function(self, *, request, server_name, stop_start_server, backup_file_path=None, event, **kwargs):
+async def some_function(self, *, request, server_name, stop_start_server=None, backup_file_path=None, component=None, backup_id=None, components=None, token=None, restart=None, stop_running=None, event, **kwargs):
     pass
 ```
 ### Available `kwargs`:
 | Key Name | Type |
 |----------|------|
-| `request` | `RestoreAllRequest | RestoreWorldRequest | RestoreConfigFileRequest` |
+| `request` | `RestoreAllRequest | RestoreWorldRequest | RestoreConfigFileRequest | RestoreSnapshotRequest | ListSnapshotsRequest` |
 | `server_name` | `str` |
 | `stop_start_server` | `bool` |
 | `backup_file_path` | `str` |
+| `component` | `Literal['server.properties', 'allowlist.json', 'permissions.json'] | None` |
+| `backup_id` | `str` |
+| `components` | `list[Literal['world', 'server.properties', 'allowlist.json', 'permissions.json', 'script_config', 'bsm_settings']]` |
+| `token` | `str` |
+| `restart` | `bool` |
+| `stop_running` | `bool` |
 | `event` | `CancellableEvent` |
 | `_triggering_plugin` | `str` (core, or plugin name) |
 

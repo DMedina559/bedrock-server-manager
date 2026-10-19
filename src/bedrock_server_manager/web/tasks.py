@@ -294,6 +294,16 @@ class TaskManager:
 
         return task_id
 
+    async def report_stage(self, message: str) -> None:
+        """Publish a core operation stage without retaining its request arguments."""
+        task_id = _current_task_id.get()
+        if (
+            task_id is not None
+            and task_id in self._tasks
+            and self._tasks[task_id].status == "running"
+        ):
+            await self._update_task(task_id, "running", message)
+
     def report_progress(
         self, percent: float, *, plugin_owner: str | None = None
     ) -> None:

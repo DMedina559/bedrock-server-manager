@@ -1,5 +1,6 @@
 import json
 import os
+from pathlib import Path
 from unittest.mock import MagicMock
 
 import pytest
@@ -50,7 +51,9 @@ def test_get_config_dir_default(clean_env, monkeypatch):
 
 def test_get_config_path(isolated_bcm_config):
     """Test get_config_path returns the full path to json file."""
-    expected = os.path.join(str(isolated_bcm_config), "bedrock_server_manager.json")
+    expected = os.path.join(
+        str(isolated_bcm_config), "config", "bedrock_server_manager.json"
+    )
     assert bcm_config.get_config_path() == expected
 
 
@@ -137,7 +140,7 @@ def test_load_config_invalid_json(clean_env, tmp_path, caplog):
         bcm_config.load_config()
     with pytest.raises(ConfigurationError):
         bcm_config.set_config_value("logging_level", "DEBUG")
-    assert config_file.read_text() == "{invalid json}"
+    assert Path(bcm_config.get_config_path()).read_text() == "{invalid json}"
     assert "Failed to load configuration file" in caplog.text
 
 
@@ -164,7 +167,7 @@ def test_save_config_creates_dir(clean_env, tmp_path):
     bcm_config.save_config({"key": "value"})
 
     assert new_dir.exists()
-    assert (new_dir / "bedrock_server_manager.json").exists()
+    assert (new_dir / "config" / "bedrock_server_manager.json").exists()
 
 
 def test_save_config_error(isolated_bcm_config, monkeypatch, caplog):
@@ -247,3 +250,26 @@ def test_replace_failure_preserves_previous_file(isolated_bcm_config, monkeypatc
 def test_set_config_value_supports_nested_paths(isolated_bcm_config):
     bcm_config.set_config_value("extension.nested.value", 42)
     assert bcm_config.get_config_value("extension.nested.value") == 42
+
+
+def test_bootstrap_migration_preserves_unknown_files(isolated_bcm_config):
+    root = Path(isolated_bcm_config)
+    unknown = root / "custom.json"
+    unknown.write_text("keep")
+    migrated = Path(bcm_config.get_config_path())
+    assert migrated.parent == root / "config"
+    assert migrated.is_file()
+    assert not (root / "bedrock_server_manager.json").exists()
+    assert unknown.read_text() == "keep"
+    assert bcm_config.get_config_path() == str(migrated)
+
+
+def test_bootstrap_migration_rejects_conflicts(isolated_bcm_config):
+    from bedrock_server_manager.error import ConfigurationError
+
+    root = Path(isolated_bcm_config)
+    (root / "config").mkdir()
+    (root / "config" / "bedrock_server_manager.json").write_text("{}")
+    with pytest.raises(ConfigurationError, match="Conflicting"):
+        bcm_config.get_config_path()
+    assert (root / "bedrock_server_manager.json").exists()
