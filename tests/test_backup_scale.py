@@ -52,12 +52,16 @@ async def test_many_file_backup_keeps_event_loop_responsive(populated_server):
     def logical_bytes():
         total = 0
         for parent in (root, backup_root):
-            for path in parent.rglob("*"):
-                try:
-                    if path.is_file() and not path.is_symlink():
-                        total += path.stat().st_size
-                except FileNotFoundError:
-                    pass
+            # Capture cleanup can remove a directory during sampling. os.walk
+            # skips vanished directories, including on Python 3.11/Windows.
+            for directory, _directories, files in os.walk(parent):
+                for filename in files:
+                    path = Path(directory) / filename
+                    try:
+                        if not path.is_symlink():
+                            total += path.stat().st_size
+                    except FileNotFoundError:
+                        pass
         return total
 
     baseline = await run_in_thread(logical_bytes)
