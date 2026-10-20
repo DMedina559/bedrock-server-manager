@@ -38,7 +38,8 @@ async def test_legacy_typed_and_observer_delivery_coexist(
         assert event.sequence.sequence_id == event.operation.sequence_id
         assert event.context.phase == "before"
         assert event.can_cancel
-        assert 0 < event.remaining_seconds <= 120
+        # Adding/subtracting a float deadline can round just above the budget.
+        assert 0 < event.remaining_seconds <= 120 + 1e-6
         seen.append(("typed", event.context.event_id))
 
     async def observer(event: PluginEvent[StartPayload]):
@@ -618,7 +619,7 @@ async def test_handler_uses_event_loop_deadline_clock(
         assert (
             0
             < event.remaining_seconds
-            <= app_context.events.options.hook_timeout_seconds
+            <= app_context.events.options.hook_timeout_seconds + 1e-6
         )
         assert event.can_cancel
         event.cancel("Clock test")
