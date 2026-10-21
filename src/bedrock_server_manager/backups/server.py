@@ -6,7 +6,7 @@ import logging
 import os
 import shutil
 import stat
-import tempfile
+import threading
 from contextlib import AsyncExitStack
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
@@ -19,7 +19,8 @@ from ..config.const import get_installed_version
 from ..error import BackupRestoreError, ConfigurationError
 from ..operations import OperationName
 from ..results import CleanupResult, CompletedItem, ComponentResults, SkippedItem
-from ..utils.threads import run_in_thread
+from ..utils.files import temporary_directory
+from ..utils.threads import check_cancellation, copy_stream, run_in_thread
 from .archive import digest, header, safe_name, unpack, write_archive
 from .catalog import ManagedBackups, now
 from .credentials import (
@@ -55,18 +56,22 @@ def is_link(source: Path) -> bool:
     )
 
 
-def copy_source(source: Path, target: Path) -> None:
+def copy_source(
+    source: Path, target: Path, cancellation_event: threading.Event | None = None
+) -> None:
     """Copy only portable regular files and directories, never following links."""
+    check_cancellation(cancellation_event)
     safe_name(source.name)
     if is_link(source):
         raise BackupRestoreError("Backup sources must not contain symbolic links.")
     if source.is_dir():
         target.mkdir(parents=True, exist_ok=True)
         for child in source.iterdir():
-            copy_source(child, target / child.name)
+            copy_source(child, target / child.name, cancellation_event)
     elif source.is_file():
         target.parent.mkdir(parents=True, exist_ok=True)
-        shutil.copyfile(source, target)
+        with source.open("rb") as stream, target.open("wb") as output:
+            copy_stream(stream, output, cancellation_event)
         protect(target)
     else:
         raise BackupRestoreError("Backup source is not a regular file or directory.")
@@ -134,7 +139,11 @@ class UnifiedServerBackups(ManagedBackups):
         return BackupCredentials(self.server.settings.config_dir)
 
     def unpack_snapshot(
-        self, path: Path, destination: Path, password: str | None = None
+        self,
+        path: Path,
+        destination: Path,
+        password: str | None = None,
+        cancellation_event: threading.Event | None = None,
     ) -> BackupManifest:
         if path.stat().st_size > self.server.settings.get(
             "backups.max_archive_bytes", 1024**4
@@ -146,6 +155,7 @@ class UnifiedServerBackups(ManagedBackups):
             password,
             max_bytes=self.server.settings.get("backups.max_expanded_bytes", 1024**4),
             max_files=self.server.settings.get("backups.max_files", 1_000_000),
+            cancellation_event=cancellation_event,
         )
 
     def resolve_backup(self, identifier: str) -> Path:
@@ -274,8 +284,8 @@ class UnifiedServerBackups(ManagedBackups):
                         else include_packs
                     )
                 )
-                with tempfile.TemporaryDirectory(
-                    prefix=".bsm-capture-", dir=root
+                async with temporary_directory(
+                    prefix=".bsm-capture-", parent=root
                 ) as directory:
                     staging = Path(directory) / "contents"
                     await run_in_thread(private_directory, staging)
@@ -622,8 +632,8 @@ class UnifiedServerBackups(ManagedBackups):
         async with self.server.operation_lock:
             path = self.resolve_backup(identifier)
             password = await run_in_thread(self._password, path, recovery_key)
-            with tempfile.TemporaryDirectory(
-                prefix=".bsm-inspect-", dir=path.parent
+            async with temporary_directory(
+                prefix=".bsm-inspect-", parent=path.parent
             ) as directory:
                 manifest = await run_in_thread(
                     self.unpack_snapshot, path, Path(directory), password
@@ -641,17 +651,27 @@ class UnifiedServerBackups(ManagedBackups):
     async def list_snapshots(self) -> list[BackupSummary]:
         async with self.server.operation_lock:
             root = Path(self._directory())
-            if not root.exists():
-                return []
+
+            def scan():
+                if not root.exists():
+                    return []
+                entries = []
+                for path in sorted(root.glob("*.bsmbackup"), reverse=True):
+                    if path.is_symlink() or not path.is_file():
+                        continue
+                    try:
+                        entries.append((path, path.stat()))
+                    except FileNotFoundError:
+                        continue
+                return entries
+
             result = []
             catalog = await run_in_thread(self.catalog.load)
-            for path in sorted(root.glob("*.bsmbackup"), reverse=True):
-                if path.is_symlink() or not path.is_file():
-                    continue
+            for path, metadata_stat in await run_in_thread(scan):
                 metadata = dict(catalog["archives"].get(path.name, {}))
                 if metadata.get("fingerprint") != [
-                    path.stat().st_size,
-                    path.stat().st_mtime_ns,
+                    metadata_stat.st_size,
+                    metadata_stat.st_mtime_ns,
                 ]:
                     metadata.pop("verification", None)
                 try:
@@ -662,7 +682,7 @@ class UnifiedServerBackups(ManagedBackups):
                             filename=path.name,
                             created_at=metadata.get("created_at"),
                             drill=metadata.get("drill"),
-                            size=path.stat().st_size,
+                            size=metadata_stat.st_size,
                             verification=metadata.get("verification", {}),
                             pinned=metadata.get("pinned", False),
                             protected_until=metadata.get("protected_until"),
@@ -682,7 +702,7 @@ class UnifiedServerBackups(ManagedBackups):
                             filename=path.name,
                             created_at=metadata.get("created_at"),
                             drill=metadata.get("drill"),
-                            size=path.stat().st_size,
+                            size=metadata_stat.st_size,
                             encrypted=False,
                             verification=metadata.get("verification", {}),
                             pinned=metadata.get("pinned", False),
@@ -880,8 +900,8 @@ class UnifiedServerBackups(ManagedBackups):
             RestoreJournal(self.server).ensure_clear()
             path = self.resolve_backup(identifier)
             password = await run_in_thread(self._password, path, recovery_key)
-            with tempfile.TemporaryDirectory(
-                prefix=".bsm-plan-", dir=path.parent
+            async with temporary_directory(
+                prefix=".bsm-plan-", parent=path.parent
             ) as directory:
                 staging = Path(directory)
                 manifest = await run_in_thread(
@@ -898,8 +918,8 @@ class UnifiedServerBackups(ManagedBackups):
                 if dry_run and all(volume.sufficient for volume in volumes):
                     # Exercise replacement copies on the destination filesystem in isolation.
                     target_root = Path(self.server.paths.server_dir)
-                    with tempfile.TemporaryDirectory(
-                        prefix=".bsm-dry-run-", dir=existing_parent(target_root)
+                    async with temporary_directory(
+                        prefix=".bsm-dry-run-", parent=existing_parent(target_root)
                     ) as probe:
                         for component in components:
                             await run_in_thread(
@@ -997,8 +1017,8 @@ class UnifiedServerBackups(ManagedBackups):
             password = await run_in_thread(self._password, path, recovery_key)
             root = Path(self.server.paths.server_dir)
             await run_in_thread(root.mkdir, parents=True, exist_ok=True)
-            with tempfile.TemporaryDirectory(
-                prefix=".bsm-restore-stage-", dir=root
+            async with temporary_directory(
+                prefix=".bsm-restore-stage-", parent=root
             ) as directory:
                 staging = Path(directory)
                 manifest = await run_in_thread(

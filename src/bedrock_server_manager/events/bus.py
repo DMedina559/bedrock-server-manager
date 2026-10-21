@@ -1188,6 +1188,15 @@ class EventBus:
             recent_truncated=len(recent) > limit,
         ).model_copy(deep=True)
 
+    @property
+    def has_pending_work(self) -> bool:
+        current = asyncio.current_task()
+        return any(
+            not task.done() for task in self._tasks if task is not current
+        ) or any(
+            not worker.done() for owned in self._workers.values() for worker in owned
+        )
+
     async def close(self) -> None:
         deadline = monotonic() + self.options.listener_timeout_seconds
         self.accepting = False

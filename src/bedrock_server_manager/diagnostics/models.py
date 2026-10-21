@@ -76,6 +76,11 @@ class DiagnosticIssue(DiagnosticModel):
 
 
 class RuntimeDiagnostics(DiagnosticModel):
+    running_workers: int = 0
+    queued_workers: int = 0
+    draining_workers: int = 0
+    oldest_draining_worker_seconds: float | None = None
+    pending_lifecycle_stages: list[str] = Field(default_factory=list)
     kind: Literal["runtime"] = "runtime"
     ready: bool = False
     stage_started_at: float | None = None
@@ -187,6 +192,7 @@ class TaskDiagnostic(DiagnosticModel):
 
 
 class TasksDiagnostics(DiagnosticModel):
+    concurrency_limit: int | None = None
     kind: Literal["tasks"] = "tasks"
     active: int
     tasks: list[TaskDiagnostic] = Field(default_factory=list)
@@ -217,6 +223,10 @@ class ProcessesDiagnostics(DiagnosticModel):
 
 
 class MetricsDiagnostics(DiagnosticModel):
+    event_loop_lag_ms: float = 0
+    recent_max_event_loop_lag_ms: float = 0
+    event_loop_lag_threshold_ms: float = 100
+    event_loop_lag_breaches: int = 0
     kind: Literal["metrics"] = "metrics"
     last_sample_at: float | None = None
     sample_age_seconds: float | None = None

@@ -50,3 +50,28 @@ async def test_invalid_task_output_is_an_internal_error():
     assert snapshot.status == "failed"
     assert snapshot.result is None
     assert snapshot.error.code == "internal_error"
+
+
+async def test_explicit_concurrency_limit_keeps_waiting_tasks_queued():
+    manager = TaskManager(None, max_workers=1)
+    entered, release = asyncio.Event(), asyncio.Event()
+    calls = []
+
+    async def operation(name):
+        calls.append(name)
+        entered.set()
+        await release.wait()
+
+    first = await manager.run_task(operation, None, "first")
+    await entered.wait()
+    second = await manager.run_task(operation, None, "second")
+    await asyncio.sleep(0)
+    assert (await manager.get_task(first)).status == "running"
+    assert (await manager.get_task(second)).status == "queued"
+    assert calls == ["first"]
+    assert manager.diagnostic_snapshot().concurrency_limit == 1
+    await manager.cancel_task(second)
+    release.set()
+    await manager.shutdown()
+    assert calls == ["first"]
+    assert (await manager.get_task(second)).status == "cancelled"

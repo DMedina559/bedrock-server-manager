@@ -6,6 +6,7 @@ import os
 import re
 import shutil
 import tempfile
+import threading
 import time
 import zipfile
 from pathlib import Path
@@ -24,7 +25,7 @@ from ...error import (
     MissingArgumentError,
 )
 from ...logging import log_operation_error
-from ...utils.threads import run_in_thread
+from ...utils.threads import check_cancellation, copy_stream, run_in_thread
 from ..files import (
     atomic_world_archive,
     extract_archive,
@@ -208,8 +209,17 @@ class ServerWorlds:
                 self._worlds_base_dir_in_server, world_dir_name
             )
 
-            def _copy_and_truncate_world() -> None:
+            def _copy_and_truncate_world(
+                cancellation_event: threading.Event | None = None,
+            ) -> None:
                 from contextlib import nullcontext
+
+                def copy_file(source, target):
+                    check_cancellation(cancellation_event)
+                    with open(source, "rb") as stream, open(target, "wb") as output:
+                        copy_stream(stream, output, cancellation_event)
+                    shutil.copystat(source, target)
+                    return target
 
                 with (
                     nullcontext(capture_directory)
@@ -218,9 +228,13 @@ class ServerWorlds:
                 ) as temp_dir:
                     if os.path.exists(full_source_world_dir):
                         shutil.copytree(
-                            full_source_world_dir, temp_dir, dirs_exist_ok=True
+                            full_source_world_dir,
+                            temp_dir,
+                            dirs_exist_ok=True,
+                            copy_function=copy_file,
                         )
                     for rpath, rsize in file_list_with_sizes:
+                        check_cancellation(cancellation_event)
                         if rsize < 0:
                             raise BackupRestoreError("Invalid live backup file size.")
                         clean_rel_path = rpath
@@ -258,7 +272,7 @@ class ServerWorlds:
                         dest_file = os.path.join(temp_dir, clean_rel_path)
                         os.makedirs(os.path.dirname(dest_file), exist_ok=True)
                         if os.path.exists(src_file):
-                            shutil.copy2(src_file, dest_file)
+                            copy_file(src_file, dest_file)
                         if os.path.exists(dest_file):
                             with open(dest_file, "r+b") as f:
                                 f.truncate(rsize)

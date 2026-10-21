@@ -2,13 +2,13 @@
 
 import json
 import os
-import tempfile
 from pathlib import Path
 from uuid import uuid4
 
 from ..api.models.backup_restore import PrepareBackupCopyResponse
 from ..api.models.install import InstallNewServerRequest
 from ..error import BackupRestoreError
+from ..utils.files import temporary_directory
 from ..utils.server import core_validate_server_name_format
 from ..utils.threads import run_in_thread
 from .archive import write_archive
@@ -36,8 +36,8 @@ async def prepare_copy(request, context) -> PrepareBackupCopyResponse:
         archive = source.resolve_backup(request.backup_id)
         key = request.recovery_key.get_secret_value() if request.recovery_key else None
         password = await run_in_thread(source._password, archive, key)
-        with tempfile.TemporaryDirectory(
-            prefix=".bsm-copy-stage-", dir=archive.parent
+        async with temporary_directory(
+            prefix=".bsm-copy-stage-", parent=archive.parent
         ) as directory:
             staging = Path(directory)
             manifest = await run_in_thread(

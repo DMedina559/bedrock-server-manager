@@ -12,9 +12,9 @@ from fastapi import APIRouter, Depends, HTTPException, Request, status
 from fastapi.responses import JSONResponse
 
 from ...context import AppContext
-from ...utils import (
+from ...utils.auth import (
     create_access_token,
-    get_password_hash,
+    get_password_hash_async,
 )
 from ..cookies import set_session_cookie
 from ..deps import get_app_context
@@ -58,7 +58,7 @@ async def create_first_user(
 
     record = await app_context.user_service.create_account(
         data.username,
-        get_password_hash(data.password.get_secret_value()),
+        await get_password_hash_async(data.password.get_secret_value()),
         first_admin=True,
     )
     if record is None:

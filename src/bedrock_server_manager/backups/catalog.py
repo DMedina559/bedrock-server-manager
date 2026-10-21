@@ -2,8 +2,8 @@
 
 import json
 import os
-import shutil
 import tempfile
+import threading
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from typing import TYPE_CHECKING, Any, Protocol, cast
@@ -15,7 +15,8 @@ if TYPE_CHECKING:
 from ..error import BackupRestoreError
 from ..events.backup import BackupActivity
 from ..results import CleanupResult
-from ..utils.threads import run_in_thread
+from ..utils.files import temporary_directory
+from ..utils.threads import check_cancellation, copy_stream, run_in_thread
 from .archive import digest, safe_name
 from .credentials import atomic_json, private_directory
 from .models import (
@@ -42,7 +43,12 @@ class DirectoryDestination:
     def __init__(self, directory: str):
         self.directory = Path(directory)
 
-    def publish(self, source: Path, server_name: str) -> None:
+    def publish(
+        self,
+        source: Path,
+        server_name: str,
+        cancellation_event: threading.Event | None = None,
+    ) -> None:
         safe_name(server_name)
         if Path(server_name).name != server_name or not self.directory.is_absolute():
             raise BackupRestoreError("Destination requires an absolute directory.")
@@ -54,17 +60,22 @@ class DirectoryDestination:
             raise BackupRestoreError("Destination must differ from local storage.")
         target = root / source.name
         if target.exists():
-            if target.is_symlink() or digest(target) != digest(source):
+            if target.is_symlink() or digest(target, cancellation_event) != digest(
+                source, cancellation_event
+            ):
                 raise BackupRestoreError("Destination already has different content.")
             return
         descriptor, temporary = tempfile.mkstemp(prefix=".bsm-copy-", dir=root)
         try:
             with os.fdopen(descriptor, "wb") as output, source.open("rb") as stream:
-                shutil.copyfileobj(stream, output, 1024 * 1024)
+                copy_stream(stream, output, cancellation_event)
                 output.flush()
                 os.fsync(output.fileno())
-            if digest(Path(temporary)) != digest(source):
+            if digest(Path(temporary), cancellation_event) != digest(
+                source, cancellation_event
+            ):
                 raise BackupRestoreError("Destination copy verification failed.")
+            check_cancellation(cancellation_event)
             os.replace(temporary, target)
             if os.name != "nt":
                 descriptor = os.open(root, os.O_RDONLY)
@@ -182,8 +193,8 @@ class ManagedBackups:
             path = self.resolve_backup(identifier)
             try:
                 password = await run_in_thread(self._password, path, recovery_key)
-                with tempfile.TemporaryDirectory(
-                    prefix=".bsm-verify-", dir=path.parent
+                async with temporary_directory(
+                    prefix=".bsm-verify-", parent=path.parent
                 ) as directory:
                     staging = Path(directory)
                     manifest = await run_in_thread(

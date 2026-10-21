@@ -5,20 +5,31 @@ import io
 import json
 import os
 import re
-import shutil
 import tarfile
+import threading
 from pathlib import Path, PurePosixPath
 from typing import Any
 
 from securetar import SecureTarArchive, SecureTarHeader
 
 from ..error import BackupRestoreError
+from ..utils.threads import check_cancellation, copy_stream
 from .models import PREFIXES, BackupHeader, BackupManifest
 
 MAX_FILES = 1_000_000
 MAX_BYTES = 1024**4
 MAX_METADATA = 32 * 1024 * 1024
 RESERVED = re.compile(r"^(CON|PRN|AUX|NUL|COM[1-9]|LPT[1-9])(?:\.|$)", re.I)
+
+
+class _CancellableReader(io.BufferedReader):
+    cancellation_event: threading.Event | None = None
+
+    def read(self, size: int | None = -1) -> bytes:
+        check_cancellation(self.cancellation_event)
+        data = super().read(size)
+        check_cancellation(self.cancellation_event)
+        return data
 
 
 class BoundedTarInfo(tarfile.TarInfo):
@@ -56,10 +67,11 @@ def safe_name(value: str) -> str:
     return value
 
 
-def digest(path: Path) -> str:
+def digest(path: Path, cancellation_event: threading.Event | None = None) -> str:
     result = hashlib.sha256()
     with path.open("rb") as source:
         while chunk := source.read(1024 * 1024):
+            check_cancellation(cancellation_event)
             result.update(chunk)
     return result.hexdigest()
 
@@ -100,6 +112,7 @@ def write_archive(
     manifest: BackupManifest,
     password: str | None,
     key_id: str | None,
+    cancellation_event: threading.Event | None = None,
 ) -> None:
     """Write to a private temporary target; the caller publishes after verification."""
     with SecureTarArchive(target, "w", password=password, create_version=3) as archive:
@@ -111,20 +124,23 @@ def write_archive(
         with archive.create_tar("payload.tar.gz") as payload:
             add_json(payload, "manifest.json", manifest.model_dump(mode="json"))
             for name in manifest.directories:
+                check_cancellation(cancellation_event)
                 info = tarfile.TarInfo(safe_name(name))
                 info.type = tarfile.DIRTYPE
                 info.mode = 0o700
                 payload.addfile(info)
             for item in manifest.files:
+                check_cancellation(cancellation_event)
                 source = staging / safe_name(item.path)
                 info = tarfile.TarInfo(item.path)
                 info.mode = 0o600
                 info.size = item.size
-                with source.open("rb") as stream:
-                    payload.addfile(info, stream)
+                with source.open("rb") as stream, _CancellableReader(stream) as reader:
+                    reader.cancellation_event = cancellation_event
+                    payload.addfile(info, reader)
     # Windows requires a writable handle for its underlying FlushFileBuffers call.
-    with target.open("r+b") as stream:
-        os.fsync(stream.fileno())
+    with target.open("r+b") as completed:
+        os.fsync(completed.fileno())
 
 
 def unpack(
@@ -134,6 +150,7 @@ def unpack(
     *,
     max_bytes: int = MAX_BYTES,
     max_files: int = MAX_FILES,
+    cancellation_event: threading.Event | None = None,
 ) -> BackupManifest:
     """Authenticate the complete stream and validate inventory before using contents."""
     public = header(path)
@@ -174,6 +191,7 @@ def unpack(
             with source as decrypted, packed.open("wb") as output:
                 total = 0
                 while chunk := decrypted.read(1024 * 1024):
+                    check_cancellation(cancellation_event)
                     total += len(chunk)
                     if total > max_bytes:
                         raise ValueError("Archive exceeds size limit")
@@ -183,6 +201,7 @@ def unpack(
         manifest = None
         with tarfile.open(packed, "r|gz", tarinfo=BoundedTarInfo) as payload:
             for member in payload:
+                check_cancellation(cancellation_event)
                 name = safe_name(member.name)
                 folded = name.casefold()
                 if (
@@ -231,7 +250,7 @@ def unpack(
                     stream = payload.extractfile(member)
                     assert stream is not None
                     with stream, target.open("wb") as output:
-                        shutil.copyfileobj(stream, output, 1024 * 1024)
+                        copy_stream(stream, output, cancellation_event)
         packed.unlink()
         if manifest is None:
             raise ValueError("Missing manifest")
@@ -245,7 +264,7 @@ def unpack(
             extracted = destination / item.path
             if (
                 extracted.stat().st_size != item.size
-                or digest(extracted) != item.sha256
+                or digest(extracted, cancellation_event) != item.sha256
             ):
                 raise ValueError("Checksum mismatch")
         return manifest

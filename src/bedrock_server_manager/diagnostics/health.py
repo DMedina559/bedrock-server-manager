@@ -91,6 +91,14 @@ def _runtime(
             "inspect_logs",
             severity="error",
         )
+    if data.draining_workers or (
+        data.pending_lifecycle_stages and data.phase in {"stopping", "failed"}
+    ):
+        return _issue(
+            "runtime_draining",
+            "Runtime work is waiting for cleanup to finish.",
+            "wait_for_drain",
+        )
     return ("ok" if data.ready else "unknown"), []
 
 
@@ -131,6 +139,12 @@ def _metrics(
         return _issue(
             "metrics_collection_failed",
             "The last metrics collection failed.",
+            "inspect_logs",
+        )
+    if data.event_loop_lag_ms >= data.event_loop_lag_threshold_ms:
+        return _issue(
+            "event_loop_lag",
+            "The event loop is taking longer than expected to respond.",
             "inspect_logs",
         )
     if data.last_sample_at is None or data.warming_up:

@@ -77,7 +77,12 @@ def startup_checks(
 
 
 def run_async(coro):
-    """Executes a coroutine safely whether an asyncio event loop is currently running or not."""
+    """Run a coroutine from synchronous CLI code.
+
+    The legacy active-loop path blocks its caller and uses another event loop.
+    Async consumers must await their coroutine directly; loop-bound application
+    resources must remain on their owning loop.
+    """
     import asyncio
     import concurrent.futures
 

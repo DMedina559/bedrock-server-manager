@@ -46,7 +46,17 @@ def configure_diagnostics(context: "AppContext") -> Diagnostics:
             if context._web_runtime is not None
             else None
         )
+        from ..utils.threads import worker_snapshot
+
+        workers = worker_snapshot()
         return RuntimeDiagnostics(
+            running_workers=workers["running"],
+            queued_workers=workers["queued"],
+            draining_workers=workers["draining"],
+            oldest_draining_worker_seconds=workers["oldest_draining_seconds"],
+            pending_lifecycle_stages=sorted(
+                task.get_name() for task in context._lifecycle_tasks if not task.done()
+            ),
             ready=context.is_ready,
             stage_started_at=service.stage_started_at,
             stage_elapsed_seconds=(
