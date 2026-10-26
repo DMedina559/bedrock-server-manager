@@ -4,9 +4,9 @@ import asyncio
 import hashlib
 import json
 from datetime import datetime, timedelta, timezone
-from zoneinfo import ZoneInfo
 
 from ..utils.threads import run_in_thread
+from ..utils.timezones import resolve_timezone
 
 
 def config_for(backups):
@@ -21,7 +21,7 @@ def signature(config):
 
 
 def occurrences(config, name, moment):
-    zone = ZoneInfo(config["timezone"])
+    zone = resolve_timezone(config["timezone"])
     local = moment.astimezone(zone)
     hour, minute = map(int, config["time"].split(":"))
     offset = int(hashlib.sha256(name.encode()).hexdigest()[:8], 16) % (

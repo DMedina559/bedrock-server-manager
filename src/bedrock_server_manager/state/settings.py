@@ -142,10 +142,12 @@ class BackupSchedule(SettingsRecord):
     @field_validator("timezone")
     @classmethod
     def known_timezone(cls, value):
-        from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
+        from zoneinfo import ZoneInfoNotFoundError
+
+        from ..utils.timezones import resolve_timezone
 
         try:
-            ZoneInfo(value)
+            resolve_timezone(value)
         except (ZoneInfoNotFoundError, ValueError):
             raise ValueError("Choose a valid IANA timezone") from None
         return value

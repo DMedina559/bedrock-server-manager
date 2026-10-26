@@ -254,3 +254,62 @@ async def test_verification_job_continues_after_a_corrupt_archive(
             {"task": "verify", "options": {}}, populated_server, "slot"
         )
     assert verify.await_count == 2
+
+
+async def test_save_complete_browser_backup_schedule(
+    admin_auth_client, populated_server
+):
+    response = await admin_auth_client.put(
+        "/api/scheduler/schedules/backup-test",
+        json={
+            "task": "backup",
+            "server_name": populated_server.server_name,
+            "enabled": True,
+            "time": "03:00",
+            "timezone": "UTC",
+            "weekdays": [0, 1, 2, 3, 4, 5, 6],
+            "catch_up": False,
+            "stagger_minutes": 15,
+            "options": {},
+        },
+    )
+    assert response.status_code == 200, response.text
+
+
+@pytest.mark.parametrize("zone", ["UTC", "Etc/UTC"])
+async def test_browser_schedule_works_without_iana_database(
+    admin_auth_client, populated_server, monkeypatch, zone
+):
+    from zoneinfo import ZoneInfoNotFoundError
+
+    from bedrock_server_manager.scheduler.engine import occurrences
+    from bedrock_server_manager.utils import timezones
+
+    def unavailable(name):
+        raise ZoneInfoNotFoundError(name)
+
+    monkeypatch.setattr(timezones, "ZoneInfo", unavailable)
+    payload = {
+        "task": "backup",
+        "server_name": populated_server.server_name,
+        "enabled": False,
+        "time": "03:00",
+        "timezone": zone,
+        "weekdays": [0, 1, 2, 3, 4, 5, 6],
+        "catch_up": False,
+        "stagger_minutes": 15,
+        "options": {},
+    }
+    response = await admin_auth_client.put(
+        "/api/scheduler/schedules/backup-test", json=payload
+    )
+    assert response.status_code == 200, response.text
+    moment = datetime(2026, 10, 26, tzinfo=timezone.utc)
+    assert occurrences(payload, populated_server.server_name, moment)
+    listed = await admin_auth_client.get("/api/scheduler/schedules")
+    assert listed.status_code == 200, listed.text
+    assert listed.json()["schedules"][0]["configuration"]["timezone"] == zone
+    from bedrock_server_manager.state.settings import BackupSchedule
+
+    with pytest.raises(ValueError):
+        BackupSchedule(timezone="Invalid/Region")
