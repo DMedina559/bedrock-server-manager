@@ -6649,6 +6649,21 @@ Schemas are listed once. Local `$defs` references identify other models on this 
       "title": "Attempts",
       "type": "integer"
     },
+    "event_loop_lag_breaches": {
+      "default": 0,
+      "title": "Event Loop Lag Breaches",
+      "type": "integer"
+    },
+    "event_loop_lag_ms": {
+      "default": 0,
+      "title": "Event Loop Lag Ms",
+      "type": "number"
+    },
+    "event_loop_lag_threshold_ms": {
+      "default": 100,
+      "title": "Event Loop Lag Threshold Ms",
+      "type": "number"
+    },
     "failures": {
       "default": 0,
       "title": "Failures",
@@ -6712,6 +6727,11 @@ Schemas are listed once. Local `$defs` references identify other models on this 
       "default": 0,
       "title": "Missed Intervals",
       "type": "integer"
+    },
+    "recent_max_event_loop_lag_ms": {
+      "default": 0,
+      "title": "Recent Max Event Loop Lag Ms",
+      "type": "number"
     },
     "sample_age_seconds": {
       "anyOf": [
@@ -9632,11 +9652,35 @@ Schemas are listed once. Local `$defs` references identify other models on this 
 {
   "additionalProperties": false,
   "properties": {
+    "draining_workers": {
+      "default": 0,
+      "title": "Draining Workers",
+      "type": "integer"
+    },
     "kind": {
       "const": "runtime",
       "default": "runtime",
       "title": "Kind",
       "type": "string"
+    },
+    "oldest_draining_worker_seconds": {
+      "anyOf": [
+        {
+          "type": "number"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "title": "Oldest Draining Worker Seconds"
+    },
+    "pending_lifecycle_stages": {
+      "items": {
+        "type": "string"
+      },
+      "title": "Pending Lifecycle Stages",
+      "type": "array"
     },
     "phase": {
       "title": "Phase",
@@ -9650,10 +9694,20 @@ Schemas are listed once. Local `$defs` references identify other models on this 
       "title": "Python Version",
       "type": "string"
     },
+    "queued_workers": {
+      "default": 0,
+      "title": "Queued Workers",
+      "type": "integer"
+    },
     "ready": {
       "default": false,
       "title": "Ready",
       "type": "boolean"
+    },
+    "running_workers": {
+      "default": 0,
+      "title": "Running Workers",
+      "type": "integer"
     },
     "shutdown_reason": {
       "anyOf": [
@@ -11045,6 +11099,18 @@ Schemas are listed once. Local `$defs` references identify other models on this 
       "default": 100,
       "title": "Capacity",
       "type": "integer"
+    },
+    "concurrency_limit": {
+      "anyOf": [
+        {
+          "type": "integer"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "title": "Concurrency Limit"
     },
     "counts_by_status": {
       "additionalProperties": {
