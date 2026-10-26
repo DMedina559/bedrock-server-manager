@@ -23,12 +23,13 @@ class Scheduler:
         self._handlers = {}
         self._settings_lock = asyncio.Lock()
         self._migration_lock = asyncio.Lock()
+        self.last_tick_at = None
+        self._last_tick_monotonic = None
+        self.last_error_type = None
 
     @property
     def repository(self):
-        from ..db.repositories.scheduler import SchedulerRepository
-
-        return SchedulerRepository(self.context.db)
+        return self.context.storage.scheduler_repo
 
     def register(self, name, handler, *, owner, generation):
         if not inspect.iscoroutinefunction(handler):
@@ -119,13 +120,13 @@ class Scheduler:
                 available = self.available(config["task"])
             except Exception:
                 record, available = {}, False
-            future = [
-                slot
-                for slot in occurrences(
+            try:
+                slots = occurrences(
                     config, config["server_name"], datetime.now(timezone.utc)
                 )
-                if slot > datetime.now(timezone.utc)
-            ]
+            except (ValueError, KeyError):
+                slots, available = [], False
+            future = [slot for slot in slots if slot > datetime.now(timezone.utc)]
             entries.append(
                 ScheduleEntry(
                     schedule_id=name,
@@ -147,7 +148,16 @@ class Scheduler:
         types = ["backup", "verify"] + [
             name for name in list(self._handlers) if self.available(name)
         ]
-        return ListSchedulesResponse(schedules=entries, task_types=sorted(types))
+        from ..utils.timezones import schedule_timezones, timezone_database_available
+
+        return ListSchedulesResponse(
+            schedules=entries,
+            task_types=sorted(types),
+            server_time=datetime.now(timezone.utc).isoformat(),
+            host_timezone=datetime.now().astimezone().tzname(),
+            timezone_database_available=timezone_database_available(),
+            timezones=await run_in_thread(schedule_timezones),
+        )
 
     async def save(self, request):
         from ..error import UserInputError
@@ -218,14 +228,17 @@ class Scheduler:
             await self.repository.delete(name)
 
     async def execute(self, name, config, server, slot):
+        import time
         from uuid import uuid4
 
         from ..events.bus import current_correlation_id
 
+        started = time.monotonic()
+        failure = None
         run_id = uuid4().hex
         with self.context.events.operations.scope(
             "scheduler.run", server_name=server.server_name
-        ):
+        ) as operation:
             await self.repository.run(
                 name,
                 slot,
@@ -236,6 +249,7 @@ class Scheduler:
             try:
                 await self._execute(config, server, slot)
             except BaseException as error:
+                failure = error
                 await self.repository.run(
                     name,
                     slot,
@@ -250,6 +264,21 @@ class Scheduler:
                 raise
             else:
                 await self.repository.run(name, slot, run_id=run_id, status="completed")
+            finally:
+                if self.context._diagnostics is not None:
+                    self.context._diagnostics.record(
+                        "scheduler",
+                        config["task"],
+                        started=started,
+                        error=failure,
+                        correlation_id=current_correlation_id(),
+                        operation_id=operation.snapshot.operation_id,
+                        owner=(
+                            "application"
+                            if ":" not in config["task"]
+                            else "plugin:" + config["task"].split(":", 1)[0]
+                        ),
+                    )
 
     async def _execute(self, config, server, slot):
         if config["task"] == "backup":
@@ -320,6 +349,16 @@ class Scheduler:
                 ).items():
                     if not self.available(config["task"]):
                         continue
+                    # A host losing one timezone must not block other jobs for the server.
+                    from ..utils.timezones import resolve_timezone
+
+                    try:
+                        resolve_timezone(config["timezone"])
+                    except (ValueError, KeyError):
+                        logging.getLogger(__name__).warning(
+                            "Scheduled timezone unavailable for '%s'.", identifier
+                        )
+                        continue
 
                     async def capture(slot):
                         await self.execute(identifier, config, server, slot)
@@ -358,21 +397,69 @@ class Scheduler:
             )
 
     async def diagnostic_snapshot(self):
-        from ..diagnostics.models import PluginValues
+        import time
 
-        snapshot = await self.snapshot()
-        entries = snapshot.schedules
-        failed = sum(e.last_status in ("failed", "interrupted") for e in entries)
-        unavailable = sum(not e.available for e in entries)
+        from ..diagnostics.models import PluginValues, SchedulerDiagnostics
+        from ..utils.timezones import timezone_database_available
+
+        entries = self.context.state.scheduler.records
+        enabled = [
+            (config, state)
+            for config, state, legacy in entries.values()
+            if config["enabled"]
+        ]
+        missing = sum(
+            not self.available(config["task"])
+            or config["server_name"] not in self.context.state.servers.servers
+            for config, state in enabled
+        )
+        observation = SchedulerDiagnostics(
+            running=self.task is not None and not self.task.done(),
+            schedules=len(entries),
+            enabled=len(enabled),
+            active_jobs=len(self._jobs),
+            failed=sum(
+                state.get("status") in ("failed", "interrupted")
+                for config, state in enabled
+            ),
+            unavailable=missing,
+            last_tick_at=self.last_tick_at,
+            tick_age_seconds=(
+                max(0.0, time.monotonic() - self._last_tick_monotonic)
+                if self._last_tick_monotonic is not None
+                else None
+            ),
+            last_error_type=self.last_error_type,
+            timezone_database_available=timezone_database_available(),
+        )
+
+        # Keep the established metadata wire contract for existing 4.0 clients.
         return PluginValues(
-            health="degraded" if failed or unavailable else "ok",
+            health=(
+                "ok"
+                if self.check_health()
+                and not observation.failed
+                and not observation.unavailable
+                and observation.timezone_database_available
+                else "degraded"
+            ),
             values={
-                "schedules": len(entries),
-                "enabled": sum(e.configuration.enabled for e in entries),
-                "running": sum(e.last_status == "running" for e in entries),
-                "failed": failed,
-                "unavailable": unavailable,
+                key: value
+                for key, value in observation.model_dump().items()
+                if key not in ("kind", "last_error_type")
             },
+            units={"tick_age_seconds": "seconds"},
+        )
+
+    def check_health(self):
+        import time
+
+        return (
+            self.task is not None
+            and not self.task.done()
+            and self._last_tick_monotonic is not None
+            and time.monotonic() - self._last_tick_monotonic < 180
+            and self.last_error_type is None
         )
 
     def start(self):
@@ -382,10 +469,13 @@ class Scheduler:
     def _finished(self, name, task):
         if self._jobs.get(name) is task:
             self._jobs.pop(name, None)
+        self.context.state.runtime.scheduler["active_jobs"] = len(self._jobs)
         if not task.cancelled():
             task.exception()
 
     async def _run(self):
+        import time
+
         from ..services.lifecycle import LifecyclePhase
 
         try:
@@ -394,6 +484,16 @@ class Scheduler:
                 if self.context.lifecycle_phase != LifecyclePhase.READY:
                     await asyncio.sleep(1)
                     continue
+                self.last_tick_at = time.time()
+                self._last_tick_monotonic = time.monotonic()
+                self.last_error_type = None
+                # Publish runtime observations independently from persistent definitions.
+                self.context.state.runtime.scheduler = {
+                    "running": True,
+                    "last_tick_at": self.last_tick_at,
+                    "active_jobs": len(self._jobs),
+                    "last_error_type": None,
+                }
                 names = set(self.context.state.servers.servers)
                 for name, task in list(self._jobs.items()):
                     if name not in names:
@@ -407,8 +507,19 @@ class Scheduler:
                         task.add_done_callback(
                             lambda done, name=name: self._finished(name, done)
                         )
+                self.context.state.runtime.scheduler["active_jobs"] = len(self._jobs)
                 await asyncio.sleep(60)
+        except Exception as error:
+            self.last_error_type = type(error).__name__
+            logging.getLogger(__name__).exception("Scheduler loop stopped unexpectedly")
+            raise
         finally:
+            self.context.state.runtime.scheduler = {
+                "running": False,
+                "last_tick_at": self.last_tick_at,
+                "active_jobs": 0,
+                "last_error_type": self.last_error_type,
+            }
             tasks = list(self._jobs.values())
             for task in tasks:
                 task.cancel()

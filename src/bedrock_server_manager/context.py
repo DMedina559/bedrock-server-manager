@@ -271,7 +271,7 @@ class AppContext:
             ),
             ("resources", lambda: self.resource_monitor.start()),
             ("metrics", lambda: self.metrics_service.start()),
-            ("backup maintenance", lambda: self._backup_maintenance.start()),
+            ("scheduler", lambda: self.scheduler.start()),
             ("metrics readiness", lambda: self.metrics_service.snapshot()),
             (
                 "startup hooks",
@@ -386,7 +386,7 @@ class AppContext:
             self._task_manager.begin_shutdown()
         # Observers release process and websocket dependencies before teardown.
         for name, component in (
-            ("backup maintenance", self._backup_maintenance),
+            ("scheduler", self.scheduler),
             ("metrics", self._metrics_service),
             ("resources", self._resource_monitor),
             ("logs", self._log_streamer),

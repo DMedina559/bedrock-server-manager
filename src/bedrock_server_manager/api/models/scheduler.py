@@ -24,6 +24,10 @@ class ListSchedulesRequest(APIRequest):
 
 
 class ListSchedulesResponse(APIResponse):
+    server_time: str | None = None
+    host_timezone: str | None = None
+    timezone_database_available: bool = True
+    timezones: list[str] = Field(default_factory=list)
     schedules: list[ScheduleEntry] = Field(default_factory=list)
     task_types: list[str] = Field(default_factory=list)
 

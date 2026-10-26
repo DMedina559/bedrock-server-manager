@@ -6943,6 +6943,18 @@ Schemas are listed once. Local `$defs` references identify other models on this 
 {
   "additionalProperties": false,
   "properties": {
+    "host_timezone": {
+      "anyOf": [
+        {
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "title": "Host Timezone"
+    },
     "schedules": {
       "items": {
         "$ref": "#/$defs/ScheduleEntry"
@@ -6950,11 +6962,35 @@ Schemas are listed once. Local `$defs` references identify other models on this 
       "title": "Schedules",
       "type": "array"
     },
+    "server_time": {
+      "anyOf": [
+        {
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "title": "Server Time"
+    },
     "task_types": {
       "items": {
         "type": "string"
       },
       "title": "Task Types",
+      "type": "array"
+    },
+    "timezone_database_available": {
+      "default": true,
+      "title": "Timezone Database Available",
+      "type": "boolean"
+    },
+    "timezones": {
+      "items": {
+        "type": "string"
+      },
+      "title": "Timezones",
       "type": "array"
     }
   },

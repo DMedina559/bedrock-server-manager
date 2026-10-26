@@ -1,13 +1,53 @@
 """Transactional scheduler definitions, cursors, and bounded attempt history."""
 
+from contextlib import asynccontextmanager
+
 from sqlalchemy import delete, select
 
 from ..models import Schedule, ScheduleRun
 
 
 class SchedulerRepository:
-    def __init__(self, db):
+    def __init__(self, db, *, storage=None):
         self.db = db
+        self.storage = storage
+
+    @asynccontextmanager
+    async def _write(self, names=()):
+        if self.storage is None:
+            async with self.db.session_manager() as session:
+                try:
+                    yield session
+                    await session.commit()
+                except BaseException:
+                    await session.rollback()
+                    raise
+            return
+        storage = self.storage
+        async with storage._write_scope():
+            async with storage.transaction() as session:
+                yield session
+                await session.flush()
+                rows = self._rows(
+                    (await session.execute(select(Schedule))).scalars().all()
+                )
+            # The read model becomes visible only after the transaction commits.
+            state = storage._scheduler_state
+            if state is not None:
+                state.scheduler.replace_loaded(rows)
+        if state is not None:
+            from ...state.changeset import ChangeSet
+
+            await storage._notify_listeners(
+                state, ChangeSet(schedules_changed=set(names))
+            )
+
+    @staticmethod
+    def _rows(rows):
+        return [
+            (r.schedule_id, dict(r.configuration), dict(r.state), r.legacy_server)
+            for r in rows
+        ]
 
     async def list(self):
         async with self.db.session_manager() as session:
@@ -22,7 +62,7 @@ class SchedulerRepository:
             ]
 
     async def save(self, name, config, *, legacy_server=None, initial_state=None):
-        async with self.db.session_manager() as session:
+        async with self._write((name,)) as session:
             row = await session.get(Schedule, name)
             if row is None:
                 session.add(
@@ -36,31 +76,39 @@ class SchedulerRepository:
             elif row.configuration != config:
                 row.configuration = config
                 # Engine detects configuration changes and activates at its next poll.
-            await session.commit()
 
     async def delete(self, name):
-        async with self.db.session_manager() as session:
+        async with self._write((name,)) as session:
+            row = await session.get(Schedule, name)
+            if row is not None and row.state.get("status") == "running":
+                from ...error import UserInputError
+
+                raise UserInputError(
+                    "Wait for the active schedule run to finish before removing it"
+                )
             await session.execute(delete(Schedule).where(Schedule.schedule_id == name))
             await session.execute(
                 delete(ScheduleRun).where(ScheduleRun.schedule_id == name)
             )
-            await session.commit()
 
     async def state(self, name, value=None):
-        async with self.db.session_manager() as session:
+        if value is None:
+            async with self.db.session_manager() as session:
+                row = await session.get(Schedule, name)
+                if row is None:
+                    raise RuntimeError("Schedule was removed")
+                return dict(row.state)
+        async with self._write((name,)) as session:
             row = await session.get(Schedule, name)
             if row is None:
                 raise RuntimeError("Schedule was removed")
-            if value is None:
-                return dict(row.state)
             row.state = dict(value)
-            await session.commit()
 
     async def run(self, name, slot, *, run_id, status, correlation_id=None, error=None):
         from datetime import datetime, timezone
 
         stamp = datetime.now(timezone.utc).isoformat()
-        async with self.db.session_manager() as session:
+        async with self._write((name,)) as session:
             row = await session.get(ScheduleRun, run_id)
             if row is None:
                 row = ScheduleRun(
@@ -97,7 +145,6 @@ class SchedulerRepository:
                 await session.execute(
                     delete(ScheduleRun).where(ScheduleRun.run_id.in_(stale))
                 )
-            await session.commit()
 
     async def history(self, name, limit=20):
         async with self.db.session_manager() as session:
@@ -132,7 +179,7 @@ class SchedulerRepository:
 
     async def recover(self):
         """Record interrupted attempts once on application startup."""
-        async with self.db.session_manager() as session:
+        async with self._write() as session:
             rows = (
                 (
                     await session.execute(
@@ -156,4 +203,3 @@ class SchedulerRepository:
                         status="interrupted",
                         error="Application stopped before the task completed.",
                     )
-            await session.commit()

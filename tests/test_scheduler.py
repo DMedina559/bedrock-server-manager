@@ -313,3 +313,134 @@ async def test_browser_schedule_works_without_iana_database(
 
     with pytest.raises(ValueError):
         BackupSchedule(timezone="Invalid/Region")
+
+
+async def test_scheduler_writes_publish_committed_state_and_storage_metrics(
+    app_context, populated_server
+):
+    service = app_context.scheduler
+    observed = []
+    app_context.storage.subscribe(
+        lambda state, changes: observed.append(changes.schedules_changed)
+    )
+    before = app_context.storage.diagnostic_snapshot().successes
+    await service.save(
+        SaveScheduleRequest(
+            schedule_id="state-test",
+            configuration=ScheduledTask(
+                task="backup", server_name=populated_server.server_name
+            ),
+        )
+    )
+    assert app_context.state.scheduler.count == 1
+    assert app_context.storage.diagnostic_snapshot().successes > before
+    assert {"state-test"} in observed
+    copied = app_context.state.scheduler.records
+    copied["state-test"][0]["task"] = "verify"
+    assert app_context.state.scheduler.records["state-test"][0]["task"] == "backup"
+    await service.delete("state-test")
+    assert app_context.state.scheduler.count == 0
+
+
+async def test_scheduler_rollback_keeps_committed_state(
+    app_context, populated_server, monkeypatch
+):
+    from unittest.mock import AsyncMock
+
+    from sqlalchemy.ext.asyncio import AsyncSession
+
+    from bedrock_server_manager.error import StorageError
+
+    service = app_context.scheduler
+    before = app_context.state.scheduler.records
+    with monkeypatch.context() as patch:
+        patch.setattr(
+            AsyncSession, "commit", AsyncMock(side_effect=OSError("private db failure"))
+        )
+        with pytest.raises(StorageError):
+            await service.save(
+                SaveScheduleRequest(
+                    schedule_id="failed",
+                    configuration=ScheduledTask(
+                        task="backup", server_name=populated_server.server_name
+                    ),
+                )
+            )
+    assert app_context.state.scheduler.records == before
+    assert app_context.storage.diagnostic_snapshot().failures > 0
+
+
+async def test_scheduler_diagnostics_are_side_effect_free_and_report_loop(
+    app_context, populated_server, monkeypatch
+):
+    from bedrock_server_manager.diagnostics.health import evaluate_health
+    from bedrock_server_manager.diagnostics.models import DiagnosticOptions
+
+    service = app_context.scheduler
+    monkeypatch.setattr(
+        service,
+        "snapshot",
+        AsyncMock(
+            side_effect=AssertionError(
+                "Diagnostics must not migrate or query schedule history"
+            )
+        ),
+    )
+    data = await service.diagnostic_snapshot()
+    assert data.kind == "plugin_values" and not data.values["running"]
+    assert evaluate_health(data, DiagnosticOptions())[0] == "degraded"
+    assert not service.check_health()
+
+
+def test_pacific_schedule_observes_daylight_saving():
+    from bedrock_server_manager.scheduler.engine import occurrences
+
+    config = ScheduledTask(
+        task="backup",
+        server_name="test",
+        time="14:42",
+        timezone="America/Los_Angeles",
+        stagger_minutes=0,
+    ).model_dump()
+    winter = datetime(2026, 1, 1, tzinfo=timezone.utc)
+    summer = datetime(2026, 7, 1, tzinfo=timezone.utc)
+    assert {slot.hour for slot in occurrences(config, "test", winter)} == {22}
+    assert {slot.hour for slot in occurrences(config, "test", summer)} == {21}
+
+
+def test_named_timezone_uses_portable_tzdata_when_system_lookup_fails(monkeypatch):
+    from zoneinfo import ZoneInfoNotFoundError
+
+    from bedrock_server_manager.utils import timezones
+
+    def missing(name):
+        raise ZoneInfoNotFoundError(name)
+
+    monkeypatch.setattr(timezones, "ZoneInfo", missing)
+    timezones.resolve_timezone.cache_clear()
+    zone = timezones.resolve_timezone("America/Los_Angeles")
+    assert datetime(2026, 1, 1, tzinfo=zone).utcoffset() == timedelta(hours=-8)
+    assert datetime(2026, 7, 1, tzinfo=zone).utcoffset() == timedelta(hours=-7)
+
+
+async def test_diagnostic_history_links_scheduled_runs(
+    app_context, populated_server, monkeypatch
+):
+    service = app_context.scheduler
+    config = ScheduledTask(task="verify", server_name=populated_server.server_name)
+    await service.save(
+        SaveScheduleRequest(schedule_id="trace-job", configuration=config)
+    )
+    from unittest.mock import Mock
+
+    diagnostics = app_context.diagnostics
+    record = Mock(wraps=diagnostics.record)
+    monkeypatch.setattr(diagnostics, "record", record)
+    await service.execute("trace-job", config.model_dump(), populated_server, "slot")
+    # Recorder metadata is bound to the same operation correlation as run history.
+    runs = await service.repository.history("trace-job")
+    assert runs[0]["correlation_id"]
+    call = next(call for call in record.call_args_list if call.args[0] == "scheduler")
+    assert call.kwargs["correlation_id"] == runs[0]["correlation_id"]
+    assert call.kwargs["operation_id"]
+    assert app_context.state.scheduler.records["trace-job"][0]["task"] == "verify"

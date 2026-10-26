@@ -374,3 +374,35 @@ validated capture without performing full extraction; imported archives must be
 verified before being used as the retained recovery point. Pinned and protected
 archives cannot be deleted with the individual **Delete** action; external copies
 remain independent.
+
+### Choosing a timezone
+
+Select **Pacific Time (America/Los_Angeles)** for Pacific time. Do not enter
+`PDT` or `PST`: they describe seasonal abbreviations, not a region's recurring
+clock rules. The editor defaults to your browser's regional timezone when the
+host supports it. A daily 14:42 Pacific schedule stays at 14:42 Pacific through
+winter and summer; BSM calculates each occurrence in UTC automatically. Changing
+the host timezone does not shift a saved schedule.
+
+The scheduler advertises supported IANA regions and shows a timezone-data warning
+when regional data is unavailable. UTC remains usable without timezone files.
+BSM depends on the portable `tzdata` package and can read its packaged rules when
+the operating system lookup fails. If the dependency is missing from an existing
+Python environment, repair it with `python -m pip install --upgrade tzdata` using
+the interpreter that runs BSM, then restart BSM.
+
+### Runtime, state and health
+
+Scheduler definitions and cursors commit through the normal Storage transaction
+boundary and participate in its contention and failure telemetry. AppState exposes
+only committed scheduler records; a failed write does not publish speculative
+state. Reloading state also reloads schedules. Run history remains bounded in the
+scheduler tables rather than being copied into the application state cache.
+
+Lifecycle startup owns the scheduler loop, and shutdown cancels and drains its
+server jobs. Runtime observations include the last tick and active job count.
+Application health checks expose the scheduler heartbeat and regional timezone
+availability. The scheduler diagnostic section reads committed state without
+migrating settings or querying archive history, and distinguishes scheduler issues
+from plugin health issues. Runs also produce correlated diagnostic history records.
+Existing 4.0 diagnostic metadata shapes remain readable by older consumers.

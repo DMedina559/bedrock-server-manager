@@ -104,6 +104,7 @@ def configure_diagnostics(context: "AppContext") -> Diagnostics:
                 epoch=stamp["epoch"],
                 observation_revision=stamp["revision"],
                 counts={
+                    "schedules": current.scheduler.count,
                     "servers": current.servers.count,
                     "plugins": current.plugins.count,
                     "users": current.users.count,
@@ -113,6 +114,7 @@ def configure_diagnostics(context: "AppContext") -> Diagnostics:
                     "servers": len(current.servers.dirty_servers),
                     "plugins": len(current.plugins.dirty_plugins),
                     "users": len(current.users.dirty_users),
+                    "schedules": 0,  # Schedules publish only committed state.
                     "settings": int(current.settings.is_dirty),
                 },
             )

@@ -255,6 +255,20 @@ class BackupsDiagnostics(DiagnosticModel):
     without_backup: int
 
 
+class SchedulerDiagnostics(DiagnosticModel):
+    kind: Literal["scheduler"] = "scheduler"
+    running: bool
+    schedules: int = Field(ge=0)
+    enabled: int = Field(ge=0)
+    active_jobs: int = Field(ge=0)
+    failed: int = Field(ge=0)
+    unavailable: int = Field(ge=0)
+    last_tick_at: float | None = None
+    tick_age_seconds: float | None = None
+    last_error_type: str | None = None
+    timezone_database_available: bool = True
+
+
 class PluginValues(DiagnosticModel):
     """Explicit observations; string dumps and secrets are excluded."""
 
