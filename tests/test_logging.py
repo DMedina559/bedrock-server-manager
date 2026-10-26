@@ -136,7 +136,12 @@ def test_reconfigure_preserves_host_handler_and_creates_distinct_files(
     # Reproduce Windows returning the same wall-clock time for both setups.
     fixed_time = datetime(2026, 10, 12, 22, 55, 4, 30724)
     monkeypatch.setattr(
-        bsm_logging, "datetime", SimpleNamespace(now=lambda: fixed_time)
+        bsm_logging,
+        "datetime",
+        SimpleNamespace(
+            now=lambda tz=None: fixed_time.replace(tzinfo=tz),
+            fromtimestamp=datetime.fromtimestamp,
+        ),
     )
 
     root = logging.getLogger()
@@ -413,3 +418,12 @@ def test_rotating_session_logs_and_retention(isolated_bcm_config, monkeypatch):
         handler.close()
     _prune_old_logs(str(log_dir), keep=1)
     assert not list(log_dir.glob("*.log*"))
+
+
+def test_log_timestamps_identify_utc():
+    record = logging.LogRecord(
+        "example", logging.INFO, __file__, 1, "example", (), None
+    )
+    record.created = 0
+    formatter = bsm_logging.ApplicationFormatter("%(asctime)s %(message)s")
+    assert formatter.format(record) == "1970-01-01T00:00:00.000+00:00 example"

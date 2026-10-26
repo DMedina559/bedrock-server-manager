@@ -183,6 +183,14 @@ class Scheduler:
         async with self._settings_lock:
             rows = await self.configurations()
             previous = rows.get(request.schedule_id)
+            configuration = request.configuration
+            if "timezone" not in configuration.model_fields_set:
+                zone = (
+                    previous[0]["timezone"]
+                    if previous
+                    else self.context.settings.get("general.timezone", "UTC")
+                )
+                configuration = configuration.model_copy(update={"timezone": zone})
             if previous is None and len(rows) >= 500:
                 raise UserInputError("At most 500 schedules may be configured")
             if previous and previous[2]:
@@ -194,7 +202,7 @@ class Scheduler:
                     raise UserInputError(
                         "Legacy schedules retain their backup task and server; create a new schedule instead"
                     )
-                config = request.configuration.model_dump(
+                config = configuration.model_dump(
                     exclude={"task", "server_name", "options"}
                 )
                 legacy = self.context.settings.get("backups.schedules", {})
@@ -204,9 +212,7 @@ class Scheduler:
                 }
                 legacy[previous[2]] = config
                 await self.context.settings.set("backups.schedules", legacy)
-            await self.repository.save(
-                request.schedule_id, request.configuration.model_dump()
-            )
+            await self.repository.save(request.schedule_id, configuration.model_dump())
 
     async def delete(self, name):
         async with self._settings_lock:

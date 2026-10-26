@@ -444,3 +444,31 @@ async def test_diagnostic_history_links_scheduled_runs(
     assert call.kwargs["correlation_id"] == runs[0]["correlation_id"]
     assert call.kwargs["operation_id"]
     assert app_context.state.scheduler.records["trace-job"][0]["task"] == "verify"
+
+
+async def test_new_schedules_inherit_application_timezone_without_moving_saved_jobs(
+    app_context, populated_server
+):
+    service = app_context.scheduler
+    await app_context.settings.set("general.timezone", "America/Los_Angeles")
+    await app_context.reload()
+    assert app_context.settings.get("general.timezone") == "America/Los_Angeles"
+
+    def request(name, **extra):
+        return SaveScheduleRequest(
+            schedule_id=name,
+            configuration=ScheduledTask(
+                task="backup", server_name=populated_server.server_name, **extra
+            ),
+        )
+
+    await service.save(request("local"))
+    await service.save(request("explicit", timezone="UTC"))
+    await app_context.settings.set("general.timezone", "America/New_York")
+    await service.save(request("local", time="04:00"))
+    rows = {name: config for name, config, *_ in await service.repository.list()}
+    assert rows["local"]["timezone"] == "America/Los_Angeles"
+    assert rows["local"]["time"] == "04:00"
+    assert rows["explicit"]["timezone"] == "UTC"
+    await service.save(request("new"))
+    assert (await service.configurations())["new"][0]["timezone"] == "America/New_York"

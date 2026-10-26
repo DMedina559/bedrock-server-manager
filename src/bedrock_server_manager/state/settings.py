@@ -40,6 +40,25 @@ class SettingsRecord(BaseModel):
     )
 
 
+class GeneralSettings(SettingsRecord):
+    timezone: str = "UTC"
+
+    @field_validator("timezone")
+    @classmethod
+    def known_timezone(cls, value: str) -> str:
+        from zoneinfo import ZoneInfoNotFoundError
+
+        from ..utils.timezones import resolve_timezone
+
+        try:
+            resolve_timezone(value)
+        except (ZoneInfoNotFoundError, ValueError):
+            raise ValueError(
+                "Choose a valid IANA timezone, such as America/Los_Angeles"
+            ) from None
+        return value
+
+
 class PathsSettings(SettingsRecord):
     servers: str = ""
     content: str = ""
@@ -196,6 +215,7 @@ class SettingsState(BaseModel):
         allow_inf_nan=False,
         revalidate_instances="always",
     )
+    general: GeneralSettings = Field(default_factory=GeneralSettings)
     paths: PathsSettings = Field(default_factory=PathsSettings)
     retention: RetentionSettings = Field(default_factory=RetentionSettings)
     backups: BackupSettings = Field(default_factory=BackupSettings)
@@ -375,6 +395,7 @@ class SettingsState(BaseModel):
     def to_dict(self) -> Dict[str, Any]:
         """Export settings state into a dictionary matching database key/value structure."""
         return {
+            "general": self.general.model_dump(),
             "paths": self.paths.model_dump(),
             "retention": self.retention.model_dump(),
             "backups": self.backups.model_dump(),

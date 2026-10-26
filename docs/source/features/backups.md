@@ -406,3 +406,22 @@ availability. The scheduler diagnostic section reads committed state without
 migrating settings or querying archive history, and distinguishes scheduler issues
 from plugin health issues. Runs also produce correlated diagnostic history records.
 Existing 4.0 diagnostic metadata shapes remain readable by older consumers.
+
+
+### Application timezone and timestamps
+
+Set `general.timezone` in Settings → General to an IANA timezone such as
+`America/Los_Angeles`. It defaults to `UTC` and supplies the default for new
+schedules. Existing schedules retain their explicit timezone; edit each schedule
+if you want to move it. API callers omitting the timezone on an existing schedule
+retain that schedule's timezone.
+
+Backup manifests, event and diagnostic timestamps, logs, and timestamped filenames
+use UTC. Changing the application timezone changes display defaults, never the
+recorded instant or archive identity. The frontend account display preference can
+use the application timezone, the browser timezone, or UTC. Timestamp details show
+the exact UTC instant. Raw log text remains in UTC.
+
+`GET /api/info` includes the application timezone in `info.timezone`. Existing
+settings APIs and plugin global-setting access support `general.timezone`; no new
+endpoint or database migration is needed.
