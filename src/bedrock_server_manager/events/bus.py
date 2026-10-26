@@ -657,6 +657,7 @@ class EventBus:
             cancel,
             cancelled,
             state.clock,
+            lambda: state.active,
         )
 
     async def _invoke(

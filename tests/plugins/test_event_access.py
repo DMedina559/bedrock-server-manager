@@ -1,6 +1,7 @@
 """Public plugin event capabilities coexist with unchanged 4.0 callback contracts."""
 
 import asyncio
+from dataclasses import replace
 from typing import Any, cast
 
 import pytest
@@ -299,6 +300,22 @@ async def test_observer_timeout_stats_and_callback_cleanup(app_context, plugin_f
     await app_context.events.emit("slow")
     assert plugin.api.events.subscriptions()[0].timeouts == 1
     assert not captured[0].can_cancel
+    assert captured[0].remaining_seconds == 0
+
+
+async def test_completed_callback_has_no_remaining_time(app_context, plugin_factory):
+    plugin = await plugin_factory("access", SOURCE)
+    captured = []
+
+    async def callback(event):
+        # Keep the clock before the deadline even after callback cleanup, as can
+        # happen when Windows schedules a timeout within its clock resolution.
+        view = replace(event, _clock=lambda: event._deadline - 1)
+        assert view.remaining_seconds == 1
+        captured.append(view)
+
+    plugin.api.events.observe("completed", callback)
+    await app_context.events.emit("completed")
     assert captured[0].remaining_seconds == 0
 
 

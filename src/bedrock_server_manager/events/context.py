@@ -48,9 +48,12 @@ class PluginEvent(EventNotification, Generic[T]):
     _cancel: Callable[[str], None]
     _cancelled: Callable[[], tuple[bool, str | None]]
     _clock: Callable[[], float] = monotonic
+    _is_active: Callable[[], bool] = lambda: True
 
     @property
     def remaining_seconds(self) -> float:
+        if not self._is_active():
+            return 0.0
         return max(0.0, self._deadline - self._clock())
 
     @property
