@@ -30,6 +30,7 @@ Use your normal administrator authentication:
 |---|---|---|
 | `GET /api/diagnostics` | `get_application_diagnostics` | Current subsystem observations |
 | `GET /api/diagnostics/{subsystem}` | `get_subsystem_diagnostics` | One subsystem, such as `events` or `storage` |
+| `GET /api/diagnostics/activity` | `get_diagnostic_activity` | Global active/recent events and operations, plus listener configuration |
 | `GET /api/diagnostics/history` | `get_diagnostic_history` | Retained sanitized failure and lifecycle records |
 | `GET /api/diagnostics/runs` | `get_diagnostic_runs` | Retained records grouped by application instance |
 | `GET /api/diagnostics/trace/{correlation_id}` | `get_diagnostic_trace` | Correlated live events, tasks, and retained records |
@@ -105,3 +106,40 @@ For remote support reports, the API/CLI client provides `bsm-cli diagnostics rep
 Diagnostic collection/recording failures contribute an actionable `diagnostics` finding to the overall summary. They do not change application readiness. `/api/health` exposes `ready` using the same loaded-state and application/web-runtime rule as diagnostics; its dependency checks remain separate from optional diagnostic health.
 
 Periodic observations expose `periodic_status` (`disabled`, `not_started`, `running`, `stopped`, or `failed`), `last_periodic_success_at`, and `last_periodic_error_type`. Successful sample time describes collection, not guaranteed journal persistence. An unexpected worker exit or a failed sample degrades diagnostic health; a successful sample clears its last error. Removed/replaced providers cannot publish or cache observations from an earlier registration.
+
+
+## Global event and operation activity
+
+`GET /api/diagnostics/activity` reads activity across every execution chain in the
+current application instance. No correlation ID is required. Optional filters are
+`name` (event name), `source`, `owner`, `server_name`, `phase`, `status` (event
+status), `operation_name`, `operation_id`, `sequence_id`, and `correlation_id`.
+`limit` accepts 1–200; the configured diagnostic record limit also applies.
+Operation filters use operation identity, name, server, source, owner, sequence,
+and correlation; event name, phase, and event status only narrow events. Listener
+configuration is filtered by event name and owner, not by execution-chain IDs.
+
+The `events` section contains active and recent event metadata. Event records link
+back to their operation and sequence when emitted inside an operation. The
+`operations` section contains active operations and recent completed, failed, or
+cancelled operations. `parent_operation_id` and `root_operation_id` describe the
+ancestry; a limited response can omit ancestors. `subscriptions.items` includes
+listener owners, priorities, filters, ordering, unresolved references, and delivery
+statistics. Callback objects and predicates are never serialized.
+
+The existing Events diagnostic section and support reports include operation
+activity and listener details too. Correlation traces include matching operations.
+A source that cannot be read does not hide other sources: unavailable global
+activity sources are `null`, with errors reported in `issues` without exception
+text. Traces expose operation availability separately.
+
+Activity is bounded metadata, not an unlimited or durable event log. Event history
+uses the event bus history limit; global operation history retains the latest 200
+operation outcomes by default and resets on restart. It works even when event
+history is disabled. Global operation results are newest first; event recent
+records retain their existing oldest-to-newest order. Counts describe the whole
+service, while returned records follow the filters. Truncation flags identify
+partial views. The retained diagnostic journal continues to store sanitized
+failure/lifecycle records under its existing retention policy. Payloads, task
+arguments, credentials, and cancellation messages are excluded from these
+administrator activity responses.

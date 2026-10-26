@@ -68,6 +68,37 @@ data = result.model_dump(mode="json")
 ---
 
 
+## `diagnostics.get_diagnostic_activity`
+```python
+await self.api.diagnostics.get_diagnostic_activity(request: bedrock_server_manager.api.models.diagnostics.GetDiagnosticActivityRequest)
+```
+- **Async (Requires await):** Yes
+
+- **Description:** Read all-chain event, operation, and subscription metadata without payloads.
+
+- **Returns:** `GetDiagnosticActivityResponse`
+
+Runtime context and plugin identity are injected by the bridge. Failures raise application exceptions; plugin cancellation raises `APICancelledError`.
+
+```python
+from bedrock_server_manager.api.models import GetDiagnosticActivityRequest
+payload = {}
+request = GetDiagnosticActivityRequest(**payload)
+result = await self.api.diagnostics.get_diagnostic_activity(request)
+data = result.model_dump(mode="json")
+```
+- **Request schema:** [GetDiagnosticActivityRequest](models.md#getdiagnosticactivityrequest)
+- **Response schema:** [GetDiagnosticActivityResponse](models.md#getdiagnosticactivityresponse)
+- **Transport error schema:** [APIErrorResponse](models.md#apierrorresponse)
+**Parameters:**
+
+| Name | Type | Default |
+|------|------|---------|
+| `request` | `bedrock_server_manager.api.models.diagnostics.GetDiagnosticActivityRequest` | `REQUIRED` |
+
+---
+
+
 ## `diagnostics.get_diagnostic_history`
 ```python
 await self.api.diagnostics.get_diagnostic_history(request: bedrock_server_manager.api.models.diagnostics.GetDiagnosticHistoryRequest)

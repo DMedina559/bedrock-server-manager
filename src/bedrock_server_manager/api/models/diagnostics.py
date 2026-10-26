@@ -5,6 +5,7 @@ from typing import Literal
 from pydantic import Field
 
 from ...diagnostics.models import (
+    DiagnosticActivity,
     DiagnosticComparison,
     DiagnosticHistory,
     DiagnosticReport,
@@ -12,6 +13,7 @@ from ...diagnostics.models import (
     DiagnosticSnapshot,
     DiagnosticTrace,
 )
+from ...events.models import EventActivityQuery
 from .common import APIRequest, APIResponse
 
 
@@ -71,4 +73,12 @@ class CompareDiagnosticSnapshotsRequest(APIRequest):
 
 
 class CompareDiagnosticSnapshotsResponse(DiagnosticComparison, APIResponse):
+    pass
+
+
+class GetDiagnosticActivityRequest(EventActivityQuery, APIRequest):
+    limit: int = Field(default=100, ge=1, le=200)
+
+
+class GetDiagnosticActivityResponse(DiagnosticActivity, APIResponse):
     pass

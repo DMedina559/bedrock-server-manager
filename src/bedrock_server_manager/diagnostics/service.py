@@ -10,12 +10,19 @@ from importlib.metadata import PackageNotFoundError, version
 from typing import Any
 from uuid import uuid4
 
-from ..events.models import EventActivityQuery, EventDiagnostics
-from .activity import RecentOutcomes, bound_event_activity
+from ..events.models import EventActivityQuery, EventDiagnostics, EventSubscriptions
+from ..operations import OperationActivity, OperationActivityQuery
+from .activity import (
+    RecentOutcomes,
+    bound_event_activity,
+    bound_operations,
+    bound_subscriptions,
+)
 from .health import summarize_health
 from .history import DiagnosticHistoryStore
 from .models import (
     CollectionDiagnostics,
+    DiagnosticActivity,
     DiagnosticData,
     DiagnosticEnvironment,
     DiagnosticIssue,
@@ -61,6 +68,12 @@ class Diagnostics:
             pass
         self.event_activity_provider: Callable[
             [EventActivityQuery], EventDiagnostics | None
+        ] = lambda query: None
+        self.operation_activity_provider: Callable[
+            [OperationActivityQuery], OperationActivity | None
+        ] = lambda query: None
+        self.subscription_activity_provider: Callable[
+            [EventActivityQuery], EventSubscriptions | None
         ] = lambda query: None
         self.task_snapshot_provider: Callable[[], TasksDiagnostics | None] = (
             lambda: None
@@ -402,7 +415,27 @@ class Diagnostics:
                     records=self.options.event_record_limit,
                     details=self.options.event_detail_limit,
                 )
-                data.truncated = data.truncated or truncated
+                if data.operations is not None:
+                    data.operations = bound_operations(
+                        data.operations, records=self.options.event_record_limit
+                    )
+                data.subscriptions = bound_subscriptions(
+                    data.subscriptions,
+                    records=self.options.event_detail_limit,
+                    details=self.options.event_detail_limit,
+                )
+                data.truncated = (
+                    data.truncated
+                    or truncated
+                    or data.subscriptions.truncated
+                    or bool(
+                        data.operations
+                        and (
+                            data.operations.active_truncated
+                            or data.operations.recent_truncated
+                        )
+                    )
+                )
             status, issues = self._health(data)
             observed_at = (
                 data.last_sample_at
@@ -552,6 +585,88 @@ class Diagnostics:
         finally:
             self._lock.release()
 
+    def activity(self, query: EventActivityQuery | None = None) -> DiagnosticActivity:
+        """Read bounded global events, operation ancestry metadata, and listener details."""
+        query = query or EventActivityQuery()
+        query = query.model_copy(
+            update={"limit": min(query.limit, self.options.event_record_limit)}
+        )
+        issues = []
+        events = None
+        truncated = False
+        try:
+            events = self.event_activity_provider(query)
+            if events is not None:
+                events, truncated = bound_event_activity(
+                    events, records=query.limit, details=self.options.event_detail_limit
+                )
+        except Exception:
+            events = None
+            issues.append(
+                DiagnosticIssue(
+                    code="activity_events_unavailable",
+                    message="Event observations are unavailable.",
+                    action="inspect_events",
+                )
+            )
+        operations = None
+        try:
+            operations = self.operation_activity_provider(
+                OperationActivityQuery(
+                    name=query.operation_name,
+                    owner=query.owner,
+                    source=query.source,
+                    server_name=query.server_name,
+                    operation_id=query.operation_id,
+                    sequence_id=query.sequence_id,
+                    correlation_id=query.correlation_id,
+                    limit=query.limit,
+                )
+            )
+            if operations is not None:
+                operations = bound_operations(operations, records=query.limit)
+        except Exception:
+            operations = None
+            issues.append(
+                DiagnosticIssue(
+                    code="activity_operations_unavailable",
+                    message="Operation observations are unavailable.",
+                    action="inspect_events",
+                )
+            )
+        subscriptions = None
+        try:
+            subscriptions = self.subscription_activity_provider(
+                query.model_copy(update={"limit": self.options.event_detail_limit})
+            )
+            if subscriptions is not None:
+                subscriptions = bound_subscriptions(
+                    subscriptions,
+                    records=self.options.event_detail_limit,
+                    details=self.options.event_detail_limit,
+                )
+        except Exception:
+            subscriptions = None
+            issues.append(
+                DiagnosticIssue(
+                    code="activity_subscriptions_unavailable",
+                    message="Listener observations are unavailable.",
+                    action="inspect_events",
+                )
+            )
+        return DiagnosticActivity(
+            events=events,
+            operations=operations,
+            subscriptions=subscriptions,
+            issues=issues,
+            truncated=truncated
+            or bool(
+                operations
+                and (operations.active_truncated or operations.recent_truncated)
+            )
+            or bool(subscriptions and subscriptions.truncated),
+        )
+
     async def trace(
         self, correlation_id: str, *, limit: int = 100, cursor: str | None = None
     ) -> DiagnosticTrace:
@@ -606,12 +721,40 @@ class Diagnostics:
                     action="inspect_storage",
                 )
             )
+        operations = None
+        try:
+            operations = self.operation_activity_provider(
+                OperationActivityQuery(
+                    correlation_id=correlation_id,
+                    limit=min(limit, self.options.event_record_limit),
+                )
+            )
+            if operations is not None:
+                operations = bound_operations(
+                    operations, records=min(limit, self.options.event_record_limit)
+                )
+                truncated = (
+                    truncated
+                    or operations.active_truncated
+                    or operations.recent_truncated
+                )
+        except Exception:
+            operations = None
+            issues.append(
+                DiagnosticIssue(
+                    code="trace_operations_unavailable",
+                    message="Operation observations are unavailable.",
+                    action="inspect_events",
+                )
+            )
         matching_tasks = (
             [task for task in tasks.tasks if task.correlation_id == correlation_id]
             if tasks is not None
             else []
         )
         return DiagnosticTrace(
+            operations=operations,
+            operations_available=operations is not None,
             correlation_id=correlation_id,
             events=events,
             events_available=events is not None,

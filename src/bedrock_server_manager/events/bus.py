@@ -8,10 +8,11 @@ from contextlib import contextmanager
 from contextvars import ContextVar
 from copy import deepcopy
 from dataclasses import dataclass, replace
+from itertools import islice
 from threading import Event as ThreadEvent
 from threading import RLock
 from time import monotonic, time
-from typing import Any, Callable, Mapping
+from typing import Any, Callable, Iterator, Mapping
 from uuid import uuid4
 
 from pydantic import BaseModel
@@ -30,6 +31,7 @@ from .models import (
     EventOptions,
     EventRecord,
     EventSubscriptionInfo,
+    EventSubscriptions,
     ListenerFailure,
     ListenerRecord,
 )
@@ -424,7 +426,9 @@ class EventBus:
                 {s.name for s in self._subscriptions.values() if s.owner == owner}
             )
 
-    def subscriptions(self, owner: str) -> tuple[EventSubscriptionInfo, ...]:
+    def subscriptions(
+        self, owner: str | None, *, limit: int | None = None, name: str | None = None
+    ) -> tuple[EventSubscriptionInfo, ...]:
         with self._lock:
             by_id = {
                 item.listener_id or item.token: item
@@ -444,6 +448,14 @@ class EventBus:
                     )
                 )
 
+            selected: Iterator[Subscription] = (
+                item
+                for item in self._subscriptions.values()
+                if (owner is None or item.owner == owner)
+                and (name is None or item.name in {name, "*"})
+            )
+            if limit is not None:
+                selected = islice(selected, limit)
             return tuple(
                 EventSubscriptionInfo(
                     subscription_id=item.token,
@@ -458,11 +470,29 @@ class EventBus:
                     unresolved_after=unresolved(item, item.after),
                     filters=item.filters,
                     once=item.once,
-                    active=owner in self._owners,
+                    active=item.owner in self._owners,
                     **self._subscription_stats.get(item.token, {}),
                 )
+                for item in selected
+            )
+
+    def subscription_snapshot(
+        self, limit: int = 200, *, name: str | None = None, owner: str | None = None
+    ) -> EventSubscriptions:
+        """Inspect all owners for administrator diagnostics without callback objects."""
+        if not 1 <= limit <= 10000:
+            raise ValueError("Subscription limit must be between 1 and 10000")
+        with self._lock:
+            total = sum(
+                1
                 for item in self._subscriptions.values()
-                if item.owner == owner
+                if (owner is None or item.owner == owner)
+                and (name is None or item.name in {name, "*"})
+            )
+            return EventSubscriptions(
+                items=list(self.subscriptions(owner, limit=limit, name=name)),
+                total=total,
+                truncated=total > limit,
             )
 
     @staticmethod
@@ -1047,7 +1077,18 @@ class EventBus:
             data=public_payload,
             **stamp,
         )
+        operation = self.operations.current()
+        server_name = public_data.get("server_name")
         record = EventRecord(
+            operation_id=operation.operation_id if operation else None,
+            sequence_id=operation.sequence_id if operation else None,
+            operation_name=operation.name if operation else None,
+            server_name=(
+                server_name
+                if isinstance(server_name, str)
+                else (operation.server_name if operation else None)
+            ),
+            phase=definition.phase,
             **envelope.model_dump(exclude={"data", "epoch", "revision"}),
             status="dispatching",
         )
@@ -1141,6 +1182,12 @@ class EventBus:
         def matches(record: EventRecord) -> bool:
             return (
                 (query.name is None or record.name == query.name)
+                and all(
+                    value is None or getattr(record, key) == value
+                    for key, value in query.model_dump(
+                        exclude={"name", "owner", "correlation_id", "status", "limit"}
+                    ).items()
+                )
                 and (
                     query.correlation_id is None
                     or record.correlation_id == query.correlation_id

@@ -231,6 +231,8 @@ def create_event_capabilities(
             return bus.subscriptions(event_owner)
         if action == "operation_scope":
             return operation_scope(*args, **kwargs)
+        if action == "operation_activity":
+            return bus.operations.activity(*args, **kwargs)
         if action == "operation_current":
             return bus.operations.current()
         if action == "operation_sequence":

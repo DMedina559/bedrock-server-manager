@@ -54,6 +54,12 @@ class EventSubscriptionInfo(EventModel):
     last_duration_ms: float = 0
 
 
+class EventSubscriptions(EventModel):
+    items: list[EventSubscriptionInfo] = Field(default_factory=list)
+    total: int = 0
+    truncated: bool = False
+
+
 class EventContext(EventModel):
     model_config = ConfigDict(frozen=True, extra="forbid")
     event_id: str
@@ -127,6 +133,11 @@ RejectionReason = Literal["recursion", "depth_limit", "capacity", "shutdown"]
 
 
 class EventRecord(EventModel):
+    operation_id: str | None = None
+    sequence_id: str | None = None
+    operation_name: str | None = None
+    server_name: str | None = None
+    phase: Literal["before", "after", "custom", "lifecycle"] = "custom"
     event_id: str
     correlation_id: str
     parent_event_id: str | None = None
@@ -179,6 +190,12 @@ class EventOptions(EventModel):
 
 
 class EventActivityQuery(EventModel):
+    operation_id: str | None = None
+    sequence_id: str | None = None
+    operation_name: str | None = None
+    server_name: str | None = None
+    source: str | None = None
+    phase: Literal["before", "after", "custom", "lifecycle"] | None = None
     name: str | None = None
     owner: str | None = None
     correlation_id: str | None = None

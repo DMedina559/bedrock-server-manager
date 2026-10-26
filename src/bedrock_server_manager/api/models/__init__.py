@@ -88,6 +88,8 @@ from .diagnostics import (
     CompareDiagnosticSnapshotsResponse,
     GetApplicationDiagnosticsRequest,
     GetApplicationDiagnosticsResponse,
+    GetDiagnosticActivityRequest,
+    GetDiagnosticActivityResponse,
     GetDiagnosticHistoryRequest,
     GetDiagnosticHistoryResponse,
     GetDiagnosticReportRequest,
@@ -446,6 +448,8 @@ __all__ += [
 
 
 __all__ += [
+    "GetDiagnosticActivityRequest",
+    "GetDiagnosticActivityResponse",
     "CompareDiagnosticSnapshotsRequest",
     "CompareDiagnosticSnapshotsResponse",
     "GetApplicationDiagnosticsRequest",

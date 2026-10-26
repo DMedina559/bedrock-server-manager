@@ -6,6 +6,7 @@ import time
 from typing import TYPE_CHECKING
 
 from .. import __version__
+from ..operations import OperationActivityQuery
 from ..state_revision import revision_clock
 from .history import DiagnosticHistoryStore
 from .models import (
@@ -30,6 +31,16 @@ def configure_diagnostics(context: "AppContext") -> Diagnostics:
     service = Diagnostics(DiagnosticHistoryStore(context.db, options), options)
     service.event_activity_provider = lambda query: (
         context._events.diagnostics(query) if context._events else None
+    )
+    service.operation_activity_provider = lambda query: (
+        context._events.operations.activity(query) if context._events else None
+    )
+    service.subscription_activity_provider = lambda query: (
+        context._events.subscription_snapshot(
+            query.limit, name=query.name, owner=query.owner
+        )
+        if context._events
+        else None
     )
     service.task_snapshot_provider = lambda: (
         context._task_manager.diagnostic_snapshot() if context._task_manager else None
@@ -119,7 +130,12 @@ def configure_diagnostics(context: "AppContext") -> Diagnostics:
         for record in activity.active + activity.recent:
             record.cancellation_reason = None
         return EventsDiagnostics(
-            activity=activity, capacity=bus.options.model_copy(deep=True)
+            activity=activity,
+            capacity=bus.options.model_copy(deep=True),
+            operations=bus.operations.activity(
+                OperationActivityQuery(limit=options.event_record_limit)
+            ),
+            subscriptions=bus.subscription_snapshot(options.event_detail_limit),
         )
 
     async def transport():
