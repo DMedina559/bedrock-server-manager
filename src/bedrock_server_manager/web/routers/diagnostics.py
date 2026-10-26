@@ -3,6 +3,7 @@
 from typing import Annotated, Literal
 
 from fastapi import APIRouter, Depends, HTTPException, Query, Response
+from pydantic import Field
 
 from ...api.models.diagnostics import (
     CompareDiagnosticSnapshotsRequest,
@@ -47,13 +48,19 @@ async def get_application_diagnostics(
     return await service.snapshot()
 
 
+class DiagnosticActivityQuery(GetDiagnosticActivityRequest):
+    """Parse URL integers without relaxing the strict plugin API contract."""
+
+    limit: int = Field(default=100, ge=1, le=200, strict=False)
+
+
 @router.get(
     "/activity",
     operation_id="get_diagnostic_activity",
     response_model=DiagnosticActivity,
 )
 async def get_diagnostic_activity(
-    query: Annotated[GetDiagnosticActivityRequest, Query()],
+    query: Annotated[DiagnosticActivityQuery, Query()],
     service: Diagnostics = Depends(get_diagnostics),
 ) -> DiagnosticActivity:
     """Read global activity, optionally narrowing by event, server, sequence, or correlation."""

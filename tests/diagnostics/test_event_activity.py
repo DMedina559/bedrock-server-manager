@@ -316,3 +316,32 @@ async def test_invalid_operation_observation_does_not_hide_correlated_events(
     assert trace.operations is None and not trace.operations_available
     assert trace.events_available and trace.events.recent[0].name == "sample"
     assert [issue.code for issue in trace.issues] == ["trace_operations_unavailable"]
+
+
+@pytest.mark.parametrize("limit", [1, 100, 200])
+async def test_activity_accepts_url_integer_limits(admin_auth_client, limit):
+    response = await admin_auth_client.get(
+        "/api/diagnostics/activity",
+        params={"limit": limit, "phase": "custom", "status": "completed"},
+    )
+    assert response.status_code == 200, response.text
+    assert response.json()["scope"] == "application"
+
+
+@pytest.mark.parametrize("limit", ["abc", "1.5", "0", "201"])
+async def test_activity_rejects_invalid_url_limits(admin_auth_client, limit):
+    response = await admin_auth_client.get(
+        "/api/diagnostics/activity", params={"limit": limit}
+    )
+    assert response.status_code == 422, response.text
+
+
+def test_plugin_activity_request_keeps_strict_integer_validation():
+    from pydantic import ValidationError
+
+    from bedrock_server_manager.api.models.diagnostics import (
+        GetDiagnosticActivityRequest,
+    )
+
+    with pytest.raises(ValidationError):
+        GetDiagnosticActivityRequest.model_validate({"limit": "100"})
