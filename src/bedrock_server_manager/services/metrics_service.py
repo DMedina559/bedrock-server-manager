@@ -12,6 +12,7 @@ import psutil
 from ..diagnostics.models import MetricsDiagnostics
 from ..logging import RepeatedFailureReporter
 from ..state_revision import revision_clock
+from ..utils.threads import run_in_thread
 from .metrics_models import (
     MetricsSample,
     MetricsSnapshot,
@@ -40,6 +41,7 @@ class MetricsService:
         self._time: float | None = None
         self._failures = RepeatedFailureReporter(logger)
         self.telemetry = MetricsDiagnostics()
+        self._lag_observations: deque[tuple[float, float]] = deque(maxlen=180)
         self._last_success_monotonic: float | None = None
 
     @property
@@ -132,6 +134,18 @@ class MetricsService:
             started = time.monotonic()
             stats = self.telemetry
             stats.attempts += 1
+            lag_ms = max(0.0, lag_ms)
+            self._lag_observations.append((started, lag_ms))
+            while (
+                self._lag_observations and self._lag_observations[0][0] < started - 60
+            ):
+                self._lag_observations.popleft()
+            stats.event_loop_lag_ms = lag_ms
+            stats.recent_max_event_loop_lag_ms = max(
+                value for _, value in self._lag_observations
+            )
+            if lag_ms >= stats.event_loop_lag_threshold_ms:
+                stats.event_loop_lag_breaches += 1
             try:
                 sample = await self._sample(lag_ms)
                 stats.successes += 1
@@ -190,7 +204,7 @@ class MetricsService:
     async def _sample(self, lag_ms: float = 0.0) -> MetricsSample:
         stamp = revision_clock.capture()
         task_count = len(asyncio.all_tasks())
-        values = await asyncio.to_thread(self._collect)
+        values = await run_in_thread(self._collect)
         servers = []
         for name in self.context.state.servers.servers:
             # Lifecycle/startup monitoring owns process discovery. Sampling

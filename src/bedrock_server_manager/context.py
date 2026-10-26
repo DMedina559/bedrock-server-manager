@@ -66,6 +66,9 @@ class AppContext:
         self._plugin_manager: Optional["PluginManager"] = None
         self._task_manager: Optional["TaskManager"] = None
         self._connection_manager: Optional["ConnectionManager"] = None
+        from .backups.maintenance import BackupMaintenance
+
+        self._backup_maintenance = BackupMaintenance(self)
         self._metrics_service: Optional["MetricsService"] = None
         self._resource_monitor: Optional["ResourceMonitor"] = None
         self._log_streamer: Optional["LogStreamer"] = None
@@ -109,6 +112,15 @@ class AppContext:
             raise RuntimeError("Cannot reload context while its runtime is active.")
         if any(not task.done() for task in self._lifecycle_tasks):
             raise RuntimeError("Cannot reload while lifecycle work is still running.")
+        if self._events is not None and self._events.has_pending_work:
+            raise RuntimeError("Cannot reload while event work is still running.")
+        if (
+            self._plugin_manager is not None
+            and self._plugin_manager.has_pending_lifespans
+        ):
+            raise RuntimeError(
+                "Cannot reload while plugin router work is still running."
+            )
         if self._diagnostics is not None and self._diagnostics.has_pending_providers:
             raise RuntimeError(
                 "Cannot reload while diagnostic providers are still running."
@@ -236,7 +248,20 @@ class AppContext:
             if not os.environ.get(GUARD_VARIABLE):
                 await self.events.emit("on_manager_startup", public=False)
 
+        async def recover_backups() -> None:
+            for name in self.state.servers.servers:
+                try:
+                    await self.get_server(
+                        name, require_installation=False
+                    ).backups.recover_pending_restore()
+                except Exception:
+                    getLogger(__name__).warning(
+                        "Restore recovery for '%s' requires attention; the server remains blocked from starting.",
+                        name,
+                    )
+
         steps = (
+            ("backup recovery", recover_backups),
             ("plugins", lambda: self.plugin_manager.load_plugins()),
             ("servers", lambda: self.bedrock_process_manager.start()),
             (
@@ -245,6 +270,7 @@ class AppContext:
             ),
             ("resources", lambda: self.resource_monitor.start()),
             ("metrics", lambda: self.metrics_service.start()),
+            ("backup maintenance", lambda: self._backup_maintenance.start()),
             ("metrics readiness", lambda: self.metrics_service.snapshot()),
             (
                 "startup hooks",
@@ -292,6 +318,17 @@ class AppContext:
             if startup.done() and not startup.cancelled():
                 startup.exception()
         task = self._shutdown_task
+        if (
+            task is not None
+            and task.done()
+            and not task.cancelled()
+            and task.exception() is not None
+            and self._db is not None
+            and self._db.engine is not None
+        ):
+            if any(not pending.done() for pending in self._lifecycle_tasks):
+                task.result()
+            task = None
         if task is asyncio.current_task():
             raise RuntimeError(
                 "Application cleanup cannot recursively shut down itself."
@@ -337,11 +374,18 @@ class AppContext:
                     else RuntimeError(f"{name} cancelled")
                 )
                 errors.append(failure)
+                if any(not task.done() for task in self._lifecycle_tasks):
+                    self.lifecycle_phase = LifecyclePhase.FAILED
+                    getLogger(__name__).error(
+                        "Shutdown paused while lifecycle work drains; dependencies remain available."
+                    )
+                    raise ExceptionGroup("Application shutdown failed", errors)
 
         if self._task_manager is not None:
             self._task_manager.begin_shutdown()
         # Observers release process and websocket dependencies before teardown.
         for name, component in (
+            ("backup maintenance", self._backup_maintenance),
             ("metrics", self._metrics_service),
             ("resources", self._resource_monitor),
             ("logs", self._log_streamer),
@@ -371,13 +415,27 @@ class AppContext:
             started is None or "plugins" in started
         ):
             await stop("unload plugins", self._plugin_manager.shutdown)
+            if self._plugin_manager.has_pending_lifespans:
+                self.lifecycle_phase = LifecyclePhase.FAILED
+                errors.append(
+                    RuntimeError("Plugin router lifespans are still draining.")
+                )
+                raise ExceptionGroup("Application shutdown failed", errors)
         if self._events is not None:
             await stop("drain events", self._events.close)
+            if self._events.has_pending_work:
+                self.lifecycle_phase = LifecyclePhase.FAILED
+                errors.append(RuntimeError("Event workers are still draining."))
+                raise ExceptionGroup("Application shutdown failed", errors)
         if self._connection_manager is not None:
             await stop("close websockets", self._connection_manager.shutdown)
         await stop("flush state", self.flush)
         if self._diagnostics is not None:
-            await self._diagnostics.close()
+            await stop("close diagnostics", self._diagnostics.close)
+            if self._diagnostics.has_pending_providers:
+                self.lifecycle_phase = LifecyclePhase.FAILED
+                errors.append(RuntimeError("Diagnostic providers are still draining."))
+                raise ExceptionGroup("Application shutdown failed", errors)
         if self._db is not None:
             await stop("close database", self._db.shutdown)
         self.lifecycle_phase = (

@@ -23,6 +23,7 @@ class OperationName(StrEnum):
     SERVER_UPDATE = "server.update"
     BACKUP_REQUEST = "backup.request"
     BACKUP_CREATE = "backup.create"
+    BACKUP_RESTORE = "backup.restore"
 
 
 class OperationSnapshot(BaseModel):

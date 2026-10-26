@@ -120,6 +120,61 @@ class LifecycleSettings(SettingsRecord):
     request_drain_timeout_seconds: float = Field(default=10.0, gt=0, le=600)
 
 
+class BackupDestination(SettingsRecord):
+    path: str = Field(min_length=1)
+    enabled: bool = True
+    keep_count: int = Field(default=0, ge=0)
+    storage_budget_bytes: int = Field(default=0, ge=0)
+    min_free_bytes: int = Field(default=1073741824, ge=0)
+
+
+class BackupSchedule(SettingsRecord):
+    enabled: bool = True
+    time: str = Field(default="03:00", pattern=r"^(?:[01][0-9]|2[0-3]):[0-5][0-9]$")
+    timezone: str = "UTC"
+    weekdays: list[int] = Field(
+        default_factory=lambda: list(range(7)), min_length=1, max_length=7
+    )
+    catch_up: bool = True
+    stagger_minutes: int = Field(default=15, ge=0, le=120)
+
+    @field_validator("timezone")
+    @classmethod
+    def known_timezone(cls, value):
+        from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
+
+        try:
+            ZoneInfo(value)
+        except (ZoneInfoNotFoundError, ValueError):
+            raise ValueError("Choose a valid IANA timezone") from None
+        return value
+
+    @field_validator("weekdays")
+    @classmethod
+    def valid_weekdays(cls, value):
+        if len(set(value)) != len(value) or any(day < 0 or day > 6 for day in value):
+            raise ValueError("Weekdays must be unique integers from 0 through 6")
+        return value
+
+
+class BackupSettings(SettingsRecord):
+    readiness_max_age_hours: int = Field(default=48, ge=1, le=8760)
+    recovery_drill_interval_hours: int = Field(default=168, ge=0, le=8760)
+    encryption: bool = False
+    include_server_packs: bool = True
+    schedules: dict[str, BackupSchedule] = Field(default_factory=dict)
+    verification_interval_hours: int = Field(default=168, ge=0, le=8760)
+    safety_window_hours: int = Field(default=168, ge=1, le=8760)
+    keep_daily: int = Field(default=0, ge=0, le=365)
+    keep_weekly: int = Field(default=0, ge=0, le=520)
+    keep_monthly: int = Field(default=0, ge=0, le=120)
+    storage_budget_bytes: int = Field(default=0, ge=0)
+    destinations: dict[str, BackupDestination] = Field(default_factory=dict)
+    max_files: int = Field(default=1_000_000, ge=1, le=1_000_000)
+    max_expanded_bytes: int = Field(default=1024**4, ge=1)
+    max_archive_bytes: int = Field(default=1024**4, ge=1)
+
+
 class SettingsState(BaseModel):
     model_config = ConfigDict(
         extra="forbid",
@@ -131,6 +186,7 @@ class SettingsState(BaseModel):
     )
     paths: PathsSettings = Field(default_factory=PathsSettings)
     retention: RetentionSettings = Field(default_factory=RetentionSettings)
+    backups: BackupSettings = Field(default_factory=BackupSettings)
     monitoring: MonitoringSettings = Field(default_factory=MonitoringSettings)
     web: WebSettings = Field(default_factory=WebSettings)
     lifecycle: LifecycleSettings = Field(default_factory=LifecycleSettings)
@@ -308,6 +364,7 @@ class SettingsState(BaseModel):
         return {
             "paths": self.paths.model_dump(),
             "retention": self.retention.model_dump(),
+            "backups": self.backups.model_dump(),
             "monitoring": self.monitoring.model_dump(),
             "web": self.web.model_dump(mode="json", exclude_none=True),
             "lifecycle": self.lifecycle.model_dump(),

@@ -118,3 +118,11 @@ Saved references can become unavailable after server deletion or file damage.
 Recheck existence before performing operations; ordinary app server lookup
 validates the installation again. Auto Backup On Start uses an empty server
 selection to mean all servers, and reads its selection for every start event.
+
+## Plugin-owned configuration files
+
+Use `await self.api.runtime.write_plugin_file("settings.json", value)` to atomically write JSON inside this plugin's configuration directory. Read it with `await self.api.runtime.read_plugin_file("settings.json")`.
+
+Paths are relative to `<config_dir>/config/plugins/<plugin-id>/`. Traversal and symlink escapes are rejected, ownership is injected by the runtime, and capabilities from an unloaded plugin are revoked. Use the existing plugin settings API for ordinary structured settings; these file methods are for plugin-owned JSON files.
+
+The application does not expose its credentials directory through this capability. In-process Python plugins are trusted code with the host process's operating-system permissions; scoped APIs are not an OS sandbox.

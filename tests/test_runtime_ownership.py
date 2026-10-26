@@ -119,13 +119,13 @@ async def test_async_backup_cancellation_retains_lock_until_thread_finishes(
         release.wait(3)
         finished.set()
 
-    monkeypatch.setattr("bedrock_server_manager.core.files.shutil.copy2", copy)
+    monkeypatch.setattr("bedrock_server_manager.backups.server.copy_source", copy)
     monkeypatch.setattr(
         "bedrock_server_manager.core.files.shutil.copystat",
         lambda *args: None,
     )
     server_dir = __import__("pathlib").Path(server.paths.server_dir)
-    (server_dir / "server.properties").write_text("test")
+    (server_dir / "server.properties").write_text("level-name=test_world\n")
     tm = TaskManager(None)
     task_id = await tm.run_task(
         backup_config_file,

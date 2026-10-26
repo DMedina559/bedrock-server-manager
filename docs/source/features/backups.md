@@ -1,33 +1,373 @@
-# Back up and restore
+# Back up and restore a server
 
-Create backups before importing content, resetting a world, updating a server or restoring older data. Keep another copy outside the BSM host; backups on the same disk cannot protect against disk loss.
+BSM creates one portable `.bsmbackup` archive for each backup operation. The same operation is used for manual backups, backup before an update, and the backup-on-start plugin.
 
-## Choose the backup scope
+## What a backup includes
 
-| Scope | Contents |
+| Component | Contents |
 |---|---|
-| World | The active server world |
-| Configuration | Selected properties, allowlist or permissions file |
-| All | World and supported configuration categories |
+| World | The active world directory, including embedded packs and activation files |
+| Server properties | `server.properties` |
+| Allowlist | `allowlist.json`, when present |
+| Player permissions | `permissions.json`, when present |
+| Script configuration | The server's complete `config/` directory, including variables, secrets, and module permissions |
+| Server packs | Optional server-level behavior, resource, and development pack directories |
+| BSM server settings | Autostart, autoupdate, target version, and custom settings for this server |
 
-A server backup is not a complete BSM installation backup. Preserve the application's configuration, database, plugin files and other required content separately when migrating the host.
+Components not present in an archive are recorded as absent. An unreadable existing source fails creation. A newly installed server without a generated world can have a configuration-only backup; the manifest shows its actual coverage.
 
-Use your server's backup page to create a backup and confirm it appears in the appropriate category. The configured backup root contains per-server backups; it need not be inside the server directory.
+Executables, logs, running-process state, global BSM users and settings, other servers, and backup encryption keys are excluded. Server-level pack directories are included by default and can be excluded for an individual capture or through `backups.include_server_packs`. Dependencies stored elsewhere on the host still need separate preservation.
 
-```{figure} ../../images/web_server_backup_restore.png
-:alt: Server backup page with category-specific backups, restore actions and pruning
-:width: 600px
-:align: center
+This is a server backup, not a complete BSM installation backup. Preserve the BSM database and host credentials separately when migrating the manager itself.
 
-The backup page lists saved categories and provides individual restore and latest restore-all actions.
+## Create a backup
+
+Open the server's **Backups** page, choose the encryption policy, and select **Create backup**. The configured default also applies to automatic backups. Check the operation outcome before relying on the new archive.
+
+A running server uses Bedrock's save hold/query/resume mechanism. BSM copies the world while saves are held, resumes saves, then compresses and encrypts the captured data. Changes made outside BSM may not participate in its configuration locks.
+
+Completed backups appear only after verification and atomic publication. Failed creation does not replace existing archives or trigger retention.
+
+## Encryption and emergency kits
+
+An administrator can generate a backup encryption key from **Encryption keys**. Download its emergency kit and store it outside the BSM host. Enable encryption for automatic backups or choose it for an individual manual backup.
+
+Encrypted archives use SecureTar v3, with Argon2id and streaming authenticated encryption. Their private manifest, filenames, configuration, settings, and payload are encrypted. A small public header identifies the format and key ID.
+
+BSM retains its current and previous keys in a private host credential store. Rotation changes the active key for future backups. Old archives still require their original key. If the matching key is lost and no host copy or emergency kit remains, the encrypted backup cannot be recovered.
+
+Downloads preserve the stored encryption. Administrators can explicitly export a decrypted copy; that copy contains readable server secrets. Unencrypted backups also contain readable secrets.
+
+The private credential store protects access to keys at rest but does not protect against an administrator or attacker controlling the running BSM host. In-process Python plugins share BSM's operating-system permissions.
+
+## Inspect and selectively restore
+
+1. Select **Inspect / restore** beside an archive, or import a backup file.
+2. If needed, enter the matching recovery key. A key already held by BSM can be used automatically.
+3. Inspect the source server, world, versions, date, and available components.
+4. Select complete components to restore. Absent components are unavailable.
+5. Select **Review restore** and check the destination paths, warnings, and space requirements.
+6. Confirm replacement. BSM validates and stages the data, stops the Minecraft server, restores selected files and settings, and optionally restarts an originally running server after success.
+
+BSM stays online. Follow progress in the task interface; reopening the page does not restart the operation. Unselected components and other servers are preserved.
+
+World restoration replaces the complete world directory. Script configuration replaces the complete server `config/` directory, including secrets and module permissions; it does not merge newer files into the restored directory.
+
+When restoring the world and properties together, the restored properties determine the world destination. A world-only restore replaces the destination's current active world. A properties-only restore cannot select a missing world: include the world component if required.
+
+BSM settings restoration preserves the destination server's identity, actual installed version, and runtime status. Restoring a target-version preference does not install or downgrade Bedrock.
+
+A plan becomes invalid when the relevant destination configuration or selected archive changes. Review a new plan instead of retrying with an old token.
+
+## Recovery after failure or interruption
+
+Before replacing data, BSM writes a recovery journal inside the server directory. It retains previous selected files and settings until the restore commits.
+
+If restoration fails, BSM attempts recovery and leaves the Minecraft server stopped when the result is uncertain. If rollback cannot complete, preserve the `.bsm-restore` directory and inspect the reported failure. Do not remove its recovery copies merely to make the server start.
+
+At application startup, BSM recovers unfinished restores before loading plugins or autostarting servers. A server with an outstanding journal cannot start through the normal process API. Committed journals are cleaned without reverting successfully restored data.
+
+A server restart failure is reported separately from a successful data restore.
+
+## Retention
+
+`retention.backups` applies to completed unified archives for each server, regardless of world name:
+
+- `0` disables automatic pruning.
+- A positive value retains that many completed archives.
+
+BSM applies retention after successful creation. Retention failures are reported separately from the successful backup. Legacy backups and recovery journals are not automatically included in this policy.
+
+**Migration note:** zero previously permitted deleting all matching backups. It now preserves backups until the setting is changed or files are explicitly removed.
+
+## Older backups
+
+The **Legacy backups** section lists existing `.mcworld` and configuration files. Restore each deliberately. Independently dated legacy files do not form one coherent historical snapshot.
+
+Existing backup creation API names are compatibility aliases for unified archive creation. New clients should use the portable archive operations. Legacy restore-all no longer combines independently dated files; it selects one latest unified archive.
+
+Minecraft `.mcworld` import and export remain available as content operations.
+
+## Offline recovery
+
+Install BSM on a recovery machine. These commands do not require the original database or a running BSM instance:
+
+```console
+bedrock-server-manager backup inspect server.bsmbackup
+bedrock-server-manager backup extract server.bsmbackup recovered-server
 ```
 
-## Restore carefully
+For encrypted backups, add `--recovery-key` to prompt privately:
 
-Restore replaces the selected current data. Create a fresh backup first, select the intended category and timestamp, and allow BSM's maintenance operation to finish before restarting or changing that server.
+```console
+bedrock-server-manager backup extract server.bsmbackup recovered-server --recovery-key
+```
 
-Restore-all selects backups across categories. The most recent world and configuration backups can have different timestamps; it does not guarantee a single historical snapshot. Verify the resulting world, properties and player permissions after restoration.
+The destination must not exist. BSM authenticates and validates the archive before publishing extracted contents. It includes `manifest.json` in the extracted directory.
 
-## Automate and retain
+Keep another backup copy outside the BSM host and periodically test recovery.
 
-Review the installed backup-on-start plugin and its settings before relying on automatic backups. Check that the plugin is enabled and inspect failed operations in the logs. Choose retention limits that match available disk space, and periodically test restoration using a separate server.
+The backup page displays outstanding recovery state and provides **Retry recovery**. Stop the Minecraft server before retrying an uncommitted rollback. A recovery failure blocks that server's startup but does not intentionally shut down the manager.
+
+Archive processing is bounded by `backups.max_files`, `backups.max_expanded_bytes`, and `backups.max_archive_bytes`. Adjust these limits through application settings when managing unusually large worlds. Temporary and recovery data also require sufficient local disk space.
+
+## Verification and backup health
+
+Every completed capture and imported archive is authenticated and checked before
+publication. Verification also checks world metadata, properties, player access
+JSON, and the typed server settings export. It does not launch Minecraft or prove
+that Bedrock can load every chunk. Use a separate restored server for that check.
+
+The Backups page shows the last successful capture, verification result, storage
+usage, missing recovery keys, older keys still needed by existing archives, and
+incomplete destination copies. Diagnostics includes an aggregate backup health
+section. A failed destination copy does not invalidate a completed local backup.
+A changed archive loses its previous verified status until checked again.
+
+By default, lifecycle-owned maintenance checks for overdue verification every
+minute after the application becomes ready. `backups.verification_interval_hours` defaults to 168; zero disables
+periodic verification. Maintenance skips servers with active operations and
+retries incomplete copies. Checks can also be run manually with **Verify** or
+`bsm-cli backup manage verify`. Verification uses temporary disk space for the
+expanded archive and does not modify the server.
+
+## Restore review and safety backups
+
+The restore review shows added, replaced, and removed files, with exact totals
+and up to 1,000 individual entries. Properties show readable changes for known
+public settings. Other properties and custom BSM setting values are redacted;
+script secrets and player access file contents are never shown in the comparison.
+World comparisons describe the files observed at review time; running worlds can
+continue changing until the server stops.
+
+Before replacement, BSM stops a running server and captures a complete
+`pre_restore` safety backup. If that capture fails, replacement does not begin.
+Safety backups remain after successful restoration, allowing another reviewed
+restore to undo it. Both the source and safety archive are protected from pruning
+for `backups.safety_window_hours` (168 hours by default). A safety backup from a
+failed or interrupted restore stays pinned until explicitly released; successful
+restoration releases that pin and starts its protection window. The recovery journal
+continues to protect partially replaced files independently of these archives.
+A failed operation can leave Minecraft stopped; inspect its result before starting.
+
+## Retention and pins
+
+Pin an archive to exclude it from local pruning. Daily, weekly, and monthly
+settings retain the newest archive in each of the configured number of calendar
+buckets, in addition to the normal `retention.backups` count. A count of zero
+continues to disable local pruning entirely.
+
+An optional `backups.storage_budget_bytes` trims older eligible recovery points
+when the configured policy exceeds the budget. Pins, safety windows, corrupt
+archives needing attention, and the last authenticated usable recovery point
+are preserved even if this exceeds the budget. BSM never claims a hard disk
+quota. If no archive can be authenticated with an available key, pruning stops.
+
+## Off-machine copies
+
+Administrators can configure named directory destinations in **Backup policy and
+destinations**, using an existing absolute directory on the BSM host. A mounted
+NAS, network share, or separately mounted disk can supply that directory. Keep
+mounts available to the BSM service account. The mount directory must already
+exist; BSM does not create a missing mount point.
+
+After a local archive is complete, each enabled destination receives its unchanged
+bytes under a server-specific directory. Copies use a private temporary file,
+checksum verification, and atomic publication. Existing different content is
+never replaced. Each destination has its own success/failure state and retry
+command. Local pruning does not remove remote copies. These destinations do not
+provide S3 or cloud authentication; additional adapters can implement the same
+publication interface later. An unencrypted archive remains unencrypted remotely.
+
+## Restore as a new server
+
+An administrator can prepare a new server from an archive by choosing an unused
+name, non-conflicting ports, and a Bedrock version. BSM validates the archive first,
+installs a stopped destination, and publishes a pinned prepared archive with the
+chosen ports and autostart disabled. Select that server and review the prepared
+archive through the ordinary selective restore flow. No Minecraft process starts
+automatically. If installation or preparation fails, inspect the destination
+before retrying; completed installation work is not silently deleted.
+
+## Native upload and download
+
+The browser uploads archive files directly through authenticated multipart HTTP,
+with progress and cancellation. Uploads are bounded before multipart spooling;
+archives are validated before becoming available. Recovery keys are supplied
+separately and never saved with transfer metadata.
+
+Downloads preserve the stored archive and encryption. On browsers supporting a
+native save-file picker in a secure context, BSM streams bytes directly into the
+chosen file with progress and backpressure. Other browsers use the standard
+browser download fallback, which may buffer the archive. Use the CLI streaming
+download for very large archives on those browsers. Cancelling a native save
+aborts its temporary file. The Python SDK and CLI stream downloads to disk.
+
+Use **Test recovery key** with the key from an emergency kit to authenticate an
+encrypted archive before an emergency. A successful test proves that key can
+open that archive; it cannot prove that an emergency kit has been stored safely
+off the host. Rotation retains older keys because existing archives still need them.
+
+Safety archives preserve the world that will actually be replaced, including an
+inactive destination world selected by restored properties. Restoring that safety
+archive puts the world back at its original destination. Unrelated worlds remain
+on disk. If current configuration is damaged, BSM can still preserve its raw files
+before a repair restore; that safety archive remains pinned and is flagged for
+manual inspection or offline extraction.
+
+
+## Scheduled backups
+
+Administrators can configure a schedule per server under **Backup policy and
+destinations**. Choose a local daily time, IANA timezone (for example
+`America/Los_Angeles`), weekdays (Monday through Sunday), and a staggering window.
+Schedules follow daylight-saving changes: repeated hours run once, and a missing
+local time shifts forward through the daylight-saving gap.
+
+A new or changed schedule starts with its next occurrence. After a restart,
+catch-up mode runs one backup for the latest missed occurrence rather than
+replaying a backlog. Disable catch-up to skip runs more than two minutes late.
+BSM assigns a stable server-specific offset within the staggering window and
+executes automatic work serially to avoid competing large captures. Pausing and
+re-enabling a schedule starts a new activation window.
+
+Schedule checkpoints survive restarts. Published scheduled archives carry a
+manager-local slot identifier, preventing duplicate creation when a process dies
+between archive publication and completion bookkeeping. Failed attempts back off
+and stop after three tries for that occurrence. The next scheduled occurrence
+gets a new retry allowance. Scheduled captures use the normal backup hooks,
+encryption default, pack policy, verification, and retention.
+
+Verification and destination maintenance perform at most one archive operation
+per server per pass and yield to queued interactive work between operations.
+A running archive operation completes its current safe unit before releasing
+resources; cancellation does not abandon worker threads with open archives.
+Destination copies back off and stop after three automatic attempts. A manual
+retry starts a fresh attempt allowance. Configuring a destination under a new
+name starts an independent copy history.
+
+## Capacity reports and dry runs
+
+Restore review reports required and available space separately for the server
+and backup filesystems. If both locations share a filesystem, their requirements
+are combined. Estimates conservatively include extraction, safety capture,
+compression, verification, metadata overhead, and headroom. Existing destination
+files already occupy disk; journal renames do not duplicate their full contents.
+Space is checked again before Minecraft stops. Other programs can consume space
+after a check, so disk-write failures still use ordinary restore recovery.
+
+**Run dry run** authenticates the archive, validates the selection, copies selected
+contents into a private temporary directory on the destination filesystem,
+flushes the copies, and checks their hashes. It leaves server files and process
+state untouched and removes temporary data afterward. An insufficient-space
+report blocks the exercise and restoration. This checks filesystem readiness;
+it does not start Minecraft or validate every world chunk in the game engine.
+
+## Pack coverage and archive compatibility
+
+Archives remain manifest version **1**. The four server-level pack components are
+optional additions to that inventory. Readers accept older version-1 archives
+without those entries and show only components actually present. Each pack
+directory can be restored independently. Selected directories replace their
+complete destination contents and participate in the same journal and safety
+backup as world and configuration restores. Safety captures include server-level
+packs even when ordinary capture defaults exclude them.
+
+## Labels and finding recovery points
+
+Edit a backup's label and notes from its inspection dialog. These are manager-local
+catalog metadata; editing them does not rewrite an archive or change its checksum.
+They do not travel with downloaded archives. Search by label, notes, or filename,
+and filter by capture reason, imported archives, pins, or verification failures.
+Imported archives retain their original manifest reason and also receive an
+imported-origin marker in the manager catalog.
+
+## Recovery readiness and drills
+
+The backup page reports recovery readiness for the selected server. It checks
+for a recent verified archive and an available recovery key. If external
+destinations are configured, it also checks for a completed current-location
+copy, unavailable storage, and free-space warnings. An available key does not
+prove that you have stored its emergency kit safely; keep that kit separately.
+The maximum acceptable backup age defaults to 48 hours and is configurable in
+**Settings → Backups**.
+
+BSM runs an isolated recovery drill every 168 hours by default. Set the interval
+to zero to disable periodic drills, or run **Recovery drill** for an archive.
+A drill authenticates the archive and stages all included components on the
+server filesystem, checks copied-file hashes, and records the result. It does
+not stop Minecraft, replace live files, or prove that Minecraft will start with
+those contents. A failed or interrupted drill needs attention in readiness.
+
+Before a restore, the review lists added, replaced, and removed files and
+changes to server settings and player-access configuration. Script secrets,
+custom values, player identities, and permission values remain hidden.
+History groups recovery points by capture date and labels the capture reason.
+
+## External-copy retention
+
+Each destination has independent count and storage-budget limits and a
+free-space warning threshold. Saving those limits does not delete files.
+Choose the server, save the policy, then use **Preview external cleanup** to
+review the eligible copies. Explicitly confirm **Delete reviewed copies** to
+apply the unchanged preview. If content, protection, or policy changes, create
+a new preview.
+
+Cleanup only removes unchanged copies recorded by BSM at that destination.
+Untracked files, pins, active safety protection, and the newest recorded copy
+are retained. Local retention preserves the external-copy index, so external
+cleanup still works after a local archive has been removed. Copies deliberately
+pruned externally are not immediately recreated by maintenance. A new manual
+copy can recreate them. Changing a destination's directory requires a new copy
+before readiness considers the new location protected.
+
+Readiness conditions produce notifications when they first appear: missed or
+failed scheduled backups, failed verification, missing keys, destination
+problems, and failed drills. Persisted condition IDs prevent repeated minute-by-
+minute notifications and survive BSM restarts. Once a condition clears, a later
+recurrence can notify again. Connected browsers receive notifications in their
+notification history; unresolved conditions remain visible on the backup page.
+
+## Recovering on a fresh installation
+
+Keep the `.bsmbackup` archive and its emergency kit separately. On a fresh BSM
+installation, install the appropriate Bedrock version, select the destination
+server, and import the archive using the kit's recovery key. Review components
+and capacity, optionally run a dry run, and confirm the restore. The destination
+server keeps its identity; components you leave unselected remain unchanged.
+The source BSM database and host credentials file are not required.
+
+If the fresh host has no backup encryption key, BSM encrypts the pre-restore
+safety archive with the supplied, validated emergency-kit key. That key is used
+in memory and is not added to the host's credentials file. Keep the same kit to
+recover that safety archive. Configure a host key and download its emergency kit
+before enabling future automatic encrypted captures.
+
+## Recovery reports
+
+Use **Recovery report** on the backup page to download a JSON report, or use
+`bsm-cli backup report --server SERVER --output recovery-report.json`.
+The report contains verification evidence, the latest isolated drill, the latest
+component review and capacity checks, and the latest restore outcome. Archive
+references are hashes. Archive filenames, per-file paths, keys, labels, notes, player
+identities, file contents, and configuration values are excluded. Reports contain
+sizes, timestamps, and operation outcomes; they do not contain an archive or
+replace an emergency kit. The most recent 100 archive entries are included;
+`archives_omitted` identifies any additional entries.
+
+A report records a committed restore separately from restart or cleanup problems.
+An interrupted restore still has its recovery journal as the source of truth.
+Reports do not claim that Minecraft has successfully loaded the restored world.
+
+## Capacity and responsiveness
+
+Captures and dry runs stream archive data through background workers. Operations
+that change the same server wait for an active capture to finish so files remain
+consistent; read-only application work can continue. Large worlds and many small
+files can require substantial temporary space. Restore previews report capacity
+for the server and backup volumes before Minecraft is stopped.
+
+External cleanup records approved deletion intent before removing files. After
+an interruption, maintenance does not recreate a copy already deleted by that
+cleanup. Open a new cleanup preview to reconcile the recorded intent and review
+any remaining work; recovery does not silently delete more external files.

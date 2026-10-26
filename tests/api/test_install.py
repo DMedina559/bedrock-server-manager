@@ -81,4 +81,4 @@ async def test_update_downloads_real_archive_and_preserves_world(
     assert response.updated is True
     assert response.new_version == "1.26.45.1"
     assert marker.read_text() == "keep world"
-    assert list(Path(server.backups.server_backup_directory).glob("*.mcworld"))
+    assert list(Path(server.backups.server_backup_directory).glob("*.bsmbackup"))

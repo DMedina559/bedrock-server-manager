@@ -66,7 +66,23 @@ def get_config_dir() -> str:
 
 def get_config_path() -> str:
     """Return the full, platform-specific path to the configuration file."""
-    return os.path.join(get_config_dir(), CONFIG_FILE_NAME)
+    from pathlib import Path
+
+    with _config_write_lock:
+        root = Path(get_config_dir())
+        destination = root / "config" / CONFIG_FILE_NAME
+        legacy = root / CONFIG_FILE_NAME
+        if legacy.exists():
+            destination.parent.mkdir(parents=True, exist_ok=True)
+            if destination.exists():
+                if destination.read_bytes() != legacy.read_bytes():
+                    raise ConfigurationError(
+                        "Conflicting legacy and nested startup configuration files."
+                    )
+                legacy.unlink()
+            else:
+                os.replace(legacy, destination)
+        return str(destination)
 
 
 def _read_raw_config() -> Dict[str, Any]:
@@ -195,11 +211,11 @@ def save_config(data: Dict[str, Any]):
     temporary = None
     with _config_write_lock:
         try:
-            os.makedirs(get_config_dir(), exist_ok=True)
+            os.makedirs(os.path.dirname(get_config_path()), exist_ok=True)
             with tempfile.NamedTemporaryFile(
                 mode="w",
                 encoding="utf-8",
-                dir=get_config_dir(),
+                dir=os.path.dirname(get_config_path()),
                 prefix=".bsm-config-",
                 delete=False,
             ) as file:

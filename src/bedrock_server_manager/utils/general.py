@@ -77,7 +77,12 @@ def startup_checks(
 
 
 def run_async(coro):
-    """Executes a coroutine safely whether an asyncio event loop is currently running or not."""
+    """Run a coroutine from synchronous CLI code.
+
+    The legacy active-loop path blocks its caller and uses another event loop.
+    Async consumers must await their coroutine directly; loop-bound application
+    resources must remain on their owning loop.
+    """
     import asyncio
     import concurrent.futures
 
@@ -97,6 +102,7 @@ class ReentrantAsyncLock:
         self._lock: asyncio.Lock | None = None
         self._owner: Any = None
         self._count = 0
+        self._waiting = 0
         self._created_loop: asyncio.AbstractEventLoop | None = None
 
     def _get_lock(self) -> asyncio.Lock:
@@ -144,10 +150,14 @@ class ReentrantAsyncLock:
             self._count += 1
             return True
 
-        if timeout is not None:
-            await asyncio.wait_for(lock.acquire(), timeout=timeout)
-        else:
-            await lock.acquire()
+        self._waiting += 1
+        try:
+            if timeout is not None:
+                await asyncio.wait_for(lock.acquire(), timeout=timeout)
+            else:
+                await lock.acquire()
+        finally:
+            self._waiting -= 1
 
         self._owner = me
         self._count = 1
@@ -164,6 +174,10 @@ class ReentrantAsyncLock:
         if self._count == 0:
             self._owner = None
             lock.release()
+
+    @property
+    def waiting(self) -> int:
+        return self._waiting
 
     def locked(self) -> bool:
         lock = self._get_lock()

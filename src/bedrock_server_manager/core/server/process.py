@@ -117,6 +117,9 @@ class ServerProcess:
     async def start(self) -> None:
         """Start the Bedrock server process asynchronously."""
         async with self.server.operation_lock:
+            from ...backups.recovery import RestoreJournal
+
+            RestoreJournal(self.server).ensure_clear()
             is_inst = await self.server.is_installed()
             if not is_inst:
                 raise ServerStartError(

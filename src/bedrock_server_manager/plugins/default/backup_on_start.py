@@ -37,7 +37,7 @@ class AutoBackupOnStart(PluginBase):
 
     settings_model = PluginSettings
 
-    version = "1.3.0"
+    version = "1.3.1"
     description = "Ensures a complete backup before starting a server. This plugin hooks into the `before_server_start` event."
     author = "dmedina559"
     name = "Auto Backup On Start"
@@ -54,6 +54,15 @@ class AutoBackupOnStart(PluginBase):
         """
         Triggers a full backup of the server before it starts.
         """
+        from bedrock_server_manager.operations import OperationName
+
+        sequence = self.api.operations.sequence()
+        if sequence and any(
+            item.name == OperationName.BACKUP_RESTORE
+            and item.server_name == kwargs.get("server_name")
+            for item in sequence.ancestry
+        ):
+            return
         if not await self.get_plugin_setting("enable_backup_on_start", default=True):
             self.logger.debug("Backup on start is disabled in plugin settings.")
             return
@@ -66,26 +75,10 @@ class AutoBackupOnStart(PluginBase):
             return
 
         if await self.get_plugin_setting("reuse_sequence_backup", default=True):
-            from bedrock_server_manager.operations import (
-                OperationName,
-                OperationResultQuery,
+            coverage = await self.api.backup_restore.can_reuse_server_backup(
+                request={"server_name": server_name}
             )
-
-            required = {
-                "world",
-                "server.properties",
-                "allowlist.json",
-                "permissions.json",
-            }
-            backups = self.api.operations.results(
-                OperationResultQuery(
-                    name=OperationName.BACKUP_CREATE,
-                    server_name=server_name,
-                    status="finished",
-                    outcome="completed",
-                )
-            )
-            if any(required.issubset(item.scope) for item in backups):
+            if coverage.reusable:
                 self.logger.info(
                     "Skipping pre-start backup for '%s': a complete backup already finished in this operation sequence.",
                     server_name,

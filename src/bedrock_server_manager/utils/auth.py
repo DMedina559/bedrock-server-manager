@@ -4,6 +4,7 @@ import logging
 import secrets
 from datetime import timezone
 from typing import Any, Optional
+from weakref import WeakValueDictionary
 
 import bcrypt
 from fastapi import WebSocketException, status
@@ -15,6 +16,7 @@ from ..context import AppContext
 from ..contracts import Password
 from ..state.models import UserInfoState
 from ..web.schemas import UserResponse
+from .threads import run_in_thread
 
 logger = logging.getLogger(__name__)
 
@@ -231,6 +233,32 @@ def get_password_hash(password: str) -> str:
     )
 
 
+_password_slots: WeakValueDictionary[asyncio.AbstractEventLoop, asyncio.Semaphore] = (
+    WeakValueDictionary()
+)
+
+
+def _password_semaphore() -> asyncio.Semaphore:
+    loop = asyncio.get_running_loop()
+    slots = _password_slots.get(loop)
+    if slots is None:
+        slots = asyncio.Semaphore(4)
+        _password_slots[loop] = slots
+    return slots
+
+
+async def verify_password_async(plain_password: str, hashed_password: str) -> bool:
+    """Verify a password without blocking the event loop or flooding workers."""
+    async with _password_semaphore():
+        return await run_in_thread(verify_password, plain_password, hashed_password)
+
+
+async def get_password_hash_async(password: str) -> str:
+    """Hash a password with bounded, cancellation-owned worker execution."""
+    async with _password_semaphore():
+        return await run_in_thread(get_password_hash, password)
+
+
 async def authenticate_user(
     app_context: AppContext, username_form: str, password_form: str
 ) -> Optional[str]:
@@ -244,6 +272,8 @@ async def authenticate_user(
         )
         if not user:
             return None
-        if not verify_password(password_form, str(user.hashed_password)):
-            return None
-        return str(user.username)
+        hashed_password = str(user.hashed_password)
+        username = str(user.username)
+    if not await verify_password_async(password_form, hashed_password):
+        return None
+    return username

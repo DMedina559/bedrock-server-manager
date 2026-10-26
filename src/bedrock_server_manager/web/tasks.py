@@ -39,6 +39,12 @@ class TaskManager:
         diagnostics: "Diagnostics | None" = None,
     ):
         """Initialize the TaskManager with explicit dependencies."""
+        if max_workers is not None and max_workers < 1:
+            raise ValueError("max_workers must be positive")
+        self._concurrency_limit = max_workers
+        self._execution_slots = (
+            asyncio.Semaphore(max_workers) if max_workers is not None else None
+        )
         self.diagnostics = diagnostics
         self._metadata: dict[str, dict[str, Any]] = {}
         self._timing: dict[str, tuple[float, float | None]] = {}
@@ -276,10 +282,19 @@ class TaskManager:
             token = _current_task_id.set(task_id)
             try:
                 with correlation_scope(self._metadata[task_id]["correlation_id"]):
-                    await self._update_task(task_id, "running", "Task is running.")
-                    if inspect.iscoroutinefunction(target_function):
-                        return await target_function(*args, **call_kwargs)
-                    return await run_in_thread(target_function, *args, **call_kwargs)
+
+                    async def execute():
+                        await self._update_task(task_id, "running", "Task is running.")
+                        if inspect.iscoroutinefunction(target_function):
+                            return await target_function(*args, **call_kwargs)
+                        return await run_in_thread(
+                            target_function, *args, **call_kwargs
+                        )
+
+                    if self._execution_slots is None:
+                        return await execute()
+                    async with self._execution_slots:
+                        return await execute()
             finally:
                 _current_task_id.reset(token)
 
@@ -293,6 +308,16 @@ class TaskManager:
         task.add_done_callback(lambda f: self._task_done_callback(task_id, f))
 
         return task_id
+
+    async def report_stage(self, message: str) -> None:
+        """Publish a core operation stage without retaining its request arguments."""
+        task_id = _current_task_id.get()
+        if (
+            task_id is not None
+            and task_id in self._tasks
+            and self._tasks[task_id].status == "running"
+        ):
+            await self._update_task(task_id, "running", message)
 
     def report_progress(
         self, percent: float, *, plugin_owner: str | None = None
@@ -350,6 +375,7 @@ class TaskManager:
             and item.elapsed_seconds is not None
         ]
         return TasksDiagnostics(
+            concurrency_limit=self._concurrency_limit,
             active=self.active_task_count,
             tasks=items,
             accepting=not self._shutdown_started,
