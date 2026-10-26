@@ -163,7 +163,9 @@ class BackupHealthResponse(SuccessResponse):
 
 
 class ManageSnapshotRequest(InspectSnapshotRequest):
-    action: Literal["verify", "pin", "unpin", "copy", "test_key", "annotate", "drill"]
+    action: Literal[
+        "verify", "pin", "unpin", "copy", "test_key", "annotate", "drill", "delete"
+    ]
     destination: str | None = None
     label: str | None = Field(default=None, max_length=120)
     notes: str | None = Field(default=None, max_length=2000)

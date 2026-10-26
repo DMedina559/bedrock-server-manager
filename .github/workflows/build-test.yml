@@ -5,7 +5,7 @@ name: Build Lint Test
 on:
   workflow_dispatch:
   push:
-    branches: [dev, main, feat/unified-server-backups]
+    branches: [dev, main, feat/unified-server-backups, chore/backup-start-performance]
     paths:
       - 'src/bedrock_server_manager/**'
       - 'tests/**'

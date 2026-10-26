@@ -12,6 +12,7 @@ from . import (
     player,
     plugins,
     properties,
+    scheduler,
     server,
     settings,
     system,
@@ -21,6 +22,7 @@ from . import (
 )
 
 __all__ = [
+    "scheduler",
     "diagnostics",
     "application",
     "addon",

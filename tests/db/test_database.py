@@ -25,7 +25,13 @@ async def test_session_manager_uses_migrated_schema(db):
         tables = await session.run_sync(
             lambda sync: inspect(sync.bind).get_table_names()
         )
-        assert {"users", "servers", "alembic_version"}.issubset(tables)
+        assert {
+            "users",
+            "servers",
+            "alembic_version",
+            "schedules",
+            "schedule_runs",
+        }.issubset(tables)
 
 
 async def test_real_migrations_are_idempotent_and_persist_on_reopen(tmp_path):

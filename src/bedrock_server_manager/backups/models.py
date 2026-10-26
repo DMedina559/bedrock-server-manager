@@ -117,6 +117,7 @@ class BackupSummary(Record):
     encrypted: bool
     key_id: str | None = None
     verification: BackupVerification = Field(default_factory=BackupVerification)
+    stage_durations_ms: dict[str, float] = Field(default_factory=dict)
     pinned: bool = False
     protected_until: str | None = None
     purpose: str | None = None

@@ -31,6 +31,7 @@ or error to determine whether the operation completed.
    :maxdepth: 2
    :caption: Server Actions
 
+   scheduler
    server
 
 .. toctree::

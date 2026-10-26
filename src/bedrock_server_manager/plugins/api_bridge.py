@@ -40,6 +40,7 @@ if TYPE_CHECKING:
         PluginsAPI,
         PropertiesAPI,
         RuntimeAPI,
+        SchedulerAPI,
         ServerAPI,
         SettingsAPI,
         SystemAPI,
@@ -52,6 +53,7 @@ logger = logging.getLogger(__name__)
 
 # Modules allowed from bedrock_server_manager.api
 ALLOWED_API_MODULES = {
+    "scheduler",
     "diagnostics",
     "addon",
     "allowlist",
@@ -173,6 +175,7 @@ def create_app_api(
             "register_diagnostic_provider": runtime_capabilities.register_diagnostic_provider,
             "report_task_progress": runtime_capabilities.report_task_progress,
             "run_task": runtime_capabilities.run_task,
+            "register_scheduled_task": runtime_capabilities.register_scheduled_task,
             "read_plugin_file": runtime_capabilities.read_plugin_file,
             "write_plugin_file": runtime_capabilities.write_plugin_file,
             "server_lifecycle_manager": runtime_capabilities.server_lifecycle_manager,
@@ -182,7 +185,11 @@ def create_app_api(
         signature = inspect.signature(function)
 
         def inject(args: tuple[Any, ...], kwargs: dict[str, Any]) -> dict[str, Any]:
-            if name in {"read_plugin_file", "write_plugin_file"}:
+            if name in {
+                "read_plugin_file",
+                "write_plugin_file",
+                "register_scheduled_task",
+            }:
                 if file_bus is None:
                     raise RuntimeError("Plugin file capabilities are unavailable")
                 file_bus.check_owner(file_owner, file_generation)
@@ -323,6 +330,7 @@ class CapabilityNamespace:
                 "register_diagnostic_provider": "register_diagnostic_provider",
                 "report_task_progress": "report_task_progress",
                 "run_task": "run_task",
+                "register_scheduled_task": "register_scheduled_task",
                 "read_plugin_file": "read_plugin_file",
                 "write_plugin_file": "write_plugin_file",
                 "server_lifecycle_manager": "server_lifecycle_manager",
@@ -400,6 +408,11 @@ class AppAPI:
     @property
     def properties(self) -> "PropertiesAPI":
         return cast("PropertiesAPI", self._namespace("properties"))
+
+    @property
+    def scheduler(self) -> "SchedulerAPI":
+        """Read application schedules; registration uses runtime.register_scheduled_task."""
+        return cast("SchedulerAPI", self._namespace("scheduler"))
 
     @property
     def server(self) -> "ServerAPI":

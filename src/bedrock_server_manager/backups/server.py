@@ -234,6 +234,23 @@ class UnifiedServerBackups(ManagedBackups):
         _schedule_slot: str | None = None,
         include_packs: bool | None = None,
     ) -> BackupSummary:
+        import time
+
+        stages: dict[str, float] = {}
+        previous_stage: str | None = None
+        previous_time = time.monotonic()
+        report_progress = progress
+
+        async def track_stage(message: str) -> None:
+            nonlocal previous_stage, previous_time
+            current = time.monotonic()
+            if previous_stage is not None:
+                stages[previous_stage] = round((current - previous_time) * 1000, 3)
+            previous_stage, previous_time = message, current
+            if report_progress is not None:
+                await report_progress(message)
+
+        progress = track_stage
         with self.server.operations.scope(
             OperationName.BACKUP_CREATE,
             server_name=self.server.server_name,
@@ -446,11 +463,16 @@ class UnifiedServerBackups(ManagedBackups):
                         password,
                         record.key_id if record else None,
                     )
-                    verification = Path(directory) / "verify"
-                    await run_in_thread(private_directory, verification)
-                    await run_in_thread(
-                        self.unpack_snapshot, temporary, verification, password
+                    verify_created = self.server.settings.get(
+                        "backups.verify_after_create", False
                     )
+                    if verify_created:
+                        await self._stage(progress, "Verifying backup archive")
+                        verification = Path(directory) / "verify"
+                        await run_in_thread(private_directory, verification)
+                        await run_in_thread(
+                            self.unpack_snapshot, temporary, verification, password
+                        )
                     structure_valid = True
                     try:
                         await run_in_thread(
@@ -462,7 +484,12 @@ class UnifiedServerBackups(ManagedBackups):
                         structure_valid = False
                     await run_in_thread(sync_tree, temporary)
                     await run_in_thread(os.replace, temporary, destination)
-                await run_in_thread(self._record_verified, destination, manifest)
+                await run_in_thread(
+                    self._record_verified,
+                    destination,
+                    manifest,
+                    verified=verify_created,
+                )
                 if not structure_valid:
                     await run_in_thread(
                         self.catalog.update,
@@ -495,7 +522,9 @@ class UnifiedServerBackups(ManagedBackups):
                             self.logger.warning(
                                 "Backup created locally; destination copy requires attention."
                             )
+                await track_stage("Finalizing backup")
                 catalog_state = await run_in_thread(self.catalog.load)
+                catalog_state["archives"][filename]["stage_durations_ms"] = stages
                 catalog_state["last_error"] = None
                 await run_in_thread(self.catalog.save, catalog_state)
                 operation.finish(
@@ -522,6 +551,7 @@ class UnifiedServerBackups(ManagedBackups):
                 ]
                 return BackupSummary(
                     verification=metadata.get("verification", {}),
+                    stage_durations_ms=metadata.get("stage_durations_ms", {}),
                     pinned=metadata.get("pinned", False),
                     protected_until=metadata.get("protected_until"),
                     purpose=purpose,
@@ -596,9 +626,14 @@ class UnifiedServerBackups(ManagedBackups):
                         path = self.resolve_backup(identifier)
                         record = metadata.get(identifier, {})
                         current = await run_in_thread(path.stat)
-                        if record.get("verification", {}).get(
-                            "status"
-                        ) == "verified" and record.get("fingerprint") == [
+                        verified = record.get("verification", {}).get("status")
+                        if (
+                            verified == "verified"
+                            or (
+                                record.get("capture_validated", False)
+                                and verified != "failed"
+                            )
+                        ) and record.get("fingerprint") == [
                             current.st_size,
                             current.st_mtime_ns,
                         ]:
@@ -684,6 +719,7 @@ class UnifiedServerBackups(ManagedBackups):
                             drill=metadata.get("drill"),
                             size=metadata_stat.st_size,
                             verification=metadata.get("verification", {}),
+                            stage_durations_ms=metadata.get("stage_durations_ms", {}),
                             pinned=metadata.get("pinned", False),
                             protected_until=metadata.get("protected_until"),
                             purpose=metadata.get("purpose"),
@@ -705,6 +741,7 @@ class UnifiedServerBackups(ManagedBackups):
                             size=metadata_stat.st_size,
                             encrypted=False,
                             verification=metadata.get("verification", {}),
+                            stage_durations_ms=metadata.get("stage_durations_ms", {}),
                             pinned=metadata.get("pinned", False),
                             protected_until=metadata.get("protected_until"),
                             purpose=metadata.get("purpose"),
@@ -1143,7 +1180,7 @@ class UnifiedServerBackups(ManagedBackups):
                     await run_in_thread(
                         self.catalog.update,
                         safety.backup_id,
-                        pinned=safety.verification.status != "verified",
+                        pinned=safety.verification.status == "failed",
                         protected_until=(
                             datetime.now(timezone.utc)
                             + timedelta(

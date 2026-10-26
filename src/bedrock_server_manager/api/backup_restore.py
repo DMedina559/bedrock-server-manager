@@ -690,6 +690,8 @@ async def manage_server_snapshot(
         await backups.verify_snapshot(
             request.backup_id, key, record_failure=request.action != "test_key"
         )
+    elif request.action == "delete":
+        await backups.delete_snapshot(request.backup_id)
     elif request.action == "drill":
         from ..backups.assurance import recovery_drill
 

@@ -83,6 +83,7 @@ from .ban import (
     RemoveServerBanResponse,
 )
 from .common import APIErrorResponse, APIRequest, APIResponse
+from .common import SuccessResponse as SuccessResponse
 from .diagnostics import (
     CompareDiagnosticSnapshotsRequest,
     CompareDiagnosticSnapshotsResponse,
@@ -155,6 +156,12 @@ from .properties import (
     SetPropertiesResponse,
     ValidatePropertyValueRequest,
     ValidatePropertyValueResponse,
+)
+from .scheduler import (
+    DeleteScheduleRequest,
+    ListSchedulesRequest,
+    ListSchedulesResponse,
+    SaveScheduleRequest,
 )
 from .server import (
     DeleteServerDataRequest,
@@ -462,4 +469,13 @@ __all__ += [
     "GetDiagnosticRunsResponse",
     "GetDiagnosticTraceRequest",
     "GetDiagnosticTraceResponse",
+]
+
+
+__all__ += [
+    "DeleteScheduleRequest",
+    "ListSchedulesRequest",
+    "ListSchedulesResponse",
+    "SaveScheduleRequest",
+    "SuccessResponse",
 ]

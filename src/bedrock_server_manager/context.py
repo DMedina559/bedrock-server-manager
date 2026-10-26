@@ -66,9 +66,10 @@ class AppContext:
         self._plugin_manager: Optional["PluginManager"] = None
         self._task_manager: Optional["TaskManager"] = None
         self._connection_manager: Optional["ConnectionManager"] = None
-        from .backups.maintenance import BackupMaintenance
+        from .scheduler.service import Scheduler
 
-        self._backup_maintenance = BackupMaintenance(self)
+        self.scheduler = Scheduler(self)
+        self._backup_maintenance = self.scheduler
         self._metrics_service: Optional["MetricsService"] = None
         self._resource_monitor: Optional["ResourceMonitor"] = None
         self._log_streamer: Optional["LogStreamer"] = None
@@ -670,6 +671,10 @@ class AppContext:
                 self._events.diagnostic_recorder = self._diagnostics.record_event
         return self._events
 
+    def _cleanup_plugin_capabilities(self, owner: str) -> None:
+        self.diagnostics.remove_owner(f"plugin:{owner}")
+        self.scheduler.remove_owner(f"plugin:{owner}")
+
     @property
     def plugin_manager(self) -> "PluginManager":
         """
@@ -688,9 +693,7 @@ class AppContext:
                 settings_models=self.plugin_service.settings_models,
                 task_manager_provider=lambda: self._task_manager,
                 connection_manager_provider=lambda: self._connection_manager,
-                diagnostic_cleanup=lambda owner: self.diagnostics.remove_owner(
-                    f"plugin:{owner}"
-                ),
+                diagnostic_cleanup=self._cleanup_plugin_capabilities,
                 diagnostic_failure=(
                     self._diagnostics.record_plugin_failure
                     if self._diagnostics

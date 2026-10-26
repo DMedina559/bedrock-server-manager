@@ -23,6 +23,7 @@ from pydantic import (
 
 from ..diagnostics.models import DiagnosticOptions
 from ..error import ConfigurationError
+from ..events.models import EventOptions
 from .validation import json_equal
 
 logger = logging.getLogger(__name__)
@@ -157,13 +158,22 @@ class BackupSchedule(SettingsRecord):
         return value
 
 
+class ScheduledTask(BackupSchedule):
+    task: str = Field(
+        pattern=r"^(backup|verify|[a-zA-Z0-9_.-]+:[a-zA-Z0-9_.-]+)$", max_length=160
+    )
+    server_name: str = Field(min_length=1, max_length=160)
+    options: dict[str, JsonValue] = Field(default_factory=dict)
+
+
 class BackupSettings(SettingsRecord):
     readiness_max_age_hours: int = Field(default=48, ge=1, le=8760)
-    recovery_drill_interval_hours: int = Field(default=168, ge=0, le=8760)
+    recovery_drill_interval_hours: int = Field(default=0, ge=0, le=8760)
     encryption: bool = False
     include_server_packs: bool = True
     schedules: dict[str, BackupSchedule] = Field(default_factory=dict)
-    verification_interval_hours: int = Field(default=168, ge=0, le=8760)
+    verify_after_create: bool = False
+    verification_interval_hours: int = Field(default=0, ge=0, le=8760)
     safety_window_hours: int = Field(default=168, ge=1, le=8760)
     keep_daily: int = Field(default=0, ge=0, le=365)
     keep_weekly: int = Field(default=0, ge=0, le=520)
@@ -191,6 +201,7 @@ class SettingsState(BaseModel):
     web: WebSettings = Field(default_factory=WebSettings)
     lifecycle: LifecycleSettings = Field(default_factory=LifecycleSettings)
     diagnostics: DiagnosticOptions = Field(default_factory=DiagnosticOptions)
+    events: EventOptions = Field(default_factory=EventOptions)
     custom: Dict[str, JsonValue] = Field(default_factory=dict)
     plugin_settings: Dict[str, Dict[str, JsonValue]] = Field(default_factory=dict)
 

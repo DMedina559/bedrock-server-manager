@@ -233,6 +233,7 @@ def configure_diagnostics(context: "AppContext") -> Diagnostics:
         ("processes", processes),
         ("metrics", metrics),
         ("backups", backups),
+        ("scheduler", context.scheduler.diagnostic_snapshot),
     ):
         service.register(name, provider)
     if context._events is not None:

@@ -163,6 +163,7 @@ async def test_restore_preview_redacts_secrets_and_retains_safety_backup(
 
 async def test_verification_failure_and_recovery_key_health(populated_server):
     server = populated_server
+    await server.settings.set("backups.verify_after_create", True)
     original = server.backups.credentials.rotate()
     archive = await server.backups.create_snapshot(encrypted=True)
     server.backups.credentials.rotate()
@@ -412,6 +413,7 @@ async def test_safety_metadata_failure_after_commit_reports_restored_data(
     from bedrock_server_manager.backups.catalog import BackupCatalog
 
     server = populated_server
+    await server.settings.set("backups.verify_after_create", True)
     snapshot = await server.backups.create_snapshot()
     properties = Path(server.paths.server_properties_path)
     original = properties.read_bytes()

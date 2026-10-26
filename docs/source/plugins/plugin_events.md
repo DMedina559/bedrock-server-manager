@@ -779,7 +779,7 @@ async def some_function(self, server_name, backup_id, action, status, destinatio
 |----------|------|
 | `server_name` | `str` |
 | `backup_id` | `str` |
-| `action` | `Literal['capture', 'verify', 'copy']` |
+| `action` | `Literal['capture', 'verify', 'copy', 'delete']` |
 | `status` | `Literal['completed', 'failed']` |
 | `destination` | `str | None` |
 | `_triggering_plugin` | `str` (core, or plugin name) |

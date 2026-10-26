@@ -14,6 +14,7 @@ Generated from registered contracts. Use typed requests and await asynchronous o
 - [Player APIs](api/player.md)
 - [Plugins APIs](api/plugins.md)
 - [Properties APIs](api/properties.md)
+- [Scheduler APIs](api/scheduler.md)
 - [Server APIs](api/server.md)
 - [Settings APIs](api/settings.md)
 - [System APIs](api/system.md)
@@ -37,6 +38,7 @@ api/permissions.md
 api/player.md
 api/plugins.md
 api/properties.md
+api/scheduler.md
 api/server.md
 api/settings.md
 api/system.md

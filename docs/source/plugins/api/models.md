@@ -1110,6 +1110,13 @@ Schemas are listed once. Local `$defs` references identify other models on this 
       "title": "Size",
       "type": "integer"
     },
+    "stage_durations_ms": {
+      "additionalProperties": {
+        "type": "number"
+      },
+      "title": "Stage Durations Ms",
+      "type": "object"
+    },
     "verification": {
       "$ref": "#/$defs/BackupVerification"
     }
@@ -6906,6 +6913,56 @@ Schemas are listed once. Local `$defs` references identify other models on this 
 }
 ```
 
+## ListSchedulesRequest
+
+```json
+{
+  "additionalProperties": false,
+  "properties": {
+    "server_name": {
+      "anyOf": [
+        {
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "title": "Server Name"
+    }
+  },
+  "title": "ListSchedulesRequest",
+  "type": "object"
+}
+```
+
+## ListSchedulesResponse
+
+```json
+{
+  "additionalProperties": false,
+  "properties": {
+    "schedules": {
+      "items": {
+        "$ref": "#/$defs/ScheduleEntry"
+      },
+      "title": "Schedules",
+      "type": "array"
+    },
+    "task_types": {
+      "items": {
+        "type": "string"
+      },
+      "title": "Task Types",
+      "type": "array"
+    }
+  },
+  "title": "ListSchedulesResponse",
+  "type": "object"
+}
+```
+
 ## ListSnapshotsRequest
 
 ```json
@@ -7082,7 +7139,8 @@ Schemas are listed once. Local `$defs` references identify other models on this 
         "copy",
         "test_key",
         "annotate",
-        "drill"
+        "drill",
+        "delete"
       ],
       "title": "Action",
       "type": "string"
@@ -10591,6 +10649,174 @@ Schemas are listed once. Local `$defs` references identify other models on this 
     "details"
   ],
   "title": "ScanAndUpdatePlayerDbResponse",
+  "type": "object"
+}
+```
+
+## ScheduleEntry
+
+```json
+{
+  "additionalProperties": false,
+  "properties": {
+    "attempts": {
+      "default": 0,
+      "title": "Attempts",
+      "type": "integer"
+    },
+    "available": {
+      "title": "Available",
+      "type": "boolean"
+    },
+    "configuration": {
+      "$ref": "#/$defs/ScheduledTask"
+    },
+    "last_error": {
+      "anyOf": [
+        {
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "title": "Last Error"
+    },
+    "last_status": {
+      "anyOf": [
+        {
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "title": "Last Status"
+    },
+    "last_success_at": {
+      "anyOf": [
+        {
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "title": "Last Success At"
+    },
+    "legacy": {
+      "default": false,
+      "title": "Legacy",
+      "type": "boolean"
+    },
+    "next_run_at": {
+      "anyOf": [
+        {
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "title": "Next Run At"
+    },
+    "runs": {
+      "items": {
+        "additionalProperties": {
+          "$ref": "#/$defs/JsonValue"
+        },
+        "type": "object"
+      },
+      "title": "Runs",
+      "type": "array"
+    },
+    "schedule_id": {
+      "title": "Schedule Id",
+      "type": "string"
+    }
+  },
+  "required": [
+    "schedule_id",
+    "configuration",
+    "available"
+  ],
+  "title": "ScheduleEntry",
+  "type": "object"
+}
+```
+
+## ScheduledTask
+
+```json
+{
+  "additionalProperties": false,
+  "properties": {
+    "catch_up": {
+      "default": true,
+      "title": "Catch Up",
+      "type": "boolean"
+    },
+    "enabled": {
+      "default": true,
+      "title": "Enabled",
+      "type": "boolean"
+    },
+    "options": {
+      "additionalProperties": {
+        "$ref": "#/$defs/JsonValue"
+      },
+      "title": "Options",
+      "type": "object"
+    },
+    "server_name": {
+      "maxLength": 160,
+      "minLength": 1,
+      "title": "Server Name",
+      "type": "string"
+    },
+    "stagger_minutes": {
+      "default": 15,
+      "maximum": 120,
+      "minimum": 0,
+      "title": "Stagger Minutes",
+      "type": "integer"
+    },
+    "task": {
+      "maxLength": 160,
+      "pattern": "^(backup|verify|[a-zA-Z0-9_.-]+:[a-zA-Z0-9_.-]+)$",
+      "title": "Task",
+      "type": "string"
+    },
+    "time": {
+      "default": "03:00",
+      "pattern": "^(?:[01][0-9]|2[0-3]):[0-5][0-9]$",
+      "title": "Time",
+      "type": "string"
+    },
+    "timezone": {
+      "default": "UTC",
+      "title": "Timezone",
+      "type": "string"
+    },
+    "weekdays": {
+      "items": {
+        "type": "integer"
+      },
+      "maxItems": 7,
+      "minItems": 1,
+      "title": "Weekdays",
+      "type": "array"
+    }
+  },
+  "required": [
+    "task",
+    "server_name"
+  ],
+  "title": "ScheduledTask",
   "type": "object"
 }
 ```

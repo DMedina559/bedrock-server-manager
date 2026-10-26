@@ -1,0 +1,256 @@
+"""Database scheduling, opt-in verification and compatible legacy migration."""
+
+from datetime import datetime, timedelta, timezone
+from unittest.mock import AsyncMock
+
+import pytest
+
+from bedrock_server_manager.api.models.scheduler import SaveScheduleRequest
+from bedrock_server_manager.scheduler.engine import run_due
+from bedrock_server_manager.state.settings import BackupSettings, ScheduledTask
+
+
+def test_verification_is_opt_in():
+    settings = BackupSettings()
+    assert not settings.verify_after_create
+    assert settings.verification_interval_hours == 0
+    assert settings.recovery_drill_interval_hours == 0
+    assert (
+        BackupSettings(verification_interval_hours=168).verification_interval_hours
+        == 168
+    )
+
+
+async def test_capture_does_not_unpack_until_requested(populated_server, monkeypatch):
+    backups = populated_server.backups
+    original = backups.unpack_snapshot
+    # unpack_snapshot is a synchronous worker callable.
+    from unittest.mock import Mock
+
+    unpack = Mock(wraps=original)
+    monkeypatch.setattr(backups, "unpack_snapshot", unpack)
+    snapshot = await backups.create_snapshot()
+    assert snapshot.verification.status == "unverified"
+    unpack.assert_not_called()
+    await populated_server.settings.set("backups.verify_after_create", True)
+    verified = await backups.create_snapshot()
+    assert verified.verification.status == "verified"
+    assert unpack.call_count == 1
+
+
+async def test_scheduler_persists_runs_and_restarts(app_context, populated_server):
+    service = app_context.scheduler
+    config = ScheduledTask(
+        task="verify",
+        server_name=populated_server.server_name,
+        time="03:00",
+        stagger_minutes=0,
+    )
+    await service.save(
+        SaveScheduleRequest(schedule_id="weekly-check", configuration=config)
+    )
+    rows = (await service.snapshot()).schedules
+    assert len(rows) == 1 and rows[0].available
+    assert rows[0].configuration.task == "verify"
+    moment = datetime(2026, 1, 1, 2, tzinfo=timezone.utc)
+
+    async def read():
+        return await service.repository.state("weekly-check")
+
+    async def write(value):
+        await service.repository.state("weekly-check", value)
+
+    async def capture(slot):
+        await service.execute(
+            "weekly-check", config.model_dump(), populated_server, slot
+        )
+
+    assert not await run_due(
+        populated_server.backups,
+        moment,
+        config=config.model_dump(),
+        read_state=read,
+        write_state=write,
+        capture=capture,
+    )
+    assert await run_due(
+        populated_server.backups,
+        moment + timedelta(hours=1),
+        config=config.model_dump(),
+        read_state=read,
+        write_state=write,
+        capture=capture,
+    )
+    assert not await run_due(
+        populated_server.backups,
+        moment + timedelta(hours=2),
+        config=config.model_dump(),
+        read_state=read,
+        write_state=write,
+        capture=capture,
+    )
+    runs = await service.repository.history("weekly-check")
+    assert runs[0]["status"] == "completed" and runs[0]["correlation_id"]
+    from bedrock_server_manager.scheduler.service import Scheduler
+
+    restarted = Scheduler(app_context)
+    assert (await restarted.snapshot()).schedules[0].last_status == "completed"
+
+
+async def test_legacy_schedules_are_imported_once_and_remain_editable(
+    app_context, populated_server
+):
+    name = populated_server.server_name
+    await app_context.settings.set("backups.schedules", {name: {"time": "04:00"}})
+    service = app_context.scheduler
+    first = (await service.snapshot()).schedules
+    second = (await service.snapshot()).schedules
+    assert len(first) == len(second) == 1
+    assert first[0].schedule_id == second[0].schedule_id and first[0].legacy
+    await app_context.settings.set("backups.schedules", {name: {"time": "05:00"}})
+    assert (await service.snapshot()).schedules[0].configuration.time == "05:00"
+    await service.delete(first[0].schedule_id)
+    assert not (await service.snapshot()).schedules
+
+
+async def test_scheduler_endpoints_are_admin_only(
+    admin_auth_client, auth_client, unauth_client, populated_server
+):
+    path = "/api/scheduler/schedules"
+    assert (await unauth_client.get(path)).status_code == 401
+    assert (await auth_client.get(path)).status_code == 403
+    config = {
+        "task": "verify",
+        "server_name": populated_server.server_name,
+        "enabled": False,
+    }
+    result = await admin_auth_client.put(path + "/weekly", json=config)
+    assert result.status_code == 200, result.text
+    result = await admin_auth_client.get(path)
+    assert result.status_code == 200, result.text
+    assert result.headers["cache-control"] == "no-store"
+    assert result.json()["schedules"][0]["configuration"]["task"] == "verify"
+    assert (await admin_auth_client.delete(path + "/weekly")).status_code == 200
+
+
+async def test_plugin_registration_is_namespaced_and_revoked(
+    app_context, populated_server
+):
+    service = app_context.scheduler
+    bus = app_context.events
+    bus.activate_owner("plugin:example")
+    callback = AsyncMock()
+    with pytest.raises(ValueError):
+        service.register(
+            "other:task",
+            callback,
+            owner="plugin:example",
+            generation=bus.owner_generation("plugin:example"),
+        )
+    service.register(
+        "example:task",
+        callback,
+        owner="plugin:example",
+        generation=bus.owner_generation("plugin:example"),
+    )
+    assert service.available("example:task")
+    await service._execute(
+        {"task": "example:task", "options": {"x": 1}}, populated_server, "slot"
+    )
+    callback.assert_awaited_once_with(
+        server_name=populated_server.server_name, options={"x": 1}
+    )
+    bus.remove_owner("plugin:example")
+    assert not service.available("example:task")
+
+
+async def test_scheduler_shutdown_recovers_interrupted_attempts(
+    app_context, populated_server
+):
+    service = app_context.scheduler
+    config = ScheduledTask(task="backup", server_name=populated_server.server_name)
+    await service.save(SaveScheduleRequest(schedule_id="nightly", configuration=config))
+    await service.repository.state("nightly", {"status": "running", "attempts": 1})
+    await service.repository.run("nightly", "slot", run_id="a" * 32, status="running")
+    await service.repository.recover()
+    assert (await service.repository.state("nightly"))["status"] == "interrupted"
+    assert (await service.repository.history("nightly"))[0]["status"] == "interrupted"
+
+
+async def test_restore_validation_is_mandatory_for_unverified_archives(
+    populated_server,
+):
+    server = populated_server
+    snapshot = await server.backups.create_snapshot()
+    assert snapshot.verification.status == "unverified"
+    path = server.backups.resolve_backup(snapshot.backup_id)
+    path.write_bytes(b"damaged archive")
+    from bedrock_server_manager.error import BackupRestoreError
+
+    with pytest.raises(BackupRestoreError):
+        await server.backups.plan_restore(snapshot.backup_id, ["world"])
+
+
+async def test_delete_respects_pins_and_removes_only_local_archive(populated_server):
+    from bedrock_server_manager.error import BackupRestoreError
+
+    backups = populated_server.backups
+    snapshot = await backups.create_snapshot()
+    await backups.pin_snapshot(snapshot.backup_id, True)
+    with pytest.raises(BackupRestoreError):
+        await backups.delete_snapshot(snapshot.backup_id)
+    await backups.pin_snapshot(snapshot.backup_id, False)
+    await backups.delete_snapshot(snapshot.backup_id)
+    assert not await backups.list_snapshots()
+
+
+async def test_same_sequence_reuses_complete_unverified_capture(populated_server):
+    server = populated_server
+    with server.operations.scope("workflow", server_name=server.server_name):
+        capture = await server.backups.create_snapshot()
+        assert capture.verification.status == "unverified"
+        assert await server.backups.can_reuse_sequence_snapshot()
+    assert not await server.backups.can_reuse_sequence_snapshot()
+
+
+async def test_run_history_is_bounded(app_context, populated_server):
+    service = app_context.scheduler
+    await service.save(
+        SaveScheduleRequest(
+            schedule_id="bounded",
+            configuration=ScheduledTask(
+                task="verify", server_name=populated_server.server_name
+            ),
+        )
+    )
+    for index in range(105):
+        await service.repository.run(
+            "bounded", "slot", run_id=f"{index:032d}", status="completed"
+        )
+    assert len(await service.repository.history("bounded", 200)) == 100
+    assert len((await service.snapshot()).schedules[0].runs) == 20
+
+
+async def test_verification_job_continues_after_a_corrupt_archive(
+    app_context, populated_server, monkeypatch
+):
+    from types import SimpleNamespace
+
+    backups = populated_server.backups
+    listed = [
+        SimpleNamespace(
+            backup_id=name,
+            verification=SimpleNamespace(
+                status="failed", verified_at=datetime.now(timezone.utc).isoformat()
+            ),
+        )
+        for name in ("bad", "good")
+    ]
+    monkeypatch.setattr(backups, "list_snapshots", AsyncMock(return_value=listed))
+    verify = AsyncMock(side_effect=[RuntimeError("private failure"), None])
+    monkeypatch.setattr(backups, "verify_snapshot", verify)
+    with pytest.raises(RuntimeError, match="Some scheduled"):
+        await app_context.scheduler._execute(
+            {"task": "verify", "options": {}}, populated_server, "slot"
+        )
+    assert verify.await_count == 2

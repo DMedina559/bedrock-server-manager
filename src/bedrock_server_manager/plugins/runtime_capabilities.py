@@ -212,3 +212,17 @@ async def write_plugin_file(
     await run_in_thread(
         write_plugin_json, app_context.config_dir, plugin_name, filename, value
     )
+
+
+def register_scheduled_task(
+    name: str, handler: Callable[..., Any], *, app_context: AppContext, plugin_name: str
+):
+    """Register an async ``plugin_name:task`` handler accepting server_name and options.
+
+    Administrators create schedules separately. Unloaded owners cannot run tasks.
+    """
+    owner = f"plugin:{plugin_name}"
+    bus = app_context.events
+    app_context.scheduler.register(
+        name, handler, owner=owner, generation=bus.owner_generation(owner)
+    )

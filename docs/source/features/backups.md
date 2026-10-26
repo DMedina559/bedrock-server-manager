@@ -50,7 +50,12 @@ Edits made outside BSM do not necessarily participate in its configuration locks
 Operations changing the same server wait for an active capture; read-only
 application work can continue.
 
-BSM verifies a capture before publishing the completed archive. Failed creation
+Full readback verification is **off by default**. Creation validates captured
+configuration, records file checksums, and safely writes the archive, but does not
+extract it again. New archives show **Unverified**. Enable
+`backups.verify_after_create` to verify immediately, select **Verify** manually,
+or configure an independent verification schedule. Restore always authenticates
+and validates the archive and selected contents. Failed creation
 does not replace existing archives or trigger retention. A failed external copy
 is reported separately and does not invalidate a completed local backup.
 
@@ -85,7 +90,13 @@ archive. This does not prove the kit is safely stored elsewhere. Host permission
 limit access to stored keys, but an administrator or in-process Python plugin
 with BSM's operating-system permissions can access them.
 
-## Schedule automatic backups
+## Schedule backup and verification tasks
+
+Use the administrator **Scheduler** page (also linked from Backups) to add named backup or verification jobs. Each job
+selects one server. Verification jobs check unverified archives and archives older
+than their configured recheck age; they do not create backups. Jobs are paused
+until enabled. Existing backup schedules are retained and remain editable through
+the existing settings APIs.
 
 Administrators can configure a per-server daily time, weekdays, IANA timezone
 (such as `America/Los_Angeles`), catch-up behavior, and staggering window.
@@ -96,7 +107,7 @@ A new, changed, or re-enabled schedule begins with its next occurrence. After a
 restart, catch-up runs one capture for the latest missed occurrence instead of
 replaying a backlog. With catch-up disabled, occurrences over two minutes late
 are skipped. A stable server-specific offset staggers captures, and automatic
-work runs serially.
+work runs serially for each server, with bounded concurrency across servers.
 
 Schedule checkpoints survive restarts and prevent duplicate captures for a
 published occurrence. Failed captures back off and stop after three attempts for
@@ -255,8 +266,9 @@ test that separately on a restored server.
 | Setting | Default | Meaning |
 |---|---|---|
 | `backups.readiness_max_age_hours` | 48 | Maximum backup age for readiness |
-| `backups.verification_interval_hours` | 168 | Periodic verification interval; `0` disables it |
-| `backups.recovery_drill_interval_hours` | 168 | Periodic drill interval; `0` disables it |
+| `backups.verify_after_create` | false | Full readback immediately after capture |
+| `backups.verification_interval_hours` | 0 | Periodic verification interval; `0` disables it |
+| `backups.recovery_drill_interval_hours` | 0 | Periodic drill interval; `0` disables it |
 | `backups.safety_window_hours` | 168 | Restore source and safety-archive protection window |
 | `backups.max_files` | 1,000,000 | Maximum archive file count |
 | `backups.max_archive_bytes` | 1 TiB | Maximum stored archive size |
@@ -321,3 +333,44 @@ Legacy backup-creation API names now create unified archives. Legacy restore-all
 selects one latest unified archive rather than combining separately dated files.
 Minecraft `.mcworld` import and export remain available as
 [content operations](content_management.md).
+
+
+### Scheduler persistence and integration
+
+Schedules and their last-run cursor live in the `schedules` database table;
+`schedule_runs` retains the latest 100 attempts per schedule. The API returns the
+latest 20 attempts, next occurrence, retry status and handler availability. Existing
+`backups.schedules` settings are imported idempotently with stable IDs; updates
+through the legacy settings API remain supported. Legacy catalog cursors are
+preserved on import to avoid repeating an already published capture.
+
+Administrator endpoints are `GET /api/scheduler/schedules`,
+`PUT /api/scheduler/schedules/{schedule_id}`, and
+`DELETE /api/scheduler/schedules/{schedule_id}`. A running schedule must finish
+before removal. Missed occurrences coalesce according to catch-up policy; failed
+attempts back off up to three times per occurrence. Shutdown interrupts active
+work, and startup records interrupted attempts rather than claiming success.
+
+Plugins can register an async handler with
+`self.api.runtime.register_scheduled_task("my_plugin:task", handler)`. The handler
+receives keyword arguments `server_name` and `options`. Administrators create the
+schedule separately. Task names must use the plugin namespace. Unloaded handlers
+become unavailable; schedules remain visible and resume only when their handler
+is registered again. Plugin work participates in normal unload cancellation.
+Core currently provides only `backup` and `verify` tasks.
+
+The frontend continues using the existing synchronous lifecycle endpoints and
+allows start/stop/restart requests to wait beyond its ordinary request timeout.
+Server and reverse-proxy timeouts still apply. Event hook limits can be configured
+with `events.hook_timeout_seconds` (120 seconds by default, maximum 3600); changes
+take effect when BSM restarts. SDK users can choose a suitable `request_timeout`.
+Avoid retrying a lifecycle write simply because a connection was interrupted;
+check the server and diagnostics first.
+
+Capture-stage durations are available in archive metadata as
+`stage_durations_ms` and in the inspection dialog. Verification status remains
+separate from successful creation. Retention can use an unchanged, locally
+validated capture without performing full extraction; imported archives must be
+verified before being used as the retained recovery point. Pinned and protected
+archives cannot be deleted with the individual **Delete** action; external copies
+remain independent.

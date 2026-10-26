@@ -175,15 +175,40 @@ class ManagedBackups:
     def catalog(self) -> BackupCatalog:
         return BackupCatalog(Path(self._directory()))
 
-    def _record_verified(self, path, manifest) -> None:
+    def _record_verified(self, path, manifest, *, verified=True) -> None:
         self.catalog.update(
             path.name,
-            verification={"status": "verified", "verified_at": now(), "error": None},
+            verification={
+                "status": "verified" if verified else "unverified",
+                "verified_at": now() if verified else None,
+                "error": None,
+            },
             sha256=digest(path),
             fingerprint=[path.stat().st_size, path.stat().st_mtime_ns],
             created_at=manifest.created_at.isoformat(),
             purpose=manifest.reason,
+            capture_validated=True,
         )
+
+    async def delete_snapshot(self, identifier):
+        """Delete an unprotected local archive; external copies remain independent."""
+        async with self.server.operation_lock:
+            from .recovery import RestoreJournal
+
+            RestoreJournal(self.server).ensure_clear()
+            path = self.resolve_backup(identifier)
+            value = await run_in_thread(self.catalog.load)
+            record = value["archives"].get(path.name, {})
+            if record.get("pinned") or (
+                record.get("protected_until") and record["protected_until"] > now()
+            ):
+                raise BackupRestoreError(
+                    "Unpin this backup and wait for its safety protection to expire before deleting it."
+                )
+            await run_in_thread(path.unlink)
+            value["archives"].pop(path.name, None)
+            await run_in_thread(self.catalog.save, value)
+            await self._notify_backup(path.name, "delete", "completed")
 
     async def verify_snapshot(
         self, identifier, recovery_key=None, *, record_failure=True
@@ -371,7 +396,7 @@ class ManagedBackups:
                     and self.destination_configs()[name].get("enabled", True)
                 ),
                 verification_interval_hours=self.server.settings.get(
-                    "backups.verification_interval_hours", 168
+                    "backups.verification_interval_hours", 0
                 ),
             )
 
@@ -383,7 +408,7 @@ class ManagedBackups:
 
         if await maintain_assurance(self):
             return
-        interval = self.server.settings.get("backups.verification_interval_hours", 168)
+        interval = self.server.settings.get("backups.verification_interval_hours", 0)
         # Listing releases its lock before any expensive work starts.
         summaries = await self.list_snapshots()
         for item in summaries:
@@ -491,16 +516,28 @@ class ManagedBackups:
                     if bucket not in buckets:
                         retained.add(item.filename)
                         buckets.add(bucket)
-            # Always authenticate a retained recovery point before deleting anything.
+            budget = self.server.settings.get("backups.storage_budget_bytes", 0)
+            if len(retained) == len(ordered) and (
+                not budget or sum(i.size for i in ordered) <= budget
+            ):
+                return CleanupResult(retained=sorted(retained))
+            # Require an unchanged validated capture or a verified recovery point.
+            # Retention never initiates expensive full extraction implicitly.
             usable = None
             for item in ordered:
                 try:
                     record = metadata.get(item.filename, {})
-                    trusted = item.verification.status == "verified" and record.get(
-                        "sha256"
-                    ) == await run_in_thread(digest, self.resolve_backup(item.filename))
+                    trusted = (
+                        item.verification.status == "verified"
+                        or (
+                            record.get("capture_validated", False)
+                            and item.verification.status != "failed"
+                        )
+                    ) and record.get("sha256") == await run_in_thread(
+                        digest, self.resolve_backup(item.filename)
+                    )
                     if not trusted:
-                        await self.verify_snapshot(item.filename)
+                        continue
                     usable = item.filename
                     retained.add(usable)
                     break
