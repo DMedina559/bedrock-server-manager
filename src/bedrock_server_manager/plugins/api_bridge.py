@@ -156,6 +156,14 @@ def create_app_api(
 
     import_module("bedrock_server_manager.api")
 
+    file_bus = (
+        events
+        if events is not None
+        else app_context.events if app_context is not None else None
+    )
+    file_owner = "application" if is_core else f"plugin:{plugin_name}"
+    file_generation = file_bus.owner_generation(file_owner) if file_bus else 0
+
     def runtime_dispatcher(name: str) -> Callable[..., Any]:
         from . import runtime_capabilities
 
@@ -165,6 +173,8 @@ def create_app_api(
             "register_diagnostic_provider": runtime_capabilities.register_diagnostic_provider,
             "report_task_progress": runtime_capabilities.report_task_progress,
             "run_task": runtime_capabilities.run_task,
+            "read_plugin_file": runtime_capabilities.read_plugin_file,
+            "write_plugin_file": runtime_capabilities.write_plugin_file,
             "server_lifecycle_manager": runtime_capabilities.server_lifecycle_manager,
             "websocket_register_data_provider": runtime_capabilities.register_data_provider,
         }
@@ -172,6 +182,10 @@ def create_app_api(
         signature = inspect.signature(function)
 
         def inject(args: tuple[Any, ...], kwargs: dict[str, Any]) -> dict[str, Any]:
+            if name in {"read_plugin_file", "write_plugin_file"}:
+                if file_bus is None:
+                    raise RuntimeError("Plugin file capabilities are unavailable")
+                file_bus.check_owner(file_owner, file_generation)
             bound = signature.bind_partial(*args, **kwargs)
             if {"app_context", "plugin_name"} & bound.arguments.keys():
                 raise TypeError("Runtime context and plugin identity are injected")
@@ -309,6 +323,8 @@ class CapabilityNamespace:
                 "register_diagnostic_provider": "register_diagnostic_provider",
                 "report_task_progress": "report_task_progress",
                 "run_task": "run_task",
+                "read_plugin_file": "read_plugin_file",
+                "write_plugin_file": "write_plugin_file",
                 "server_lifecycle_manager": "server_lifecycle_manager",
                 "register_data_provider": "websocket_register_data_provider",
             }

@@ -74,6 +74,11 @@ def create_cli_app():
         bcm_config.set_custom_db_url(db_url)
         bcm_config.set_custom_log_level(log_level)
 
+        if ctx.invoked_subcommand == "backup":
+            # Offline recovery must work even when bootstrap/database access is broken.
+            ctx.obj = {"cli": cli}
+            return
+
         try:
             logger = setup_logging(force_reconfigure=True)
             log_separator(logger, app_name=app_name_title, app_version=__version__)
@@ -138,6 +143,9 @@ def create_cli_app():
         cli.add_command(reset_password.reset_password_command)
         cli.add_command(service.service)
         cli.add_command(database.database)
+        from .cli.backup import backup
+
+        cli.add_command(backup)
 
     # Call the assembly function to build the CLI with core and plugin commands
     _add_commands_to_cli()

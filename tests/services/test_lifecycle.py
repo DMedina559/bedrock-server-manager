@@ -233,3 +233,86 @@ async def test_startup_error_survives_rollback_failure(tmp_path, monkeypatch):
     assert any("rollback also failed" in note for note in error.value.__notes__)
     assert context.db.engine is None
     assert context.lifecycle_phase == LifecyclePhase.FAILED
+
+
+async def test_shutdown_preserves_database_until_cancelled_operation_drains(tmp_path):
+    context = AppContext(
+        config_dir=str(tmp_path / "config"),
+        data_dir=str(tmp_path),
+        db_url=f"sqlite:///{tmp_path / 'draining.db'}",
+    )
+    await context.load()
+    await context.settings.set("lifecycle.task_drain_timeout_seconds", 0.02)
+    await context.settings.set("lifecycle.cancellation_grace_seconds", 0.02)
+    entered, release, finished = asyncio.Event(), asyncio.Event(), asyncio.Event()
+
+    async def operation():
+        entered.set()
+        try:
+            await asyncio.Event().wait()
+        except asyncio.CancelledError:
+            # Represent an operation that must finish rollback before exiting.
+            while not release.is_set():
+                try:
+                    await release.wait()
+                except asyncio.CancelledError:
+                    pass
+            assert context.db.engine is not None
+        finally:
+            finished.set()
+
+    await context.task_manager.run_task(operation)
+    await entered.wait()
+    try:
+        async with asyncio.timeout(2):
+            with pytest.raises(ExceptionGroup, match="Application shutdown failed"):
+                await context.shutdown()
+        assert not finished.is_set()
+        assert context.db.engine is not None
+        assert context.lifecycle_phase == LifecyclePhase.FAILED
+    finally:
+        release.set()
+        await finished.wait()
+        async with asyncio.timeout(2):
+            while any(not task.done() for task in context._lifecycle_tasks):
+                await asyncio.sleep(0)
+        await context.shutdown()
+    assert context.db.engine is None
+
+
+async def test_shutdown_retains_database_for_draining_router_lifespan(tmp_path):
+    context = AppContext(
+        config_dir=str(tmp_path / "config"),
+        data_dir=str(tmp_path),
+        db_url=f"sqlite:///{tmp_path / 'router-draining.db'}",
+    )
+    await context.load()
+    release = asyncio.Event()
+
+    @asynccontextmanager
+    async def lifespan(app):
+        yield
+        while not release.is_set():
+            try:
+                await release.wait()
+            except asyncio.CancelledError:
+                pass
+
+    owner = RouterLifespan(
+        FastAPI(), [APIRouter(lifespan=lifespan)], timeout=0.02, grace=0.02
+    )
+    await owner.start()
+    context.plugin_manager._router_lifespans["draining"] = owner
+    try:
+        with pytest.raises(TimeoutError):
+            await owner.close()
+        with pytest.raises(ExceptionGroup, match="Application shutdown failed"):
+            await context.shutdown()
+        assert context.db.engine is not None
+        with pytest.raises(RuntimeError, match="plugin router work"):
+            await context.load()
+    finally:
+        release.set()
+        await owner.task
+        await context.shutdown()
+    assert context.db.engine is None

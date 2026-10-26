@@ -10,6 +10,7 @@ from typing import Dict, List, Optional, Self, cast
 
 from pydantic import BaseModel, ConfigDict, Field, JsonValue, model_validator
 
+from .maintenance import MaintenanceGuard
 from .types import UserRole
 
 
@@ -64,6 +65,13 @@ class ServerState:
     def remove(self, name: str) -> None:
         self._servers.pop(name, None)
         self.remove_dirty_server(name)
+
+    _maintenance: Dict[str, MaintenanceGuard] = field(
+        default_factory=dict, init=False, repr=False
+    )
+
+    def maintenance(self, server_name: str) -> MaintenanceGuard:
+        return self._maintenance.setdefault(server_name, MaintenanceGuard())
 
     def get_lock(self, server_name: str) -> asyncio.Lock:
         if server_name not in self._locks:

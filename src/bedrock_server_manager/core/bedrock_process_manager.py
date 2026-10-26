@@ -56,6 +56,9 @@ class BedrockProcessManager:
         self.servers: Dict[str, "BedrockServer"] = {}
         self.restart_attempts: dict[str, int] = {}
         self._pending_player_events: set[str] = set()
+        self._server_checks: dict[str, asyncio.Task] = {}
+        self._check_slots = asyncio.Semaphore(4)
+        self._restart_after: dict[str, float] = {}
         self.logger = logging.getLogger(__name__)
         self._failures = RepeatedFailureReporter(self.logger)
         self._shutdown_event = asyncio.Event()
@@ -112,6 +115,11 @@ class BedrockProcessManager:
             self.monitor_observations.pop(server_name, None)
             self.monitor_errors.pop(server_name, None)
             self.restart_attempts.pop(server_name, None)
+            self._restart_after.pop(server_name, None)
+            self._pending_player_events.discard(server_name)
+            task = self._server_checks.get(server_name)
+            if task is not None and task is not asyncio.current_task():
+                task.cancel()
             for phase in ("probe", "recovery", "players"):
                 self._failures.failures.pop(f"{phase}:{server_name}", None)
 
@@ -122,10 +130,7 @@ class BedrockProcessManager:
 
         if self.monitoring_task and not self.monitoring_task.done():
             self.monitoring_task.cancel()
-            try:
-                await asyncio.wait_for(self.monitoring_task, timeout=2)
-            except (asyncio.TimeoutError, asyncio.CancelledError):
-                pass
+            await asyncio.gather(self.monitoring_task, return_exceptions=True)
 
     async def shutdown(self):
         """Shuts down all managed servers concurrently and stops the monitoring task.
@@ -187,6 +192,8 @@ class BedrockProcessManager:
 
         :param server: The server instance to restart.
         """
+        if time.monotonic() < self._restart_after.get(server.server_name, 0):
+            return
         max_retries = self.settings.get("monitoring.max_retries", 3)
 
         if self.restart_attempts.get(server.server_name, 0) > max_retries:
@@ -216,7 +223,7 @@ class BedrockProcessManager:
                 e,
                 error=e,
             )
-            await asyncio.sleep(5)
+            self._restart_after[server.server_name] = time.monotonic() + 5
 
     async def write_error_status(self, server_name: str):
         """Writes 'ERROR' to server config status asynchronously.
@@ -269,171 +276,212 @@ class BedrockProcessManager:
             monitoring_interval,
         )
 
-        while not self._shutdown_event.is_set():
-            # Wait loop utilizing shutdown event natively with timeout
-            try:
-                # Use asyncio sleep but allow interrupt if shutdown happens
-                for _ in range(int(monitoring_interval * 2)):
+        try:
+            while not self._shutdown_event.is_set():
+                # Wait loop utilizing shutdown event natively with timeout
+                try:
+                    # Use asyncio sleep but allow interrupt if shutdown happens
+                    for _ in range(int(monitoring_interval * 2)):
+                        if self._shutdown_event.is_set():
+                            break
+                        await asyncio.sleep(0.5)
+
                     if self._shutdown_event.is_set():
                         break
-                    await asyncio.sleep(0.5)
-
-                if self._shutdown_event.is_set():
+                except asyncio.CancelledError:
                     break
-            except asyncio.CancelledError:
-                break
 
-            self.player_scan_counter += monitoring_interval
-            for server_name, server in list(self.servers.items()):
-                # Determine run state
-                probe_started = time.monotonic()
+                self.player_scan_counter += monitoring_interval
+                scan_players = (
+                    self.player_scan_counter >= player_log_monitoring_interval_sec
+                )
+                for server_name, server in list(self.servers.items()):
+                    if server_name not in self._server_checks:
+                        task = asyncio.create_task(
+                            self._check_server(
+                                server_name, server, scan_players=scan_players
+                            ),
+                            name=f"server-monitor:{server_name}",
+                        )
+                        self._server_checks[server_name] = task
+                        task.add_done_callback(
+                            lambda finished, name=server_name: self._check_finished(
+                                name, finished
+                            )
+                        )
+                if self.player_scan_counter >= player_log_monitoring_interval_sec:
+                    self.player_scan_counter = 0
+        finally:
+            tasks = list(self._server_checks.values())
+            for task in tasks:
+                task.cancel()
+            if tasks:
+                await asyncio.gather(*tasks, return_exceptions=True)
+
+    def _check_finished(self, name: str, task: asyncio.Task) -> None:
+        if self._server_checks.get(name) is task:
+            self._server_checks.pop(name, None)
+        if not task.cancelled():
+            self.monitor_observed_at = time.time()
+        if not task.cancelled() and task.exception() is not None:
+            self.logger.error(
+                "Server monitor failed for '%s'.", name, exc_info=task.exception()
+            )
+
+    async def _check_server(self, server_name, server, *, scan_players):
+        async with self._check_slots:
+            if (
+                self.servers.get(server_name) is not server
+                or self._shutdown_event.is_set()
+            ):
+                return
+            await self._observe_server(server_name, server, scan_players=scan_players)
+
+    async def _observe_server(self, server_name, server, *, scan_players):
+        # Determine run state
+        probe_started = time.monotonic()
+        try:
+            is_running = await server.is_running()
+            await server.reconcile_status(is_running)
+            self._failures.recover(f"probe:{server_name}")
+            self.monitor_observations[server_name] = time.time()
+            self.monitor_errors.pop(server_name, None)
+        except Exception as error:
+            self.monitor_failures += 1
+            self.monitor_errors[server_name] = type(error).__name__
+            if self.record_failure is not None:
+                self.record_failure(server_name, error, probe_started)
+            self._failures.report(
+                f"probe:{server_name}",
+                "Server monitoring unavailable (%s): %s; retrying.",
+                error,
+            )
+            return
+
+        if not is_running:
+            if not server.process.intentionally_stopped:
+                if time.monotonic() < self._restart_after.get(server_name, 0):
+                    return
+                self.logger.warning(
+                    "Monitored server '%s' has crashed.", server.server_name
+                )
+                self.restart_attempts[server_name] = (
+                    self.restart_attempts.get(server_name, 0) + 1
+                )
                 try:
-                    is_running = await server.is_running()
-                    await server.reconcile_status(is_running)
-                    self._failures.recover(f"probe:{server_name}")
-                    self.monitor_observations[server_name] = time.time()
-                    self.monitor_errors.pop(server_name, None)
+                    await self._try_restart_server(server)
+                    self._failures.recover(f"recovery:{server_name}")
                 except Exception as error:
-                    self.monitor_failures += 1
-                    self.monitor_errors[server_name] = type(error).__name__
-                    if self.record_failure is not None:
-                        self.record_failure(server_name, error, probe_started)
                     self._failures.report(
-                        f"probe:{server_name}",
-                        "Server monitoring unavailable (%s): %s; retrying.",
+                        f"recovery:{server_name}",
+                        "Server recovery unavailable (%s): %s; retrying.",
                         error,
                     )
-                    continue
+            else:
+                self.logger.debug(
+                    "Server '%s' was stopped intentionally. Removing from monitoring.",
+                    server.server_name,
+                )
+                await self.remove_server(server_name)
+        elif scan_players:
+            observed = False
+            try:
+                previous_player_count = server.player_count
+                previous_players = server.players
 
-                if not is_running:
-                    if not server.process.intentionally_stopped:
-                        self.logger.warning(
-                            "Monitored server '%s' has crashed.", server.server_name
-                        )
-                        self.restart_attempts[server_name] = (
-                            self.restart_attempts.get(server_name, 0) + 1
-                        )
-                        try:
-                            await self._try_restart_server(server)
-                            self._failures.recover(f"recovery:{server_name}")
-                        except Exception as error:
-                            self._failures.report(
-                                f"recovery:{server_name}",
-                                "Server recovery unavailable (%s): %s; retrying.",
-                                error,
-                            )
-                    else:
-                        self.logger.debug(
-                            "Server '%s' was stopped intentionally. Removing from monitoring.",
-                            server.server_name,
-                        )
-                        await self.remove_server(server_name)
-                elif self.player_scan_counter >= player_log_monitoring_interval_sec:
-                    observed = False
+                server.players = await server.player_tracker.update_online_players()
+                observed = True
+                server._runtime_state.update_server_runtime(
+                    server_name, players_available=True
+                )
+
+                if (
+                    server.player_count != previous_player_count
+                    or server.players != previous_players
+                    or server_name in self._pending_player_events
+                ):
+                    self.logger.debug(
+                        "Player list/count changed for server '%s': count %s -> %s",
+                        server.server_name,
+                        previous_player_count,
+                        server.player_count,
+                    )
+                    # Publish the authoritative snapshot through the application event bus.
                     try:
-                        previous_player_count = server.player_count
-                        previous_players = server.players
-
-                        server.players = (
-                            await server.player_tracker.update_online_players()
-                        )
-                        observed = True
-                        server._runtime_state.update_server_runtime(
-                            server_name, players_available=True
-                        )
-
-                        if (
-                            server.player_count != previous_player_count
-                            or server.players != previous_players
-                            or server_name in self._pending_player_events
-                        ):
-                            self.logger.debug(
-                                "Player list/count changed for server '%s': count %s -> %s",
-                                server.server_name,
-                                previous_player_count,
-                                server.player_count,
-                            )
-                            # Publish the authoritative snapshot through the application event bus.
-                            try:
-                                await self._publish_players(server)
-                            except Exception as e:
-                                self._pending_player_events.add(server_name)
-                                self.logger.warning(
-                                    "Could not publish player stats update: %s",
-                                    type(e).__name__,
-                                )
-
-                        # Enforce bans
-                        if server.players:
-                            try:
-                                if self.get_bans is None:
-                                    raise BSMError(
-                                        "Ban lookup capability is not available."
-                                    )
-                                bans = await self.get_bans(server.server_name)
-
-                                if bans:
-                                    banned_xuids = {b.xuid: b for b in bans}
-                                    for p in server.players:
-                                        xuid = p.get("xuid")
-                                        if xuid in banned_xuids:
-                                            reason = (
-                                                banned_xuids[xuid].reason
-                                                or "You have been banned from this server."
-                                            )
-                                            p_name = p.get("name", "Unknown")
-                                            self.logger.warning(
-                                                "Kicking banned player '%s' from server '%s'.",
-                                                p_name,
-                                                server.server_name,
-                                            )
-                                            try:
-                                                await server.send_command(
-                                                    f'kick "{p_name}" {reason}'
-                                                )
-                                            except Exception as kick_err:
-                                                log_operation_error(
-                                                    self.logger,
-                                                    "Failed to kick banned player '%s': %s",
-                                                    p_name,
-                                                    kick_err,
-                                                    error=kick_err,
-                                                )
-                            except Exception as e:
-                                self._failures.report(
-                                    f"bans:{server_name}",
-                                    "Ban enforcement unavailable (%s): %s; retrying.",
-                                    e,
-                                )
-                            else:
-                                self._failures.recover(f"bans:{server_name}")
-
-                        if server.players:
-                            self.logger.debug(
-                                "Server '%s' has %s players online. Scanning for players.",
-                                server.server_name,
-                                server.player_count,
-                            )
-                            players = await server.player_tracker.scan_log_for_players(
-                                incremental=True
-                            )
-
-                            if players:
-                                await save_player_data(
-                                    self.storage,
-                                    players,
-                                )
-                        self._failures.recover(f"players:{server_name}")
+                        await self._publish_players(server)
                     except Exception as e:
-                        if not observed:
-                            server._runtime_state.update_server_runtime(
-                                server_name, players_available=False
-                            )
+                        self._pending_player_events.add(server_name)
+                        self.logger.warning(
+                            "Could not publish player stats update: %s",
+                            type(e).__name__,
+                        )
+
+                # Enforce bans
+                if server.players:
+                    try:
+                        if self.get_bans is None:
+                            raise BSMError("Ban lookup capability is not available.")
+                        bans = await self.get_bans(server.server_name)
+
+                        if bans:
+                            banned_xuids = {b.xuid: b for b in bans}
+                            for p in server.players:
+                                xuid = p.get("xuid")
+                                if xuid in banned_xuids:
+                                    reason = (
+                                        banned_xuids[xuid].reason
+                                        or "You have been banned from this server."
+                                    )
+                                    p_name = p.get("name", "Unknown")
+                                    self.logger.warning(
+                                        "Kicking banned player '%s' from server '%s'.",
+                                        p_name,
+                                        server.server_name,
+                                    )
+                                    try:
+                                        await server.send_command(
+                                            f'kick "{p_name}" {reason}'
+                                        )
+                                    except Exception as kick_err:
+                                        log_operation_error(
+                                            self.logger,
+                                            "Failed to kick banned player '%s': %s",
+                                            p_name,
+                                            kick_err,
+                                            error=kick_err,
+                                        )
+                    except Exception as e:
                         self._failures.report(
-                            f"players:{server_name}",
-                            "Player monitoring unavailable (%s): %s; retrying.",
+                            f"bans:{server_name}",
+                            "Ban enforcement unavailable (%s): %s; retrying.",
                             e,
                         )
-            self.monitor_observed_at = time.time()
-            if self.player_scan_counter >= player_log_monitoring_interval_sec:
-                self.player_scan_counter = 0
+                    else:
+                        self._failures.recover(f"bans:{server_name}")
+
+                if server.players:
+                    self.logger.debug(
+                        "Server '%s' has %s players online. Scanning for players.",
+                        server.server_name,
+                        server.player_count,
+                    )
+                    players = await server.player_tracker.scan_log_for_players(
+                        incremental=True
+                    )
+
+                    if players:
+                        await save_player_data(
+                            self.storage,
+                            players,
+                        )
+                self._failures.recover(f"players:{server_name}")
+            except Exception as e:
+                if not observed:
+                    server._runtime_state.update_server_runtime(
+                        server_name, players_available=False
+                    )
+                self._failures.report(
+                    f"players:{server_name}",
+                    "Player monitoring unavailable (%s): %s; retrying.",
+                    e,
+                )

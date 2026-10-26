@@ -12,7 +12,8 @@ from pathlib import Path, PurePosixPath
 from typing import BinaryIO, Callable
 from zipfile import BadZipFile, ZipFile, ZipInfo
 
-from ..utils.threads import run_in_thread
+from ..utils.files import temporary_directory  # noqa: F401 - compatibility re-export
+from ..utils.threads import check_cancellation, copy_stream, run_in_thread
 
 logger = logging.getLogger(__name__)
 
@@ -69,10 +70,14 @@ def validate_archive(archive: ZipFile) -> None:
 
 
 def extract_archive(
-    archive: ZipFile, target: str | Path, members: Iterable[ZipInfo] | None = None
+    archive: ZipFile,
+    target: str | Path,
+    members: Iterable[ZipInfo] | None = None,
+    cancellation_event: threading.Event | None = None,
 ) -> None:
     validate_archive(archive)
     for member in archive.infolist() if members is None else members:
+        check_cancellation(cancellation_event)
         # Normalize Windows separators consistently with validation.
         normalized = member.filename.replace("\\", "/")
         destination = Path(target).joinpath(*PurePosixPath(normalized).parts)
@@ -81,35 +86,7 @@ def extract_archive(
         else:
             destination.parent.mkdir(parents=True, exist_ok=True)
             with archive.open(member) as source, destination.open("wb") as output:
-                shutil.copyfileobj(source, output)
-
-
-@asynccontextmanager
-async def temporary_directory(parent: str | Path | None = None) -> AsyncIterator[Path]:
-    directory: Path | None = None
-    original: BaseException | None = None
-
-    def create() -> None:
-        nonlocal directory
-        directory = Path(tempfile.mkdtemp(prefix="bsm-", dir=parent))
-
-    try:
-        await run_in_thread(create)
-        assert directory is not None
-        yield directory
-    except BaseException as error:
-        original = error
-        raise
-    finally:
-        if directory is not None:
-            try:
-                await run_in_thread(shutil.rmtree, directory)
-            except BaseException as cleanup_error:
-                if original is None:
-                    raise
-                original.add_note(
-                    f"Temporary directory cleanup also failed: {type(cleanup_error).__name__}"
-                )
+                copy_stream(source, output, cancellation_event)
 
 
 class FileTransaction:

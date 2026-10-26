@@ -5,7 +5,7 @@ name: Build Lint Test
 on:
   workflow_dispatch:
   push:
-    branches: [dev, main]
+    branches: [dev, main, feat/unified-server-backups]
     paths:
       - 'src/bedrock_server_manager/**'
       - 'tests/**'
@@ -35,7 +35,9 @@ jobs:
   build-and-test:
     runs-on: ${{ matrix.os }}
 
+    timeout-minutes: 25
     strategy:
+      fail-fast: false
       matrix:
         python-version: ['3.11', '3.14']
         os: [ubuntu-latest, windows-latest]

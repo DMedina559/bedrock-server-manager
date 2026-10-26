@@ -16,9 +16,9 @@ from fastapi.responses import JSONResponse
 
 from ...context import AppContext
 from ...state.updates import AccountPatch
-from ...utils import (
-    get_password_hash,
-    verify_password,
+from ...utils.auth import (
+    get_password_hash_async,
+    verify_password_async,
 )
 from ..deps import get_app_context, get_current_user
 from ..schemas import (
@@ -112,7 +112,7 @@ async def post_change_password(
                 detail="UserResponse not found.",
             )
 
-        if not verify_password(
+        if not await verify_password_async(
             data.current_password.get_secret_value(), str(db_user.hashed_password)
         ):
             raise HTTPException(
@@ -120,7 +120,7 @@ async def post_change_password(
                 detail="Incorrect current password.",
             )
 
-        db_user.hashed_password = get_password_hash(
+        db_user.hashed_password = await get_password_hash_async(
             data.new_password.get_secret_value()
         )
 

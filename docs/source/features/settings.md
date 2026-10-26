@@ -42,3 +42,11 @@ Plugin settings determine optional automation. Review the [bundled plugins](defa
 Lifecycle deadlines bound request draining, managed tasks, server stops, plugin cleanup and event delivery. Increasing a deadline may also require a longer service stop allowance. Already-running synchronous plugin code cannot be forcibly cancelled by Python; overdue work can block reload until it finishes.
 
 See [runtime and shutdown](../extras/web_runtime.md) for the cleanup order, control credentials and supervisor policies. Preserve the bootstrap configuration, database and required data files when backing up the whole installation.
+
+## Application configuration and private credentials
+
+The `--config-dir` option still identifies BSM's configuration root. Bootstrap JSON now resides at `<config_dir>/config/bedrock_server_manager.json`. On first access, BSM moves the recognized legacy root file into this nested directory. Unknown root files remain untouched. Conflicting old and new bootstrap files produce an error rather than an overwrite.
+
+Database-backed settings remain in the database. Backup encryption keys reside separately at `<config_dir>/credentials/backup-keys.json` and are excluded from server backups and normal settings exports. The credential directory and file use restrictive host permissions.
+
+Supported plugin file access is scoped to `<config_dir>/config/plugins/<plugin-id>/`. This manager configuration tree is separate from each Minecraft server's `config/` directory, which is included in that server's backups.

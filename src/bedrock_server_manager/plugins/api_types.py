@@ -13,12 +13,17 @@ from bedrock_server_manager.api.models import (
     BackupAllResponse,
     BackupConfigFileRequest,
     BackupConfigFileResponse,
+    BackupHealthResponse,
     BackupWorldRequest,
     BackupWorldResponse,
     BroadcastRequest,
     BroadcastResponse,
+    CleanupBackupDestinationRequest,
+    CleanupBackupDestinationResponse,
     CompareDiagnosticSnapshotsRequest,
     CompareDiagnosticSnapshotsResponse,
+    CreateSnapshotRequest,
+    CreateSnapshotResponse,
     DisableAddonRequest,
     DisableAddonResponse,
     EnableAddonRequest,
@@ -81,6 +86,8 @@ from bedrock_server_manager.api.models import (
     ImportAddonResponse,
     ImportWorldRequest,
     ImportWorldResponse,
+    InspectSnapshotRequest,
+    InspectSnapshotResponse,
     InstallNewServerRequest,
     InstallNewServerResponse,
     ListAvailableAddonsRequest,
@@ -91,12 +98,21 @@ from bedrock_server_manager.api.models import (
     ListBackupFilesResponse,
     ListInstalledAddonsRequest,
     ListInstalledAddonsResponse,
+    ListSnapshotsRequest,
+    ListSnapshotsResponse,
+    ManageSnapshotRequest,
+    ManageSnapshotResponse,
+    PlanSnapshotRestoreRequest,
+    PlanSnapshotRestoreResponse,
+    PrepareBackupCopyRequest,
+    PrepareBackupCopyResponse,
     PruneDownloadCacheRequest,
     PruneDownloadCacheResponse,
     PruneOldBackupsRequest,
     PruneOldBackupsResponse,
     PublishWsEventRequest,
     PublishWsEventResponse,
+    RecoveryReportResponse,
     ReloadSinglePluginRequest,
     ReloadSinglePluginResponse,
     RemoveFromAllowlistRequest,
@@ -109,6 +125,9 @@ from bedrock_server_manager.api.models import (
     RestoreAllResponse,
     RestoreConfigFileRequest,
     RestoreConfigFileResponse,
+    RestoreRecoveryResponse,
+    RestoreSnapshotRequest,
+    RestoreSnapshotResponse,
     RestoreWorldRequest,
     RestoreWorldResponse,
     ScanAndUpdatePlayerDbRequest,
@@ -131,6 +150,7 @@ from bedrock_server_manager.api.models import (
     SetServerCustomValueResponse,
     SetServerStatusRequest,
     SetServerStatusResponse,
+    SnapshotReuseResponse,
     StartServerRequest,
     StartServerResponse,
     StopServerRequest,
@@ -222,13 +242,65 @@ class BackupRestoreAPI(Protocol):
         self, request: BackupWorldRequest | Mapping[str, object]
     ) -> BackupWorldResponse: ...
 
+    async def can_reuse_server_backup(
+        self, request: ListSnapshotsRequest | Mapping[str, object]
+    ) -> SnapshotReuseResponse: ...
+
+    async def cleanup_backup_destination(
+        self, request: CleanupBackupDestinationRequest | Mapping[str, object]
+    ) -> CleanupBackupDestinationResponse: ...
+
+    async def create_server_backup(
+        self, request: CreateSnapshotRequest | Mapping[str, object]
+    ) -> CreateSnapshotResponse: ...
+
+    async def download_backup_recovery_report(
+        self, request: ListSnapshotsRequest | Mapping[str, object]
+    ) -> RecoveryReportResponse: ...
+
+    async def dry_run_server_restore(
+        self, request: PlanSnapshotRestoreRequest | Mapping[str, object]
+    ) -> PlanSnapshotRestoreResponse: ...
+
+    async def get_backup_health(
+        self, request: ListSnapshotsRequest | Mapping[str, object]
+    ) -> BackupHealthResponse: ...
+
+    async def get_restore_recovery(
+        self, request: ListSnapshotsRequest | Mapping[str, object]
+    ) -> RestoreRecoveryResponse: ...
+
+    async def inspect_server_backup(
+        self, request: InspectSnapshotRequest | Mapping[str, object]
+    ) -> InspectSnapshotResponse: ...
+
     async def list_backup_files(
         self, request: ListBackupFilesRequest | Mapping[str, object]
     ) -> ListBackupFilesResponse: ...
 
+    async def list_server_snapshots(
+        self, request: ListSnapshotsRequest | Mapping[str, object]
+    ) -> ListSnapshotsResponse: ...
+
+    async def manage_server_snapshot(
+        self, request: ManageSnapshotRequest | Mapping[str, object]
+    ) -> ManageSnapshotResponse: ...
+
+    async def plan_server_restore(
+        self, request: PlanSnapshotRestoreRequest | Mapping[str, object]
+    ) -> PlanSnapshotRestoreResponse: ...
+
+    async def prepare_backup_copy(
+        self, request: PrepareBackupCopyRequest | Mapping[str, object]
+    ) -> PrepareBackupCopyResponse: ...
+
     async def prune_old_backups(
         self, request: PruneOldBackupsRequest | Mapping[str, object]
     ) -> PruneOldBackupsResponse: ...
+
+    async def recover_server_backup(
+        self, request: ListSnapshotsRequest | Mapping[str, object]
+    ) -> RestoreRecoveryResponse: ...
 
     async def restore_all(
         self, request: RestoreAllRequest | Mapping[str, object]
@@ -237,6 +309,10 @@ class BackupRestoreAPI(Protocol):
     async def restore_config_file(
         self, request: RestoreConfigFileRequest | Mapping[str, object]
     ) -> RestoreConfigFileResponse: ...
+
+    async def restore_server_snapshot(
+        self, request: RestoreSnapshotRequest | Mapping[str, object]
+    ) -> RestoreSnapshotResponse: ...
 
     async def restore_world(
         self, request: RestoreWorldRequest | Mapping[str, object]
@@ -496,6 +572,10 @@ class RuntimeAPI(Protocol):
 
     async def report_task_progress(self, percent: float) -> None: ...
 
+    async def read_plugin_file(self, filename: str) -> Any: ...
+
+    async def write_plugin_file(self, filename: str, value: Any) -> None: ...
+
 
 API_METHODS: dict[str, dict[str, str]] = {
     "addon": {
@@ -521,10 +601,24 @@ API_METHODS: dict[str, dict[str, str]] = {
         "backup_all": "backup_all",
         "backup_config_file": "backup_config_file",
         "backup_world": "backup_world",
+        "can_reuse_server_backup": "can_reuse_server_backup",
+        "cleanup_backup_destination": "cleanup_backup_destination",
+        "create_server_backup": "create_server_backup",
+        "download_backup_recovery_report": "download_backup_recovery_report",
+        "dry_run_server_restore": "dry_run_server_restore",
+        "get_backup_health": "get_backup_health",
+        "get_restore_recovery": "get_restore_recovery",
+        "inspect_server_backup": "inspect_server_backup",
         "list_backup_files": "list_backup_files",
+        "list_server_snapshots": "list_server_snapshots",
+        "manage_server_snapshot": "manage_server_snapshot",
+        "plan_server_restore": "plan_server_restore",
+        "prepare_backup_copy": "prepare_backup_copy",
         "prune_old_backups": "prune_old_backups",
+        "recover_server_backup": "recover_server_backup",
         "restore_all": "restore_all",
         "restore_config_file": "restore_config_file",
+        "restore_server_snapshot": "restore_server_snapshot",
         "restore_world": "restore_world",
     },
     "ban": {"add_server_ban": "add_server_ban", "get_server_bans": "get_server_bans"},

@@ -7,6 +7,7 @@ import logging
 import os
 import platform
 import re
+import threading
 import zipfile
 from pathlib import Path
 from typing import TYPE_CHECKING, Optional, Set, Tuple
@@ -654,7 +655,7 @@ class BedrockDownloader:
 
                 archive_path = self.zip_file_path
 
-                def prepare() -> None:
+                def prepare(cancellation_event: threading.Event | None = None) -> None:
                     with zipfile.ZipFile(archive_path, "r") as archive:
                         members = [
                             member
@@ -666,7 +667,7 @@ class BedrockDownloader:
                                 for item in self.PRESERVED_ITEMS_ON_UPDATE
                             )
                         ]
-                        extract_archive(archive, staging, members)
+                        extract_archive(archive, staging, members, cancellation_event)
                         if is_update:
                             self._update_server_properties_from_zip(archive, staging)
 

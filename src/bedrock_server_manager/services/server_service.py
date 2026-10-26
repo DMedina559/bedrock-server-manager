@@ -3,7 +3,7 @@
 Service managing server domain state mutations and business rules.
 """
 
-from typing import TYPE_CHECKING, Dict, Optional
+from typing import TYPE_CHECKING, Awaitable, Callable, Dict, Optional
 
 from pydantic import JsonValue
 
@@ -61,10 +61,16 @@ class ServerService:
                 values[name] = value
         return await self.apply_update(ServerUpdate.model_validate(values))
 
-    async def apply_update(self, request: ServerUpdate) -> ServerConfigState:
+    async def apply_update(
+        self,
+        request: ServerUpdate,
+        *,
+        before_publish: Callable[[], Awaitable[None]] | None = None,
+    ) -> ServerConfigState:
         request = ServerUpdate.model_validate(request)
 
         def build(existing: ServerConfigState | None) -> ServerConfigState:
+            self.state.servers.maintenance(request.server_name).check()
             data = existing.model_dump() if existing else {}
             data.update(request.model_dump(exclude_unset=True))
             return ServerConfigState.model_validate(data)
@@ -81,6 +87,7 @@ class ServerService:
             save=self.storage.server_repo.save_server,
             publish=self.state.servers.set,
             acknowledge=self.state.servers.remove_dirty_server,
+            before_publish=before_publish,
         )
 
     async def update_setting(
@@ -94,6 +101,7 @@ class ServerService:
         }
 
         def build(existing: ServerConfigState | None) -> ServerConfigState:
+            self.state.servers.maintenance(server_name).check()
             record = existing or ServerConfigState(server_name=server_name)
             data = record.model_dump()
             if parts[0] == "custom":

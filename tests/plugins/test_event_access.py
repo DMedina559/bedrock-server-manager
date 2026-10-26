@@ -1,6 +1,7 @@
 """Public plugin event capabilities coexist with unchanged 4.0 callback contracts."""
 
 import asyncio
+from dataclasses import replace
 from typing import Any, cast
 
 import pytest
@@ -38,7 +39,8 @@ async def test_legacy_typed_and_observer_delivery_coexist(
         assert event.sequence.sequence_id == event.operation.sequence_id
         assert event.context.phase == "before"
         assert event.can_cancel
-        assert 0 < event.remaining_seconds <= 120
+        # Adding/subtracting a float deadline can round just above the budget.
+        assert 0 < event.remaining_seconds <= 120 + 1e-6
         seen.append(("typed", event.context.event_id))
 
     async def observer(event: PluginEvent[StartPayload]):
@@ -298,6 +300,22 @@ async def test_observer_timeout_stats_and_callback_cleanup(app_context, plugin_f
     await app_context.events.emit("slow")
     assert plugin.api.events.subscriptions()[0].timeouts == 1
     assert not captured[0].can_cancel
+    assert captured[0].remaining_seconds == 0
+
+
+async def test_completed_callback_has_no_remaining_time(app_context, plugin_factory):
+    plugin = await plugin_factory("access", SOURCE)
+    captured = []
+
+    async def callback(event):
+        # Keep the clock before the deadline even after callback cleanup, as can
+        # happen when Windows schedules a timeout within its clock resolution.
+        view = replace(event, _clock=lambda: event._deadline - 1)
+        assert view.remaining_seconds == 1
+        captured.append(view)
+
+    plugin.api.events.observe("completed", callback)
+    await app_context.events.emit("completed")
     assert captured[0].remaining_seconds == 0
 
 
@@ -618,7 +636,7 @@ async def test_handler_uses_event_loop_deadline_clock(
         assert (
             0
             < event.remaining_seconds
-            <= app_context.events.options.hook_timeout_seconds
+            <= app_context.events.options.hook_timeout_seconds + 1e-6
         )
         assert event.can_cancel
         event.cancel("Clock test")

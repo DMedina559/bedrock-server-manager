@@ -266,7 +266,7 @@ async def test_bootstrap_cors_migrates_once_without_overwriting_database(
         await app_context.storage.settings_repo.save_settings(
             session, {"web": values["web"]}
         )
-    config_path = isolated_bcm_config / "bedrock_server_manager.json"
+    config_path = isolated_bcm_config / "config" / "bedrock_server_manager.json"
     bootstrap = json.loads(config_path.read_text())
     bootstrap["web"] = {"cors_origins": legacy}
     config_path.write_text(json.dumps(bootstrap))

@@ -193,6 +193,7 @@ class Storage:
         save: Callable[[AsyncSession, Record], Awaitable[None]],
         publish: Callable[[Record], None],
         acknowledge: Callable[[str], None],
+        before_publish: Callable[[], Awaitable[None]] | None = None,
     ) -> Record:
         """Publish a service mutation only after its transaction commits."""
         async with self._write_scope():
@@ -200,6 +201,8 @@ class Storage:
                 record = build(get(name))
                 async with self.transaction() as session:
                     await save(session, record)
+                if before_publish is not None:
+                    await before_publish()
                 publish(record)
                 acknowledge(name)
         await self._notify_listeners(state, changeset)

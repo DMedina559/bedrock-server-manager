@@ -2,9 +2,10 @@ import os
 import re
 from pathlib import Path
 from typing import Annotated, Any, List, Literal, Optional
+from urllib.parse import quote
 
-from fastapi import APIRouter, Depends, HTTPException, Query
-from fastapi.responses import FileResponse, JSONResponse
+from fastapi import APIRouter, Depends, HTTPException, Query, Request
+from fastapi.responses import FileResponse, JSONResponse, RedirectResponse
 from pydantic import BaseModel, ConfigDict, Field
 
 from bedrock_server_manager import PluginBase, app_event
@@ -24,7 +25,11 @@ class DownloadPageQuery(BaseModel):
 class DownloadFileQuery(BaseModel):
     model_config = ConfigDict(extra="forbid")
     file_type: Literal[
-        "backup_world", "backup_config", "content_world", "content_addon"
+        "backup_snapshot",
+        "backup_world",
+        "backup_config",
+        "content_world",
+        "content_addon",
     ]
     filename: str = Field(min_length=1, max_length=255, pattern=r"^[A-Za-z0-9._\- ]+$")
     server: str | None = None
@@ -33,7 +38,7 @@ class DownloadFileQuery(BaseModel):
 class DownloadPagePlugin(PluginBase):
     """Adds a download page to the web interface for server backups and content."""
 
-    version = "1.1.0"
+    version = "1.2.0"
     description = (
         "Adds a download page to the web interface for server backups and content."
     )
@@ -107,22 +112,22 @@ class DownloadPagePlugin(PluginBase):
                     if not isinstance(file_list.backups, dict):
                         raise ValueError("Expected grouped backup files")
                     # World Backups
-                    wb_res = file_list.backups["world_backups"]
+                    wb_res = file_list.backups.get("world_backups", [])
                     if file_list.status == "success":
                         world_backups = [os.path.basename(p) for p in wb_res]
 
                     # Properties Backups
-                    pb_res = file_list.backups["properties_backups"]
+                    pb_res = file_list.backups.get("properties_backups", [])
                     if file_list.status == "success":
                         properties_backups = [os.path.basename(p) for p in pb_res]
 
                     # Allowlist Backups
-                    ab_res = file_list.backups["allowlist_backups"]
+                    ab_res = file_list.backups.get("allowlist_backups", [])
                     if file_list.status == "success":
                         allowlist_backups = [os.path.basename(p) for p in ab_res]
 
                     # Permissions Backups
-                    prm_res = file_list.backups["permissions_backups"]
+                    prm_res = file_list.backups.get("permissions_backups", [])
                     if file_list.status == "success":
                         permissions_backups = [os.path.basename(p) for p in prm_res]
 
@@ -132,7 +137,21 @@ class DownloadPagePlugin(PluginBase):
                     )
                     raise
 
+                snapshots = await self.api.backup_restore.list_server_snapshots(
+                    request={"server_name": server}
+                )
                 tabs_children = [
+                    {
+                        "type": "Tab",
+                        "props": {"id": "snapshots", "label": "Server backups"},
+                        "children": [
+                            self._create_file_list_table(
+                                [item.filename for item in snapshots.backups],
+                                "backup_snapshot",
+                                server,
+                            )
+                        ],
+                    },
                     {
                         "type": "Tab",
                         "props": {"id": "world_backups", "label": "Worlds"},
@@ -267,6 +286,7 @@ class DownloadPagePlugin(PluginBase):
         )
         async def download_file(
             query: Annotated[DownloadFileQuery, Query()],
+            request: Request,
             current_user: UserResponse = Depends(get_admin_user),
         ):
             file_type = query.file_type
@@ -286,9 +306,45 @@ class DownloadPagePlugin(PluginBase):
 
             base_path = None
             # Resolve root directories first to establish trust anchors
-            if file_type in ("backup_world", "backup_config"):
+            if file_type in ("backup_snapshot", "backup_world", "backup_config"):
                 if not server:
                     raise HTTPException(400, "Server name required for backups")
+                if file_type == "backup_snapshot":
+                    snapshot_listing = (
+                        await self.api.backup_restore.list_server_snapshots(
+                            request={"server_name": server}
+                        )
+                    )
+                    if filename not in {
+                        item.filename for item in snapshot_listing.backups
+                    }:
+                        raise HTTPException(404, "Backup archive not found")
+                    prefix = request.scope.get("root_path", "").rstrip("/")
+                    return RedirectResponse(
+                        f"{prefix}/api/server/{quote(server, safe='')}/backups/{quote(filename, safe='')}/download",
+                        status_code=307,
+                    )
+                legacy_listing = await self.api.backup_restore.list_backup_files(
+                    request={
+                        "server_name": server,
+                        "backup_type": (
+                            "world" if file_type == "backup_world" else "all"
+                        ),
+                    }
+                )
+                grouped = legacy_listing.backups
+                allowed = (
+                    grouped
+                    if isinstance(grouped, list)
+                    else [
+                        path
+                        for name, paths in grouped.items()
+                        if name != "world_backups"
+                        for path in paths
+                    ]
+                )
+                if filename not in {os.path.basename(path) for path in allowed}:
+                    raise HTTPException(404, "Legacy backup file not found")
                 result = await self.api.settings.get_global_setting(
                     request={"key": "paths.backups"}
                 )
@@ -341,6 +397,8 @@ class DownloadPagePlugin(PluginBase):
             # Secure path joining
             try:
                 # Join filename and resolve
+                if (base_path / filename).is_symlink():
+                    raise HTTPException(403, "File links are not supported")
                 file_path = (base_path / filename).resolve()
 
                 # Check traversal using Path.relative_to to ensure containment
@@ -364,7 +422,11 @@ class DownloadPagePlugin(PluginBase):
         self,
         files: List[str],
         file_type: Literal[
-            "backup_world", "backup_config", "content_world", "content_addon"
+            "backup_snapshot",
+            "backup_world",
+            "backup_config",
+            "content_world",
+            "content_addon",
         ],
         server: Optional[str],
     ) -> dict:
@@ -389,7 +451,11 @@ class DownloadPagePlugin(PluginBase):
                         "type": "FileDownload",
                         "props": {
                             "label": "Download",
-                            "endpoint": f"/api/download_page/download?file_type={file_type}&filename={f}&server={server or ''}",
+                            "endpoint": (
+                                f"/api/server/{quote(server or '', safe='')}/backups/{quote(f, safe='')}/download"
+                                if file_type == "backup_snapshot"
+                                else f"/api/download_page/download?file_type={file_type}&filename={quote(f, safe='')}&server={quote(server or '', safe='')}"
+                            ),
                             "filename": f,
                             "style": {
                                 "marginLeft": "auto"

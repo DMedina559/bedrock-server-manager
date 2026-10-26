@@ -26,7 +26,6 @@ from bedrock_server_manager.error import (
     StorageError,
     UserInputError,
 )
-from bedrock_server_manager.failures import classify_failure
 from bedrock_server_manager.plugins.runtime_capabilities import server_lifecycle_manager
 from bedrock_server_manager.results import ComponentResults, FailedItem
 
@@ -100,46 +99,19 @@ async def test_failed_probe_cannot_select_offline_world_export(
         assert not target.exists()
 
 
-async def test_backup_reports_failed_component(
+async def test_failed_capture_does_not_publish_a_partial_archive(
     app_context, populated_server, monkeypatch
 ):
-    original = populated_server.backups.backup_config
+    def fail_copy(*args):
+        raise PermissionError("Cannot read source")
 
-    async def fail_properties(filename):
-        if filename == "server.properties":
-            raise PermissionError("Cannot read properties")
-        return await original(filename)
-
-    monkeypatch.setattr(populated_server.backups, "backup_config", fail_properties)
-    result = await backup_all(
-        BackupAllRequest(server_name=populated_server.server_name),
-        app_context=app_context,
-    )
-    assert result.status == "partial"
-    assert result.details.outcome == "partial"
-    assert result.details.components["server.properties"].outcome == "failed"
-    assert result.details.components["world"].outcome == "completed"
-    assert Path(result.details.components["world"].path).exists()
-
-
-async def test_failed_world_backup_retains_completed_components(
-    app_context, real_bedrock_server, monkeypatch
-):
-    async def fail_world():
-        raise OSError("Cannot read world")
-
-    monkeypatch.setattr(real_bedrock_server.backups, "backup_world", fail_world)
-    with pytest.raises(IncompleteOperationError) as captured:
+    monkeypatch.setattr("bedrock_server_manager.backups.server.copy_source", fail_copy)
+    with pytest.raises(PermissionError):
         await backup_all(
-            BackupAllRequest(server_name=real_bedrock_server.server_name),
+            BackupAllRequest(server_name=populated_server.server_name),
             app_context=app_context,
         )
-    result = captured.value.result
-    assert result.components["world"].outcome == "failed"
-    assert result.components["server.properties"].outcome == "completed"
-    assert (
-        classify_failure(captured.value).error.details["result"]["outcome"] == "partial"
-    )
+    assert await populated_server.backups.list_snapshots() == []
 
 
 async def test_retention_failure_is_not_success(app_context, tmp_path, monkeypatch):

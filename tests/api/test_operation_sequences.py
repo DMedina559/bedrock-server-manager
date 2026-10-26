@@ -9,7 +9,7 @@ from pydantic import ValidationError
 from bedrock_server_manager.api.backup_restore import backup_all
 from bedrock_server_manager.api.install import update_server
 from bedrock_server_manager.api.server import start_server, stop_server
-from bedrock_server_manager.error import APICancelledError, IncompleteOperationError
+from bedrock_server_manager.error import APICancelledError
 from bedrock_server_manager.events import EventOptions
 from bedrock_server_manager.operations import OperationResultQuery, OperationService
 
@@ -24,7 +24,7 @@ async def load_default(plugin_factory, name):
 
 
 def backups(server):
-    return list(Path(server.backups.server_backup_directory).glob("*.mcworld"))
+    return list(Path(server.backups.server_backup_directory).glob("*.bsmbackup"))
 
 
 @pytest.mark.parametrize("reuse,expected", [(True, 1), (False, 2)])
@@ -164,21 +164,20 @@ async def test_ineligible_backup_does_not_suppress_start_backup(
                 finally:
                     path.write_text(contents)
             else:
-                original = server.backups.backup_config
 
-                async def fail_one(filename):
-                    if filename == "allowlist.json":
-                        raise OSError("Injected filesystem failure")
-                    return await original(filename)
+                def fail_copy(*args):
+                    raise OSError("Injected filesystem failure")
 
                 with monkeypatch.context() as fault:
-                    fault.setattr(server.backups, "backup_config", fail_one)
-                    result = await server.backups.backup_all_data()
-                    assert result.outcome == "partial"
+                    fault.setattr(
+                        "bedrock_server_manager.backups.server.copy_source", fail_copy
+                    )
+                    with pytest.raises(OSError):
+                        await server.backups.backup_all_data()
 
         plugin.api.events.listen("before_server_start", earlier_backup, priority=50)
     await start_server({"server_name": server.server_name}, app_context=app_context)
-    assert len(backups(server)) == 2
+    assert len(backups(server)) == (1 if kind == "partial" else 2)
 
 
 async def test_failed_backup_and_listener_failure_have_distinct_outcomes(
@@ -188,16 +187,18 @@ async def test_failed_backup_and_listener_failure_have_distinct_outcomes(
     server = populated_server
     plugin = await load_default(plugin_factory, "backup_on_start")
 
-    async def fail_world():
+    def fail_world(*args):
         raise OSError("Injected world read failure")
 
     with service.scope("example"):
         with monkeypatch.context() as fault:
-            fault.setattr(server.backups, "backup_world", fail_world)
-            with pytest.raises(IncompleteOperationError):
+            fault.setattr(
+                "bedrock_server_manager.backups.server.copy_source", fail_world
+            )
+            with pytest.raises(OSError):
                 await server.backups.backup_all_data()
         assert service.results()[0].status == "failed"
-        assert service.results()[0].outcome == "partial"
+        assert service.results()[0].outcome == "failed"
         await server.backups.backup_all_data()
 
         async def fail_listener(**data):
@@ -388,3 +389,52 @@ async def test_active_results_capacity_concurrency_and_cancellation():
 
     await asyncio.gather(concurrent("one"), concurrent("two"))
     assert len(set(ids)) == 2
+
+
+async def test_complete_snapshot_with_absent_components_is_reused(
+    app_context, populated_server, plugin_factory
+):
+    server = populated_server
+    for name in ("allowlist.json", "permissions.json"):
+        (Path(server.paths.server_dir) / name).unlink(missing_ok=True)
+    await load_default(plugin_factory, "backup_on_start")
+    with app_context.operations.scope("batch"):
+        await backup_all({"server_name": server.server_name}, app_context=app_context)
+        await start_server({"server_name": server.server_name}, app_context=app_context)
+    assert len(backups(server)) == 1
+
+
+async def test_legacy_component_scope_does_not_claim_script_configuration_coverage(
+    app_context, populated_server, plugin_factory
+):
+    server = populated_server
+    config = Path(server.paths.server_dir) / "config"
+    config.mkdir(exist_ok=True)
+    (config / "secrets.json").write_text('{"secret":"preserve"}')
+    await load_default(plugin_factory, "backup_on_start")
+    with app_context.operations.scope("batch"):
+        with app_context.operations.scope(
+            "backup.create", server_name=server.server_name
+        ) as operation:
+            operation.finish(
+                "completed",
+                scope=(
+                    "world",
+                    "server.properties",
+                    "allowlist.json",
+                    "permissions.json",
+                    "bsm_settings",
+                ),
+            )
+        await start_server({"server_name": server.server_name}, app_context=app_context)
+    assert len(backups(server)) == 1
+    inspected = await server.backups.inspect_snapshot(backups(server)[0].name)
+    assert inspected.manifest.components["script_config"] == "included"
+
+
+async def test_deleted_sequence_snapshot_is_not_reusable(app_context, populated_server):
+    with app_context.operations.scope("batch"):
+        snapshot = await populated_server.backups.create_snapshot()
+        assert await populated_server.backups.can_reuse_sequence_snapshot()
+        populated_server.backups.resolve_backup(snapshot.backup_id).unlink()
+        assert not await populated_server.backups.can_reuse_sequence_snapshot()

@@ -16,7 +16,7 @@ from fastapi import APIRouter, Depends, HTTPException, Request
 from fastapi.responses import JSONResponse
 
 from ...context import AppContext
-from ...utils import get_password_hash
+from ...utils.auth import get_password_hash_async
 from ..deps import get_admin_user, get_app_context
 from ..schemas import GenerateTokenPayload, UserLoginPayload
 from ..schemas import UserResponse as UserSchema
@@ -101,7 +101,9 @@ async def register_user(
 ):
     """Create a new user from a registration token."""
     record = await app_context.user_service.create_account(
-        data.username, get_password_hash(data.password.get_secret_value()), token=token
+        data.username,
+        await get_password_hash_async(data.password.get_secret_value()),
+        token=token,
     )
     if record is None:
         raise HTTPException(

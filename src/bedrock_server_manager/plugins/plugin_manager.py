@@ -273,6 +273,11 @@ class PluginManager:
                 await asyncio.gather(*tasks, return_exceptions=True)
             self.plugin_tasks.clear()
 
+    @property
+    def has_pending_lifespans(self) -> bool:
+        """Keep resource dependencies alive until router cleanup actually exits."""
+        return any(not owner.task.done() for owner in self._router_lifespans.values())
+
     async def shutdown(self) -> None:
         """Gracefully shuts down the PluginManager, unloading all plugins and cleaning up resources."""
         await self.quiesce()
@@ -888,7 +893,8 @@ class PluginManager:
         try:
             return await owner.start()
         except BaseException:
-            self._router_lifespans.pop(name, None)
+            if owner.task.done():
+                self._router_lifespans.pop(name, None)
             raise
 
     async def _close_router_lifespan(self, name: str) -> None:
