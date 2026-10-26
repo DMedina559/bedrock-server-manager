@@ -30,7 +30,9 @@ Update backups use the public backup hooks, including cancellation.
 Awaited nested calls share a sequence, retain their own operation IDs, and record
 parent-operation ancestry independently of event nesting. Each sequence retains
 up to 200 finished results; at most 256 root sequences and 64 nested operations
-are permitted. Root exit releases its results on success, failure, and cancellation.
+are permitted. Root exit releases its sequence-local results on success, failure, and cancellation.
+A separate bounded global metadata history retains recent outcomes for diagnostics;
+it does not make results from other sequences visible through `operations.results()`.
 These limits do not depend on event diagnostic history. Results contain metadata,
 component coverage, and outcomes, without payloads, configuration contents, or
 credentials. They are coordination data, not a durable backup inventory.

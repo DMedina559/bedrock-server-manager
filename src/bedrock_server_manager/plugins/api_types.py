@@ -48,6 +48,8 @@ from bedrock_server_manager.api.models import (
     GetApplicationMetricsResponse,
     GetBedrockProcessInfoRequest,
     GetBedrockProcessInfoResponse,
+    GetDiagnosticActivityRequest,
+    GetDiagnosticActivityResponse,
     GetDiagnosticHistoryRequest,
     GetDiagnosticHistoryResponse,
     GetDiagnosticReportRequest,
@@ -338,6 +340,10 @@ class DiagnosticsAPI(Protocol):
         self, request: GetApplicationDiagnosticsRequest | Mapping[str, object]
     ) -> GetApplicationDiagnosticsResponse: ...
 
+    async def get_diagnostic_activity(
+        self, request: GetDiagnosticActivityRequest | Mapping[str, object]
+    ) -> GetDiagnosticActivityResponse: ...
+
     async def get_diagnostic_history(
         self, request: GetDiagnosticHistoryRequest | Mapping[str, object]
     ) -> GetDiagnosticHistoryResponse: ...
@@ -625,6 +631,7 @@ API_METHODS: dict[str, dict[str, str]] = {
     "diagnostics": {
         "compare_diagnostic_snapshots": "compare_diagnostic_snapshots",
         "get_application_diagnostics": "get_application_diagnostics",
+        "get_diagnostic_activity": "get_diagnostic_activity",
         "get_diagnostic_history": "get_diagnostic_history",
         "get_diagnostic_report": "get_diagnostic_report",
         "get_diagnostic_runs": "get_diagnostic_runs",

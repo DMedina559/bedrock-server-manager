@@ -174,6 +174,16 @@ class PluginEventAPI:
             ),
         )
 
+    def observe_all(
+        self, callback: Callable[[PluginEvent[T]], Any], **options: Any
+    ) -> str:
+        """Observe live public events across all chains; private visibility is unchanged."""
+        return self.observe("*", callback, **options)
+
+    def activity(self, query: EventActivityQuery | None = None) -> EventDiagnostics:
+        """Read active and recent metadata across all chains, without retaining payloads."""
+        return self.diagnostics(query)
+
     def subscription(
         self,
         name: str,

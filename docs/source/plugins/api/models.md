@@ -3253,6 +3253,90 @@ Schemas are listed once. Local `$defs` references identify other models on this 
 }
 ```
 
+## EventFilter
+
+```json
+{
+  "additionalProperties": false,
+  "properties": {
+    "correlation_id": {
+      "anyOf": [
+        {
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "title": "Correlation Id"
+    },
+    "operation_name": {
+      "anyOf": [
+        {
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "title": "Operation Name"
+    },
+    "plugin_name": {
+      "anyOf": [
+        {
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "title": "Plugin Name"
+    },
+    "sequence_id": {
+      "anyOf": [
+        {
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "title": "Sequence Id"
+    },
+    "server_name": {
+      "anyOf": [
+        {
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "title": "Server Name"
+    },
+    "source": {
+      "anyOf": [
+        {
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "title": "Source"
+    }
+  },
+  "title": "EventFilter",
+  "type": "object"
+}
+```
+
 ## EventOptions
 
 ```json
@@ -3389,6 +3473,30 @@ Schemas are listed once. Local `$defs` references identify other models on this 
       "title": "Name",
       "type": "string"
     },
+    "operation_id": {
+      "anyOf": [
+        {
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "title": "Operation Id"
+    },
+    "operation_name": {
+      "anyOf": [
+        {
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "title": "Operation Name"
+    },
     "parent_event_id": {
       "anyOf": [
         {
@@ -3400,6 +3508,17 @@ Schemas are listed once. Local `$defs` references identify other models on this 
       ],
       "default": null,
       "title": "Parent Event Id"
+    },
+    "phase": {
+      "default": "custom",
+      "enum": [
+        "before",
+        "after",
+        "custom",
+        "lifecycle"
+      ],
+      "title": "Phase",
+      "type": "string"
     },
     "rejection_reason": {
       "anyOf": [
@@ -3418,6 +3537,30 @@ Schemas are listed once. Local `$defs` references identify other models on this 
       ],
       "default": null,
       "title": "Rejection Reason"
+    },
+    "sequence_id": {
+      "anyOf": [
+        {
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "title": "Sequence Id"
+    },
+    "server_name": {
+      "anyOf": [
+        {
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "title": "Server Name"
     },
     "source": {
       "title": "Source",
@@ -3452,6 +3595,169 @@ Schemas are listed once. Local `$defs` references identify other models on this 
 }
 ```
 
+## EventSubscriptionInfo
+
+```json
+{
+  "additionalProperties": false,
+  "properties": {
+    "active": {
+      "title": "Active",
+      "type": "boolean"
+    },
+    "after": {
+      "default": [],
+      "items": {
+        "type": "string"
+      },
+      "title": "After",
+      "type": "array"
+    },
+    "before": {
+      "default": [],
+      "items": {
+        "type": "string"
+      },
+      "title": "Before",
+      "type": "array"
+    },
+    "calls": {
+      "default": 0,
+      "title": "Calls",
+      "type": "integer"
+    },
+    "failures": {
+      "default": 0,
+      "title": "Failures",
+      "type": "integer"
+    },
+    "filters": {
+      "anyOf": [
+        {
+          "$ref": "#/$defs/EventFilter"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null
+    },
+    "kind": {
+      "enum": [
+        "legacy",
+        "hook",
+        "observer"
+      ],
+      "title": "Kind",
+      "type": "string"
+    },
+    "last_duration_ms": {
+      "default": 0,
+      "title": "Last Duration Ms",
+      "type": "number"
+    },
+    "last_status": {
+      "anyOf": [
+        {
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "title": "Last Status"
+    },
+    "listener_id": {
+      "title": "Listener Id",
+      "type": "string"
+    },
+    "name": {
+      "title": "Name",
+      "type": "string"
+    },
+    "once": {
+      "title": "Once",
+      "type": "boolean"
+    },
+    "owner": {
+      "title": "Owner",
+      "type": "string"
+    },
+    "priority": {
+      "title": "Priority",
+      "type": "integer"
+    },
+    "subscription_id": {
+      "title": "Subscription Id",
+      "type": "string"
+    },
+    "timeouts": {
+      "default": 0,
+      "title": "Timeouts",
+      "type": "integer"
+    },
+    "unresolved_after": {
+      "default": [],
+      "items": {
+        "type": "string"
+      },
+      "title": "Unresolved After",
+      "type": "array"
+    },
+    "unresolved_before": {
+      "default": [],
+      "items": {
+        "type": "string"
+      },
+      "title": "Unresolved Before",
+      "type": "array"
+    }
+  },
+  "required": [
+    "subscription_id",
+    "listener_id",
+    "name",
+    "owner",
+    "kind",
+    "priority",
+    "once",
+    "active"
+  ],
+  "title": "EventSubscriptionInfo",
+  "type": "object"
+}
+```
+
+## EventSubscriptions
+
+```json
+{
+  "additionalProperties": false,
+  "properties": {
+    "items": {
+      "items": {
+        "$ref": "#/$defs/EventSubscriptionInfo"
+      },
+      "title": "Items",
+      "type": "array"
+    },
+    "total": {
+      "default": 0,
+      "title": "Total",
+      "type": "integer"
+    },
+    "truncated": {
+      "default": false,
+      "title": "Truncated",
+      "type": "boolean"
+    }
+  },
+  "title": "EventSubscriptions",
+  "type": "object"
+}
+```
+
 ## EventsDiagnostics
 
 ```json
@@ -3469,6 +3775,20 @@ Schemas are listed once. Local `$defs` references identify other models on this 
       "default": "events",
       "title": "Kind",
       "type": "string"
+    },
+    "operations": {
+      "anyOf": [
+        {
+          "$ref": "#/$defs/OperationActivity"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null
+    },
+    "subscriptions": {
+      "$ref": "#/$defs/EventSubscriptions"
     },
     "truncated": {
       "default": false,
@@ -4395,6 +4715,222 @@ Schemas are listed once. Local `$defs` references identify other models on this 
 }
 ```
 
+## GetDiagnosticActivityRequest
+
+```json
+{
+  "additionalProperties": false,
+  "properties": {
+    "correlation_id": {
+      "anyOf": [
+        {
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "title": "Correlation Id"
+    },
+    "limit": {
+      "default": 100,
+      "maximum": 200,
+      "minimum": 1,
+      "title": "Limit",
+      "type": "integer"
+    },
+    "name": {
+      "anyOf": [
+        {
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "title": "Name"
+    },
+    "operation_id": {
+      "anyOf": [
+        {
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "title": "Operation Id"
+    },
+    "operation_name": {
+      "anyOf": [
+        {
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "title": "Operation Name"
+    },
+    "owner": {
+      "anyOf": [
+        {
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "title": "Owner"
+    },
+    "phase": {
+      "anyOf": [
+        {
+          "enum": [
+            "before",
+            "after",
+            "custom",
+            "lifecycle"
+          ],
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "title": "Phase"
+    },
+    "sequence_id": {
+      "anyOf": [
+        {
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "title": "Sequence Id"
+    },
+    "server_name": {
+      "anyOf": [
+        {
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "title": "Server Name"
+    },
+    "source": {
+      "anyOf": [
+        {
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "title": "Source"
+    },
+    "status": {
+      "anyOf": [
+        {
+          "enum": [
+            "dispatching",
+            "completed",
+            "partial",
+            "cancelled",
+            "suppressed"
+          ],
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "title": "Status"
+    }
+  },
+  "title": "GetDiagnosticActivityRequest",
+  "type": "object"
+}
+```
+
+## GetDiagnosticActivityResponse
+
+```json
+{
+  "additionalProperties": false,
+  "properties": {
+    "events": {
+      "anyOf": [
+        {
+          "$ref": "#/$defs/EventDiagnostics"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null
+    },
+    "issues": {
+      "items": {
+        "$ref": "#/$defs/DiagnosticIssue"
+      },
+      "maxItems": 3,
+      "title": "Issues",
+      "type": "array"
+    },
+    "operations": {
+      "anyOf": [
+        {
+          "$ref": "#/$defs/OperationActivity"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null
+    },
+    "scope": {
+      "const": "application",
+      "default": "application",
+      "title": "Scope",
+      "type": "string"
+    },
+    "subscriptions": {
+      "anyOf": [
+        {
+          "$ref": "#/$defs/EventSubscriptions"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null
+    },
+    "truncated": {
+      "default": false,
+      "title": "Truncated",
+      "type": "boolean"
+    }
+  },
+  "title": "GetDiagnosticActivityResponse",
+  "type": "object"
+}
+```
+
 ## GetDiagnosticHistoryRequest
 
 ```json
@@ -4742,9 +5278,25 @@ Schemas are listed once. Local `$defs` references identify other models on this 
       "items": {
         "$ref": "#/$defs/DiagnosticIssue"
       },
-      "maxItems": 3,
+      "maxItems": 4,
       "title": "Issues",
       "type": "array"
+    },
+    "operations": {
+      "anyOf": [
+        {
+          "$ref": "#/$defs/OperationActivity"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null
+    },
+    "operations_available": {
+      "default": false,
+      "title": "Operations Available",
+      "type": "boolean"
     },
     "tasks": {
       "items": {
@@ -6991,6 +7543,197 @@ Schemas are listed once. Local `$defs` references identify other models on this 
     "loop_lag_ms"
   ],
   "title": "MetricsSample",
+  "type": "object"
+}
+```
+
+## OperationActivity
+
+```json
+{
+  "additionalProperties": false,
+  "description": "Bounded, metadata-only global activity; recent results are not durable.",
+  "properties": {
+    "active": {
+      "items": {
+        "$ref": "#/$defs/OperationSnapshot"
+      },
+      "title": "Active",
+      "type": "array"
+    },
+    "active_operations": {
+      "default": 0,
+      "title": "Active Operations",
+      "type": "integer"
+    },
+    "active_sequences": {
+      "default": 0,
+      "title": "Active Sequences",
+      "type": "integer"
+    },
+    "active_truncated": {
+      "default": false,
+      "title": "Active Truncated",
+      "type": "boolean"
+    },
+    "completed": {
+      "default": 0,
+      "title": "Completed",
+      "type": "integer"
+    },
+    "history_limit": {
+      "default": 0,
+      "title": "History Limit",
+      "type": "integer"
+    },
+    "recent": {
+      "items": {
+        "$ref": "#/$defs/OperationSnapshot"
+      },
+      "title": "Recent",
+      "type": "array"
+    },
+    "recent_truncated": {
+      "default": false,
+      "title": "Recent Truncated",
+      "type": "boolean"
+    }
+  },
+  "title": "OperationActivity",
+  "type": "object"
+}
+```
+
+## OperationSnapshot
+
+```json
+{
+  "additionalProperties": false,
+  "description": "Immutable coordination metadata; response bodies and secrets are excluded.",
+  "properties": {
+    "correlation_id": {
+      "title": "Correlation Id",
+      "type": "string"
+    },
+    "finished_at": {
+      "anyOf": [
+        {
+          "type": "number"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "title": "Finished At"
+    },
+    "name": {
+      "title": "Name",
+      "type": "string"
+    },
+    "operation_id": {
+      "title": "Operation Id",
+      "type": "string"
+    },
+    "outcome": {
+      "anyOf": [
+        {
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "title": "Outcome"
+    },
+    "owner": {
+      "default": "application",
+      "title": "Owner",
+      "type": "string"
+    },
+    "parent_operation_id": {
+      "anyOf": [
+        {
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "title": "Parent Operation Id"
+    },
+    "purpose": {
+      "anyOf": [
+        {
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "title": "Purpose"
+    },
+    "root_operation_id": {
+      "title": "Root Operation Id",
+      "type": "string"
+    },
+    "scope": {
+      "default": [],
+      "items": {
+        "type": "string"
+      },
+      "title": "Scope",
+      "type": "array"
+    },
+    "sequence_id": {
+      "title": "Sequence Id",
+      "type": "string"
+    },
+    "server_name": {
+      "anyOf": [
+        {
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "title": "Server Name"
+    },
+    "source": {
+      "default": "application",
+      "title": "Source",
+      "type": "string"
+    },
+    "started_at": {
+      "title": "Started At",
+      "type": "number"
+    },
+    "status": {
+      "default": "running",
+      "enum": [
+        "running",
+        "finished",
+        "failed",
+        "cancelled"
+      ],
+      "title": "Status",
+      "type": "string"
+    }
+  },
+  "required": [
+    "operation_id",
+    "sequence_id",
+    "root_operation_id",
+    "correlation_id",
+    "name",
+    "started_at"
+  ],
+  "title": "OperationSnapshot",
   "type": "object"
 }
 ```

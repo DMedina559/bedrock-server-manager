@@ -6,7 +6,8 @@ from uuid import uuid4
 
 from pydantic import BaseModel, ConfigDict, Field, model_validator
 
-from ..events.models import EventDiagnostics, EventOptions
+from ..events.models import EventDiagnostics, EventOptions, EventSubscriptions
+from ..operations import OperationActivity
 
 
 class DiagnosticModel(BaseModel):
@@ -132,6 +133,8 @@ class EventsDiagnostics(DiagnosticModel):
     kind: Literal["events"] = "events"
     activity: EventDiagnostics
     capacity: EventOptions
+    operations: OperationActivity | None = None
+    subscriptions: EventSubscriptions = Field(default_factory=EventSubscriptions)
 
 
 class TransportDiagnostics(DiagnosticModel):
@@ -440,11 +443,24 @@ class DiagnosticReport(DiagnosticModel):
     history: DiagnosticHistory
 
 
+class DiagnosticActivity(DiagnosticModel):
+    """Global current-instance metadata; no correlation filter is required."""
+
+    scope: Literal["application"] = "application"
+    issues: list[DiagnosticIssue] = Field(default_factory=list, max_length=3)
+    events: EventDiagnostics | None = None
+    operations: OperationActivity | None = None
+    subscriptions: EventSubscriptions | None = None
+    truncated: bool = False
+
+
 class DiagnosticTrace(DiagnosticModel):
+    operations: OperationActivity | None = None
+    operations_available: bool = False
     correlation_id: str
     events: EventDiagnostics | None
     events_available: bool = False
-    issues: list[DiagnosticIssue] = Field(default_factory=list, max_length=3)
+    issues: list[DiagnosticIssue] = Field(default_factory=list, max_length=4)
     tasks: list[TaskDiagnostic]
     tasks_available: bool
     history: DiagnosticHistory

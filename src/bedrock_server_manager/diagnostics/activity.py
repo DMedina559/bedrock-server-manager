@@ -4,7 +4,8 @@ import time
 from collections import Counter, deque
 from collections.abc import Callable
 
-from ..events.models import EventDiagnostics
+from ..events.models import EventDiagnostics, EventSubscriptions
+from ..operations import OperationActivity
 from .models import RecentDiagnosticCounts, RecentDiagnosticWindow
 
 
@@ -25,6 +26,31 @@ def bound_event_activity(
             truncated = truncated or len(values) > details
             setattr(record, field, values[:details])
     return result, truncated
+
+
+def bound_operations(activity: OperationActivity, *, records: int) -> OperationActivity:
+    """Bound operation detail even when a provider returns an oversized view."""
+    result = activity.model_copy(deep=True)
+    result.active_truncated = result.active_truncated or len(result.active) > records
+    result.recent_truncated = result.recent_truncated or len(result.recent) > records
+    result.active = result.active[:records]
+    result.recent = result.recent[:records]
+    return result
+
+
+def bound_subscriptions(
+    snapshot: EventSubscriptions, *, records: int, details: int
+) -> EventSubscriptions:
+    """Bound both listener count and ordering-reference detail in support reports."""
+    result = snapshot.model_copy(deep=True)
+    result.truncated = result.truncated or len(result.items) > records
+    result.items = result.items[:records]
+    for item in result.items:
+        for field in ("before", "after", "unresolved_before", "unresolved_after"):
+            values = getattr(item, field)
+            result.truncated = result.truncated or len(values) > details
+            setattr(item, field, values[:details])
+    return result
 
 
 class RecentOutcomes:
