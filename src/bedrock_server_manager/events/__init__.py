@@ -12,6 +12,7 @@ from .models import (
     EventFilter,
     EventOptions,
     EventSubscriptionInfo,
+    EventSubscriptions,
 )
 from .player import PlayerSnapshot
 from .publisher import EventPublisher
@@ -22,6 +23,7 @@ __all__ = [
     "EventBus",
     "EventFilter",
     "EventSubscriptionInfo",
+    "EventSubscriptions",
     "EventNotification",
     "EventPayload",
     "PluginEvent",

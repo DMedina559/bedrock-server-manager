@@ -9,6 +9,8 @@ from .models.diagnostics import (
     CompareDiagnosticSnapshotsResponse,
     GetApplicationDiagnosticsRequest,
     GetApplicationDiagnosticsResponse,
+    GetDiagnosticActivityRequest,
+    GetDiagnosticActivityResponse,
     GetDiagnosticHistoryRequest,
     GetDiagnosticHistoryResponse,
     GetDiagnosticReportRequest,
@@ -76,3 +78,13 @@ async def compare_diagnostic_snapshots(
     """Compare metadata snapshots without treating restarted counters as activity."""
     comparison = compare_snapshots(request.before, request.after)
     return CompareDiagnosticSnapshotsResponse.model_validate(comparison.model_dump())
+
+
+@api_method("get_diagnostic_activity")
+async def get_diagnostic_activity(
+    request: GetDiagnosticActivityRequest, *, app_context: AppContext
+) -> GetDiagnosticActivityResponse:
+    """Read all-chain event, operation, and subscription metadata without payloads."""
+    return GetDiagnosticActivityResponse.model_validate(
+        app_context.diagnostics.activity(request).model_dump()
+    )

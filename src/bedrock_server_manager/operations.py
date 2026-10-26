@@ -9,6 +9,7 @@ from contextlib import contextmanager
 from contextvars import ContextVar
 from dataclasses import dataclass
 from enum import StrEnum
+from threading import RLock
 from time import time
 from typing import Any, Awaitable, Callable, Iterator, Literal, ParamSpec, TypeVar
 from uuid import uuid4
@@ -55,6 +56,35 @@ class OperationResultQuery(BaseModel):
     outcome: str | None = None
     purpose: str | None = None
     limit: int = Field(default=200, ge=1, le=10000)
+
+
+class OperationActivityQuery(BaseModel):
+    """Select metadata across all operation sequences in this application instance."""
+
+    model_config = ConfigDict(frozen=True, extra="forbid")
+    name: str | None = None
+    server_name: str | None = None
+    owner: str | None = None
+    source: str | None = None
+    operation_id: str | None = None
+    sequence_id: str | None = None
+    correlation_id: str | None = None
+    status: Literal["running", "finished", "failed", "cancelled"] | None = None
+    limit: int = Field(default=200, ge=1, le=10000)
+
+
+class OperationActivity(BaseModel):
+    """Bounded, metadata-only global activity; recent results are not durable."""
+
+    model_config = ConfigDict(extra="forbid")
+    active: list[OperationSnapshot] = Field(default_factory=list)
+    recent: list[OperationSnapshot] = Field(default_factory=list)
+    active_truncated: bool = False
+    recent_truncated: bool = False
+    active_operations: int = 0
+    active_sequences: int = 0
+    history_limit: int = 0
+    completed: int = 0
 
 
 class OperationSequence(BaseModel):
@@ -125,7 +155,7 @@ def detached_operations() -> Iterator[None]:
 
 
 class OperationService:
-    """Own live sequences; release all result references when their root exits."""
+    """Own live sequences and bounded metadata history across completed sequences."""
 
     def __init__(self, *, max_sequences: int = 256, history_limit: int = 200):
         if max_sequences < 1 or history_limit < 1:
@@ -133,6 +163,46 @@ class OperationService:
         self.max_sequences = max_sequences
         self.history_limit = history_limit
         self._active: dict[str, _Sequence] = {}
+        self._lock = RLock()
+        self._running: dict[str, OperationHandle] = {}
+        self._recent: deque[OperationSnapshot] = deque(maxlen=history_limit)
+        self._completed = 0
+
+    def activity(
+        self, query: OperationActivityQuery | None = None
+    ) -> OperationActivity:
+        """Read copied active and recent metadata independently of the caller's chain."""
+        query = query or OperationActivityQuery()
+        filters = query.model_dump(exclude={"limit"})
+
+        def matches(record: OperationSnapshot) -> bool:
+            return all(
+                value is None or getattr(record, key) == value
+                for key, value in filters.items()
+            )
+
+        with self._lock:
+            active = [
+                handle.snapshot
+                for handle in self._running.values()
+                if matches(handle.snapshot)
+            ]
+            recent = [record for record in reversed(self._recent) if matches(record)]
+            return OperationActivity(
+                active=[
+                    record.model_copy(deep=True) for record in active[: query.limit]
+                ],
+                recent=[
+                    record.model_copy(deep=True) for record in recent[: query.limit]
+                ],
+                active_truncated=len(active) > query.limit,
+                recent_truncated=len(recent) > query.limit
+                or self._completed > self.history_limit,
+                active_operations=len(self._running),
+                active_sequences=len(self._active),
+                history_limit=self.history_limit,
+                completed=self._completed,
+            )
 
     def _context(self) -> tuple[_Frame, ...]:
         task = _task()
@@ -219,8 +289,16 @@ class OperationService:
                     started_at=time(),
                 )
             )
-            if not frames:
-                self._active[sequence.sequence_id] = sequence
+            with self._lock:
+                if not frames:
+                    if len(self._active) >= self.max_sequences:
+                        from .error import OperationConflictError
+
+                        raise OperationConflictError(
+                            "Operation sequence capacity reached"
+                        )
+                    self._active[sequence.sequence_id] = sequence
+                self._running[identifier] = handle
             token = _frames.set(_frames.get() + (_Frame(self, sequence, handle),))
             status = "finished"
             try:
@@ -243,14 +321,19 @@ class OperationService:
                         or ("completed" if status == "finished" else status),
                     }
                 )
-                if len(sequence.records) == self.history_limit:
-                    sequence.truncated = True
-                sequence.records.append(handle.snapshot)
+                with self._lock:
+                    if len(sequence.records) == self.history_limit:
+                        sequence.truncated = True
+                    sequence.records.append(handle.snapshot)
+                    self._running.pop(identifier, None)
+                    self._recent.append(handle.snapshot)
+                    self._completed += 1
                 _frames.reset(token)
                 if not frames:
                     sequence.active = False
                     sequence.records.clear()
-                    self._active.pop(sequence.sequence_id, None)
+                    with self._lock:
+                        self._active.pop(sequence.sequence_id, None)
                 logging.getLogger(__name__).debug(
                     "Operation %s finished: %s (%s)",
                     name,

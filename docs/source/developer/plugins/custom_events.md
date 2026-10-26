@@ -386,3 +386,37 @@ awaited sequence, record your plugin as owner/source, and report completion, fai
 or cancellation. They yield immutable operation metadata. Core operation names and
 core completion records remain unavailable through this capability. Scopes do not
 replace managed tasks or persist execution across restarts.
+
+
+## Observe events across all execution chains
+
+`events.observe_all(callback, **options)` is the explicit wildcard observer API.
+It observes live public events across servers and sequences, plus private events
+already visible to that plugin. It has the same filters and lifecycle cleanup as
+`events.observe("*", callback)` and cannot cancel events. It does not replay past
+events or expose another plugin's private payloads.
+
+```python
+from bedrock_server_manager.events import EventActivityQuery
+from bedrock_server_manager.operations import OperationActivityQuery
+
+self.api.events.observe_all(self.on_any_event)
+activity = self.api.events.activity(EventActivityQuery(server_name="example"))
+operations = self.api.operations.activity(OperationActivityQuery(server_name="example"))
+```
+
+`events.activity()` reads copied global metadata from active/recent events, just
+like the existing `events.diagnostics()` API. It never retains payloads. Event
+records now include operation/sequence IDs, operation name, server name, and phase.
+It can be called outside a callback. `operations.activity()` independently reads
+active and recently completed operation metadata across all sequences, including
+namespaced plugin operations. Its recent list is newest first and is bounded to
+200 outcomes by default. History resets on restart; truncation is explicit.
+
+`operations.current()`, `sequence()`, and `results()` retain their existing
+sequence-local behavior. Use `results()` for coordination within your current
+operation, and global activity for observation. All capabilities remain tied to
+the plugin generation and are rejected after unload. To read the combined global
+administrator-style metadata, plugins can call
+`await self.api.diagnostics.get_diagnostic_activity({})`. That projection includes
+bounded listener configuration and statistics without callback objects.

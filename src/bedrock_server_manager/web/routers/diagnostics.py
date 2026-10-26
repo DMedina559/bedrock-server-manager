@@ -3,11 +3,16 @@
 from typing import Annotated, Literal
 
 from fastapi import APIRouter, Depends, HTTPException, Query, Response
+from pydantic import Field
 
-from ...api.models.diagnostics import CompareDiagnosticSnapshotsRequest
+from ...api.models.diagnostics import (
+    CompareDiagnosticSnapshotsRequest,
+    GetDiagnosticActivityRequest,
+)
 from ...context import AppContext
 from ...diagnostics.comparison import compare_snapshots
 from ...diagnostics.models import (
+    DiagnosticActivity,
     DiagnosticComparison,
     DiagnosticHistory,
     DiagnosticReport,
@@ -41,6 +46,25 @@ async def get_application_diagnostics(
 ) -> DiagnosticSnapshot:
     """Collect bounded metadata without probing server processes or database health."""
     return await service.snapshot()
+
+
+class DiagnosticActivityQuery(GetDiagnosticActivityRequest):
+    """Parse URL integers without relaxing the strict plugin API contract."""
+
+    limit: int = Field(default=100, ge=1, le=200, strict=False)
+
+
+@router.get(
+    "/activity",
+    operation_id="get_diagnostic_activity",
+    response_model=DiagnosticActivity,
+)
+async def get_diagnostic_activity(
+    query: Annotated[DiagnosticActivityQuery, Query()],
+    service: Diagnostics = Depends(get_diagnostics),
+) -> DiagnosticActivity:
+    """Read global activity, optionally narrowing by event, server, sequence, or correlation."""
+    return service.activity(query)
 
 
 @router.get(
