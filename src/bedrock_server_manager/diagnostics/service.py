@@ -2,6 +2,7 @@
 
 import asyncio
 import inspect
+import logging
 import platform
 import time
 from collections import Counter
@@ -11,6 +12,7 @@ from typing import Any
 from uuid import uuid4
 
 from ..events.models import EventActivityQuery, EventDiagnostics, EventSubscriptions
+from ..logging import RepeatedFailureReporter
 from ..operations import OperationActivity, OperationActivityQuery
 from .activity import (
     RecentOutcomes,
@@ -89,6 +91,7 @@ class Diagnostics:
             instance_id=self.instance_id,
             telemetry=self.collection,
         )
+        self._log_failures = RepeatedFailureReporter(logging.getLogger(__name__))
         self.provider_failures = 0
         self.provider_timeouts = 0
         self.provider_rejections = 0
@@ -185,7 +188,8 @@ class Diagnostics:
             )
             self.recent.record(record.subsystem, record.outcome, record.code)
             self.history.enqueue(record)
-        except Exception:
+        except Exception as error:
+            self._log_failures.report("record", "Diagnostic %s failed: %s", error)
             self.history.dropped += 1
 
     def registry_snapshot(self) -> RegistryDiagnostics:
@@ -462,9 +466,14 @@ class Diagnostics:
                 age_seconds=age,
                 stale=age is not None and age > self.options.stale_after_seconds,
             )
+            self._log_failures.recover("provider:" + name)
             self._last_success[name] = section.model_copy(deep=True)
             return section
         except (Exception, asyncio.CancelledError) as error:
+            if isinstance(error, Exception):
+                self._log_failures.report(
+                    "provider:" + name, "Diagnostic %s failed: %s", error
+                )
             self.provider_failures += 1
             self.record("diagnostics", name, started=started, error=error, owner=owner)
             return self._unavailable(name, owner, started, "provider_failed")
@@ -602,7 +611,10 @@ class Diagnostics:
                 events, truncated = bound_event_activity(
                     events, records=query.limit, details=self.options.event_detail_limit
                 )
-        except Exception:
+        except Exception as error:
+            self._log_failures.report(
+                "activity-events", "Diagnostic %s failed: %s", error
+            )
             events = None
             issues.append(
                 DiagnosticIssue(
@@ -627,7 +639,10 @@ class Diagnostics:
             )
             if operations is not None:
                 operations = bound_operations(operations, records=query.limit)
-        except Exception:
+        except Exception as error:
+            self._log_failures.report(
+                "activity-operations", "Diagnostic %s failed: %s", error
+            )
             operations = None
             issues.append(
                 DiagnosticIssue(
@@ -647,7 +662,10 @@ class Diagnostics:
                     records=self.options.event_detail_limit,
                     details=self.options.event_detail_limit,
                 )
-        except Exception:
+        except Exception as error:
+            self._log_failures.report(
+                "activity-subscriptions", "Diagnostic %s failed: %s", error
+            )
             subscriptions = None
             issues.append(
                 DiagnosticIssue(
@@ -697,7 +715,8 @@ class Diagnostics:
                     details=self.options.event_detail_limit,
                 )
                 truncated = truncated or detail_truncated
-        except Exception:
+        except Exception as error:
+            self._log_failures.report("trace-events", "Diagnostic %s failed: %s", error)
             issues.append(
                 DiagnosticIssue(
                     code="trace_events_unavailable",
@@ -707,7 +726,8 @@ class Diagnostics:
             )
         try:
             tasks = self.task_snapshot_provider()
-        except Exception:
+        except Exception as error:
+            self._log_failures.report("trace-tasks", "Diagnostic %s failed: %s", error)
             issues.append(
                 DiagnosticIssue(
                     code="trace_tasks_unavailable",
@@ -740,7 +760,10 @@ class Diagnostics:
                     or operations.active_truncated
                     or operations.recent_truncated
                 )
-        except Exception:
+        except Exception as error:
+            self._log_failures.report(
+                "trace-operations", "Diagnostic %s failed: %s", error
+            )
             operations = None
             issues.append(
                 DiagnosticIssue(

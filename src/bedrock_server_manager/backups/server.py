@@ -1,5 +1,6 @@
 """Unified server snapshots with selective restore and persistent recovery."""
 
+import asyncio
 import hashlib
 import json
 import logging
@@ -8,6 +9,7 @@ import platform
 import shutil
 import stat
 import threading
+import time
 from contextlib import AsyncExitStack
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
@@ -18,9 +20,11 @@ from pydantic import SecretStr
 
 from ..config.const import get_installed_version
 from ..error import BackupRestoreError, ConfigurationError
+from ..logging import log_operation_error
 from ..operations import OperationName
 from ..results import CleanupResult, CompletedItem, ComponentResults, SkippedItem
 from ..utils.files import temporary_directory
+from ..utils.progress import report_stage
 from ..utils.threads import check_cancellation, copy_stream, run_in_thread
 from .archive import digest, header, safe_name, unpack, write_archive
 from .catalog import ManagedBackups, now
@@ -83,7 +87,9 @@ def copy_source(
         raise BackupRestoreError("Backup source is not a regular file or directory.")
 
 
-def inventory(staging: Path, components) -> tuple[list[BackupFile], list[str]]:
+def inventory(
+    staging: Path, components, cancellation_event: threading.Event | None = None
+) -> tuple[list[BackupFile], list[str]]:
     files = []
     directories = []
     for component, state in components.items():
@@ -92,6 +98,7 @@ def inventory(staging: Path, components) -> tuple[list[BackupFile], list[str]]:
         root = staging / PREFIXES[component]
         paths = [root, *sorted(root.rglob("*"))] if root.is_dir() else [root]
         for path in paths:
+            check_cancellation(cancellation_event)
             name = safe_name(path.relative_to(staging).as_posix())
             if path.is_dir():
                 directories.append(name)
@@ -101,7 +108,7 @@ def inventory(staging: Path, components) -> tuple[list[BackupFile], list[str]]:
                         path=name,
                         component=component,
                         size=path.stat().st_size,
-                        sha256=digest(path),
+                        sha256=digest(path, cancellation_event),
                         executable=bool(path.stat().st_mode & stat.S_IXUSR),
                     )
                 )
@@ -190,10 +197,12 @@ class UnifiedServerBackups(ManagedBackups):
                 "This backup requires its recovery key."
             ) from error
 
-    @staticmethod
-    async def _stage(progress, message: str) -> None:
+    async def _stage(self, progress, message: str) -> None:
+        self.logger.debug("Backup/restore stage: %s", message)
         if progress is not None:
             await progress(message)
+        else:
+            await report_stage(message)
 
     async def create_snapshot(
         self,
@@ -209,18 +218,48 @@ class UnifiedServerBackups(ManagedBackups):
         mode: BackupMode | None = None,
         components: list[SelectableComponent] | None = None,
     ) -> BackupSummary:
+        started = time.monotonic()
+        last_stage = "Waiting for backup operation lock"
+        original_progress = progress
+
+        async def capture_progress(message: str) -> None:
+            nonlocal last_stage
+            last_stage = message
+            if original_progress is not None:
+                await original_progress(message)
+            else:
+                await report_stage(message)
+
         try:
-            return await self._create_snapshot(
+            result = await self._create_snapshot(
                 encrypted=encrypted,
                 purpose=purpose,
-                progress=progress,
+                progress=capture_progress,
                 _safety_world=_safety_world,
                 _safety_password=_safety_password,
                 _schedule_slot=_schedule_slot,
                 mode=mode,
                 components=components,
             )
-        except Exception:
+            self.logger.info(
+                "Backup capture completed in %.3f seconds", time.monotonic() - started
+            )
+            return result
+        except asyncio.CancelledError:
+            self.logger.warning(
+                "Backup capture cancelled during '%s' after %.3f seconds; cancellation may originate from a caller or hook deadline",
+                last_stage,
+                time.monotonic() - started,
+            )
+            raise
+        except Exception as error:
+            log_operation_error(
+                self.logger,
+                "Backup capture failed during '%s' after %.3f seconds",
+                last_stage,
+                time.monotonic() - started,
+                error=error,
+            )
             async with self.server.operation_lock:
                 value = await run_in_thread(self.catalog.load)
                 value.update(
@@ -256,6 +295,11 @@ class UnifiedServerBackups(ManagedBackups):
             current = time.monotonic()
             if previous_stage is not None:
                 stages[previous_stage] = round((current - previous_time) * 1000, 3)
+                self.logger.debug(
+                    "Backup stage completed: %s (%.3f ms)",
+                    previous_stage,
+                    stages[previous_stage],
+                )
             previous_stage, previous_time = message, current
             if report_progress is not None:
                 await report_progress(message)
@@ -307,6 +351,13 @@ class UnifiedServerBackups(ManagedBackups):
                     mode, chosen = selection(
                         self.server.settings, "selected", list(COMPONENTS[:-1])
                     )
+                self.logger.info(
+                    "Backup capture started: mode=%s components=%s encrypted=%s purpose=%s",
+                    mode,
+                    ",".join(chosen),
+                    use_encryption,
+                    purpose,
+                )
                 full = mode == "full"
                 server_root = Path(self.server.paths.server_dir)
                 if full:
@@ -435,6 +486,12 @@ class UnifiedServerBackups(ManagedBackups):
                             states["bsm_settings"] = "included"
                     await self._stage(progress, "Building backup inventory")
                     files, directories = await run_in_thread(inventory, staging, states)
+                    self.logger.debug(
+                        "Backup inventory complete: files=%d directories=%d bytes=%d",
+                        len(files),
+                        len(directories),
+                        sum(item.size for item in files),
+                    )
                     manifest = BackupManifest(
                         backup_id=identifier,
                         created_at=started,
@@ -790,10 +847,10 @@ class UnifiedServerBackups(ManagedBackups):
             return self._validated_destinations(staging, manifest, components)
         except BackupRestoreError:
             raise
-        except Exception:
+        except Exception as error:
             raise BackupRestoreError(
                 "Selected configuration is invalid or cannot be read."
-            ) from None
+            ) from error
 
     def _validated_destinations(
         self, staging: Path, manifest: BackupManifest, components: list[Component]
@@ -1265,7 +1322,12 @@ class UnifiedServerBackups(ManagedBackups):
                                 except asyncio.CancelledError:
                                     continue
                             recovery.result()
-                        except Exception:
+                        except Exception as recovery_error:
+                            log_operation_error(
+                                self.logger,
+                                "Restore recovery failed",
+                                error=recovery_error,
+                            )
                             if committed:
                                 return RestoreResult(
                                     restored=components,
@@ -1295,11 +1357,19 @@ class UnifiedServerBackups(ManagedBackups):
                             )
                         ).isoformat(),
                     )
-                except Exception:
+                except Exception as error:
+                    log_operation_error(
+                        self.logger,
+                        "Restore safety metadata update failed",
+                        error=error,
+                    )
                     cleanup_warning = "Data restored; safety archive protection metadata needs attention. Its pin remains in place."
                 try:
                     await run_in_thread(shutil.rmtree, journal.path)
-                except OSError:
+                except OSError as error:
+                    log_operation_error(
+                        self.logger, "Restore journal cleanup failed", error=error
+                    )
                     cleanup_warning = "Restore committed; recovery journal cleanup will be retried at startup."
                 restarted = False
                 restart_error = None
@@ -1310,7 +1380,12 @@ class UnifiedServerBackups(ManagedBackups):
                         restarted = await self.server.is_running()
                         if not restarted:
                             restart_error = "Server start was skipped or cancelled."
-                    except Exception:
+                    except Exception as error:
+                        log_operation_error(
+                            self.logger,
+                            "Restore completed but restart failed",
+                            error=error,
+                        )
                         restart_error = "Data restored successfully, but the server could not restart."
                 return RestoreResult(
                     restored=components,

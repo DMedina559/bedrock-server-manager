@@ -25,6 +25,7 @@ Password = Annotated[
 class DataContract(BaseModel):
     model_config = ConfigDict(
         extra="forbid",
+        hide_input_in_errors=True,
         strict=True,
         frozen=True,
         revalidate_instances="always",

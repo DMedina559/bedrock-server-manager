@@ -321,6 +321,7 @@ async def stop_server(
                         "Error during PID file cleanup for '%s': %s",
                         server_name,
                         cleanup_error,
+                        exc_info=True,
                     )
 
 

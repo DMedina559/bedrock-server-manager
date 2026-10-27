@@ -10,7 +10,7 @@ from ..context import AppContext
 from ..error import (
     BSMError,
 )
-from ..logging import log_operation_error
+from ..logging import RepeatedFailureReporter, log_operation_error
 from ..plugins.api_bridge import api_method
 from ..state_revision import revision_clock
 from .models.health import (
@@ -27,6 +27,7 @@ from .models.system import (
 )
 
 logger = logging.getLogger(__name__)
+_health_failures = RepeatedFailureReporter(logger)
 
 
 @api_method("get_server_running_status")
@@ -122,7 +123,10 @@ async def get_application_health(
     """Read-only readiness checks; dependency errors never expose credentials."""
     try:
         database_healthy = await app_context.db.check_health()
-    except Exception:
+        if database_healthy:
+            _health_failures.recover("database")
+    except Exception as error:
+        _health_failures.report("database", "Health check %s failed: %s", error)
         database_healthy = False
     from ..utils.timezones import timezone_database_available
 

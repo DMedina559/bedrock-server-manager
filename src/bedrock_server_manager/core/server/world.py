@@ -299,6 +299,7 @@ class ServerWorlds:
                     "Server '%s': Failed to send 'save resume': %s",
                     self.server.server_name,
                     e_res,
+                    exc_info=True,
                 )
                 if original_error is not None:
                     original_error.add_note(

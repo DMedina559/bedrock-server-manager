@@ -8,6 +8,7 @@ import asyncio
 import logging
 import os
 import sys
+import time
 from datetime import datetime, timezone
 from typing import Any, List
 
@@ -150,15 +151,32 @@ class ReentrantAsyncLock:
             self._count += 1
             return True
 
+        started = time.monotonic()
+        contended = lock.locked()
+        if contended:
+            from .progress import report_stage
+
+            logger.debug("Waiting for operation lock (timeout_seconds=%s)", timeout)
+            await report_stage("Waiting for another operation")
         self._waiting += 1
         try:
             if timeout is not None:
                 await asyncio.wait_for(lock.acquire(), timeout=timeout)
             else:
                 await lock.acquire()
+        except TimeoutError:
+            logger.warning(
+                "Operation lock timed out after %.3f seconds",
+                time.monotonic() - started,
+            )
+            raise
         finally:
             self._waiting -= 1
 
+        if contended:
+            logger.debug(
+                "Operation lock acquired after %.3f seconds", time.monotonic() - started
+            )
         self._owner = me
         self._count = 1
         return True

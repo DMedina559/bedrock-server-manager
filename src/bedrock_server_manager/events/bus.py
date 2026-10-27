@@ -863,10 +863,12 @@ class EventBus:
                 self._rejections.get("worker_capacity", 0) + 1
             )
         logger.warning(
-            "Event listener '%s' failed for '%s': %s",
+            "Event listener '%s' failed for '%s': %s (event_id=%s)",
             owner,
             record.name,
             type(error).__name__,
+            record.event_id,
+            exc_info=(type(error), error, error.__traceback__),
         )
 
     async def _deliver(
@@ -903,6 +905,13 @@ class EventBus:
                 self.options.hook_timeout_seconds
                 if definition.phase == "before" and not subscription.observer
                 else self.options.listener_timeout_seconds
+            )
+            logger.debug(
+                "Event listener started: owner=%s event=%s event_id=%s deadline_seconds=%.3f",
+                subscription.owner,
+                envelope.name,
+                record.event_id,
+                timeout,
             )
             async with asyncio.timeout(timeout):
                 result = await self._invoke(
@@ -947,6 +956,14 @@ class EventBus:
                 raise
         finally:
             listener.duration_ms = (monotonic() - started) * 1000
+            logger.debug(
+                "Event listener finished: owner=%s event=%s event_id=%s status=%s duration_ms=%.3f",
+                subscription.owner,
+                envelope.name,
+                record.event_id,
+                listener.status,
+                listener.duration_ms,
+            )
             if stats is not None and listener in record.listeners:
                 stats["calls"] += 1
                 stats["failures"] += int(listener.status in {"failed", "timed_out"})

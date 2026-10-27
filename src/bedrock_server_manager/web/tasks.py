@@ -20,6 +20,7 @@ from ..events.bus import correlation_scope, current_correlation_id
 from ..logging import log_operation_error
 from ..plugins.api_contract import APIResponseValidationError
 from ..state_revision import revision_clock
+from ..utils.progress import progress_scope
 from ..utils.threads import run_in_thread
 from .task_record import TaskRecord
 from .websocket_manager import ConnectionManager
@@ -56,6 +57,14 @@ class TaskManager:
         self._background_tasks: set[asyncio.Task] = set()
         self._plugin_owners: dict[str, str] = {}
         self._blocked_plugins: set[str] = set()
+
+    def _background_done(self, task: asyncio.Task) -> None:
+        """Retrieve notification/update failures instead of losing task exceptions."""
+        self._background_tasks.discard(task)
+        if not task.cancelled() and isinstance(error := task.exception(), Exception):
+            log_operation_error(
+                logger, "Background task state delivery failed", error=error
+            )
 
     @property
     def active_task_count(self) -> int:
@@ -113,6 +122,18 @@ class TaskManager:
     ):
         """Helper function to update the status of a task and notify client."""
         if task_id in self._tasks:
+            logger.log(
+                (
+                    logging.INFO
+                    if status in {"completed", "failed", "cancelled"}
+                    else logging.DEBUG
+                ),
+                "Task %s status=%s name=%s correlation_id=%s",
+                task_id,
+                status,
+                self._metadata.get(task_id, {}).get("name", "background_task"),
+                self._metadata.get(task_id, {}).get("correlation_id"),
+            )
             data = dict(self._tasks[task_id])
             data.update(
                 status=status,
@@ -163,7 +184,7 @@ class TaskManager:
                         )
             notification = asyncio.create_task(self._notify_client_of_update(task_id))
             self._background_tasks.add(notification)
-            notification.add_done_callback(self._background_tasks.discard)
+            notification.add_done_callback(self._background_done)
 
     def _task_done_callback(self, task_id: str, future: asyncio.Task):
         """Callback function executed when a task completes."""
@@ -197,7 +218,7 @@ class TaskManager:
                 # We are in an event loop, create a task to run the async update
                 update_task = loop.create_task(handle_done())
                 self._background_tasks.add(update_task)
-                update_task.add_done_callback(self._background_tasks.discard)
+                update_task.add_done_callback(self._background_done)
             else:
                 asyncio.run(handle_done())
         except RuntimeError:
@@ -281,15 +302,19 @@ class TaskManager:
         async def _runner():
             token = _current_task_id.set(task_id)
             try:
-                with correlation_scope(self._metadata[task_id]["correlation_id"]):
+                with (
+                    correlation_scope(self._metadata[task_id]["correlation_id"]),
+                    progress_scope(self.report_stage),
+                ):
 
                     async def execute():
                         await self._update_task(task_id, "running", "Task is running.")
                         if inspect.iscoroutinefunction(target_function):
                             return await target_function(*args, **call_kwargs)
-                        return await run_in_thread(
+                        result = await run_in_thread(
                             target_function, *args, **call_kwargs
                         )
+                        return await result if inspect.isawaitable(result) else result
 
                     if self._execution_slots is None:
                         return await execute()
@@ -317,7 +342,23 @@ class TaskManager:
             and task_id in self._tasks
             and self._tasks[task_id].status == "running"
         ):
+            logger.debug("Task %s stage: %s", task_id, message)
             await self._update_task(task_id, "running", message)
+
+    async def report_plugin_stage(
+        self, message: str, *, plugin_owner: str | None
+    ) -> None:
+        """Allow a plugin to describe only its own active managed task."""
+        task_id = _current_task_id.get()
+        if task_id is None or task_id not in self._tasks:
+            raise OperationConflictError("Progress requires a running managed task")
+        if self._plugin_owners.get(task_id) != plugin_owner:
+            raise UserInputError("Task progress belongs to another owner")
+        if self._tasks[task_id].status != "running":
+            raise OperationConflictError("Task is no longer running")
+        if not isinstance(message, str) or not message.strip() or len(message) > 240:
+            raise UserInputError("Task stage must contain 1 to 240 characters")
+        await self.report_stage(message)
 
     def report_progress(
         self, percent: float, *, plugin_owner: str | None = None
@@ -340,6 +381,12 @@ class TaskManager:
                 "Progress must be a finite percentage between 0 and 100"
             )
         self._metadata[task_id]["progress_percent"] = float(percent)
+        self._tasks[task_id] = self._tasks[task_id].model_copy(
+            update=revision_clock.capture()
+        )
+        notification = asyncio.create_task(self._notify_client_of_update(task_id))
+        self._background_tasks.add(notification)
+        notification.add_done_callback(self._background_done)
 
     def diagnostic_snapshot(self) -> TasksDiagnostics:
         """Read bounded task identity and timing without arguments or result payloads."""
@@ -415,13 +462,17 @@ class TaskManager:
         result = record["result"]
         if isinstance(result, BaseModel):
             result = result.model_dump(mode="json")
+        message = record["message"]
+        percent = self._metadata.get(task_id, {}).get("progress_percent")
+        if record.status == "running" and percent is not None:
+            message = f"{message} ({percent:g}%)"
         return TaskSnapshot.model_validate(
             {
                 "id": task_id,
                 "epoch": record.epoch,
                 "revision": record.revision,
                 "status": record["status"],
-                "message": record["message"],
+                "message": message,
                 "result": result,
                 "error": record["error"],
             }

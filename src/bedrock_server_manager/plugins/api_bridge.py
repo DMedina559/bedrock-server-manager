@@ -174,6 +174,7 @@ def create_app_api(
         functions: dict[str, Callable[..., Any]] = {
             "register_diagnostic_provider": runtime_capabilities.register_diagnostic_provider,
             "report_task_progress": runtime_capabilities.report_task_progress,
+            "report_task_stage": runtime_capabilities.report_task_stage,
             "run_task": runtime_capabilities.run_task,
             "register_scheduled_task": runtime_capabilities.register_scheduled_task,
             "read_plugin_file": runtime_capabilities.read_plugin_file,
@@ -329,6 +330,7 @@ class CapabilityNamespace:
             names = {
                 "register_diagnostic_provider": "register_diagnostic_provider",
                 "report_task_progress": "report_task_progress",
+                "report_task_stage": "report_task_stage",
                 "run_task": "run_task",
                 "register_scheduled_task": "register_scheduled_task",
                 "read_plugin_file": "read_plugin_file",

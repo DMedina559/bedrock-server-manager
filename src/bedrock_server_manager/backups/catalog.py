@@ -16,6 +16,7 @@ from ..error import BackupRestoreError
 from ..events.backup import BackupActivity
 from ..results import CleanupResult
 from ..utils.files import temporary_directory
+from ..utils.progress import report_stage
 from ..utils.threads import check_cancellation, copy_stream, run_in_thread
 from .archive import digest, safe_name
 from .credentials import atomic_json, private_directory
@@ -171,7 +172,9 @@ class ManagedBackups:
                     ).model_dump(),
                 )
             except Exception:
-                self.logger.warning("Backup observation could not be delivered.")
+                self.logger.warning(
+                    "Backup observation could not be delivered.", exc_info=True
+                )
 
     @property
     def catalog(self) -> BackupCatalog:
@@ -216,6 +219,7 @@ class ManagedBackups:
         self, identifier, recovery_key=None, *, record_failure=True
     ):
         """Extract and authenticate in isolation, then validate restorable structures."""
+        await report_stage("Verifying backup contents")
         async with self.server.operation_lock:
             path = self.resolve_backup(identifier)
             try:
@@ -305,6 +309,7 @@ class ManagedBackups:
     async def copy_snapshot(
         self, identifier: str, destination: str, *, automatic=False
     ):
+        await report_stage("Copying backup to destination")
         async with self.server.operation_lock:
             configured = self.destination_configs()
             item = configured.get(destination)
@@ -430,6 +435,7 @@ class ManagedBackups:
                     self.logger.warning(
                         "Periodic backup verification needs attention for '%s'.",
                         item.filename,
+                        exc_info=True,
                     )
                 return
             for name, config in self.destination_configs().items():
@@ -464,6 +470,7 @@ class ManagedBackups:
                         self.logger.warning(
                             "Backup destination retry needs attention for '%s'.",
                             item.filename,
+                            exc_info=True,
                         )
                     return
 

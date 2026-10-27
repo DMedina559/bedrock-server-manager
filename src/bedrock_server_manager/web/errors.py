@@ -26,14 +26,13 @@ def configure_errors(app: FastAPI) -> None:
         status_code = classified.status_code
         payload = APIErrorResponse.model_validate(classified.error.model_dump())
         headers = getattr(error, "headers", None)
-        if not classified.expected:
-            log_operation_error(
-                logger,
-                "HTTP operation failed: %s %s",
-                request.method,
-                request.url.path,
-                error=error,
-            )
+        log_operation_error(
+            logger,
+            "HTTP operation failed: %s %s",
+            request.method,
+            request.url.path,
+            error=error,
+        )
         return JSONResponse(
             status_code=status_code,
             headers=headers,

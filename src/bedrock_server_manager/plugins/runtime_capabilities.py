@@ -192,6 +192,15 @@ async def report_task_progress(
     app_context.task_manager.report_progress(percent, plugin_owner=plugin_name)
 
 
+async def report_task_stage(
+    message: str, *, app_context: AppContext, plugin_name: str | None = None
+) -> None:
+    """Publish a safe, short description for the plugin's current managed task."""
+    await app_context.task_manager.report_plugin_stage(
+        message, plugin_owner=plugin_name
+    )
+
+
 async def read_plugin_file(filename: str, *, app_context: AppContext, plugin_name: str):
     """Read a JSON file from this plugin's configuration directory."""
     from ..utils.threads import run_in_thread

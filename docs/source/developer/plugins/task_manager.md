@@ -83,6 +83,30 @@ def collect(cancellation_event: Event):
 
 Use timeouts for blocking I/O so your function can check the event regularly.
 
+## Reporting progress
+
+Core operations publish descriptive stages to their current managed task.
+Nested pre-start backups use the same task context as the start request;
+manual backups publish the same capture stages. Downloads report their own
+transfer percentage in the stage message. Operations with no measurable total
+remain indeterminate.
+
+Plugin tasks can call `await self.api.runtime.report_task_stage("Checking files")`
+to publish a short description (1 to 240 characters). Stage messages are visible
+to the task owner: never include credentials, raw exceptions, or request bodies.
+
+Call `await self.api.runtime.report_task_progress(percent)` with a
+finite percentage from 0 to 100. Updates are owner checked, revise the task
+snapshot, and notify polling/WebSocket consumers through the existing message
+field. A stage message can include the reported percentage; task diagnostics
+also expose the numeric value. Only report a percentage when its meaning is
+known. Successful completion sets a previously reported percentage to 100;
+failed and cancelled tasks retain their last reported value.
+
+These updates preserve the existing task response schema. Internal periodic
+services remain lifecycle-owned services, rather than creating user task IDs
+on every poll.
+
 ## Using `@task_loop` for Periodic Tasks
 
 If you need a task to run continuously in the background on a fixed interval (e.g., polling an external API, performing cleanups), you don't need to manually interact with the `TaskManager`.
