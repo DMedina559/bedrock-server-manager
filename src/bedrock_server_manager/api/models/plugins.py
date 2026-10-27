@@ -1,6 +1,8 @@
 """Serializable plugins API request and response contracts."""
 
-from pydantic import JsonValue
+from typing import Literal, Self
+
+from pydantic import Field, JsonValue, model_validator
 
 from ...events.models import ListenerFailure
 from .common import (
@@ -8,12 +10,15 @@ from .common import (
     APIRequest,
     APIResponse,
     NonEmptyStr,
+    ServerName,
     SuccessResponse,
 )
 
 
 class PluginInfo(APIResponse):
     has_settings: bool = False
+    has_global_settings: bool = False
+    has_server_settings: bool = False
     enabled: bool
     description: str = ""
     version: str = "N/A"
@@ -69,16 +74,29 @@ class TriggerExternalAppEventResponse(ActionResponse):
     details: EventDispatchSummary
 
 
-class GetPluginSettingRequest(APIRequest):
-    key: NonEmptyStr
+class PluginSettingsScope(APIRequest):
+    scope: Literal["plugin", "global", "server"] = Field(default="plugin", exclude=True)
+    server_name: ServerName | None = Field(default=None, exclude=True)
+
+    @model_validator(mode="after")
+    def check_scope(self) -> Self:
+        if (self.scope == "server") != (self.server_name is not None):
+            raise ValueError(
+                "Server scope requires server_name; other scopes must omit it"
+            )
+        return self
+
+
+class GetPluginSettingRequest(PluginSettingsScope):
+    key: NonEmptyStr | None = None
 
 
 class GetPluginSettingResponse(SuccessResponse):
     value: JsonValue
 
 
-class SetPluginSettingRequest(APIRequest):
-    key: NonEmptyStr
+class SetPluginSettingRequest(PluginSettingsScope):
+    key: NonEmptyStr | None = None
     value: JsonValue
 
 
@@ -86,7 +104,7 @@ class SetPluginSettingResponse(ActionResponse):
     pass
 
 
-class GetPluginSettingsRequest(APIRequest):
+class GetPluginSettingsRequest(PluginSettingsScope):
     target_plugin_name: NonEmptyStr
 
 
@@ -95,10 +113,10 @@ class GetPluginSettingsResponse(SuccessResponse):
     settings_schema: dict[str, JsonValue] | None = None
 
 
-class UpdatePluginSettingsRequest(APIRequest):
+class UpdatePluginSettingsRequest(PluginSettingsScope):
     target_plugin_name: NonEmptyStr
     settings: dict[str, JsonValue]
 
 
-class PluginSettingsPayload(APIRequest):
+class PluginSettingsPayload(PluginSettingsScope):
     settings: dict[str, JsonValue]

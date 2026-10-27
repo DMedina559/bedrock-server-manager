@@ -39,3 +39,10 @@ owned custom events. Enable ping before pong. The event-sender example exposes
 only its own declared message event and requires administrator authentication.
 Recursive and server-restarting diagnostic plugins were removed; automated event
 and lifecycle tests cover those behaviors without deploying them to a live host.
+
+
+## Settings scopes
+
+Plugins may declare independent Pydantic models for their own settings, manager-wide settings, and per-server settings. Configure plugin-local values on **Plugin Settings**, global values under **Global Settings → Plugins**, and server values on **Server Settings**. Only plugins declaring a model for a scope appear in its editor. Server settings apply independently to each server.
+
+Defaults appear without writing to the database. Saving validates the complete namespace before committing. A disabled plugin's schema remains available while it is installed; uninstalling a plugin does not silently discard its saved values.

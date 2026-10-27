@@ -58,6 +58,39 @@ logger = logging.getLogger(__name__)
 class PluginManager:
     """Manage the discovery, loading, configuration, and lifecycle of all plugins."""
 
+    def _register_settings_models(self, name, plugin_class):
+        entries = [
+            (self.settings_models, "settings_model"),
+            (self.global_settings_models, "global_settings_model"),
+            (self.server_settings_models, "server_settings_model"),
+        ]
+        try:
+            if (
+                getattr(plugin_class, "global_settings_model", None)
+                or getattr(plugin_class, "server_settings_model", None)
+            ) and ("." in name or "__" in name or name.startswith("_")):
+                raise ValueError(
+                    "Scoped plugin settings require a single safe namespace segment"
+                )
+            for registry, attribute in entries:
+                model = getattr(plugin_class, attribute, None)
+                if model is not None:
+                    if not isinstance(model, type) or not issubclass(model, BaseModel):
+                        raise TypeError(
+                            "Settings models must be Pydantic model classes"
+                        )
+                    model.model_json_schema()
+            for registry, attribute in entries:
+                model = getattr(plugin_class, attribute, None)
+                if model is None:
+                    registry.pop(name, None)
+                else:
+                    registry[name] = model
+            return True
+        except Exception:
+            logger.exception("Invalid settings model declaration for plugin '%s'", name)
+            return False
+
     def __init__(
         self,
         state: "AppState",
@@ -67,6 +100,8 @@ class PluginManager:
         events: EventBus | None = None,
         api_factory: Callable[[str], "AppAPI"] | None = None,
         settings_models: dict[str, type[BaseModel]] | None = None,
+        global_settings_models: dict[str, type[BaseModel]] | None = None,
+        server_settings_models: dict[str, type[BaseModel]] | None = None,
         diagnostic_cleanup: Callable[[str], None] | None = None,
         diagnostic_pending: Callable[[str], bool] | None = None,
         diagnostic_failure: (
@@ -105,6 +140,12 @@ class PluginManager:
             lambda name: create_app_api(name, None, events=self.events)
         )
         self.settings_models = settings_models if settings_models is not None else {}
+        self.global_settings_models = (
+            global_settings_models if global_settings_models is not None else {}
+        )
+        self.server_settings_models = (
+            server_settings_models if server_settings_models is not None else {}
+        )
         self.task_manager_provider = task_manager_provider or (lambda: None)
         self.connection_manager_provider = connection_manager_provider or (lambda: None)
         self.plugin_fastapi_routers: List[APIRouter] = []
@@ -522,12 +563,8 @@ class PluginManager:
                 version = getattr(p_class, "version", None)
                 if version and version != "N/A":
                     self._discovered_classes[p_name] = p_class
-                    if self.settings_models is not None:
-                        models = self.settings_models
-                        if p_class.settings_model is not None:
-                            models[p_name] = p_class.settings_model
-                        else:
-                            models.pop(p_name, None)
+                    if not self._register_settings_models(p_name, p_class):
+                        continue
                     valid_plugin_names.add(p_name)
                     description = p_class.__doc__.strip() if p_class.__doc__ else ""
                     author = getattr(p_class, "author", "N/A")
@@ -567,6 +604,8 @@ class PluginManager:
             del self.plugin_config[plugin_name]
             if self.settings_models is not None:
                 self.settings_models.pop(plugin_name, None)
+                self.global_settings_models.pop(plugin_name, None)
+                self.server_settings_models.pop(plugin_name, None)
 
         await self._save_config()
 
@@ -1232,12 +1271,8 @@ class PluginManager:
                     self._set_runtime_status(plugin_name, "ERROR")
                 return False
 
-            if self.settings_models is not None:
-                models = self.settings_models
-                if p_class.settings_model is not None:
-                    models[plugin_name] = p_class.settings_model
-                else:
-                    models.pop(plugin_name, None)
+            if not self._register_settings_models(plugin_name, p_class):
+                return False
             instance = None
             try:
                 plugin_logger = logging.getLogger(f"plugin.{plugin_name}")

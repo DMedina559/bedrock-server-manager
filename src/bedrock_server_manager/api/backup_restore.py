@@ -554,7 +554,6 @@ async def create_server_backup(
     server = app_context.get_server(request.server_name)
     snapshot = await server.backups.create_snapshot(
         encrypted=request.encrypted,
-        include_packs=request.include_packs,
         mode=request.mode,
         components=request.components,
         purpose=request.purpose,

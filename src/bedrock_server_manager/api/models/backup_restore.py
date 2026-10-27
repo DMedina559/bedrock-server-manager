@@ -117,7 +117,6 @@ class PruneOldBackupsResponse(ActionResponse):
 class CreateSnapshotRequest(APIRequest):
     server_name: ServerName
     encrypted: bool | None = None
-    include_packs: bool | None = None
     mode: Literal["world", "selected", "full"] | None = Field(
         default=None, exclude=True
     )

@@ -168,7 +168,7 @@ class Scheduler:
         task = request.configuration.task
         options = request.configuration.options
         allowed = {
-            "backup": {"encrypted", "include_packs", "mode", "components"},
+            "backup": {"encrypted", "mode", "components"},
             "verify": {"minimum_age_hours"},
         }.get(task)
         if allowed is not None and set(options) - allowed:
@@ -187,7 +187,6 @@ class Scheduler:
                     self.context.settings,
                     options.get("mode"),
                     options.get("components"),
-                    options.get("include_packs"),
                 )
             except (ValueError, TypeError, BackupRestoreError) as error:
                 raise UserInputError(

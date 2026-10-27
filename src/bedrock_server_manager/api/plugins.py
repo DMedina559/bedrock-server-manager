@@ -48,6 +48,10 @@ async def get_plugin_statuses(
             name: {
                 **config,
                 "status": pm.get_plugin_status(name),
+                "has_global_settings": name
+                in app_context.plugin_service.global_settings_models,
+                "has_server_settings": name
+                in app_context.plugin_service.server_settings_models,
                 "has_settings": bool(
                     app_context.plugin_service.get_settings(name)
                     or (
@@ -216,7 +220,9 @@ async def get_plugin_setting(
 ) -> GetPluginSettingResponse:
     """Read settings scoped to the bridge-injected plugin identity."""
     return GetPluginSettingResponse(
-        value=app_context.plugin_service.get_setting(plugin_name, request.key)
+        value=app_context.plugin_service.get_setting(
+            plugin_name, request.key, request.scope, request.server_name
+        )
     )
 
 
@@ -227,7 +233,7 @@ async def set_plugin_setting(
 ) -> SetPluginSettingResponse:
     """Persist settings scoped to the bridge-injected plugin identity."""
     await app_context.plugin_service.set_setting(
-        plugin_name, request.key, request.value
+        plugin_name, request.key, request.value, request.scope, request.server_name
     )
     return SetPluginSettingResponse(message="Plugin setting saved.")
 
@@ -241,8 +247,8 @@ async def get_plugin_settings(
         raise UserInputError("Unknown plugin.")
     service = app_context.plugin_service
     return GetPluginSettingsResponse(
-        settings=service.get_settings(name),
-        settings_schema=service.get_settings_schema(name),
+        settings=service.get_settings(name, request.scope, request.server_name),
+        settings_schema=service.get_settings_schema(name, request.scope),
     )
 
 
@@ -254,6 +260,6 @@ async def update_plugin_settings(
     if app_context.plugin_service.get_plugin_state(request.target_plugin_name) is None:
         raise UserInputError("Unknown plugin.")
     await app_context.plugin_service.replace_settings(
-        request.target_plugin_name, request.settings
+        request.target_plugin_name, request.settings, request.scope, request.server_name
     )
     return SetPluginSettingResponse(message="Plugin settings saved.")
