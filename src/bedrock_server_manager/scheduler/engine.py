@@ -137,7 +137,11 @@ async def run_due(
             "skipped",
         ):
             return False
-        if not config["catch_up"] and record.get("slot") != identifier and (moment - slot).total_seconds() > 120:
+        if (
+            not config["catch_up"]
+            and record.get("slot") != identifier
+            and (moment - slot).total_seconds() > 120
+        ):
             record.update(
                 slot=identifier, status="skipped", error="Missed run skipped by policy."
             )
