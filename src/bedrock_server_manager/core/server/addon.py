@@ -875,8 +875,13 @@ class ServerAddons:
                     uuid = manifest.header.uuid
                     version = manifest.header.version
                     name = manifest.header.name
+                    # Keep Minecraft extension fields out of the public listing.
                     subpacks = [
-                        item.model_dump(mode="json", exclude_unset=True)
+                        item.model_dump(
+                            mode="json",
+                            exclude_unset=True,
+                            include={"folder_name", "name", "memory_tier"},
+                        )
                         for item in manifest.subpacks
                     ]
                     if name == "pack.name":
