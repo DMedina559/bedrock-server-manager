@@ -4,6 +4,7 @@ import hashlib
 import json
 import logging
 import os
+import platform
 import shutil
 import stat
 import threading
@@ -23,6 +24,7 @@ from ..utils.files import temporary_directory
 from ..utils.threads import check_cancellation, copy_stream, run_in_thread
 from .archive import digest, header, safe_name, unpack, write_archive
 from .catalog import ManagedBackups, now
+from .contents import SelectableComponent
 from .credentials import (
     BackupCredentials,
     KeyRecord,
@@ -36,6 +38,7 @@ from .models import (
     PREFIXES,
     BackupFile,
     BackupManifest,
+    BackupMode,
     BackupSummary,
     Component,
     RestorePlan,
@@ -44,6 +47,7 @@ from .models import (
     ServerSettingsExport,
 )
 from .recovery import RestoreJournal, apply_settings, settings_export, sync_tree
+from .selection import selection, server_entries
 
 if TYPE_CHECKING:
     from ..core.bedrock_server import BedrockServer
@@ -73,6 +77,8 @@ def copy_source(
         with source.open("rb") as stream, target.open("wb") as output:
             copy_stream(stream, output, cancellation_event)
         protect(target)
+        if os.name != "nt" and source.stat().st_mode & stat.S_IXUSR:
+            target.chmod(0o700)
     else:
         raise BackupRestoreError("Backup source is not a regular file or directory.")
 
@@ -96,6 +102,7 @@ def inventory(staging: Path, components) -> tuple[list[BackupFile], list[str]]:
                         component=component,
                         size=path.stat().st_size,
                         sha256=digest(path),
+                        executable=bool(path.stat().st_mode & stat.S_IXUSR),
                     )
                 )
     return files, directories
@@ -200,6 +207,8 @@ class UnifiedServerBackups(ManagedBackups):
         _safety_password: str | None = None,
         _schedule_slot: str | None = None,
         include_packs: bool | None = None,
+        mode: BackupMode | None = None,
+        components: list[SelectableComponent] | None = None,
     ) -> BackupSummary:
         try:
             return await self._create_snapshot(
@@ -210,6 +219,8 @@ class UnifiedServerBackups(ManagedBackups):
                 _safety_password=_safety_password,
                 _schedule_slot=_schedule_slot,
                 include_packs=include_packs,
+                mode=mode,
+                components=components,
             )
         except Exception:
             async with self.server.operation_lock:
@@ -233,7 +244,26 @@ class UnifiedServerBackups(ManagedBackups):
         _safety_password: str | None = None,
         _schedule_slot: str | None = None,
         include_packs: bool | None = None,
+        mode: BackupMode | None = None,
+        components: list[SelectableComponent] | None = None,
     ) -> BackupSummary:
+        import time
+
+        stages: dict[str, float] = {}
+        previous_stage: str | None = None
+        previous_time = time.monotonic()
+        report_progress = progress
+
+        async def track_stage(message: str) -> None:
+            nonlocal previous_stage, previous_time
+            current = time.monotonic()
+            if previous_stage is not None:
+                stages[previous_stage] = round((current - previous_time) * 1000, 3)
+            previous_stage, previous_time = message, current
+            if report_progress is not None:
+                await report_progress(message)
+
+        progress = track_stage
         with self.server.operations.scope(
             OperationName.BACKUP_CREATE,
             server_name=self.server.server_name,
@@ -275,21 +305,30 @@ class UnifiedServerBackups(ManagedBackups):
                     await run_in_thread(
                         self.catalog.update, filename, schedule_slot=_schedule_slot
                     )
-                with_packs = (
-                    True
-                    if purpose == "pre_restore"
-                    else (
-                        self.server.settings.get("backups.include_server_packs", True)
-                        if include_packs is None
-                        else include_packs
-                    )
+                mode, chosen = selection(
+                    self.server.settings, mode, components, include_packs
                 )
+                if purpose == "pre_restore" and mode != "full":
+                    mode, chosen = selection(
+                        self.server.settings, "selected", list(COMPONENTS[:-1])
+                    )
+                full = mode == "full"
+                server_root = Path(self.server.paths.server_dir)
+                if full:
+                    if await self.server.is_running():
+                        raise BackupRestoreError(
+                            "Stop the server before a full-directory backup."
+                        )
+                    if root.resolve().is_relative_to(server_root.resolve()):
+                        raise BackupRestoreError(
+                            "Full-directory backup storage must be outside the server directory."
+                        )
                 async with temporary_directory(
                     prefix=".bsm-capture-", parent=root
                 ) as directory:
                     staging = Path(directory) / "contents"
                     await run_in_thread(private_directory, staging)
-                    components: dict[Component, Literal["included", "absent"]] = {
+                    states: dict[Component, Literal["included", "absent"]] = {
                         name: "absent" for name in COMPONENTS
                     }
                     async with AsyncExitStack() as locks:
@@ -311,7 +350,7 @@ class UnifiedServerBackups(ManagedBackups):
                         try:
                             world = await self.server.get_world_name()
                         except Exception:
-                            if purpose != "pre_restore":
+                            if purpose != "pre_restore" and "world" in chosen:
                                 raise
                             world = "unconfigured"
                             capture_warnings.append(
@@ -336,7 +375,7 @@ class UnifiedServerBackups(ManagedBackups):
                             raise BackupRestoreError(
                                 "Backup storage must be outside the world directory."
                             )
-                        if source_world.exists():
+                        if "world" in chosen and source_world.exists():
                             # Validate the tree without following links before Bedrock's live copy.
                             if running:
                                 await run_in_thread(self._check_tree, source_world)
@@ -347,9 +386,10 @@ class UnifiedServerBackups(ManagedBackups):
                                 await run_in_thread(
                                     copy_source, source_world, staging / "world"
                                 )
-                            components["world"] = "included"
+                            states["world"] = "included"
                         elif (
-                            purpose != "pre_restore"
+                            "world" in chosen
+                            and purpose != "pre_restore"
                             and source_world.parent.exists()
                             and any(source_world.parent.iterdir())
                         ):
@@ -361,9 +401,19 @@ class UnifiedServerBackups(ManagedBackups):
                             ("allowlist.json", "allowlist.json"),
                             ("permissions.json", "permissions.json"),
                             ("script_config", "config"),
-                            *((name, name) for name in PACK_COMPONENTS if with_packs),
+                            *((name, name) for name in PACK_COMPONENTS),
                         )
+                        if full:
+                            full_target = staging / PREFIXES["server_directory"]
+                            await run_in_thread(private_directory, full_target)
+                            for entry in server_entries(server_root):
+                                await run_in_thread(
+                                    copy_source, entry, full_target / entry.name
+                                )
+                            states["server_directory"] = "included"
                         for component, source_name in sources:
+                            if component not in chosen:
+                                continue
                             source = Path(self.server.paths.server_dir) / source_name
                             self._safe_target(source_name)
                             if source.is_dir() and root.resolve().is_relative_to(
@@ -376,21 +426,20 @@ class UnifiedServerBackups(ManagedBackups):
                                 await run_in_thread(
                                     copy_source, source, staging / PREFIXES[component]
                                 )
-                                components[component] = "included"
-                        settings_path = staging / PREFIXES["bsm_settings"]
-                        await run_in_thread(
-                            settings_path.parent.mkdir, parents=True, exist_ok=True
-                        )
-                        await run_in_thread(
-                            settings_path.write_text,
-                            settings_export(self.server).model_dump_json(),
-                            encoding="utf-8",
-                        )
-                        components["bsm_settings"] = "included"
+                                states[component] = "included"
+                        if "bsm_settings" in chosen:
+                            settings_path = staging / PREFIXES["bsm_settings"]
+                            await run_in_thread(
+                                settings_path.parent.mkdir, parents=True, exist_ok=True
+                            )
+                            await run_in_thread(
+                                settings_path.write_text,
+                                settings_export(self.server).model_dump_json(),
+                                encoding="utf-8",
+                            )
+                            states["bsm_settings"] = "included"
                     await self._stage(progress, "Building backup inventory")
-                    files, directories = await run_in_thread(
-                        inventory, staging, components
-                    )
+                    files, directories = await run_in_thread(inventory, staging, states)
                     manifest = BackupManifest(
                         backup_id=identifier,
                         created_at=started,
@@ -402,29 +451,12 @@ class UnifiedServerBackups(ManagedBackups):
                         source_world=world,
                         capture_method="live" if running else "offline",
                         reason=purpose,
-                        warnings=capture_warnings
-                        + (
-                            [
-                                "Server-level packs outside the active world are not included; preserve them separately."
-                            ]
-                            if not with_packs
-                            and any(
-                                (Path(self.server.paths.server_dir) / name).is_dir()
-                                and any(
-                                    (
-                                        Path(self.server.paths.server_dir) / name
-                                    ).iterdir()
-                                )
-                                for name in (
-                                    "behavior_packs",
-                                    "resource_packs",
-                                    "development_behavior_packs",
-                                    "development_resource_packs",
-                                )
-                            )
-                            else []
-                        ),
-                        components=components,
+                        warnings=capture_warnings,
+                        source_platform=platform.system(),
+                        source_architecture=platform.machine(),
+                        mode=mode,
+                        selected_components=chosen,
+                        components=states,
                         files=files,
                         directories=directories,
                     )
@@ -446,11 +478,16 @@ class UnifiedServerBackups(ManagedBackups):
                         password,
                         record.key_id if record else None,
                     )
-                    verification = Path(directory) / "verify"
-                    await run_in_thread(private_directory, verification)
-                    await run_in_thread(
-                        self.unpack_snapshot, temporary, verification, password
+                    verify_created = self.server.settings.get(
+                        "backups.verify_after_create", False
                     )
+                    if verify_created:
+                        await self._stage(progress, "Verifying backup archive")
+                        verification = Path(directory) / "verify"
+                        await run_in_thread(private_directory, verification)
+                        await run_in_thread(
+                            self.unpack_snapshot, temporary, verification, password
+                        )
                     structure_valid = True
                     try:
                         await run_in_thread(
@@ -462,7 +499,12 @@ class UnifiedServerBackups(ManagedBackups):
                         structure_valid = False
                     await run_in_thread(sync_tree, temporary)
                     await run_in_thread(os.replace, temporary, destination)
-                await run_in_thread(self._record_verified, destination, manifest)
+                await run_in_thread(
+                    self._record_verified,
+                    destination,
+                    manifest,
+                    verified=verify_created,
+                )
                 if not structure_valid:
                     await run_in_thread(
                         self.catalog.update,
@@ -495,7 +537,9 @@ class UnifiedServerBackups(ManagedBackups):
                             self.logger.warning(
                                 "Backup created locally; destination copy requires attention."
                             )
+                await track_stage("Finalizing backup")
                 catalog_state = await run_in_thread(self.catalog.load)
+                catalog_state["archives"][filename]["stage_durations_ms"] = stages
                 catalog_state["last_error"] = None
                 await run_in_thread(self.catalog.save, catalog_state)
                 operation.finish(
@@ -505,7 +549,7 @@ class UnifiedServerBackups(ManagedBackups):
                         f"archive:{filename}",
                         *(
                             name
-                            for name, state in components.items()
+                            for name, state in states.items()
                             if state == "included"
                         ),
                     ),
@@ -522,6 +566,7 @@ class UnifiedServerBackups(ManagedBackups):
                 ]
                 return BackupSummary(
                     verification=metadata.get("verification", {}),
+                    stage_durations_ms=metadata.get("stage_durations_ms", {}),
                     pinned=metadata.get("pinned", False),
                     protected_until=metadata.get("protected_until"),
                     purpose=purpose,
@@ -550,12 +595,13 @@ class UnifiedServerBackups(ManagedBackups):
         elif not source.is_file():
             raise BackupRestoreError("Backup sources must be regular files.")
 
-    async def can_reuse_sequence_snapshot(self) -> bool:
+    async def can_reuse_sequence_snapshot(self, *, mode=None, components=None) -> bool:
         """Require a complete capture covering every component currently present."""
         from ..operations import OperationResultQuery
 
         async with self.server.operation_lock:
-            required = {"bsm_settings"}
+            _, chosen = selection(self.server.settings, mode, components)
+            required = set(chosen) & {"bsm_settings", "server_directory"}
             try:
                 world = await self.server.get_world_name()
                 sources = {
@@ -565,11 +611,11 @@ class UnifiedServerBackups(ManagedBackups):
                     "permissions.json": "permissions.json",
                     "script_config": "config",
                 }
-                if self.server.settings.get("backups.include_server_packs", True):
+                if any(c in chosen for c in PACK_COMPONENTS):
                     sources.update({name: name for name in PACK_COMPONENTS})
                 for component, name in sources.items():
                     target = self._safe_target(name)
-                    if target.exists():
+                    if component in chosen and target.exists():
                         if is_link(target):
                             return False
                         required.add(component)
@@ -584,8 +630,16 @@ class UnifiedServerBackups(ManagedBackups):
                     outcome="completed",
                 )
             ):
-                if "server_snapshot" not in item.scope or not required.issubset(
-                    item.scope
+                if "server_snapshot" not in item.scope or not (
+                    required.issubset(item.scope)
+                    or (
+                        "server_directory" in item.scope
+                        and "server_directory" not in required
+                        and (
+                            "bsm_settings" not in required
+                            or "bsm_settings" in item.scope
+                        )
+                    )
                 ):
                     continue
                 for marker in item.scope:
@@ -596,9 +650,14 @@ class UnifiedServerBackups(ManagedBackups):
                         path = self.resolve_backup(identifier)
                         record = metadata.get(identifier, {})
                         current = await run_in_thread(path.stat)
-                        if record.get("verification", {}).get(
-                            "status"
-                        ) == "verified" and record.get("fingerprint") == [
+                        verified = record.get("verification", {}).get("status")
+                        if (
+                            verified == "verified"
+                            or (
+                                record.get("capture_validated", False)
+                                and verified != "failed"
+                            )
+                        ) and record.get("fingerprint") == [
                             current.st_size,
                             current.st_mtime_ns,
                         ]:
@@ -608,9 +667,16 @@ class UnifiedServerBackups(ManagedBackups):
             return False
 
     async def backup_all_data(
-        self, *, purpose: Literal["manual", "pre_start", "pre_update"] = "manual"
+        self,
+        *,
+        purpose: Literal["manual", "pre_start", "pre_update"] = "manual",
+        mode=None,
+        components=None,
+        encrypted=None,
     ) -> ComponentResults:
-        snapshot = await self.create_snapshot(purpose=purpose)
+        snapshot = await self.create_snapshot(
+            purpose=purpose, mode=mode, components=components, encrypted=encrypted
+        )
         assert snapshot.manifest is not None
         return ComponentResults(
             components={
@@ -684,6 +750,7 @@ class UnifiedServerBackups(ManagedBackups):
                             drill=metadata.get("drill"),
                             size=metadata_stat.st_size,
                             verification=metadata.get("verification", {}),
+                            stage_durations_ms=metadata.get("stage_durations_ms", {}),
                             pinned=metadata.get("pinned", False),
                             protected_until=metadata.get("protected_until"),
                             purpose=metadata.get("purpose"),
@@ -705,6 +772,7 @@ class UnifiedServerBackups(ManagedBackups):
                             size=metadata_stat.st_size,
                             encrypted=False,
                             verification=metadata.get("verification", {}),
+                            stage_durations_ms=metadata.get("stage_durations_ms", {}),
                             pinned=metadata.get("pinned", False),
                             protected_until=metadata.get("protected_until"),
                             purpose=metadata.get("purpose"),
@@ -739,13 +807,39 @@ class UnifiedServerBackups(ManagedBackups):
             not components
             or len(set(components)) != len(components)
             or any(
-                c not in COMPONENTS or manifest.components[c] != "included"
+                c not in COMPONENTS or manifest.components.get(c) != "included"
                 for c in components
             )
         ):
             raise BackupRestoreError(
                 "Select available backup components without duplicates."
             )
+        if "server_directory" in components:
+            if (manifest.source_platform, manifest.source_architecture) != (
+                platform.system(),
+                platform.machine(),
+            ):
+                raise BackupRestoreError(
+                    "Full-directory restore requires the same operating system and architecture."
+                )
+            if any(c not in ("server_directory", "bsm_settings") for c in components):
+                raise BackupRestoreError(
+                    "Full-directory restore cannot be combined with individual file components."
+                )
+            if (
+                manifest.bedrock_version
+                != self.server.configuration.snapshot().installed_version
+            ):
+                raise BackupRestoreError(
+                    "Full-directory restore requires the same installed Bedrock version."
+                )
+            return {
+                c: ("." if c == "server_directory" else "BSM server settings")
+                for c in components
+            }, [
+                *manifest.warnings,
+                "Full-directory restore replaces all server files and worlds. The server must be stopped.",
+            ]
         properties = (
             staging / PREFIXES["server.properties"]
             if "server.properties" in components
@@ -842,6 +936,23 @@ class UnifiedServerBackups(ManagedBackups):
             raise BackupRestoreError("Properties do not identify a valid world.")
         return world
 
+    def _component_target(self, component, name):
+        if component == "server_directory" and name == ".":
+            return Path(self.server.paths.server_dir).resolve()
+        return self._safe_target(name)
+
+    def _comparison_paths(self, component, target):
+        if component == "server_directory":
+            paths = []
+            for entry in server_entries(target):
+                self._check_tree(entry)
+                paths.extend(
+                    [entry, *sorted(entry.rglob("*"))] if entry.is_dir() else [entry]
+                )
+            return paths
+        self._check_tree(target) if target.exists() else None
+        return [target, *sorted(target.rglob("*"))] if target.is_dir() else [target]
+
     def _safe_target(self, name: str) -> Path:
         safe_name(name)
         root = Path(self.server.paths.server_dir).resolve()
@@ -866,16 +977,17 @@ class UnifiedServerBackups(ManagedBackups):
         for component, name in targets.items():
             if component == "bsm_settings":
                 continue
-            target = self._safe_target(name)
-            paths = (
-                [target, *sorted(target.rglob("*"))] if target.is_dir() else [target]
-            )
-            self._check_tree(target) if target.exists() else None
+            target = self._component_target(component, name)
+            paths = self._comparison_paths(component, target)
             recovery_size += sum(p.stat().st_size for p in paths if p.is_file())
             # World contents naturally change while running; bind its destination identity instead.
             fingerprints[component] = (
                 [
-                    (str(p.relative_to(target.parent)), digest(p))
+                    (
+                        str(p.relative_to(target.parent)),
+                        digest(p),
+                        p.stat().st_mode & 0o100,
+                    )
                     for p in paths
                     if p.is_file()
                 ]
@@ -898,6 +1010,10 @@ class UnifiedServerBackups(ManagedBackups):
     ) -> RestorePlan:
         async with self.server.operation_lock:
             RestoreJournal(self.server).ensure_clear()
+            if "server_directory" in components and await self.server.is_running():
+                raise BackupRestoreError(
+                    "Stop the server before reviewing a full-directory restore."
+                )
             path = self.resolve_backup(identifier)
             password = await run_in_thread(self._password, path, recovery_key)
             async with temporary_directory(
@@ -1070,6 +1186,7 @@ class UnifiedServerBackups(ManagedBackups):
                 )
                 safety = await self.create_snapshot(
                     purpose="pre_restore",
+                    mode="full" if "server_directory" in targets else "selected",
                     _safety_password=password if header(path).encrypted else None,
                     _safety_world=(
                         Path(targets["world"]).name if "world" in targets else None
@@ -1079,26 +1196,44 @@ class UnifiedServerBackups(ManagedBackups):
                 )
                 # Safety capture is independent from the recovery journal and survives a successful restore.
                 async with AsyncExitStack() as locks:
-                    for name in sorted(
-                        target
-                        for component, target in targets.items()
-                        if component != "bsm_settings"
-                    ):
+                    full = "server_directory" in targets
+                    if full:
+                        full_source = staging / PREFIXES["server_directory"]
+                        entries = {p.name for p in server_entries(root)} | {
+                            p.name for p in server_entries(full_source)
+                        }
+                        replacements = [
+                            (
+                                name,
+                                (
+                                    full_source / name
+                                    if (full_source / name).exists()
+                                    else None
+                                ),
+                            )
+                            for name in sorted(entries)
+                        ]
+                    else:
+                        replacements = [
+                            (target, staging / PREFIXES[c])
+                            for c, target in targets.items()
+                            if c != "bsm_settings"
+                        ]
+                    for name, _ in replacements:
+                        self._safe_target(name)
                         await locks.enter_async_context(
                             self.server.get_file_lock(str(root / name))
                         )
-                    file_components = [c for c in components if c != "bsm_settings"]
                     await run_in_thread(
                         journal.begin,
-                        [targets[c] for c in file_components],
+                        [name for name, _ in replacements],
                         "bsm_settings" in components,
+                        full,
                     )
                     try:
                         await self._stage(progress, "Restoring selected components")
-                        for index, component in enumerate(file_components):
-                            await run_in_thread(
-                                journal.replace, index, staging / PREFIXES[component]
-                            )
+                        for index, (_, source) in enumerate(replacements):
+                            await run_in_thread(journal.replace, index, source)
                         if "bsm_settings" in components:
                             exported = ServerSettingsExport.model_validate_json(
                                 (staging / PREFIXES["bsm_settings"]).read_bytes()
@@ -1143,7 +1278,7 @@ class UnifiedServerBackups(ManagedBackups):
                     await run_in_thread(
                         self.catalog.update,
                         safety.backup_id,
-                        pinned=safety.verification.status != "verified",
+                        pinned=safety.verification.status == "failed",
                         protected_until=(
                             datetime.now(timezone.utc)
                             + timedelta(

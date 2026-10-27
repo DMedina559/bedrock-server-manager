@@ -9,7 +9,7 @@ from .registry import builtin_events
 class BackupActivity(EventModel):
     server_name: str
     backup_id: str
-    action: Literal["capture", "verify", "copy"]
+    action: Literal["capture", "verify", "copy", "delete"]
     status: Literal["completed", "failed"]
     destination: str | None = None
 

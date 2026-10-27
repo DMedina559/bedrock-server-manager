@@ -43,6 +43,10 @@ async def prepare_copy(request, context) -> PrepareBackupCopyResponse:
             manifest = await run_in_thread(
                 source.unpack_snapshot, archive, staging, password
             )
+            if manifest.components.get("server_directory") == "included":
+                raise BackupRestoreError(
+                    "Use a selected-components backup to prepare a separate server copy."
+                )
             if manifest.components["server.properties"] != "included":
                 raise BackupRestoreError("A server copy requires server.properties.")
             # Refuse conflicting ports before installing anything.

@@ -8,7 +8,7 @@ import platform
 import re
 import sys
 import time
-from datetime import datetime
+from datetime import datetime, timezone
 from logging.handlers import RotatingFileHandler
 from typing import Optional
 from uuid import uuid4
@@ -123,6 +123,15 @@ class ApplicationFormatter(logging.Formatter):
     tracebacks at every level. Embedded control characters cannot create fake log
     lines or terminal escape sequences; formatter-generated tracebacks stay multiline.
     """
+
+    def formatTime(self, record, datefmt=None) -> str:
+        """Write an unambiguous UTC instant independently of the host timezone."""
+        moment = datetime.fromtimestamp(record.created, timezone.utc)
+        return (
+            moment.strftime(datefmt)
+            if datefmt
+            else moment.isoformat(timespec="milliseconds")
+        )
 
     def __init__(self, fmt: str, *, console: bool = False):
         super().__init__(fmt)
@@ -276,7 +285,7 @@ def setup_logging(
         os.makedirs(log_dir, exist_ok=True)
         _prune_old_logs(log_dir, keep=DEFAULT_LOG_KEEP)
         # Windows clock resolution can repeat even with microseconds displayed.
-        timestamp = datetime.now().strftime("%Y%m%d_%H%M%S_%f")
+        timestamp = datetime.now(timezone.utc).strftime("%Y%m%d_%H%M%S_%f")
         path = os.path.join(
             log_dir,
             f"bedrock_server_manager_{timestamp}_{os.getpid()}_{uuid4().hex}.log",
@@ -311,7 +320,7 @@ def log_separator(
         f'{app_name or "Application"} v{app_version}',
         f"Operating System: {os_info}",
         f"Python Version: {platform.python_version()}",
-        f"Timestamp: {datetime.now():%Y-%m-%d %H:%M:%S}",
+        f"Timestamp: {datetime.now(timezone.utc).isoformat()}",
         "=" * 100,
     ]
     for handler in logger.handlers:

@@ -50,7 +50,14 @@ def restore_capacity(
         except Exception:
             world = None
     # A malformed current properties file does not prevent preserving raw source data.
-    size, files = capture_size(backups, world)
+    if "server_directory" in targets:
+        paths = backups._comparison_paths(
+            "server_directory", Path(backups.server.paths.server_dir)
+        )
+        size = sum(p.stat().st_size for p in paths if p.is_file())
+        files = sum(p.is_file() for p in paths)
+    else:
+        size, files = capture_size(backups, world)
     expanded = sum(item.size for item in manifest.files)
     requests = [
         (

@@ -335,6 +335,7 @@ class ServerRuntimeInfo(PersistentRecord):
 
 @dataclass
 class RuntimeState:
+    scheduler: dict[str, JsonValue] = field(default_factory=dict)
     _servers: Dict[str, ServerRuntimeInfo] = field(default_factory=dict)
 
     @property

@@ -150,6 +150,7 @@ async def test_ineligible_backup_does_not_suppress_start_backup(
 ):
     server = populated_server
     plugin = await load_default(plugin_factory, "backup_on_start")
+    await plugin.set_plugin_setting("backup_mode", "selected")
     if kind == "previous_sequence":
         await backup_all({"server_name": server.server_name}, app_context=app_context)
     else:
@@ -411,7 +412,8 @@ async def test_legacy_component_scope_does_not_claim_script_configuration_covera
     config = Path(server.paths.server_dir) / "config"
     config.mkdir(exist_ok=True)
     (config / "secrets.json").write_text('{"secret":"preserve"}')
-    await load_default(plugin_factory, "backup_on_start")
+    plugin = await load_default(plugin_factory, "backup_on_start")
+    await plugin.set_plugin_setting("backup_mode", "selected")
     with app_context.operations.scope("batch"):
         with app_context.operations.scope(
             "backup.create", server_name=server.server_name

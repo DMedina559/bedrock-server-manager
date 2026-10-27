@@ -27,9 +27,19 @@ Status = Literal["ok", "degraded", "unknown"]
 
 
 def evaluate_health(
-    data: DiagnosticData, options: DiagnosticOptions
+    data: DiagnosticData, options: DiagnosticOptions, *, subsystem: str | None = None
 ) -> tuple[Status, list[DiagnosticIssue]]:
     """Explain current evidence without inferring health from lifetime failure totals."""
+    if subsystem == "scheduler" and isinstance(data, PluginValues):
+        if data.health == "degraded":
+            return "degraded", [
+                DiagnosticIssue(
+                    code="scheduler_attention",
+                    message="Scheduler runtime, enabled jobs, or timezone data needs attention.",
+                    action="check_configuration",
+                )
+            ]
+        return data.health, []
     if isinstance(data, BackupsDiagnostics):
         if (
             data.failed
@@ -81,7 +91,7 @@ def _issue(
 
 
 def _runtime(
-    data: DiagnosticData, options: DiagnosticOptions
+    data: DiagnosticData, options: DiagnosticOptions, *, subsystem: str | None = None
 ) -> tuple[Status, list[DiagnosticIssue]]:
     assert isinstance(data, RuntimeDiagnostics)
     if data.phase == "failed":
@@ -103,7 +113,7 @@ def _runtime(
 
 
 def _storage(
-    data: DiagnosticData, options: DiagnosticOptions
+    data: DiagnosticData, options: DiagnosticOptions, *, subsystem: str | None = None
 ) -> tuple[Status, list[DiagnosticIssue]]:
     assert isinstance(data, StorageDiagnostics)
     if data.last_error_type or data.last_reload_error_type:
@@ -117,7 +127,7 @@ def _storage(
 
 
 def _events(
-    data: DiagnosticData, options: DiagnosticOptions
+    data: DiagnosticData, options: DiagnosticOptions, *, subsystem: str | None = None
 ) -> tuple[Status, list[DiagnosticIssue]]:
     assert isinstance(data, EventsDiagnostics)
     if data.activity.pending_workers >= (
@@ -132,7 +142,7 @@ def _events(
 
 
 def _metrics(
-    data: DiagnosticData, options: DiagnosticOptions
+    data: DiagnosticData, options: DiagnosticOptions, *, subsystem: str | None = None
 ) -> tuple[Status, list[DiagnosticIssue]]:
     assert isinstance(data, MetricsDiagnostics)
     if data.last_error_type:
@@ -169,7 +179,7 @@ def _metrics(
 
 
 def _plugins(
-    data: DiagnosticData, options: DiagnosticOptions
+    data: DiagnosticData, options: DiagnosticOptions, *, subsystem: str | None = None
 ) -> tuple[Status, list[DiagnosticIssue]]:
     assert isinstance(data, PluginsDiagnostics)
     if any(plugin.status == "ERROR" for plugin in data.plugins):
@@ -188,7 +198,7 @@ def _plugins(
 
 
 def _processes(
-    data: DiagnosticData, options: DiagnosticOptions
+    data: DiagnosticData, options: DiagnosticOptions, *, subsystem: str | None = None
 ) -> tuple[Status, list[DiagnosticIssue]]:
     assert isinstance(data, ProcessesDiagnostics)
     if not data.observation_available or data.last_monitor_at is None:
@@ -212,7 +222,7 @@ def _processes(
 
 
 def _transport(
-    data: DiagnosticData, options: DiagnosticOptions
+    data: DiagnosticData, options: DiagnosticOptions, *, subsystem: str | None = None
 ) -> tuple[Status, list[DiagnosticIssue]]:
     assert isinstance(data, TransportDiagnostics)
     if (
@@ -228,7 +238,7 @@ def _transport(
 
 
 def _state(
-    data: DiagnosticData, options: DiagnosticOptions
+    data: DiagnosticData, options: DiagnosticOptions, *, subsystem: str | None = None
 ) -> tuple[Status, list[DiagnosticIssue]]:
     assert isinstance(data, StateDiagnostics)
     if (

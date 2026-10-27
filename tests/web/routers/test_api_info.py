@@ -38,7 +38,9 @@ async def test_player_endpoints_use_persistent_database(
 
 
 async def test_system_info_and_real_custom_themes(unauth_client, app_context, tmp_path):
+    await app_context.settings.set("general.timezone", "America/Los_Angeles")
     response = await unauth_client.get("/api/info")
+    assert response.json()["info"]["timezone"] == "America/Los_Angeles"
     assert response.status_code == 200
     assert response.json()["info"]["app_version"]
     themes = tmp_path / "themes"

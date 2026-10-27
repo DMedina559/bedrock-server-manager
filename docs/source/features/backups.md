@@ -21,26 +21,30 @@ a successful server start alone does not prove that an optional backup succeeded
 | BSM server settings | This server's autostart, autoupdate, target version, and custom settings |
 | Server packs | `behavior_packs/`, `resource_packs/`, `development_behavior_packs/`, and `development_resource_packs/` |
 
-Server packs are included by default. You can exclude them for a capture or change
-`backups.include_server_packs`. Each pack directory is a separate restore component.
-Missing components are recorded as absent; unreadable existing sources fail the
-capture. A new server without a generated world can have a configuration-only
-backup. Inspect the inventory to see what a recovery point actually contains.
+Choose a content mode:
 
-Archives contain a versioned manifest, component inventory, and file hashes. The
-manifest format version is **1**, including archives with optional server packs.
-Older version-1 archives without pack entries remain readable.
+- **World only:** active world, including its world-local packs and activation files.
+- **Selected components:** choose from the table above. Global defaults include the first six components and exclude all server-level pack directories.
+- **Full server directory:** every world, executable, log, configuration file and server-level pack in this server's directory. BSM server settings are exported separately. Stop the server first and keep backup storage outside the server directory. BSM's reserved `.bsm-*` staging and recovery entries are excluded.
 
-Server executables, logs, process state, other servers, global BSM users and
-settings, and backup encryption keys are excluded. This is a server recovery
-point. Preserve the BSM database, manager configuration, host credentials, and
-external dependencies separately to recover the whole installation. The server's
-`config/` directory is distinct from BSM's own configuration directory.
+Creation, global settings and Backup on Start share the `BackupComponents` Pydantic type. Its JSON Schema defines the selectable names, labels, defaults and nonempty/unique constraints. The plugin settings editor renders these as checkboxes; the frontend backup picker uses metadata generated from the same schema. `server_directory` is an archive/restore component selected through full mode, rather than an individual creation component.
+
+BSM does not classify bundled or custom server packs. Selecting a server pack directory captures the entire directory. World-local packs are always part of the world component.
+
+Configure `backups.mode` (`world`, `selected`, or `full`) and `backups.components` in global settings. Existing `include_packs` request overrides and `backups.include_server_packs` remain supported; the latter defaults to false. Explicit existing settings are preserved. Schedules can inherit defaults or override mode and components.
+
+Missing sources are recorded as absent; `selected_components` distinguishes omitted components from selected sources that do not exist. Unreadable sources and symbolic links fail capture. Archives keep format version **1** with optional selection, platform and executable-permission metadata; older archives remain readable.
+
+Full-directory restore requires a stopped server, the same operating system and architecture, and the same installed Bedrock version. It replaces all ordinary top-level server entries, including removing entries absent from the archive. Review the plan first. A comprehensive full-directory safety archive is created before replacement; the persistent recovery journal rolls back interrupted changes. Other restores continue to make comprehensive component safety archives. Full-directory archives do not support the separate server-copy workflow; use a component archive for that workflow.
+
+These archives cover one server. Global BSM users, settings, database, backup encryption keys and host dependencies remain separate. Preserve those separately to recover the manager installation.
+
+The **Backup on Start** plugin defaults to world only. Set its `backup_mode` to `selected`, `full`, or `default` to override this, and use `components` for selected mode. Its `encryption` setting accepts `default`, `on`, or `off`. Sequence reuse requires a still-valid archive with the requested coverage: a world-only capture cannot satisfy a later full-directory request. A full-directory capture can satisfy a world request. Cancellation of server startup after backup failure remains controlled by `require_complete_backup`.
 
 ## Create and download a backup
 
 1. Open the server's **Backups** page.
-2. Choose encryption and pack coverage, then select **Create backup**.
+2. Choose contents and encryption, then select **Create backup**.
 3. Wait for completion and check verification and destination-copy results.
 4. Download the archive or confirm that a copy exists outside the BSM host.
 
@@ -50,7 +54,12 @@ Edits made outside BSM do not necessarily participate in its configuration locks
 Operations changing the same server wait for an active capture; read-only
 application work can continue.
 
-BSM verifies a capture before publishing the completed archive. Failed creation
+Full readback verification is **off by default**. Creation validates captured
+configuration, records file checksums, and safely writes the archive, but does not
+extract it again. New archives show **Unverified**. Enable
+`backups.verify_after_create` to verify immediately, select **Verify** manually,
+or configure an independent verification schedule. Restore always authenticates
+and validates the archive and selected contents. Failed creation
 does not replace existing archives or trigger retention. A failed external copy
 is reported separately and does not invalidate a completed local backup.
 
@@ -85,7 +94,13 @@ archive. This does not prove the kit is safely stored elsewhere. Host permission
 limit access to stored keys, but an administrator or in-process Python plugin
 with BSM's operating-system permissions can access them.
 
-## Schedule automatic backups
+## Schedule backup and verification tasks
+
+Use the administrator **Scheduler** page (also linked from Backups) to add named backup or verification jobs. Each job
+selects one server. Verification jobs check unverified archives and archives older
+than their configured recheck age; they do not create backups. Jobs are paused
+until enabled. Existing backup schedules are retained and remain editable through
+the existing settings APIs.
 
 Administrators can configure a per-server daily time, weekdays, IANA timezone
 (such as `America/Los_Angeles`), catch-up behavior, and staggering window.
@@ -96,7 +111,7 @@ A new, changed, or re-enabled schedule begins with its next occurrence. After a
 restart, catch-up runs one capture for the latest missed occurrence instead of
 replaying a backlog. With catch-up disabled, occurrences over two minutes late
 are skipped. A stable server-specific offset staggers captures, and automatic
-work runs serially.
+work runs serially for each server, with bounded concurrency across servers.
 
 Schedule checkpoints survive restarts and prevent duplicate captures for a
 published occurrence. Failed captures back off and stop after three attempts for
@@ -255,8 +270,9 @@ test that separately on a restored server.
 | Setting | Default | Meaning |
 |---|---|---|
 | `backups.readiness_max_age_hours` | 48 | Maximum backup age for readiness |
-| `backups.verification_interval_hours` | 168 | Periodic verification interval; `0` disables it |
-| `backups.recovery_drill_interval_hours` | 168 | Periodic drill interval; `0` disables it |
+| `backups.verify_after_create` | false | Full readback immediately after capture |
+| `backups.verification_interval_hours` | 0 | Periodic verification interval; `0` disables it |
+| `backups.recovery_drill_interval_hours` | 0 | Periodic drill interval; `0` disables it |
 | `backups.safety_window_hours` | 168 | Restore source and safety-archive protection window |
 | `backups.max_files` | 1,000,000 | Maximum archive file count |
 | `backups.max_archive_bytes` | 1 TiB | Maximum stored archive size |
@@ -321,3 +337,95 @@ Legacy backup-creation API names now create unified archives. Legacy restore-all
 selects one latest unified archive rather than combining separately dated files.
 Minecraft `.mcworld` import and export remain available as
 [content operations](content_management.md).
+
+
+### Scheduler persistence and integration
+
+Schedules and their last-run cursor live in the `schedules` database table;
+`schedule_runs` retains the latest 100 attempts per schedule. The API returns the
+latest 20 attempts, next occurrence, retry status and handler availability. Existing
+`backups.schedules` settings are imported idempotently with stable IDs; updates
+through the legacy settings API remain supported. Legacy catalog cursors are
+preserved on import to avoid repeating an already published capture.
+
+Administrator endpoints are `GET /api/scheduler/schedules`,
+`PUT /api/scheduler/schedules/{schedule_id}`, and
+`DELETE /api/scheduler/schedules/{schedule_id}`. A running schedule must finish
+before removal. Missed occurrences coalesce according to catch-up policy; failed
+attempts back off up to three times per occurrence. Shutdown interrupts active
+work, and startup records interrupted attempts rather than claiming success.
+
+Plugins can register an async handler with
+`self.api.runtime.register_scheduled_task("my_plugin:task", handler)`. The handler
+receives keyword arguments `server_name` and `options`. Administrators create the
+schedule separately. Task names must use the plugin namespace. Unloaded handlers
+become unavailable; schedules remain visible and resume only when their handler
+is registered again. Plugin work participates in normal unload cancellation.
+Core currently provides only `backup` and `verify` tasks.
+
+The frontend continues using the existing synchronous lifecycle endpoints and
+allows start/stop/restart requests to wait beyond its ordinary request timeout.
+Server and reverse-proxy timeouts still apply. Event hook limits can be configured
+with `events.hook_timeout_seconds` (120 seconds by default, maximum 3600); changes
+take effect when BSM restarts. SDK users can choose a suitable `request_timeout`.
+Avoid retrying a lifecycle write simply because a connection was interrupted;
+check the server and diagnostics first.
+
+Capture-stage durations are available in archive metadata as
+`stage_durations_ms` and in the inspection dialog. Verification status remains
+separate from successful creation. Retention can use an unchanged, locally
+validated capture without performing full extraction; imported archives must be
+verified before being used as the retained recovery point. Pinned and protected
+archives cannot be deleted with the individual **Delete** action; external copies
+remain independent.
+
+### Choosing a timezone
+
+Select **Pacific Time (America/Los_Angeles)** for Pacific time. Do not enter
+`PDT` or `PST`: they describe seasonal abbreviations, not a region's recurring
+clock rules. The editor defaults to your browser's regional timezone when the
+host supports it. A daily 14:42 Pacific schedule stays at 14:42 Pacific through
+winter and summer; BSM calculates each occurrence in UTC automatically. Changing
+the host timezone does not shift a saved schedule.
+
+The scheduler advertises supported IANA regions and shows a timezone-data warning
+when regional data is unavailable. UTC remains usable without timezone files.
+BSM depends on the portable `tzdata` package and can read its packaged rules when
+the operating system lookup fails. If the dependency is missing from an existing
+Python environment, repair it with `python -m pip install --upgrade tzdata` using
+the interpreter that runs BSM, then restart BSM.
+
+### Runtime, state and health
+
+Scheduler definitions and cursors commit through the normal Storage transaction
+boundary and participate in its contention and failure telemetry. AppState exposes
+only committed scheduler records; a failed write does not publish speculative
+state. Reloading state also reloads schedules. Run history remains bounded in the
+scheduler tables rather than being copied into the application state cache.
+
+Lifecycle startup owns the scheduler loop, and shutdown cancels and drains its
+server jobs. Runtime observations include the last tick and active job count.
+Application health checks expose the scheduler heartbeat and regional timezone
+availability. The scheduler diagnostic section reads committed state without
+migrating settings or querying archive history, and distinguishes scheduler issues
+from plugin health issues. Runs also produce correlated diagnostic history records.
+Existing 4.0 diagnostic metadata shapes remain readable by older consumers.
+
+
+### Application timezone and timestamps
+
+Set `general.timezone` in Settings → General to an IANA timezone such as
+`America/Los_Angeles`. It defaults to `UTC` and supplies the default for new
+schedules. Existing schedules retain their explicit timezone; edit each schedule
+if you want to move it. API callers omitting the timezone on an existing schedule
+retain that schedule's timezone.
+
+Backup manifests, event and diagnostic timestamps, logs, and timestamped filenames
+use UTC. Changing the application timezone changes display defaults, never the
+recorded instant or archive identity. The frontend account display preference can
+use the application timezone, the browser timezone, or UTC. Timestamp details show
+the exact UTC instant. Raw log text remains in UTC.
+
+`GET /api/info` includes the application timezone in `info.timezone`. Existing
+settings APIs and plugin global-setting access support `general.timezone`; no new
+endpoint or database migration is needed.

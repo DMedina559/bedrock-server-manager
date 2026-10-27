@@ -58,6 +58,10 @@ class Storage:
     def __init__(self, db: "Database", data_dir: str):
         self.db = db
         self.data_dir = data_dir
+        from .repositories.scheduler import SchedulerRepository
+
+        self.scheduler_repo = SchedulerRepository(db, storage=self)
+        self._scheduler_state: AppState | None = None
         self.settings_repo = SettingsRepository(db)
         self.server_repo = ServerRepository(db)
         self.plugin_repo = PluginRepository(db)
@@ -419,6 +423,8 @@ class Storage:
             state.servers.replace_loaded(loaded_servers)
             state.plugins.replace_loaded(loaded_plugins)
             state.users.replace_loaded(loaded_users)
+            state.scheduler.replace_loaded(await self.scheduler_repo.list())
+            self._scheduler_state = state
         return state
 
     async def save_players(self, players_data: list[dict[str, str]]) -> int:

@@ -21,8 +21,10 @@ from pydantic import (
     field_validator,
 )
 
+from ..backups.contents import DEFAULT_COMPONENTS, BackupComponents, BackupMode
 from ..diagnostics.models import DiagnosticOptions
 from ..error import ConfigurationError
+from ..events.models import EventOptions
 from .validation import json_equal
 
 logger = logging.getLogger(__name__)
@@ -37,6 +39,25 @@ class SettingsRecord(BaseModel):
         allow_inf_nan=False,
         revalidate_instances="always",
     )
+
+
+class GeneralSettings(SettingsRecord):
+    timezone: str = "UTC"
+
+    @field_validator("timezone")
+    @classmethod
+    def known_timezone(cls, value: str) -> str:
+        from zoneinfo import ZoneInfoNotFoundError
+
+        from ..utils.timezones import resolve_timezone
+
+        try:
+            resolve_timezone(value)
+        except (ZoneInfoNotFoundError, ValueError):
+            raise ValueError(
+                "Choose a valid IANA timezone, such as America/Los_Angeles"
+            ) from None
+        return value
 
 
 class PathsSettings(SettingsRecord):
@@ -141,10 +162,12 @@ class BackupSchedule(SettingsRecord):
     @field_validator("timezone")
     @classmethod
     def known_timezone(cls, value):
-        from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
+        from zoneinfo import ZoneInfoNotFoundError
+
+        from ..utils.timezones import resolve_timezone
 
         try:
-            ZoneInfo(value)
+            resolve_timezone(value)
         except (ZoneInfoNotFoundError, ValueError):
             raise ValueError("Choose a valid IANA timezone") from None
         return value
@@ -157,13 +180,27 @@ class BackupSchedule(SettingsRecord):
         return value
 
 
+class ScheduledTask(BackupSchedule):
+    task: str = Field(
+        pattern=r"^(backup|verify|[a-zA-Z0-9_.-]+:[a-zA-Z0-9_.-]+)$", max_length=160
+    )
+    server_name: str = Field(min_length=1, max_length=160)
+    options: dict[str, JsonValue] = Field(default_factory=dict)
+
+
 class BackupSettings(SettingsRecord):
     readiness_max_age_hours: int = Field(default=48, ge=1, le=8760)
-    recovery_drill_interval_hours: int = Field(default=168, ge=0, le=8760)
+    recovery_drill_interval_hours: int = Field(default=0, ge=0, le=8760)
     encryption: bool = False
-    include_server_packs: bool = True
+    mode: BackupMode = "selected"
+    components: BackupComponents = Field(
+        default_factory=lambda: list(DEFAULT_COMPONENTS)
+    )
+    include_server_packs: bool = False
+
     schedules: dict[str, BackupSchedule] = Field(default_factory=dict)
-    verification_interval_hours: int = Field(default=168, ge=0, le=8760)
+    verify_after_create: bool = False
+    verification_interval_hours: int = Field(default=0, ge=0, le=8760)
     safety_window_hours: int = Field(default=168, ge=1, le=8760)
     keep_daily: int = Field(default=0, ge=0, le=365)
     keep_weekly: int = Field(default=0, ge=0, le=520)
@@ -184,6 +221,7 @@ class SettingsState(BaseModel):
         allow_inf_nan=False,
         revalidate_instances="always",
     )
+    general: GeneralSettings = Field(default_factory=GeneralSettings)
     paths: PathsSettings = Field(default_factory=PathsSettings)
     retention: RetentionSettings = Field(default_factory=RetentionSettings)
     backups: BackupSettings = Field(default_factory=BackupSettings)
@@ -191,6 +229,7 @@ class SettingsState(BaseModel):
     web: WebSettings = Field(default_factory=WebSettings)
     lifecycle: LifecycleSettings = Field(default_factory=LifecycleSettings)
     diagnostics: DiagnosticOptions = Field(default_factory=DiagnosticOptions)
+    events: EventOptions = Field(default_factory=EventOptions)
     custom: Dict[str, JsonValue] = Field(default_factory=dict)
     plugin_settings: Dict[str, Dict[str, JsonValue]] = Field(default_factory=dict)
 
@@ -362,6 +401,7 @@ class SettingsState(BaseModel):
     def to_dict(self) -> Dict[str, Any]:
         """Export settings state into a dictionary matching database key/value structure."""
         return {
+            "general": self.general.model_dump(),
             "paths": self.paths.model_dump(),
             "retention": self.retention.model_dump(),
             "backups": self.backups.model_dump(),
