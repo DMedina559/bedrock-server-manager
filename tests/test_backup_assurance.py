@@ -19,6 +19,7 @@ async def configure(server, key, value):
 
 async def test_readiness_and_drill_do_not_touch_live_files(populated_server):
     server = populated_server
+    await server.settings.set("backups.verify_after_create", True)
     snapshot = await server.backups.create_snapshot()
     root = Path(server.paths.server_dir)
     before = (root / "server.properties").read_bytes()
@@ -104,6 +105,7 @@ async def test_modified_external_copy_blocks_cleanup(populated_server, tmp_path)
 
 async def test_alerts_are_deduplicated_and_rearm_after_resolution(populated_server):
     server = populated_server
+    await server.settings.set("backups.verify_after_create", True)
     await configure(server, "backups.recovery_drill_interval_hours", 0)
     server.events.emit = AsyncMock()
     await maintain_assurance(server.backups)
@@ -138,6 +140,7 @@ async def test_external_index_survives_local_retention(populated_server, tmp_pat
 
 async def test_reconfigured_destination_requires_new_copy(populated_server, tmp_path):
     server = populated_server
+    await server.settings.set("backups.verify_after_create", True)
     first_dir = tmp_path / "one"
     second_dir = tmp_path / "two"
     first_dir.mkdir()
@@ -155,6 +158,7 @@ async def test_reconfigured_destination_requires_new_copy(populated_server, tmp_
 
 async def test_missing_external_copy_is_not_reported_ready(populated_server, tmp_path):
     server = populated_server
+    await server.settings.set("backups.verify_after_create", True)
     destination = tmp_path / "external"
     destination.mkdir()
     await configure(server, "backups.destinations", {"nas": {"path": str(destination)}})
@@ -167,6 +171,8 @@ async def test_periodic_drill_is_bounded_and_failure_details_are_private(
     populated_server, monkeypatch
 ):
     server = populated_server
+    await server.settings.set("backups.recovery_drill_interval_hours", 168)
+    await server.settings.set("backups.verify_after_create", True)
     snapshot = await server.backups.create_snapshot()
     plan = AsyncMock(side_effect=RuntimeError("secret-token-should-not-escape"))
     monkeypatch.setattr(server.backups, "plan_restore", plan)

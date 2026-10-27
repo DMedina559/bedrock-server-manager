@@ -59,12 +59,19 @@ async def test_slow_maintenance_does_not_delay_other_servers(monkeypatch):
         for name, work in (("slow", slow), ("healthy", healthy))
     }
     context = SimpleNamespace(
+        db=None,
         lifecycle_phase=LifecyclePhase.READY,
         state=SimpleNamespace(servers=SimpleNamespace(servers=servers)),
         get_server=lambda name, **kwargs: servers[name],
     )
     monkeypatch.setattr(schedule, "run_due", AsyncMock(return_value=False))
+    from bedrock_server_manager.db.repositories.scheduler import SchedulerRepository
+
+    monkeypatch.setattr(SchedulerRepository, "recover", AsyncMock())
+    context.storage = SimpleNamespace(scheduler_repo=SchedulerRepository(None))
+    context.state.runtime = SimpleNamespace(scheduler={})
     maintenance = BackupMaintenance(context)
+    monkeypatch.setattr(maintenance, "configurations", AsyncMock(return_value={}))
     maintenance.start()
     try:
         await asyncio.wait_for(entered.wait(), 2)

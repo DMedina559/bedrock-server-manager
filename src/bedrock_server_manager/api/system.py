@@ -124,7 +124,14 @@ async def get_application_health(
         database_healthy = await app_context.db.check_health()
     except Exception:
         database_healthy = False
+    from ..utils.timezones import timezone_database_available
+
     results = {
+        "timezone_data": (
+            timezone_database_available(),
+            "Regional timezone data available",
+            "Regional timezone data unavailable; UTC schedules remain usable",
+        ),
         "lifecycle": (
             app_context.is_ready,
             "Application ready",
@@ -135,6 +142,11 @@ async def get_application_health(
             app_context.state_loaded,
             "Application state loaded",
             "Application state unavailable",
+        ),
+        "scheduler": (
+            app_context.scheduler.check_health(),
+            "Scheduler loop active",
+            "Scheduler loop stopped, failed, or stale",
         ),
         "metrics": (
             app_context.metrics_service.check_health(),

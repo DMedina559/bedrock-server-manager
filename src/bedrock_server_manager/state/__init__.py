@@ -14,7 +14,9 @@ from .models import (
     UserInfoState,
     UserState,
 )
+from .scheduler import SchedulerState
 from .settings import (
+    GeneralSettings,
     MonitoringSettings,
     PathsSettings,
     RetentionSettings,
@@ -24,7 +26,9 @@ from .settings import (
 
 __all__ = [
     "AppState",
+    "SchedulerState",
     "SettingsState",
+    "GeneralSettings",
     "PathsSettings",
     "RetentionSettings",
     "MonitoringSettings",

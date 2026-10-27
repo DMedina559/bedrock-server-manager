@@ -8,6 +8,7 @@ from dataclasses import dataclass, field
 from typing import Optional
 
 from .models import PluginState, RuntimeState, ServerState, UserState
+from .scheduler import SchedulerState
 from .settings import SettingsState
 
 
@@ -18,6 +19,7 @@ class AppState:
     plugins: PluginState = field(default_factory=PluginState)
     users: UserState = field(default_factory=UserState)
     runtime: RuntimeState = field(default_factory=RuntimeState)
+    scheduler: SchedulerState = field(default_factory=SchedulerState)
     _lock: Optional[asyncio.Lock] = field(default=None, init=False, repr=False)
 
     @property

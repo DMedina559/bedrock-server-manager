@@ -178,3 +178,18 @@ can use `with api.operations.scope("plugin_name:operation")`.
 
 See [typed event access, filtering, and lifecycle cleanup](custom_events.md#opt-in-typed-hooks-and-observers)
 for complete examples, visibility rules, deadlines, and compatibility guarantees.
+
+
+### Backup component settings
+
+Use the shared validated type instead of copying component names into a plugin:
+
+```python
+from pydantic import BaseModel, Field
+from bedrock_server_manager.backups.contents import BackupComponents, DEFAULT_COMPONENTS
+
+class PluginSettings(BaseModel):
+    components: BackupComponents = Field(default_factory=lambda: list(DEFAULT_COMPONENTS))
+```
+
+`BackupComponents` rejects empty lists, duplicates and unsupported names. Its JSON Schema carries labels and defaults for checkbox editors. The same type is used by backup creation requests and global settings. `BackupContentSelection` provides a standalone Pydantic model with `mode` and `components` for validating selected-content preferences. Full-directory creation uses `mode="full"`; `server_directory` is only an archive/restore component.

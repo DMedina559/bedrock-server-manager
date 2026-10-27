@@ -8,7 +8,7 @@ import asyncio
 import logging
 import os
 import sys
-from datetime import datetime
+from datetime import datetime, timezone
 from typing import Any, List
 
 from ..error import AppFileNotFoundError, FileOperationError
@@ -194,9 +194,9 @@ class ReentrantAsyncLock:
 def get_timestamp() -> str:
     """Generates a timestamp string suitable for filenames or logging.
 
-    :returns: The current timestamp in YYYYMMDD_HHMMSS format.
+    :returns: The current UTC timestamp in YYYYMMDD_HHMMSS format.
     """
-    timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+    timestamp = datetime.now(timezone.utc).strftime("%Y%m%d_%H%M%S")
     return timestamp
 
 

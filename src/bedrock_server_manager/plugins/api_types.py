@@ -24,6 +24,7 @@ from bedrock_server_manager.api.models import (
     CompareDiagnosticSnapshotsResponse,
     CreateSnapshotRequest,
     CreateSnapshotResponse,
+    DeleteScheduleRequest,
     DisableAddonRequest,
     DisableAddonResponse,
     EnableAddonRequest,
@@ -100,6 +101,8 @@ from bedrock_server_manager.api.models import (
     ListBackupFilesResponse,
     ListInstalledAddonsRequest,
     ListInstalledAddonsResponse,
+    ListSchedulesRequest,
+    ListSchedulesResponse,
     ListSnapshotsRequest,
     ListSnapshotsResponse,
     ManageSnapshotRequest,
@@ -132,6 +135,7 @@ from bedrock_server_manager.api.models import (
     RestoreSnapshotResponse,
     RestoreWorldRequest,
     RestoreWorldResponse,
+    SaveScheduleRequest,
     ScanAndUpdatePlayerDbRequest,
     ScanAndUpdatePlayerDbResponse,
     SendCommandRequest,
@@ -152,11 +156,13 @@ from bedrock_server_manager.api.models import (
     SetServerCustomValueResponse,
     SetServerStatusRequest,
     SetServerStatusResponse,
+    SnapshotReuseRequest,
     SnapshotReuseResponse,
     StartServerRequest,
     StartServerResponse,
     StopServerRequest,
     StopServerResponse,
+    SuccessResponse,
     UnregisterDataProviderRequest,
     UnregisterDataProviderResponse,
     UpdateServerPlayerStatsRequest,
@@ -245,7 +251,7 @@ class BackupRestoreAPI(Protocol):
     ) -> BackupWorldResponse: ...
 
     async def can_reuse_server_backup(
-        self, request: ListSnapshotsRequest | Mapping[str, object]
+        self, request: SnapshotReuseRequest | Mapping[str, object]
     ) -> SnapshotReuseResponse: ...
 
     async def cleanup_backup_destination(
@@ -437,6 +443,20 @@ class PropertiesAPI(Protocol):
     ) -> ValidatePropertyValueResponse: ...
 
 
+class SchedulerAPI(Protocol):
+    async def delete_schedule(
+        self, request: DeleteScheduleRequest | Mapping[str, object]
+    ) -> SuccessResponse: ...
+
+    async def list_schedules(
+        self, request: ListSchedulesRequest | Mapping[str, object]
+    ) -> ListSchedulesResponse: ...
+
+    async def save_schedule(
+        self, request: SaveScheduleRequest | Mapping[str, object]
+    ) -> SuccessResponse: ...
+
+
 class ServerAPI(Protocol):
     async def get_all_settings(
         self, request: GetAllServerSettingsRequest | Mapping[str, object]
@@ -552,6 +572,10 @@ class WorldAPI(Protocol):
 
 
 class RuntimeAPI(Protocol):
+    def register_scheduled_task(
+        self, name: str, handler: Callable[..., Any]
+    ) -> None: ...
+
     async def run_task(
         self,
         target_function: Callable[..., Any],
@@ -662,6 +686,11 @@ API_METHODS: dict[str, dict[str, str]] = {
         "get_raw_properties": "get_raw_properties",
         "set_properties": "set_properties",
         "validate_property_value": "validate_property_value",
+    },
+    "scheduler": {
+        "delete_schedule": "delete_schedule",
+        "list_schedules": "list_schedules",
+        "save_schedule": "save_schedule",
     },
     "server": {
         "get_all_settings": "get_all_server_settings",

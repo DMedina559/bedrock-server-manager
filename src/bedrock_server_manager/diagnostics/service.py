@@ -436,7 +436,9 @@ class Diagnostics:
                         )
                     )
                 )
-            status, issues = self._health(data)
+            status, issues = self._health(
+                data, subsystem=name if owner == "application" else None
+            )
             observed_at = (
                 data.last_sample_at
                 if isinstance(data, MetricsDiagnostics)
@@ -467,10 +469,10 @@ class Diagnostics:
             self.record("diagnostics", name, started=started, error=error, owner=owner)
             return self._unavailable(name, owner, started, "provider_failed")
 
-    def _health(self, data: DiagnosticData):
+    def _health(self, data: DiagnosticData, *, subsystem: str | None = None):
         from .health import evaluate_health
 
-        return evaluate_health(data, self.options)
+        return evaluate_health(data, self.options, subsystem=subsystem)
 
     def collection_snapshot(self) -> CollectionDiagnostics:
         """Expose collection and writer observations without additional I/O."""

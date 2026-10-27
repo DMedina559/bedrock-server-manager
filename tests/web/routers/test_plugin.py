@@ -263,3 +263,60 @@ async def test_backup_settings_use_live_valid_server_choices(
     assert (
         await admin_auth_client.put(path, json={"settings": {"servers": []}})
     ).status_code == 200
+
+
+async def test_backup_components_share_valid_schema_and_save_from_plugin_form(
+    admin_auth_client, plugin_factory
+):
+    from pathlib import Path
+
+    import bedrock_server_manager.plugins.default as bundled
+    from bedrock_server_manager.backups.contents import (
+        COMPONENT_LABELS,
+        DEFAULT_COMPONENTS,
+    )
+    from bedrock_server_manager.state.settings import BackupSettings
+    from bedrock_server_manager.web.routers.backup_restore import SnapshotCreatePayload
+
+    await plugin_factory(
+        "backup_on_start",
+        (Path(bundled.__file__).parent / "backup_on_start.py").read_text(),
+    )
+    path = "/api/plugins/backup_on_start/settings"
+    response = await admin_auth_client.get(path)
+    assert response.status_code == 200, response.text
+    data = response.json()
+    field = data["settings_schema"]["properties"]["components"]
+    assert field["items"]["enum"] == list(COMPONENT_LABELS)
+    assert "server_directory" not in field["items"]["enum"]
+    assert field["uniqueItems"] is True
+    assert field["minItems"] == 1
+    assert data["settings"]["components"] == list(DEFAULT_COMPONENTS)
+    api_field = next(
+        item
+        for item in SnapshotCreatePayload.model_json_schema()["properties"][
+            "components"
+        ]["anyOf"]
+        if item.get("type") == "array"
+    )
+    global_field = BackupSettings.model_json_schema()["properties"]["components"]
+    for candidate in (api_field, global_field):
+        assert candidate["items"] == field["items"]
+        assert candidate["x-bsm-choice-labels"] == field["x-bsm-choice-labels"]
+        assert candidate["x-bsm-default-components"] == list(DEFAULT_COMPONENTS)
+    values = {
+        **data["settings"],
+        "backup_mode": "selected",
+        "components": list(COMPONENT_LABELS),
+    }
+    saved = await admin_auth_client.put(path, json={"settings": values})
+    assert saved.status_code == 200, saved.text
+    assert (await admin_auth_client.get(path)).json()["settings"]["components"] == list(
+        COMPONENT_LABELS
+    )
+    for invalid in ([], ["world", "world"], ["server_directory"], ["not-a-component"]):
+        rejected = await admin_auth_client.put(
+            path, json={"settings": {**values, "components": invalid}}
+        )
+        assert rejected.status_code == 400
+        assert "components" in rejected.json()["error"]["message"]

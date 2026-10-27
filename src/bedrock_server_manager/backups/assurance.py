@@ -275,7 +275,7 @@ async def _maintain_assurance(backups: Any):
                             message=str(alert["message"]),
                         ).model_dump(),
                     )
-    hours = backups.server.settings.get("backups.recovery_drill_interval_hours", 168)
+    hours = backups.server.settings.get("backups.recovery_drill_interval_hours", 0)
     previous = value.get("drill", {}).get("checked_at")
     if (
         not hours

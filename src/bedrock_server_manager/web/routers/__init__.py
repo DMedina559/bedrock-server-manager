@@ -1,5 +1,6 @@
 from .diagnostics import router as diagnostics_router
 from .events import router as events_router
+from .scheduler import router as scheduler_router
 
 """
 Web routers package.
@@ -33,6 +34,7 @@ from .websocket import router as websocket_router
 from .world import router as world_router
 
 all_routers = [
+    scheduler_router,
     diagnostics_router,
     runtime_router,
     events_router,

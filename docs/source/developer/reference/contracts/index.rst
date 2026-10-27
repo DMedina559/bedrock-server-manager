@@ -21,6 +21,7 @@ Internal contributor reference. Plugins should use supported capabilities.
    player
    plugins
    properties
+   scheduler
    server
    settings
    system

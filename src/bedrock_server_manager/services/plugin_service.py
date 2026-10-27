@@ -94,8 +94,14 @@ class PluginService:
                 ),
             )
         except ValidationError as error:
+            fields = ", ".join(
+                ".".join(str(part) for part in item["loc"]) or "settings"
+                for item in error.errors(include_input=False, include_context=False)[
+                    :10
+                ]
+            )
             raise UserInputError(
-                f"Invalid settings for plugin '{name}'. Check field types and constraints."
+                f"Invalid settings for plugin '{name}'. Check: {fields}."
             ) from error
 
     async def replace_settings(self, name: str, settings: dict) -> None:

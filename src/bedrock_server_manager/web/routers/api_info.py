@@ -319,7 +319,10 @@ async def get_system_info(
         # the dictionary is already flattened, pass the entire result minus the status
         return AppInfoResponse(
             status="success",
-            info={k: v for k, v in result.items() if k != "status"},
+            info={
+                **{k: v for k, v in result.items() if k != "status"},
+                "timezone": app_context.settings.get("general.timezone", "UTC"),
+            },
         )
     else:
 

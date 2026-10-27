@@ -239,3 +239,27 @@ class AuditLog(Base):
     details: Mapped[JsonValue] = mapped_column(JSON, nullable=True)
 
     user: Mapped["User"] = relationship("User")
+
+
+class Schedule(Base):
+    """Task definitions and durable coalescing/retry cursor."""
+
+    __tablename__ = "schedules"
+    schedule_id: Mapped[str] = mapped_column(String(100), primary_key=True)
+    configuration: Mapped[dict] = mapped_column(JSON, nullable=False)
+    state: Mapped[dict] = mapped_column(JSON, nullable=False, default=dict)
+    legacy_server: Mapped[str | None] = mapped_column(String(160), nullable=True)
+
+
+class ScheduleRun(Base):
+    """Bounded per-attempt outcomes, independent of archive catalogs."""
+
+    __tablename__ = "schedule_runs"
+    run_id: Mapped[str] = mapped_column(String(32), primary_key=True)
+    schedule_id: Mapped[str] = mapped_column(String(100), nullable=False, index=True)
+    slot: Mapped[str] = mapped_column(String(200), nullable=False)
+    status: Mapped[str] = mapped_column(String(24), nullable=False)
+    started_at: Mapped[str] = mapped_column(String(40), nullable=False, index=True)
+    finished_at: Mapped[str | None] = mapped_column(String(40), nullable=True)
+    correlation_id: Mapped[str | None] = mapped_column(String(160), nullable=True)
+    error: Mapped[str | None] = mapped_column(String(300), nullable=True)

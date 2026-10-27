@@ -18,11 +18,13 @@ class ChangeSet:
     servers_changed: Set[str] = field(default_factory=set)
     plugins_changed: Set[str] = field(default_factory=set)
     users_changed: Set[str] = field(default_factory=set)
+    schedules_changed: Set[str] = field(default_factory=set)
 
     def is_empty(self) -> bool:
         """Return True if no entity changes are recorded."""
         return not (
-            self.settings_changed
+            self.schedules_changed
+            or self.settings_changed
             or self.servers_changed
             or self.plugins_changed
             or self.users_changed
@@ -46,6 +48,7 @@ class ChangeSet:
 
     def merge(self, other: "ChangeSet") -> None:
         """Merges another ChangeSet into this instance."""
+        self.schedules_changed.update(other.schedules_changed)
         self.settings_changed.update(other.settings_changed)
         self.servers_changed.update(other.servers_changed)
         self.plugins_changed.update(other.plugins_changed)

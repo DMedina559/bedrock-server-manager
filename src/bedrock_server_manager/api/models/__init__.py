@@ -72,6 +72,7 @@ from .backup_restore import (
     RestoreSnapshotResponse,
     RestoreWorldRequest,
     RestoreWorldResponse,
+    SnapshotReuseRequest,
     SnapshotReuseResponse,
 )
 from .ban import (
@@ -83,6 +84,7 @@ from .ban import (
     RemoveServerBanResponse,
 )
 from .common import APIErrorResponse, APIRequest, APIResponse
+from .common import SuccessResponse as SuccessResponse
 from .diagnostics import (
     CompareDiagnosticSnapshotsRequest,
     CompareDiagnosticSnapshotsResponse,
@@ -155,6 +157,12 @@ from .properties import (
     SetPropertiesResponse,
     ValidatePropertyValueRequest,
     ValidatePropertyValueResponse,
+)
+from .scheduler import (
+    DeleteScheduleRequest,
+    ListSchedulesRequest,
+    ListSchedulesResponse,
+    SaveScheduleRequest,
 )
 from .server import (
     DeleteServerDataRequest,
@@ -251,6 +259,7 @@ __all__ = [
     "CreateSnapshotRequest",
     "CreateSnapshotResponse",
     "ListSnapshotsRequest",
+    "SnapshotReuseRequest",
     "ListSnapshotsResponse",
     "InspectSnapshotRequest",
     "InspectSnapshotResponse",
@@ -462,4 +471,13 @@ __all__ += [
     "GetDiagnosticRunsResponse",
     "GetDiagnosticTraceRequest",
     "GetDiagnosticTraceResponse",
+]
+
+
+__all__ += [
+    "DeleteScheduleRequest",
+    "ListSchedulesRequest",
+    "ListSchedulesResponse",
+    "SaveScheduleRequest",
+    "SuccessResponse",
 ]

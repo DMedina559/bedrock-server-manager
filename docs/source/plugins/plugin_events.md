@@ -478,7 +478,7 @@ async def some_function(self, *, request, server_name, stop_start_server=None, r
 | `backup_file_path` | `str` |
 | `component` | `Literal['server.properties', 'allowlist.json', 'permissions.json'] | None` |
 | `backup_id` | `str` |
-| `components` | `list[Literal['world', 'server.properties', 'allowlist.json', 'permissions.json', 'script_config', 'bsm_settings', 'behavior_packs', 'resource_packs', 'development_behavior_packs', 'development_resource_packs']]` |
+| `components` | `list[Literal['server_directory', 'world', 'server.properties', 'allowlist.json', 'permissions.json', 'script_config', 'bsm_settings', 'behavior_packs', 'resource_packs', 'development_behavior_packs', 'development_resource_packs']]` |
 | `token` | `str` |
 | `restart` | `bool` |
 | `stop_running` | `bool` |
@@ -779,7 +779,7 @@ async def some_function(self, server_name, backup_id, action, status, destinatio
 |----------|------|
 | `server_name` | `str` |
 | `backup_id` | `str` |
-| `action` | `Literal['capture', 'verify', 'copy']` |
+| `action` | `Literal['capture', 'verify', 'copy', 'delete']` |
 | `status` | `Literal['completed', 'failed']` |
 | `destination` | `str | None` |
 | `_triggering_plugin` | `str` (core, or plugin name) |
@@ -1255,7 +1255,7 @@ async def some_function(self, *, request, server_name, stop_start_server=None, b
 | `backup_file_path` | `str` |
 | `component` | `Literal['server.properties', 'allowlist.json', 'permissions.json'] | None` |
 | `backup_id` | `str` |
-| `components` | `list[Literal['world', 'server.properties', 'allowlist.json', 'permissions.json', 'script_config', 'bsm_settings', 'behavior_packs', 'resource_packs', 'development_behavior_packs', 'development_resource_packs']]` |
+| `components` | `list[Literal['server_directory', 'world', 'server.properties', 'allowlist.json', 'permissions.json', 'script_config', 'bsm_settings', 'behavior_packs', 'resource_packs', 'development_behavior_packs', 'development_resource_packs']]` |
 | `token` | `str` |
 | `restart` | `bool` |
 | `stop_running` | `bool` |

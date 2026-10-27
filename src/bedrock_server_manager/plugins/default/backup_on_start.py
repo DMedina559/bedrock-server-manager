@@ -3,11 +3,12 @@
 Plugin to automatically back up a server before it starts.
 """
 
-from typing import Any
+from typing import Any, Literal
 
 from pydantic import BaseModel, ConfigDict, Field
 
 from bedrock_server_manager import ExistingServerName, PluginBase, app_event
+from bedrock_server_manager.backups.contents import DEFAULT_COMPONENTS, BackupComponents
 from bedrock_server_manager.logging import log_operation_error
 
 
@@ -24,13 +25,25 @@ class PluginSettings(BaseModel):
         default=True,
         description="Reuse a complete backup from the same operation sequence, including a pre-update backup.",
     )
+    backup_mode: Literal["world", "selected", "full", "default"] = Field(
+        default="world",
+        description="Contents to capture before start. Default uses global backup settings.",
+    )
+    components: BackupComponents = Field(
+        default_factory=lambda: list(DEFAULT_COMPONENTS),
+        description="Components used only in selected mode.",
+    )
+    encryption: Literal["default", "on", "off"] = Field(
+        default="default",
+        description="Use global encryption, force encryption on, or force it off.",
+    )
     enable_backup_on_start: bool = Field(
         default=True, description="Back up this server before starting it."
     )
 
 
 class AutoBackupOnStart(PluginBase):
-    """Ensures a complete backup before starting a server. This
+    """Backs up selected server contents before starting a server. This
     plugin hooks into the ``before_server_start`` event to ensure a recent backup
     exists before the server goes online.
     """
@@ -38,7 +51,7 @@ class AutoBackupOnStart(PluginBase):
     settings_model = PluginSettings
 
     version = "1.3.1"
-    description = "Ensures a complete backup before starting a server. This plugin hooks into the `before_server_start` event."
+    description = "Backs up selected server contents before starting a server. This plugin hooks into the `before_server_start` event."
     author = "dmedina559"
     name = "Auto Backup On Start"
 
@@ -46,13 +59,13 @@ class AutoBackupOnStart(PluginBase):
     async def plugin_loaded(self):
         """Logs a message when the plugin is loaded."""
         self.logger.debug(
-            "Plugin loaded. Will ensure a complete backup before server starts."
+            "Plugin loaded. Will back up selected contents before server starts."
         )
 
     @app_event("before_server_start")
     async def backup_on_start(self, **kwargs: Any):
         """
-        Triggers a full backup of the server before it starts.
+        Backs up selected contents before the server starts.
         """
         from bedrock_server_manager.operations import OperationName
 
@@ -74,9 +87,18 @@ class AutoBackupOnStart(PluginBase):
         if selected and server_name not in selected:
             return
 
+        mode = await self.get_plugin_setting("backup_mode", default="world")
+        request = {
+            "server_name": server_name,
+            "mode": None if mode == "default" else mode,
+        }
+        if mode == "selected":
+            request["components"] = await self.get_plugin_setting(
+                "components", default=list(DEFAULT_COMPONENTS)
+            )
         if await self.get_plugin_setting("reuse_sequence_backup", default=True):
             coverage = await self.api.backup_restore.can_reuse_server_backup(
-                request={"server_name": server_name}
+                request=request
             )
             if coverage.reusable:
                 self.logger.info(
@@ -90,8 +112,14 @@ class AutoBackupOnStart(PluginBase):
         try:
             # The start operation holds the server lock and verified it is offline.
 
+            encryption = await self.get_plugin_setting("encryption", default="default")
             result = await self.api.backup_restore.backup_all(
-                request={"server_name": server_name}
+                request={
+                    **request,
+                    "encrypted": (
+                        None if encryption == "default" else encryption == "on"
+                    ),
+                }
             )
 
             if result.status == "success":

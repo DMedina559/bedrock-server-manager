@@ -237,7 +237,7 @@ async def test_encrypted_restore_on_fresh_install_needs_only_archive_and_kit(
         for line in kit.splitlines()
         if line.startswith("Recovery key: ")
     )
-    captured = await source.backups.create_snapshot(encrypted=True)
+    captured = await source.backups.create_snapshot(encrypted=True, include_packs=True)
     portable = source.backups.resolve_backup(captured.backup_id).read_bytes()
     old_config, old_data = bcm_config.get_config_dir(), source.settings.data_dir
     fresh_data, fresh_config = tmp_path / "fresh-data", tmp_path / "fresh-config"

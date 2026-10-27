@@ -83,3 +83,17 @@ def test_removed_settings_are_still_rejected_on_update(key):
 def test_unknown_nested_settings_are_still_rejected_on_load(section):
     with pytest.raises(ValidationError):
         SettingsState.from_dict({section: {"unknown_field": 4}})
+
+
+def test_application_timezone_is_validated_and_defaults_for_old_settings():
+    state = SettingsState.from_dict({"monitoring": {"max_retries": 4}})
+    assert state.get("general.timezone") == "UTC"
+    state.set("general.timezone", "America/Los_Angeles")
+    assert state.get("general.timezone") == "America/Los_Angeles"
+    assert (
+        SettingsState.from_dict(state.to_dict()).get("general.timezone")
+        == "America/Los_Angeles"
+    )
+    with pytest.raises(ValidationError):
+        state.set("general.timezone", "PDT")
+    assert state.get("general.timezone") == "America/Los_Angeles"

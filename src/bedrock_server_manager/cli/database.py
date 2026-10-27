@@ -1,7 +1,7 @@
 import json
 import logging
 import shutil
-from datetime import datetime
+from datetime import datetime, timezone
 from importlib.resources import files
 from pathlib import Path
 
@@ -69,7 +69,7 @@ def upgrade(ctx: click.Context, yes: bool):  # noqa: C901
     try:
         backup_dir = app_context.settings.get("paths.backups")
         Path(backup_dir).mkdir(parents=True, exist_ok=True)
-        timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+        timestamp = datetime.now(timezone.utc).strftime("%Y%m%d_%H%M%S")
         output = f"{backup_dir}/db_data_backup_{timestamp}.json"
         run_async(backup_database(app_context.db, output))
         click.secho(f"Database data backup successful! Saved to {output}", fg="green")
@@ -227,7 +227,7 @@ def downgrade(ctx: click.Context, revision: str):
         db_path = sync_db_url.split("sqlite:///")[1]
         backup_dir = app_context.settings.get("paths.backups")
         Path(backup_dir).mkdir(parents=True, exist_ok=True)
-        timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+        timestamp = datetime.now(timezone.utc).strftime("%Y%m%d_%H%M%S")
         backup_path = f"{backup_dir}/db_backup_pre_downgrade_{timestamp}.sqlite3"
         try:
             shutil.copy(db_path, backup_path)
@@ -264,7 +264,7 @@ def backup_db(ctx: click.Context, output: str | None):
 
     if not output:
         backup_dir = app_context.settings.get("paths.backups")
-        timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+        timestamp = datetime.now(timezone.utc).strftime("%Y%m%d_%H%M%S")
         output = f"{backup_dir}/db_data_backup_{timestamp}.json"
 
     click.echo("Backing up database to JSON...")

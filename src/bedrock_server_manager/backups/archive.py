@@ -133,7 +133,7 @@ def write_archive(
                 check_cancellation(cancellation_event)
                 source = staging / safe_name(item.path)
                 info = tarfile.TarInfo(item.path)
-                info.mode = 0o600
+                info.mode = 0o700 if item.executable else 0o600
                 info.size = item.size
                 with source.open("rb") as stream, _CancellableReader(stream) as reader:
                     reader.cancellation_event = cancellation_event
@@ -267,6 +267,8 @@ def unpack(
                 or digest(extracted, cancellation_event) != item.sha256
             ):
                 raise ValueError("Checksum mismatch")
+            if item.executable and os.name != "nt":
+                extracted.chmod(0o700)
         return manifest
     except BackupRestoreError:
         raise
@@ -284,6 +286,14 @@ def validate_manifest(manifest: BackupManifest) -> None:
         manifest.components
     ).issubset(COMPONENTS):
         raise ValueError("Incomplete component inventory")
+    for name in [item.path for item in manifest.files] + manifest.directories:
+        parts = name.split("/")
+        if (
+            parts[0] == "server-directory"
+            and len(parts) > 1
+            and parts[1].startswith(".bsm-")
+        ):
+            raise ValueError("Reserved BSM internal storage")
     names = [safe_name(item.path).casefold() for item in manifest.files]
     names += [safe_name(name).casefold() for name in manifest.directories]
     if len(set(names)) != len(names) or "manifest.json" in names:
