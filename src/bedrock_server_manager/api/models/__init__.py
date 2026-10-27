@@ -53,7 +53,6 @@ from .backup_restore import (
     ListBackupFilesRequest,
     ListBackupFilesResponse,
     ListSnapshotsRequest,
-    SnapshotReuseRequest,
     ListSnapshotsResponse,
     ManageSnapshotRequest,
     ManageSnapshotResponse,
@@ -73,6 +72,7 @@ from .backup_restore import (
     RestoreSnapshotResponse,
     RestoreWorldRequest,
     RestoreWorldResponse,
+    SnapshotReuseRequest,
     SnapshotReuseResponse,
 )
 from .ban import (
