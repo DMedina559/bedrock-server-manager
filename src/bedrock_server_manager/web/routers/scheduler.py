@@ -5,6 +5,8 @@ from fastapi import APIRouter, Depends, Response
 from ...api import scheduler as api
 from ...api.models.common import SuccessResponse
 from ...api.models.scheduler import (
+    ControlSchedulePayload,
+    ControlScheduleRequest,
     DeleteScheduleRequest,
     ListSchedulesRequest,
     ListSchedulesResponse,
@@ -59,4 +61,20 @@ async def delete_schedule(
 ) -> SuccessResponse:
     return await api.delete_schedule(
         DeleteScheduleRequest(schedule_id=schedule_id), app_context=context
+    )
+
+
+@router.post(
+    "/schedules/{schedule_id}/action",
+    operation_id="control_schedule",
+    response_model=SuccessResponse,
+)
+async def control_schedule(
+    schedule_id: str,
+    payload: ControlSchedulePayload,
+    context: AppContext = Depends(get_app_context),
+) -> SuccessResponse:
+    return await api.control_schedule(
+        ControlScheduleRequest(schedule_id=schedule_id, **payload.model_dump()),
+        app_context=context,
     )

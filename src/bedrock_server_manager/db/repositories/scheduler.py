@@ -28,13 +28,17 @@ class SchedulerRepository:
             async with storage.transaction() as session:
                 yield session
                 await session.flush()
-                rows = self._rows(
-                    (await session.execute(select(Schedule))).scalars().all()
-                )
+                query = select(Schedule)
+                if names:
+                    query = query.where(Schedule.schedule_id.in_(names))
+                rows = self._rows((await session.execute(query)).scalars().all())
             # The read model becomes visible only after the transaction commits.
             state = storage._scheduler_state
             if state is not None:
-                state.scheduler.replace_loaded(rows)
+                if names:
+                    state.scheduler.update_loaded(names, rows)
+                else:
+                    state.scheduler.replace_loaded(rows)
         if state is not None:
             from ...state.changeset import ChangeSet
 
@@ -69,18 +73,102 @@ class SchedulerRepository:
                     Schedule(
                         schedule_id=name,
                         configuration=config,
-                        state=initial_state or {},
+                        state=initial_state or self._activation(config),
                         legacy_server=legacy_server,
                     )
                 )
             elif row.configuration != config:
                 row.configuration = config
-                # Engine detects configuration changes and activates at its next poll.
+                lease = row.state.get("lease")
+                row.state = self._activation(config)
+                if lease:
+                    row.state = dict(row.state, lease=lease)
+
+    @staticmethod
+    def _activation(config):
+        from ...scheduler.runner import activation
+
+        return activation(config)
+
+    async def mutate(self, name, callback):
+        """Serialize cursor transitions with configuration changes and deletion."""
+        async with self._write((name,)) as session:
+            row = await session.get(Schedule, name)
+            if row is None:
+                return None
+            state = dict(row.state)
+            result = callback(dict(row.configuration), state)
+            row.state = state
+            return result
+
+    async def completed(self, name, slot):
+        async with self.db.session_manager() as session:
+            row = await session.scalar(
+                select(ScheduleRun.run_id)
+                .where(
+                    ScheduleRun.schedule_id == name,
+                    ScheduleRun.slot == slot,
+                    ScheduleRun.status == "completed",
+                )
+                .limit(1)
+            )
+            return row is not None
+
+    async def histories(self, names, limit=20):
+        """Fetch bounded histories in one query, including on SQLite and MySQL."""
+        from sqlalchemy import func
+
+        names = list(names)
+        if not names:
+            return {}
+        ranked = (
+            select(
+                ScheduleRun,
+                func.row_number()
+                .over(
+                    partition_by=ScheduleRun.schedule_id,
+                    order_by=(ScheduleRun.started_at.desc(), ScheduleRun.run_id.desc()),
+                )
+                .label("position"),
+            )
+            .where(ScheduleRun.schedule_id.in_(names))
+            .subquery()
+        )
+        async with self.db.session_manager() as session:
+            rows = (
+                (
+                    await session.execute(
+                        select(ranked).where(ranked.c.position <= limit)
+                    )
+                )
+                .mappings()
+                .all()
+            )
+        result = {name: [] for name in names}
+        for row in rows:
+            result[row["schedule_id"]].append(
+                {
+                    k: row[k]
+                    for k in (
+                        "run_id",
+                        "schedule_id",
+                        "slot",
+                        "status",
+                        "started_at",
+                        "finished_at",
+                        "correlation_id",
+                        "error",
+                    )
+                }
+            )
+        return result
 
     async def delete(self, name):
         async with self._write((name,)) as session:
             row = await session.get(Schedule, name)
-            if row is not None and row.state.get("status") == "running":
+            if row is not None and (
+                row.state.get("status") == "running" or row.state.get("lease")
+            ):
                 from ...error import UserInputError
 
                 raise UserInputError(
@@ -197,9 +285,11 @@ class SchedulerRepository:
                 row.error = "Application stopped before the task completed."
             schedules = (await session.execute(select(Schedule))).scalars().all()
             for row in schedules:
-                if row.state.get("status") == "running":
+                if row.state.get("status") == "running" or row.state.get("lease"):
+                    value = dict(row.state)
+                    value.pop("lease", None)
                     row.state = dict(
-                        row.state,
+                        value,
                         status="interrupted",
                         error="Application stopped before the task completed.",
                     )

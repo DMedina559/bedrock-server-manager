@@ -24,3 +24,13 @@ class SchedulerState:
             name: deepcopy((configuration, state, legacy))
             for name, configuration, state, legacy in rows
         }
+
+    def update_loaded(self, names, rows):
+        for name in names:
+            self._records.pop(name, None)
+        self._records.update(
+            {
+                name: deepcopy((config, state, legacy))
+                for name, config, state, legacy in rows
+            }
+        )

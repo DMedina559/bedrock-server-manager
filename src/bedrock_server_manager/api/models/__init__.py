@@ -159,6 +159,8 @@ from .properties import (
     ValidatePropertyValueResponse,
 )
 from .scheduler import (
+    ControlSchedulePayload,
+    ControlScheduleRequest,
     DeleteScheduleRequest,
     ListSchedulesRequest,
     ListSchedulesResponse,
@@ -475,6 +477,8 @@ __all__ += [
 
 
 __all__ += [
+    "ControlScheduleRequest",
+    "ControlSchedulePayload",
     "DeleteScheduleRequest",
     "ListSchedulesRequest",
     "ListSchedulesResponse",

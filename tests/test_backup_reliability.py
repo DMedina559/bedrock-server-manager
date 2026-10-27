@@ -248,7 +248,7 @@ async def test_scheduled_failures_have_bounded_retries(populated_server, monkeyp
     name = populated_server.server_name
     await populated_server.settings.set(
         "backups.schedules",
-        {name: {"time": "03:00", "timezone": "UTC", "stagger_minutes": 0}},
+        {name: {"time": "03:00", "timezone": "UTC", "stagger_minutes": 0, "catch_up": False}},
     )
     activated = datetime(2026, 10, 19, 2, tzinfo=timezone.utc)
     await run_due(backups, activated)
