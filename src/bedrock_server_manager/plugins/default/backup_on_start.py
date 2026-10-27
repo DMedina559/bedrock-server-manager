@@ -39,10 +39,10 @@ class PluginSettings(BaseModel):
         description="Use global encryption, force encryption on, or force it off.",
     )
     timeout_seconds: float = Field(
-        default=900.0,
+        default=300.0,
         gt=0,
         le=3600,
-        description="Maximum seconds for a pre-start backup (default 15 minutes). Optional backup failures allow startup; required backups prevent startup.",
+        description="Maximum seconds for a pre-start backup (default 5 minutes). Optional backup failures allow startup; required backups prevent startup.",
     )
     enable_backup_on_start: bool = Field(
         default=True, description="Back up this server before starting it."
