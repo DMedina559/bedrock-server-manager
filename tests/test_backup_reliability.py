@@ -10,7 +10,7 @@ from unittest.mock import AsyncMock
 
 import pytest
 
-from bedrock_server_manager.backups.models import PACK_COMPONENTS
+from bedrock_server_manager.backups.models import BASE_COMPONENTS, PACK_COMPONENTS
 from bedrock_server_manager.backups.recovery import RestoreJournal
 from bedrock_server_manager.backups.schedule import occurrences, run_due
 from bedrock_server_manager.state.settings import BackupSchedule
@@ -91,7 +91,9 @@ async def test_pack_capture_dry_run_and_restore(populated_server):
     for name in PACK_COMPONENTS:
         (root / name).mkdir(exist_ok=True)
         (root / name / "manifest.json").write_text('{"pack":"original"}')
-    snapshot = await server.backups.create_snapshot(include_packs=True)
+    snapshot = await server.backups.create_snapshot(
+        components=list(BASE_COMPONENTS + PACK_COMPONENTS)
+    )
     assert snapshot.manifest.format_version == 1
     assert all(
         snapshot.manifest.components[name] == "included" for name in PACK_COMPONENTS

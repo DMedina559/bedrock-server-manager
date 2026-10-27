@@ -126,3 +126,41 @@ Use `await self.api.runtime.write_plugin_file("settings.json", value)` to atomic
 Paths are relative to `<config_dir>/config/plugins/<plugin-id>/`. Traversal and symlink escapes are rejected, ownership is injected by the runtime, and capabilities from an unloaded plugin are revoked. Use the existing plugin settings API for ordinary structured settings; these file methods are for plugin-owned JSON files.
 
 The application does not expose its credentials directory through this capability. In-process Python plugins are trusted code with the host process's operating-system permissions; scoped APIs are not an OS sandbox.
+
+
+## Global and server settings models
+
+Declare optional models alongside the existing `settings_model`:
+
+```python
+from pydantic import BaseModel, ConfigDict, Field
+from bedrock_server_manager import PluginBase
+
+class Policy(BaseModel):
+    model_config = ConfigDict(extra="forbid", strict=True)
+    enabled: bool = True
+    retries: int = Field(default=3, ge=0, le=10)
+
+class MyPlugin(PluginBase):
+    version = "1.0.0"
+    settings_model = Policy
+    global_settings_model = Policy
+    server_settings_model = Policy
+```
+
+Each model is independent. Global and server values live in that scope's `custom.<plugin_name>` namespace. Plugin-local values retain their existing storage. Scoped declarations require a plugin identifier that is a single safe namespace segment. Core settings and other plugins' schemas cannot be redefined through these declarations.
+
+```python
+policy = await self.get_plugin_settings(scope="global")
+await self.set_plugin_setting("retries", 4, scope="global")
+await self.set_plugin_settings(
+    {"enabled": True, "retries": 2},
+    scope="server", server_name="survival",
+)
+```
+
+Omitting scope continues to address plugin-local settings. Server scope requires an existing `server_name`; other scopes must omit it. A whole-namespace write is atomic, and field writes validate against the latest committed namespace so concurrent sibling changes are retained. Defaults are supplied on read without persisting them. Validators receive `server_names`, `server_name`, and `plugin_name` in their Pydantic context.
+
+Ordinary global/server setting writes and server-settings restores validate changed registered namespaces at the storage transaction boundary, before database commit and state publication. Unchanged namespaces are not rewritten as a side effect of unrelated updates. Stored values remain when a plugin is disabled or removed; discovery retains models for installed disabled plugins, and refreshes registrations when plugins reload. Plugins without the new declarations keep their existing behavior.
+
+The existing `GET /api/plugins/{plugin_name}/settings` accepts `scope` and optional `server_name` query parameters. The existing PUT accepts the same fields with `settings` in its body. These administrative endpoints return the scope's model schema for the frontend editor. The plugin bridge injects caller identity into the existing singular get/set APIs; the plural `PluginBase` helpers use those APIs for whole-namespace operations.

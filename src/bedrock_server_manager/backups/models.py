@@ -6,7 +6,7 @@ from uuid import UUID
 
 from pydantic import BaseModel, ConfigDict, Field, JsonValue
 
-from .contents import DEFAULT_COMPONENTS, BackupMode
+from .contents import DEFAULT_COMPONENTS, SERVER_PACK_COMPONENTS, BackupMode
 
 ConfigComponent = Literal["server.properties", "allowlist.json", "permissions.json"]
 
@@ -24,12 +24,7 @@ Component = Literal[
     "development_resource_packs",
 ]
 BASE_COMPONENTS: tuple[Component, ...] = DEFAULT_COMPONENTS
-PACK_COMPONENTS: tuple[Component, ...] = (
-    "behavior_packs",
-    "resource_packs",
-    "development_behavior_packs",
-    "development_resource_packs",
-)
+PACK_COMPONENTS: tuple[Component, ...] = SERVER_PACK_COMPONENTS
 COMPONENTS = BASE_COMPONENTS + PACK_COMPONENTS + ("server_directory",)
 DIRECTORY_COMPONENTS = ("server_directory", "world", "script_config", *PACK_COMPONENTS)
 
@@ -278,8 +273,4 @@ def validate_selection_options(value):
     components = value.components
     if components is not None and mode not in (None, "selected"):
         raise ValueError("Components are only supported in selected mode")
-    if getattr(value, "include_packs", None) is not None and (
-        components is not None or mode not in (None, "selected")
-    ):
-        raise ValueError("Use component selection instead of include_packs")
     return value

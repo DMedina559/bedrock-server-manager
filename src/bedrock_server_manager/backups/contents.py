@@ -71,3 +71,11 @@ class BackupContentSelection(BaseModel):
     components: BackupComponents = Field(
         default_factory=lambda: list(DEFAULT_COMPONENTS)
     )
+
+
+SERVER_PACK_COMPONENTS: tuple[SelectableComponent, ...] = (
+    "behavior_packs",
+    "resource_packs",
+    "development_behavior_packs",
+    "development_resource_packs",
+)

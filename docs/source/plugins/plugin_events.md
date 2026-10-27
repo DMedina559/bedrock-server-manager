@@ -210,7 +210,7 @@ async def some_function(self, *, request, server_name, new_players_data=None, re
 ### Listener Signature:
 ```python
 @app_event("after_backup")
-async def some_function(self, *, request, server_name, result, file_to_backup=None, encrypted=None, include_packs=None, purpose=None, schedule_slot=None, **kwargs):
+async def some_function(self, *, request, server_name, result, file_to_backup=None, encrypted=None, purpose=None, schedule_slot=None, **kwargs):
     pass
 ```
 ### Available `kwargs`:
@@ -221,7 +221,6 @@ async def some_function(self, *, request, server_name, result, file_to_backup=No
 | `result` | `BackupWorldResponse | BackupConfigFileResponse | BackupAllResponse | CreateSnapshotResponse` |
 | `file_to_backup` | `str` |
 | `encrypted` | `bool | None` |
-| `include_packs` | `bool | None` |
 | `purpose` | `Literal['manual', 'scheduled']` |
 | `schedule_slot` | `str | None` |
 | `_triggering_plugin` | `str` (core, or plugin name) |
@@ -355,7 +354,7 @@ async def some_function(self, *, request, key=None, value=None, result, plugin_n
 | Key Name | Type |
 |----------|------|
 | `request` | `SetPluginSettingRequest | UpdatePluginSettingsRequest` |
-| `key` | `str` |
+| `key` | `str | None` |
 | `value` | `JsonValue` |
 | `result` | `SetPluginSettingResponse` |
 | `plugin_name` | `str` |
@@ -1012,7 +1011,7 @@ async def some_function(self, *, request, server_name, new_players_data=None, pl
 ### Listener Signature:
 ```python
 @app_event("before_backup")
-async def some_function(self, *, request, server_name, file_to_backup=None, encrypted=None, include_packs=None, purpose=None, schedule_slot=None, event, **kwargs):
+async def some_function(self, *, request, server_name, file_to_backup=None, encrypted=None, purpose=None, schedule_slot=None, event, **kwargs):
     pass
 ```
 ### Available `kwargs`:
@@ -1022,7 +1021,6 @@ async def some_function(self, *, request, server_name, file_to_backup=None, encr
 | `server_name` | `str` |
 | `file_to_backup` | `str` |
 | `encrypted` | `bool | None` |
-| `include_packs` | `bool | None` |
 | `purpose` | `Literal['manual', 'scheduled']` |
 | `schedule_slot` | `str | None` |
 | `event` | `CancellableEvent` |

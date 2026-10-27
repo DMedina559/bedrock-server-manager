@@ -11,6 +11,7 @@ from unittest.mock import AsyncMock
 import pytest
 
 from bedrock_server_manager.backups.assurance import cleanup_destination
+from bedrock_server_manager.backups.models import BASE_COMPONENTS, PACK_COMPONENTS
 from bedrock_server_manager.backups.recovery import RestoreJournal
 from bedrock_server_manager.backups.reports import recovery_report
 from bedrock_server_manager.error import BackupRestoreError
@@ -237,7 +238,9 @@ async def test_encrypted_restore_on_fresh_install_needs_only_archive_and_kit(
         for line in kit.splitlines()
         if line.startswith("Recovery key: ")
     )
-    captured = await source.backups.create_snapshot(encrypted=True, include_packs=True)
+    captured = await source.backups.create_snapshot(
+        encrypted=True, components=list(BASE_COMPONENTS + PACK_COMPONENTS)
+    )
     portable = source.backups.resolve_backup(captured.backup_id).read_bytes()
     old_config, old_data = bcm_config.get_config_dir(), source.settings.data_dir
     fresh_data, fresh_config = tmp_path / "fresh-data", tmp_path / "fresh-config"
