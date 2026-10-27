@@ -235,7 +235,10 @@ async def backup_all(
             message="Backup/restore operation already in progress.",
         )
     try:
-        logger.debug("Initiating full backup for server '%s'.", server_name)
+        logger.debug(
+            "Initiating backup with requested content selection for server '%s'.",
+            server_name,
+        )
         try:
             sequence = app_context.operations.sequence()
             names = {item.name for item in sequence.ancestry} if sequence else set()
@@ -691,6 +694,20 @@ async def manage_server_snapshot(
         request.server_name, require_installation=False
     ).backups
     key = request.recovery_key.get_secret_value() if request.recovery_key else None
+    from ..utils.progress import report_stage
+
+    await report_stage(
+        {
+            "verify": "Verifying backup",
+            "test_key": "Testing recovery key",
+            "delete": "Deleting backup",
+            "drill": "Testing backup recovery",
+            "copy": "Copying backup",
+            "annotate": "Updating backup notes",
+            "pin": "Pinning backup",
+            "unpin": "Unpinning backup",
+        }.get(request.action, "Managing backup")
+    )
     if request.action in ("verify", "test_key"):
         if request.action == "test_key" and not key:
             raise BackupRestoreError("Enter the recovery key from your emergency kit.")

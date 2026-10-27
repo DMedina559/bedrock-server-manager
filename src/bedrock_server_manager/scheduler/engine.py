@@ -201,7 +201,9 @@ async def run_due(
                 ).isoformat(),
             )
             backups.logger.warning(
-                "Scheduled backup needs attention for '%s'.", backups.server.server_name
+                "Scheduled backup needs attention for '%s'.",
+                backups.server.server_name,
+                exc_info=True,
             )
         latest = await load()
         latest[record_key] = record

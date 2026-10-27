@@ -3,6 +3,7 @@
 Plugin to automatically back up a server before it starts.
 """
 
+import asyncio
 from typing import Any, Literal
 
 from pydantic import BaseModel, ConfigDict, Field
@@ -37,6 +38,12 @@ class PluginSettings(BaseModel):
         default="default",
         description="Use global encryption, force encryption on, or force it off.",
     )
+    timeout_seconds: float = Field(
+        default=300.0,
+        gt=0,
+        le=3600,
+        description="Maximum seconds for a pre-start backup (default 5 minutes). Optional backup failures allow startup; required backups prevent startup.",
+    )
     enable_backup_on_start: bool = Field(
         default=True, description="Back up this server before starting it."
     )
@@ -50,7 +57,7 @@ class AutoBackupOnStart(PluginBase):
 
     settings_model = PluginSettings
 
-    version = "1.3.1"
+    version = "1.3.2"
     description = "Backs up selected server contents before starting a server. This plugin hooks into the `before_server_start` event."
     author = "dmedina559"
     name = "Auto Backup On Start"
@@ -62,7 +69,7 @@ class AutoBackupOnStart(PluginBase):
             "Plugin loaded. Will back up selected contents before server starts."
         )
 
-    @app_event("before_server_start")
+    @app_event("before_server_start", timeout_seconds=3600)
     async def backup_on_start(self, **kwargs: Any):
         """
         Backs up selected contents before the server starts.
@@ -113,14 +120,17 @@ class AutoBackupOnStart(PluginBase):
             # The start operation holds the server lock and verified it is offline.
 
             encryption = await self.get_plugin_setting("encryption", default="default")
-            result = await self.api.backup_restore.backup_all(
-                request={
-                    **request,
-                    "encrypted": (
-                        None if encryption == "default" else encryption == "on"
-                    ),
-                }
-            )
+            timeout = await self.get_plugin_setting("timeout_seconds", default=300.0)
+            self.logger.debug("Pre-start backup deadline: %.3f seconds", timeout)
+            async with asyncio.timeout(timeout):
+                result = await self.api.backup_restore.backup_all(
+                    request={
+                        **request,
+                        "encrypted": (
+                            None if encryption == "default" else encryption == "on"
+                        ),
+                    }
+                )
 
             if result.status == "success":
                 self.logger.info(
@@ -138,6 +148,22 @@ class AutoBackupOnStart(PluginBase):
                     "Pre-start backup for '%s' failed: %s", server_name, error_message
                 )
 
+        except TimeoutError:
+            event = kwargs.get("event")
+            required = await self.get_plugin_setting(
+                "require_complete_backup", default=False
+            )
+            if required and event is not None:
+                event.cancel("Required pre-start backup timed out.")
+            self.logger.warning(
+                "Pre-start backup timed out for '%s'; startup %s",
+                server_name,
+                (
+                    "cancelled because a complete backup is required"
+                    if required
+                    else "will continue because backup is optional"
+                ),
+            )
         except Exception as e:
             event = kwargs.get("event")
             if event is not None and await self.get_plugin_setting(

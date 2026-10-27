@@ -259,6 +259,7 @@ class AppContext:
                     getLogger(__name__).warning(
                         "Restore recovery for '%s' requires attention; the server remains blocked from starting.",
                         name,
+                        exc_info=True,
                     )
 
         steps = (

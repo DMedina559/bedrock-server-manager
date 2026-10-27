@@ -294,6 +294,7 @@ async def _maintain_assurance(backups: Any):
         backups.logger.warning(
             "Isolated recovery drill needs attention for '%s'.",
             backups.server.server_name,
+            exc_info=True,
         )
     return True
 

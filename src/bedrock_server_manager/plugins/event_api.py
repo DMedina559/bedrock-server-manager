@@ -39,6 +39,7 @@ class PluginEventAPI:
         listener_id: str | None = None,
         before: tuple[str, ...] = (),
         after: tuple[str, ...] = (),
+        timeout_seconds: float | None = None,
     ) -> str:
         """Register a listener automatically removed when this plugin unloads."""
         return cast(
@@ -53,6 +54,7 @@ class PluginEventAPI:
                 listener_id=listener_id,
                 before=before,
                 after=after,
+                timeout_seconds=timeout_seconds,
             ),
         )
 
@@ -67,6 +69,7 @@ class PluginEventAPI:
         listener_id: str | None = None,
         before: tuple[str, ...] = (),
         after: tuple[str, ...] = (),
+        timeout_seconds: float | None = None,
     ) -> str:
         """Listen once, including when callback dispatch overlaps another event."""
         return cast(
@@ -81,6 +84,7 @@ class PluginEventAPI:
                 listener_id=listener_id,
                 before=before,
                 after=after,
+                timeout_seconds=timeout_seconds,
             ),
         )
 
@@ -112,6 +116,7 @@ class PluginEventAPI:
         listener_id: str | None = None,
         before: tuple[str, ...] = (),
         after: tuple[str, ...] = (),
+        timeout_seconds: float | None = None,
         once: bool = False,
     ) -> str:
         """Opt into a single typed context argument; before-hooks can cancel work."""
@@ -128,6 +133,7 @@ class PluginEventAPI:
                 listener_id=listener_id,
                 before=before,
                 after=after,
+                timeout_seconds=timeout_seconds,
                 once=once,
             ),
         )
@@ -154,6 +160,7 @@ class PluginEventAPI:
         listener_id: str | None = None,
         before: tuple[str, ...] = (),
         after: tuple[str, ...] = (),
+        timeout_seconds: float | None = None,
         once: bool = False,
     ) -> str:
         """Observe immutable notification data without cancellation access."""
@@ -170,6 +177,7 @@ class PluginEventAPI:
                 listener_id=listener_id,
                 before=before,
                 after=after,
+                timeout_seconds=timeout_seconds,
                 once=once,
             ),
         )

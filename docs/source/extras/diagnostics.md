@@ -143,3 +143,24 @@ partial views. The retained diagnostic journal continues to store sanitized
 failure/lifecycle records under its existing retention policy. Payloads, task
 arguments, credentials, and cancellation messages are excluded from these
 administrator activity responses.
+
+
+## Troubleshooting long operations
+
+Use INFO logs for backup selection and completion, scheduled-run outcomes, and
+operational warnings. Enable DEBUG temporarily to include API durations,
+backup/restore stages, reused capture hash counts, inventory file counts and sizes, and event-listener
+start/finish records. Event records include the listener owner, event ID,
+deadline, outcome, and elapsed time. A hook deadline can cancel a pre-start
+backup even when the same backup succeeds manually.
+
+Backup cancellation logs identify the last reported stage. Cancellation waits
+for owned filesystem workers to stop before releasing locks; a timeout may
+therefore take longer than its configured deadline to return. Inventory checks
+for cancellation between files and while hashing file contents.
+
+Unexpected exceptions retain tracebacks in application log files. Normal API
+responses and background-task errors use sanitized messages, without exception
+text or tracebacks. Expected validation and state conflicts are DEBUG records;
+repeated diagnostic-store/provider failures are rate limited. Stage and timing
+records omit request bodies; raw WebSocket protocol frame dumps are suppressed.

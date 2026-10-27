@@ -140,6 +140,7 @@ class ServerProcess:
                     "Failed to set status to STARTING for '%s': %s",
                     self.server.server_name,
                     e_status,
+                    exc_info=True,
                 )
             self.logger.debug(
                 "Attempting to start server '%s'...", self.server.server_name
@@ -314,6 +315,7 @@ class ServerProcess:
                     self.logger.warning(
                         "Graceful stop failed for '%s'; forcing exit.",
                         self.server.server_name,
+                        exc_info=True,
                     )
                     try:
                         process.kill()

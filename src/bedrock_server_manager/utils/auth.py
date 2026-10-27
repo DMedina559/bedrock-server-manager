@@ -178,7 +178,10 @@ async def _get_user_from_token(
                     return user_resp
         except Exception as db_err:
             logger.warning(
-                "Failed DB fallback lookup for user '%s': %s", username, db_err
+                "Failed DB fallback lookup for user '%s': %s",
+                username,
+                db_err,
+                exc_info=True,
             )
             from ..error import DependencyUnavailableError
 

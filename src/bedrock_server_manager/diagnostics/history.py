@@ -2,6 +2,7 @@
 
 import asyncio
 import base64
+import logging
 import time
 from typing import TYPE_CHECKING, Literal
 
@@ -10,6 +11,7 @@ from sqlalchemy import case, delete, func, or_, select
 
 from ..db.models import DiagnosticHistoryRow
 from ..error import UserInputError
+from ..logging import RepeatedFailureReporter
 from .models import (
     DiagnosticHistory,
     DiagnosticOptions,
@@ -54,6 +56,7 @@ def _encode_cursor(record: DiagnosticRecord) -> str:
 
 class DiagnosticHistoryStore:
     def __init__(self, database: "Database", options: DiagnosticOptions):
+        self._log_failures = RepeatedFailureReporter(logging.getLogger(__name__))
         self.database = database
         self.options = options
         self.queue: asyncio.Queue[DiagnosticRecord] = asyncio.Queue(options.queue_limit)
@@ -86,10 +89,14 @@ class DiagnosticHistoryStore:
             try:
                 async with asyncio.timeout(2):
                     await self._write(record)
+                self._log_failures.recover("history-write")
             except asyncio.CancelledError:
                 self.dropped += 1
                 raise
             except Exception as error:
+                self._log_failures.report(
+                    "history-write", "Diagnostic %s failed: %s", error
+                )
                 self.last_error_type = type(error).__name__
                 self.write_failures += 1
                 self.dropped += 1
@@ -138,10 +145,12 @@ class DiagnosticHistoryStore:
         self.last_error_type = None
 
     def _read_succeeded(self) -> None:
+        self._log_failures.recover("history-read")
         self.last_read_success_at = time.time()
         self.last_read_error_type = None
 
     def _read_failed(self, error: Exception) -> None:
+        self._log_failures.report("history-read", "Diagnostic %s failed: %s", error)
         self.read_failures += 1
         self.last_read_error_type = type(error).__name__
 

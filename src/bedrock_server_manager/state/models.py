@@ -17,6 +17,7 @@ from .types import UserRole
 class PersistentRecord(BaseModel):
     model_config = ConfigDict(
         extra="forbid",
+        hide_input_in_errors=True,
         strict=True,
         validate_assignment=True,
         validate_default=True,

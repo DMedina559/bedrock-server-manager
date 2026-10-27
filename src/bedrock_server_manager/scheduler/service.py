@@ -10,6 +10,7 @@ if TYPE_CHECKING:
 
 from datetime import datetime, timezone
 
+from ..logging import RepeatedFailureReporter
 from ..utils.threads import run_in_thread
 from .engine import occurrences, signature
 from .runner import DeferredRun, next_attempt, run_schedule
@@ -17,6 +18,7 @@ from .runner import DeferredRun, next_attempt, run_schedule
 
 class Scheduler:
     def __init__(self, context):
+        self._log_failures = RepeatedFailureReporter(logging.getLogger(__name__))
         self.context = context
         self.task = None
         self._jobs = {}
@@ -128,7 +130,10 @@ class Scheduler:
                     async with instance.operation_lock:
                         value = await run_in_thread(instance.backups.catalog.load)
                     state = value.get("schedule", {})
-                except Exception:
+                except Exception as error:
+                    self._log_failures.report(
+                        "legacy-schedule", "Scheduler %s failed: %s", error
+                    )
                     state = {}
             if name not in known or known[name][1] != config:
                 await self.repository.save(
@@ -160,7 +165,10 @@ class Scheduler:
                     config["server_name"], require_installation=False
                 )
                 available = self.available(config["task"])
-            except Exception:
+            except Exception as error:
+                self._log_failures.report(
+                    "availability", "Scheduler %s failed: %s", error
+                )
                 available = False
             try:
                 slots = occurrences(
@@ -419,7 +427,10 @@ class Scheduler:
                 ):
                     try:
                         await server.backups.verify_snapshot(item.backup_id)
-                    except Exception:
+                    except Exception as error:
+                        self._log_failures.report(
+                            "verification", "Scheduler %s failed: %s", error
+                        )
                         failed += 1
             if failed:
                 raise RuntimeError(

@@ -30,6 +30,7 @@ from ..error import (
 )
 from ..failures import classify_failure
 from ..results import CleanupResult
+from ..utils.progress import report_stage
 from ..utils.threads import run_in_thread
 from .files import (
     extract_archive,
@@ -377,6 +378,7 @@ class BedrockDownloader:
         self.logger.debug(
             "Attempting to download server from: %s", self.resolved_download_url
         )
+        await report_stage("Downloading server software")
         self.logger.debug("Saving downloaded file to: %s", self.zip_file_path)
 
         target_dir = os.path.dirname(self.zip_file_path)
@@ -408,11 +410,19 @@ class BedrockDownloader:
                         )
                         total_size = int(response.headers.get("content-length", 0))
                         bytes_written = 0
+                        reported_bucket = -1
                         async with aiofiles.open(download_path, "wb") as f:
                             # Write the file in chunks to avoid high memory usage.
                             async for chunk in response.content.iter_chunked(8192 * 4):
                                 await f.write(chunk)
                                 bytes_written += len(chunk)
+                                if total_size > 0:
+                                    bucket = min(10, bytes_written * 10 // total_size)
+                                    if bucket > reported_bucket:
+                                        reported_bucket = bucket
+                                        await report_stage(
+                                            f"Downloading server software: {bucket * 10}%"
+                                        )
                         self.logger.info(
                             "Bedrock download complete (%s bytes): '%s'.",
                             bytes_written,
@@ -588,7 +598,9 @@ class BedrockDownloader:
             )
 
         except Exception as e:
-            self.logger.warning("Could not merge new server.properties from zip: %s", e)
+            self.logger.warning(
+                "Could not merge new server.properties from zip: %s", e, exc_info=True
+            )
             raise
 
     def get_actual_version(self) -> Optional[str]:
@@ -637,6 +649,7 @@ class BedrockDownloader:
         if not await aiofiles.ospath.exists(self.zip_file_path):
             raise AppFileNotFoundError(self.zip_file_path, "ZIP file to extract")
 
+        await report_stage("Extracting server software")
         self.logger.info("Extracting Bedrock server files into '%s'.", self.server_dir)
         self.logger.debug(
             "Extraction mode: %s",

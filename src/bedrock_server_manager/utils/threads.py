@@ -2,12 +2,14 @@
 
 import asyncio
 import inspect
+import logging
 import threading
 import time
 from dataclasses import dataclass
 from typing import IO, Any, Callable, TypedDict, TypeVar
 
 Result = TypeVar("Result")
+logger = logging.getLogger(__name__)
 
 
 @dataclass
@@ -37,6 +39,8 @@ def copy_stream(
     source: IO[bytes],
     target: IO[bytes],
     cancellation_event: threading.Event | None = None,
+    *,
+    on_chunk: Callable[[bytes], None] | None = None,
 ) -> None:
     """Copy in bounded chunks and check cancellation between reads and writes."""
     while True:
@@ -46,6 +50,8 @@ def copy_stream(
             break
         check_cancellation(cancellation_event)
         target.write(chunk)
+        if on_chunk is not None:
+            on_chunk(chunk)
 
 
 def worker_snapshot() -> WorkerSnapshot:
@@ -89,6 +95,7 @@ async def run_in_thread(
     except (TypeError, ValueError):
         pass
     record = _Worker(submitted_at=time.monotonic())
+    worker_name = getattr(target, "__qualname__", type(target).__name__)
 
     def invoke() -> Result:
         record.started_at = time.monotonic()
@@ -98,17 +105,31 @@ async def run_in_thread(
     _workers[worker] = record
     worker.add_done_callback(lambda task: _workers.pop(task, None))
     try:
-        return await asyncio.shield(worker)
+        await asyncio.wait({worker})
+        return worker.result()
     except asyncio.CancelledError:
         record.cancelled_at = time.monotonic()
         cancellation_event.set()
+        logger.warning(
+            "Worker cancellation requested: %s; waiting for worker to stop",
+            worker_name,
+        )
         while not worker.done():
             try:
-                await asyncio.shield(worker)
+                await asyncio.wait({worker})
             except asyncio.CancelledError:
                 continue
-            except Exception:
-                break
         if not worker.cancelled():
-            worker.exception()
+            error = worker.exception()
+            if error is not None and not isinstance(error, InterruptedError):
+                logger.warning(
+                    "Worker failed while draining after cancellation: %s",
+                    worker_name,
+                    exc_info=(type(error), error, error.__traceback__),
+                )
+        logger.debug(
+            "Worker drained after cancellation: %s (%.3f seconds)",
+            worker_name,
+            time.monotonic() - record.cancelled_at,
+        )
         raise

@@ -113,6 +113,15 @@ events and returns a typed dispatch summary.
 
 The `events` settings section controls `history_limit` (200), `max_active` (256),
 `max_depth` (32), `listener_timeout_seconds` (30), and `hook_timeout_seconds` (120).
+A listener may opt into a bounded override using
+`@app_event("before_server_start", timeout_seconds=900)` or
+`self.api.events.listen(name, callback, timeout_seconds=900)`. The optional
+value must be positive and no greater than 3600 seconds. Existing listeners
+retain the global default. A nested callback's context deadline remains bounded
+by its active parent's deadline. Plugins should choose an operation-specific
+budget and handle optional work failures explicitly; an unhandled before-hook
+failure still cancels the operation.
+
 `max_workers` bounds outstanding synchronous callbacks globally, including queued
 and timed-out work; by default it follows `max_active`. `max_workers_per_owner`
 can impose a tighter owner limit and otherwise follows the global worker limit.

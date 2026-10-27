@@ -415,6 +415,7 @@ class BedrockProcessManager:
                         self.logger.warning(
                             "Could not publish player stats update: %s",
                             type(e).__name__,
+                            exc_info=True,
                         )
 
                 # Enforce bans

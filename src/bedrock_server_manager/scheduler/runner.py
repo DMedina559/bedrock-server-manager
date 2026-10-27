@@ -5,9 +5,12 @@ context can use the stable slot as their idempotency key.
 """
 
 import asyncio
+import logging
+import time
 from datetime import datetime, timedelta, timezone
 from uuid import uuid4
 
+from ..logging import log_operation_error
 from .engine import occurrences, signature
 
 
@@ -173,6 +176,9 @@ async def run_schedule(
     claimed = await repository.mutate(name, claim)
     if claimed is None:
         return False
+    logger = logging.getLogger(__name__)
+    started = time.monotonic()
+    logger.info("Scheduled run started: schedule=%s slot=%s", name, claimed["slot"])
     slot = claimed["slot"]
     outcome = "completed"
     error = None
@@ -189,7 +195,14 @@ async def run_schedule(
         outcome = "deferred"
     except asyncio.CancelledError as exc:
         outcome, error, cancelled = "interrupted", "Task interrupted by shutdown.", exc
-    except Exception:
+    except Exception as failure:
+        log_operation_error(
+            logger,
+            "Scheduled run failed: schedule=%s slot=%s",
+            name,
+            slot,
+            error=failure,
+        )
         outcome, error = (
             "failed",
             "Scheduled task failed; inspect diagnostics and logs.",
@@ -233,6 +246,12 @@ async def run_schedule(
                 record.update(next_retry_at=None, blocked_reason="retry_expired")
 
     await repository.mutate(name, finish)
+    logger.info(
+        "Scheduled run finished: schedule=%s outcome=%s duration_ms=%.3f",
+        name,
+        outcome,
+        (time.monotonic() - started) * 1000,
+    )
     if cancelled is not None:
         raise cancelled
     return True

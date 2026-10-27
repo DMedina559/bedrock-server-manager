@@ -105,6 +105,7 @@ async def _install_or_update(
             status_to_set,
             server.server_name,
             e_stat,
+            exc_info=True,
         )
     try:
         if not is_currently_installed:
@@ -116,6 +117,7 @@ async def _install_or_update(
             "Could not set target version for '%s': %s",
             server.server_name,
             e_set_target,
+            exc_info=True,
         )
     downloader = BedrockDownloader(
         settings_obj=server.settings,

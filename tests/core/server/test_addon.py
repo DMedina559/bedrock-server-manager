@@ -2,7 +2,12 @@ import json
 import os
 from unittest.mock import patch
 
+import pytest
 from bsm_test_utils import create_behavior_pack, create_resource_pack
+from pydantic import ValidationError
+
+from bedrock_server_manager.api.models.addon import ListInstalledAddonsResponse
+from bedrock_server_manager.core.data import SubpackRecord
 
 
 async def test_list_installed_addons(real_bedrock_server):
@@ -192,3 +197,65 @@ async def test_process_invalid_mcpack_archive(real_bedrock_server, tmp_path):
         # Even if it extracted, it couldn't parse the UUID properly.
         # Most likely behavior packs list will be empty or not contain a valid entry.
         assert len(addons.get("behavior_packs", [])) == 0
+
+
+@pytest.mark.parametrize("extra_pack", [False, True])
+async def test_subpack_manifest_extensions_do_not_break_listing(
+    real_bedrock_server, extra_pack
+):
+    server = real_bedrock_server
+    with patch.object(server, "get_world_name", return_value="test_world"):
+        packs_dir = os.path.join(
+            server.paths.server_dir, "worlds", "test_world", "resource_packs"
+        )
+        os.makedirs(packs_dir, exist_ok=True)
+        pack_path = create_resource_pack(packs_dir, name="subpacks", as_zip=False)
+        manifest_path = os.path.join(pack_path, "manifest.json")
+        with open(manifest_path) as stream:
+            manifest = json.load(stream)
+        manifest["subpacks"] = [
+            {
+                "folder_name": f"variant_{index}",
+                "name": f"Variant {index}",
+                "memory_performance_tier": index,
+                "extension": {"future": True},
+            }
+            for index in range(5)
+        ]
+        original = json.dumps(manifest)
+        with open(manifest_path, "w") as stream:
+            stream.write(original)
+        if extra_pack:
+            create_resource_pack(packs_dir, name="ordinary", as_zip=False)
+
+        addons = await server.addons.list_installed_addons()
+        response = ListInstalledAddonsResponse.model_validate(
+            {"status": "success", "addons": addons}
+        )
+        pack = next(p for p in response.addons.resource_packs if p.subpacks)
+        assert [p.memory_tier for p in pack.subpacks] == list(range(5))
+        assert len(response.addons.resource_packs) == 1 + extra_pack
+        with open(manifest_path) as stream:
+            assert stream.read() == original
+
+
+@pytest.mark.parametrize(
+    "fields, expected",
+    [
+        ({"memory_performance_tier": 2}, 2),
+        ({"memory_tier": 3}, 3),
+        ({"memory_tier": 3, "memory_performance_tier": 2}, 3),
+    ],
+)
+def test_subpack_memory_tier_normalization(fields, expected):
+    original = dict(fields)
+    record = SubpackRecord.model_validate({"folder_name": "default", **fields})
+    assert record.memory_tier == expected
+    assert "memory_performance_tier" not in record.model_dump()
+    assert fields == original
+
+
+@pytest.mark.parametrize("field", ["memory_tier", "memory_performance_tier"])
+def test_subpack_rejects_negative_memory_tiers(field):
+    with pytest.raises(ValidationError):
+        SubpackRecord.model_validate({"folder_name": "default", field: -1})

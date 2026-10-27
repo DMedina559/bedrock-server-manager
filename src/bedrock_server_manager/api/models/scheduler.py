@@ -13,7 +13,7 @@ class ScheduleConfigurationView(ScheduledTask):
 
     @field_validator("timezone")
     @classmethod
-    def known_timezone(cls, value):
+    def known_timezone(cls, value: str) -> str:
         return value
 
 

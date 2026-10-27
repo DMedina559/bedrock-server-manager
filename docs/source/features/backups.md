@@ -498,3 +498,70 @@ size, and concurrency limits. Preparation failures remain visible until repaired
 BSM restart. Schedule controls wake the loop immediately. Definitions and cursors
 use the existing scheduler tables; execution leases and cursor metadata are stored
 in their JSON state, so these additions require no new database migration.
+
+
+## Pre-start backup deadlines
+
+Backup On Start has a `timeout_seconds` setting, defaulting to 300 seconds
+(5 minutes), with a maximum of 3600 seconds. This budget applies to the backup
+inside the start operation; ordinary event hooks retain their existing default
+limits. Settings changes take effect on the next attempt.
+
+If the backup times out, its filesystem worker stops and temporary capture data
+is cleaned up before startup proceeds. With `require_complete_backup` enabled,
+startup is cancelled. Otherwise the timeout is logged and startup continues.
+Explicit cancellation of the start operation, plugin unload, or an enclosing
+operation deadline still cancels the operation; it is not treated as an optional backup failure.
+
+Offline captures calculate SHA-256 hashes while copying files into private
+staging storage. Inventory reuses those hashes when the staged file's size and
+modification time still match. Live world captures and newly generated files
+are hashed during inventory. These changes preserve the backup format and
+restore checks. Optional verification after creation remains disabled by default.
+
+## Compression and capture performance
+
+Choose **Fast**, **Balanced**, or **Small** in Settings → Backups. Balanced is
+used by default. Fast uses gzip level 1, Balanced level 6, and Small level 9;
+all produce the same portable `.bsmbackup` format and retain integrity checks
+and optional encryption. Older backups remain readable.
+
+The archive writer uses bounded 1 MiB buffers. Compression builds a temporary
+payload before encryption and archive publication, so capture storage must also
+accommodate that compressed payload. Temporary payloads live in private staging
+storage and are removed on completion, failure, or cancellation. Copies remain
+sequential.
+
+On Windows, staged files inherit the private capture directory's ACL instead
+of rebuilding an ACL for each file. Other copy paths keep their explicit
+permission handling; POSIX file modes remain unchanged. The completed archive
+is flushed once before publication, and POSIX publication also flushes the
+containing directory.
+
+Backup listing and health read complete, atomically published archives and
+catalog snapshots without taking the capture operation lock. A newly published
+archive can briefly appear without its final catalog metadata; it is not shown
+as verified until matching verification metadata exists. Temporary captures are
+not listed. Verify, delete, restore, and metadata mutations retain their locks.
+
+DEBUG logs and task updates distinguish compression, archive writing/encryption,
+content validation, publication, archive fingerprinting, destination copies, and
+retention. The capture-start log records the effective compression profile, and
+DEBUG payload logs record its gzip level. Payload timings separately report
+source-file open, read, and close wall time. The remaining `archive_other_ms`
+includes tar processing, gzip, output I/O, metadata, and finalization; it is not a
+measurement of gzip CPU time. Timings are aggregated without logging file names
+or contents and require no additional file reads.
+
+
+Offline captures also append copied file contents to one private, capture-local
+staging file. Archive creation reads that file instead of reopening each copied
+file, reducing Windows file-open overhead. Copying remains sequential. The
+original staged tree remains available for validation, so this optimization
+requires additional temporary space approximately equal to the copied contents,
+on top of the staged tree and compressed payload. The staging file and its
+in-memory index are discarded after capture, including cancellation and failure.
+Live-world captures, generated settings, and files whose staged size or
+modification time changed use normal file reads. The `spooled_files` DEBUG metric
+shows how many archive entries used the single staging file. The backup format
+and restore behavior are unchanged.

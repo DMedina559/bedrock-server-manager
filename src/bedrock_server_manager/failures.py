@@ -90,7 +90,7 @@ def classify_failure(error: Exception) -> ClassifiedFailure:
             APICancelledError,
             "operation_canceled",
             409,
-            "Operation canceled by a plugin.",
+            "Operation canceled before execution.",
         ),
         (InvalidServerNameError, "invalid_server_name", 400, "Invalid server name."),
         (AppFileNotFoundError, "not_found", 404, "Resource not found."),

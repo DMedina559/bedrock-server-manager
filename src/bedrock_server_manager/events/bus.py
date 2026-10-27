@@ -81,6 +81,7 @@ class Subscription:
     after: tuple[str, ...] = ()
     kind: str = "legacy"
     callback_identity: tuple[int, ...] | None = None
+    timeout_seconds: float | None = None
 
 
 @dataclass
@@ -157,7 +158,16 @@ class EventBus:
         kind: str = "legacy",
         callback_identity: tuple[int, ...] | None = None,
         temporary: bool = False,
+        timeout_seconds: float | None = None,
     ) -> str:
+        if timeout_seconds is not None and (
+            isinstance(timeout_seconds, bool)
+            or not isinstance(timeout_seconds, (int, float))
+            or not 0 < timeout_seconds <= 3600
+        ):
+            raise ValueError(
+                "Listener timeout must be finite and between 0 and 3600 seconds"
+            )
         with self._lock:
             self.check_owner(owner, generation)
             if not callable(callback):
@@ -186,6 +196,7 @@ class EventBus:
                     subscription.before,
                     subscription.after,
                     subscription.kind,
+                    subscription.timeout_seconds,
                 ) == (
                     name,
                     owner,
@@ -199,6 +210,7 @@ class EventBus:
                     before,
                     after,
                     kind,
+                    timeout_seconds,
                 ):
                     if temporary:
                         self._subscription_leases[subscription.token] += 1
@@ -225,6 +237,7 @@ class EventBus:
                 after,
                 kind,
                 callback_identity,
+                timeout_seconds,
             )
             try:
                 if listener_id or before or after:
@@ -702,7 +715,7 @@ class EventBus:
         previous = self._current.get()
         token = self._current.set((envelope, asyncio.current_task()))
         parent = self._handler.get()
-        timeout = (
+        timeout = subscription.timeout_seconds or (
             self.options.hook_timeout_seconds
             if self.registry.definition(envelope.name).phase == "before"
             and not subscription.observer
@@ -825,7 +838,8 @@ class EventBus:
 
         worker.add_done_callback(finished)
         try:
-            result = await asyncio.shield(worker)
+            await asyncio.wait({worker})
+            result = worker.result()
         except asyncio.CancelledError:
             abandoned = True
             cancellation.set()
@@ -863,10 +877,12 @@ class EventBus:
                 self._rejections.get("worker_capacity", 0) + 1
             )
         logger.warning(
-            "Event listener '%s' failed for '%s': %s",
+            "Event listener '%s' failed for '%s': %s (event_id=%s)",
             owner,
             record.name,
             type(error).__name__,
+            record.event_id,
+            exc_info=(type(error), error, error.__traceback__),
         )
 
     async def _deliver(
@@ -899,10 +915,17 @@ class EventBus:
         started = monotonic()
         stats = self._subscription_stats.get(subscription.token)
         try:
-            timeout = (
+            timeout = subscription.timeout_seconds or (
                 self.options.hook_timeout_seconds
                 if definition.phase == "before" and not subscription.observer
                 else self.options.listener_timeout_seconds
+            )
+            logger.debug(
+                "Event listener started: owner=%s event=%s event_id=%s deadline_seconds=%.3f",
+                subscription.owner,
+                envelope.name,
+                record.event_id,
+                timeout,
             )
             async with asyncio.timeout(timeout):
                 result = await self._invoke(
@@ -947,6 +970,14 @@ class EventBus:
                 raise
         finally:
             listener.duration_ms = (monotonic() - started) * 1000
+            logger.debug(
+                "Event listener finished: owner=%s event=%s event_id=%s status=%s duration_ms=%.3f",
+                subscription.owner,
+                envelope.name,
+                record.event_id,
+                listener.status,
+                listener.duration_ms,
+            )
             if stats is not None and listener in record.listeners:
                 stats["calls"] += 1
                 stats["failures"] += int(listener.status in {"failed", "timed_out"})

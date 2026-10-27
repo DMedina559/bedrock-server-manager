@@ -89,6 +89,10 @@ class _TransportFilter(logging.Filter):
     """Keep HTTP access and routine WebSocket lifecycle records at DEBUG."""
 
     def filter(self, record: logging.LogRecord) -> bool:
+        # Protocol frame dumps include arbitrary client payloads and cannot be
+        # made safe by credential-pattern redaction alone.
+        if record.levelno <= logging.DEBUG and str(record.msg).startswith(("< ", "> ")):
+            return False
         routine = record.name == "uvicorn.access" or (
             record.msg in ("connection open", "connection closed")
             or ('"WebSocket %s" [accepted]' in str(record.msg))
