@@ -28,6 +28,7 @@ from ..utils.progress import report_stage
 from ..utils.threads import check_cancellation, copy_stream, run_in_thread
 from .archive import (
     build_payload,
+    check_manifest_limits,
     digest,
     header,
     publish_archive,
@@ -61,6 +62,7 @@ from .models import (
 from .recovery import RestoreJournal, apply_settings, settings_export, sync_tree
 from .selection import selection, server_entries
 from .spool import CaptureSpool
+from .work import backup_worker, tree_paths
 
 if TYPE_CHECKING:
     from ..core.bedrock_server import BedrockServer
@@ -150,7 +152,7 @@ def inventory(
         if state != "included":
             continue
         root = staging / PREFIXES[component]
-        paths = [root, *sorted(root.rglob("*"))] if root.is_dir() else [root]
+        paths = sorted(tree_paths(root, cancellation_event))
         for path in paths:
             check_cancellation(cancellation_event)
             name = safe_name(path.relative_to(staging).as_posix())
@@ -175,6 +177,26 @@ def inventory(
                     )
                 )
     return files, directories
+
+
+def verify_copy(
+    root, manifest, components, cancellation_event=None, stage_callback=None
+):
+    """Read back isolated replacement files in one cancellable worker."""
+    checked = 0
+    last_progress = time.monotonic()
+    for item in manifest.files:
+        check_cancellation(cancellation_event)
+        if item.component not in components:
+            continue
+        if digest(root / item.path, cancellation_event) != item.sha256:
+            raise BackupRestoreError("Dry-run replacement checksum validation failed.")
+        checked += 1
+        moment = time.monotonic()
+        if stage_callback is not None and moment - last_progress >= 1:
+            stage_callback(f"Checking isolated restore checksums ({checked} files)")
+            last_progress = moment
+    return checked
 
 
 class UnifiedServerBackups(ManagedBackups):
@@ -220,6 +242,10 @@ class UnifiedServerBackups(ManagedBackups):
         destination: Path,
         password: str | None = None,
         cancellation_event: threading.Event | None = None,
+        *,
+        materialize: bool = True,
+        stage_callback=None,
+        read_stats=None,
     ) -> BackupManifest:
         if path.stat().st_size > self.server.settings.get(
             "backups.max_archive_bytes", 1024**4
@@ -232,6 +258,9 @@ class UnifiedServerBackups(ManagedBackups):
             max_bytes=self.server.settings.get("backups.max_expanded_bytes", 1024**4),
             max_files=self.server.settings.get("backups.max_files", 1_000_000),
             cancellation_event=cancellation_event,
+            materialize=materialize,
+            stage_callback=stage_callback,
+            read_stats=read_stats,
         )
 
     def resolve_backup(self, identifier: str) -> Path:
@@ -485,6 +514,10 @@ class UnifiedServerBackups(ManagedBackups):
                         safe_name(world)
                         if Path(world).name != world:
                             raise BackupRestoreError("Invalid active world name.")
+                        from .space import capture_preflight
+
+                        await self._stage(progress, "Checking backup staging space")
+                        await run_in_thread(capture_preflight, self, chosen, world)
                         running = await self.server.is_running()
                         await self._stage(progress, "Capturing server files")
                         source_world = (
@@ -607,6 +640,12 @@ class UnifiedServerBackups(ManagedBackups):
                         files=files,
                         directories=directories,
                     )
+                    await run_in_thread(
+                        check_manifest_limits,
+                        manifest,
+                        self.server.settings.get("backups.max_expanded_bytes", 1024**4),
+                        self.server.settings.get("backups.max_files", 1_000_000),
+                    )
                     temporary = Path(directory) / "snapshot"
                     password = record.secret.get_secret_value() if record else None
                     await self._stage(progress, "Compressing backup")
@@ -637,6 +676,15 @@ class UnifiedServerBackups(ManagedBackups):
                         record.key_id if record else None,
                         prepared_payload=packed_payload,
                     )
+                    if temporary.stat().st_size > self.server.settings.get(
+                        "backups.max_archive_bytes", 1024**4
+                    ) or packed_payload.stat().st_size > self.server.settings.get(
+                        "backups.max_expanded_bytes", 1024**4
+                    ):
+                        raise BackupRestoreError(
+                            "Backup archive exceeds configured recovery limits."
+                        )
+                    payload_bytes = packed_payload.stat().st_size
                     verify_created = self.server.settings.get(
                         "backups.verify_after_create", False
                     )
@@ -665,6 +713,7 @@ class UnifiedServerBackups(ManagedBackups):
                     destination,
                     manifest,
                     verified=verify_created,
+                    payload_bytes=payload_bytes,
                 )
                 if not structure_valid:
                     await run_in_thread(
@@ -718,7 +767,17 @@ class UnifiedServerBackups(ManagedBackups):
                 )
                 await self._notify_backup(filename, "capture", "completed")
                 await self._stage(progress, "Applying backup retention")
-                retention = await self.prune_snapshots()
+                try:
+                    retention = await self.prune_snapshots()
+                except Exception as error:
+                    log_operation_error(
+                        self.logger, "Backup created but retention failed", error=error
+                    )
+                    from ..failures import classify_failure
+
+                    retention = CleanupResult(
+                        failures={filename: classify_failure(error).error}
+                    )
                 if retention.failures:
                     self.logger.warning(
                         "Backup created; retention could not remove %s archives.",
@@ -748,13 +807,14 @@ class UnifiedServerBackups(ManagedBackups):
                 )
 
     @staticmethod
-    def _check_tree(source: Path) -> None:
+    def _check_tree(source: Path, cancellation_event=None) -> None:
+        check_cancellation(cancellation_event)
         if is_link(source):
             raise BackupRestoreError("Backup sources must not contain symbolic links.")
         safe_name(source.name)
         if source.is_dir():
             for child in source.iterdir():
-                UnifiedServerBackups._check_tree(child)
+                UnifiedServerBackups._check_tree(child, cancellation_event)
         elif not source.is_file():
             raise BackupRestoreError("Backup sources must be regular files.")
 
@@ -864,8 +924,12 @@ class UnifiedServerBackups(ManagedBackups):
             async with temporary_directory(
                 prefix=".bsm-inspect-", parent=path.parent
             ) as directory:
-                manifest = await run_in_thread(
-                    self.unpack_snapshot, path, Path(directory), password
+                manifest = await backup_worker(
+                    self.unpack_snapshot,
+                    path,
+                    Path(directory),
+                    password,
+                    materialize=False,
                 )
             info = await run_in_thread(header, path)
             return BackupSummary(
@@ -902,6 +966,17 @@ class UnifiedServerBackups(ManagedBackups):
                 metadata_stat.st_mtime_ns,
             ]:
                 metadata.pop("verification", None)
+            drill = metadata.get("drill")
+            if (
+                drill
+                and drill.get("status") == "passed"
+                and drill.get("fingerprint")
+                != [
+                    metadata_stat.st_size,
+                    metadata_stat.st_mtime_ns,
+                ]
+            ):
+                metadata.pop("drill", None)
             try:
                 info = await run_in_thread(header, path)
                 result.append(
@@ -922,6 +997,7 @@ class UnifiedServerBackups(ManagedBackups):
                         origin=metadata.get("origin", "captured"),
                         encrypted=info.encrypted,
                         key_id=info.key_id,
+                        error=metadata.get("metadata_error"),
                     )
                 )
             except BackupRestoreError:
@@ -1115,17 +1191,15 @@ class UnifiedServerBackups(ManagedBackups):
             return Path(self.server.paths.server_dir).resolve()
         return self._safe_target(name)
 
-    def _comparison_paths(self, component, target):
+    def _comparison_paths(self, component, target, cancellation_event=None):
         if component == "server_directory":
             paths = []
             for entry in server_entries(target):
-                self._check_tree(entry)
-                paths.extend(
-                    [entry, *sorted(entry.rglob("*"))] if entry.is_dir() else [entry]
-                )
+                self._check_tree(entry, cancellation_event)
+                paths.extend(sorted(tree_paths(entry, cancellation_event)))
             return paths
-        self._check_tree(target) if target.exists() else None
-        return [target, *sorted(target.rglob("*"))] if target.is_dir() else [target]
+        self._check_tree(target, cancellation_event) if target.exists() else None
+        return sorted(tree_paths(target, cancellation_event))
 
     def _safe_target(self, name: str) -> Path:
         safe_name(name)
@@ -1139,27 +1213,44 @@ class UnifiedServerBackups(ManagedBackups):
             raise BackupRestoreError("Restore destination contains a symbolic link.")
         return target
 
-    def _plan_token(self, path: Path, targets: dict[Component, str]) -> tuple[str, int]:
+    def _plan_token(
+        self,
+        path: Path,
+        targets: dict[Component, str],
+        cancellation_event=None,
+        *,
+        hashes=None,
+    ) -> tuple[str, int]:
+        check_cancellation(cancellation_event)
         state = {
-            "archive": digest(path),
+            "archive": digest(path, cancellation_event),
             "targets": targets,
             "installed_version": self.server.configuration.snapshot().installed_version,
             "settings": settings_export(self.server).model_dump(mode="json"),
         }
+
+        def checksum(source):
+            value = digest(source, cancellation_event)
+            if hashes is not None:
+                metadata = source.stat()
+                hashes[source] = (metadata.st_size, metadata.st_mtime_ns, value)
+            return value
+
         fingerprints = {}
         recovery_size = 0
         for component, name in targets.items():
+            check_cancellation(cancellation_event)
             if component == "bsm_settings":
                 continue
             target = self._component_target(component, name)
-            paths = self._comparison_paths(component, target)
+            paths = self._comparison_paths(component, target, cancellation_event)
             recovery_size += sum(p.stat().st_size for p in paths if p.is_file())
             # World contents naturally change while running; bind its destination identity instead.
             fingerprints[component] = (
                 [
                     (
                         str(p.relative_to(target.parent)),
-                        digest(p),
+                        checksum(p),
                         p.stat().st_mode & 0o100,
                     )
                     for p in paths
@@ -1181,6 +1272,7 @@ class UnifiedServerBackups(ManagedBackups):
         recovery_key: str | None = None,
         *,
         dry_run: bool = False,
+        _all_components: bool = False,
     ) -> RestorePlan:
         async with self.server.operation_lock:
             RestoreJournal(self.server).ensure_clear()
@@ -1194,42 +1286,59 @@ class UnifiedServerBackups(ManagedBackups):
                 prefix=".bsm-plan-", parent=path.parent
             ) as directory:
                 staging = Path(directory)
-                manifest = await run_in_thread(
+                manifest = await backup_worker(
                     self.unpack_snapshot, path, staging, password
                 )
+                if _all_components:
+                    components = [
+                        name
+                        for name, state in manifest.components.items()
+                        if state == "included"
+                    ]
+                if "server_directory" in components and await self.server.is_running():
+                    raise BackupRestoreError(
+                        "Stop the server before reviewing a full-directory restore."
+                    )
                 targets, warnings = await run_in_thread(
                     self._destinations, staging, manifest, components
                 )
-                token, old_bytes = await run_in_thread(self._plan_token, path, targets)
+                await report_stage("Checking restore destinations")
+                current_hashes: dict[Path, tuple[int, int, str]] = {}
+                token, old_bytes = await backup_worker(
+                    self._plan_token, path, targets, hashes=current_hashes
+                )
                 from .space import existing_parent, restore_capacity
 
                 volumes = await run_in_thread(restore_capacity, self, manifest, targets)
                 checked = 0
                 if dry_run and all(volume.sufficient for volume in volumes):
+                    await report_stage("Testing isolated restore copies")
                     # Exercise replacement copies on the destination filesystem in isolation.
                     target_root = Path(self.server.paths.server_dir)
                     async with temporary_directory(
                         prefix=".bsm-dry-run-", parent=existing_parent(target_root)
                     ) as probe:
+                        await run_in_thread(private_directory, Path(probe))
                         for component in components:
-                            await run_in_thread(
+                            await backup_worker(
                                 copy_source,
                                 staging / PREFIXES[component],
                                 Path(probe) / PREFIXES[component],
+                                inherited_private=True,
                             )
-                        await run_in_thread(sync_tree, Path(probe))
-                        for item in manifest.files:
-                            if item.component in components:
-                                if (
-                                    await run_in_thread(digest, Path(probe) / item.path)
-                                    != item.sha256
-                                ):
-                                    raise BackupRestoreError(
-                                        "Dry-run replacement checksum validation failed."
-                                    )
-                                checked += 1
-                changes, counts, settings = await run_in_thread(
-                    self.restore_comparison, staging, targets
+                        await report_stage("Flushing isolated restore copies")
+                        await backup_worker(sync_tree, Path(probe))
+                        await report_stage("Checking isolated restore checksums")
+                        checked = await backup_worker(
+                            verify_copy, Path(probe), manifest, components
+                        )
+                await report_stage("Comparing restore contents")
+                changes, counts, settings = await backup_worker(
+                    self.restore_comparison,
+                    staging,
+                    targets,
+                    manifest=manifest,
+                    hashes=current_hashes,
                 )
                 plan = RestorePlan(
                     backup_id=identifier,
@@ -1311,13 +1420,13 @@ class UnifiedServerBackups(ManagedBackups):
                 prefix=".bsm-restore-stage-", parent=root
             ) as directory:
                 staging = Path(directory)
-                manifest = await run_in_thread(
+                manifest = await backup_worker(
                     self.unpack_snapshot, path, staging, password
                 )
                 targets, _ = await run_in_thread(
                     self._destinations, staging, manifest, components
                 )
-                current, old_bytes = await run_in_thread(
+                current, old_bytes = await backup_worker(
                     self._plan_token, path, targets
                 )
                 if current != token:
@@ -1333,7 +1442,7 @@ class UnifiedServerBackups(ManagedBackups):
                     raise BackupRestoreError(
                         "Insufficient space on the server or backup volume for staging and a safety archive."
                     )
-                await run_in_thread(sync_tree, staging)
+                await backup_worker(sync_tree, staging)
                 was_running = await self.server.is_running()
                 await self._stage(progress, "Preparing restore recovery")
                 if was_running:

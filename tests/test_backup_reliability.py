@@ -206,6 +206,7 @@ async def test_capacity_reports_both_filesystems_and_blocks_before_stop(
     server = populated_server
     snapshot = await server.backups.create_snapshot()
     server_root = Path(server.paths.server_dir)
+    plan = await server.backups.plan_restore(snapshot.backup_id, ["server.properties"])
 
     class Anchor:
         def __init__(self, device):
@@ -222,9 +223,14 @@ async def test_capacity_reports_both_filesystems_and_blocks_before_stop(
         "disk_usage",
         lambda path: SimpleNamespace(free=0 if path.device == 2 else 10**12),
     )
-    plan = await server.backups.plan_restore(snapshot.backup_id, ["server.properties"])
-    assert len(plan.volumes) == 2 and not plan.sufficient_space
-    assert next(v for v in plan.volumes if "backups" in v.roles).sufficient is False
+    volumes = space.restore_capacity(
+        server.backups, snapshot.manifest, plan.destinations
+    )
+    assert len(volumes) == 2 and not all(v.sufficient for v in volumes)
+    assert next(v for v in volumes if "backups" in v.roles).sufficient is False
+    # The archive volume is checked before extracting any restore-plan contents.
+    with pytest.raises(BackupRestoreError, match="Insufficient space"):
+        await server.backups.plan_restore(snapshot.backup_id, ["server.properties"])
     stop = AsyncMock()
     with pytest.raises(BackupRestoreError, match="Insufficient space"):
         await server.backups.restore_snapshot(

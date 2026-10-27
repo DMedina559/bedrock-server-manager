@@ -36,6 +36,6 @@ def selection(
 def server_entries(root):
     """Reserve BSM capture, staging and recovery storage at the server root."""
     return sorted(
-        (p for p in root.iterdir() if not p.name.startswith(".bsm-")),
+        (p for p in root.iterdir() if not p.name.casefold().startswith(".bsm-")),
         key=lambda p: p.name,
     )

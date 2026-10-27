@@ -50,12 +50,15 @@ from ...api.models.backup_restore import (
     RestoreRecoveryResponse,
     RestoreSnapshotRequest,
 )
-from ...backups.archive import MAX_BYTES, write_archive
+from ...backups.archive import MAX_BYTES, publish_archive, write_archive
 from ...backups.contents import BackupComponents
 from ...backups.credentials import BackupCredentials, private_directory
 from ...backups.models import Component, ConfigComponent
 from ...backups.recovery import sync_tree
+from ...backups.work import backup_worker
 from ...context import AppContext
+from ...utils.files import temporary_directory
+from ...utils.progress import report_stage
 from ...utils.threads import run_in_thread
 from ..deps import (
     get_admin_user,
@@ -522,14 +525,24 @@ async def download_snapshot(
 ) -> StreamingResponse:
     """Download the stored archive unchanged, preserving encryption."""
     backups = app_context.get_server(server_name, require_installation=False).backups
-    await backups.server.operation_lock.acquire()
-    try:
+
+    # Retain ownership even if cancellation arrives while a worker opens the file.
+    stream: Any = None
+
+    def open_archive():
+        nonlocal stream
         path = backups.resolve_backup(backup_id)
-        stream = await run_in_thread(path.open, "rb")
-        size = os.fstat(stream.fileno()).st_size
-        backups.server.operation_lock.release()
+        try:
+            stream = path.open("rb")
+        except FileNotFoundError as error:
+            raise HTTPException(404, "Backup no longer exists.") from error
+        return path, os.fstat(stream.fileno()).st_size
+
+    try:
+        path, size = await run_in_thread(open_archive)
     except BaseException:
-        backups.server.operation_lock.release()
+        if stream is not None:
+            await run_in_thread(stream.close)
         raise
 
     async def chunks():
@@ -537,7 +550,7 @@ async def download_snapshot(
             while chunk := await run_in_thread(stream.read, 1024 * 1024):
                 yield chunk
         finally:
-            stream.close()
+            await run_in_thread(stream.close)
 
     return StreamingResponse(
         chunks(),
@@ -567,13 +580,21 @@ async def import_snapshot(
     try:
         async with backups.server.operation_lock:
             root = await run_in_thread(private_directory, Path(backups._directory()))
-            with tempfile.TemporaryDirectory(
-                prefix=".bsm-import-", dir=root
+            async with temporary_directory(
+                prefix=".bsm-import-", parent=root
             ) as directory:
                 staging = Path(directory)
                 archive = staging / "upload"
                 size = 0
-                with archive.open("wb") as output:
+                await report_stage("Receiving backup upload")
+                output: Any = None
+
+                def open_upload():
+                    nonlocal output
+                    output = archive.open("wb")
+
+                try:
+                    await run_in_thread(open_upload)
                     while chunk := await file.read(1024 * 1024):
                         size += len(chunk)
                         if size > app_context.settings.get(
@@ -581,9 +602,12 @@ async def import_snapshot(
                         ):
                             raise HTTPException(413, "Backup exceeds upload limit.")
                         await run_in_thread(output.write, chunk)
+                finally:
+                    if output is not None:
+                        await run_in_thread(output.close)
                 password = await run_in_thread(backups._password, archive, recovery_key)
                 contents = await run_in_thread(private_directory, staging / "contents")
-                manifest = await run_in_thread(
+                manifest = await backup_worker(
                     backups.unpack_snapshot, archive, contents, password
                 )
                 filename = (
@@ -596,7 +620,8 @@ async def import_snapshot(
                     backups._validate_recovery_contents, contents, manifest
                 )
                 await run_in_thread(sync_tree, archive)
-                await run_in_thread(os.replace, archive, root / filename)
+                await report_stage("Publishing imported backup")
+                await run_in_thread(publish_archive, archive, root / filename)
                 await run_in_thread(backups._record_verified, root / filename, manifest)
                 await run_in_thread(backups.catalog.update, filename, origin="imported")
             return ListSnapshotsResponse(backups=await backups.list_snapshots())
@@ -627,10 +652,21 @@ async def export_snapshot(
 ) -> StreamingResponse:
     """Explicitly export an unencrypted archive; temporary files remain private."""
     backups = app_context.get_server(server_name, require_installation=False).backups
-    temporary = tempfile.TemporaryDirectory(prefix="bsm-export-")
+    temporary: Any = None
+    stream: Any = None
+
+    def create_export():
+        nonlocal temporary
+        temporary = tempfile.TemporaryDirectory(prefix="bsm-export-")
+
+    def open_export(path):
+        nonlocal stream
+        stream = path.open("rb")
+
     try:
+        await run_in_thread(create_export)
         async with backups.server.operation_lock:
-            staging = Path(temporary.name)
+            staging = await run_in_thread(private_directory, Path(temporary.name))
             path = backups.resolve_backup(backup_id)
             password = await run_in_thread(
                 backups._password,
@@ -642,14 +678,18 @@ async def export_snapshot(
                 ),
             )
             contents = await run_in_thread(private_directory, staging / "contents")
-            manifest = await run_in_thread(
+            manifest = await backup_worker(
                 backups.unpack_snapshot, path, contents, password
             )
             exported = staging / "plain.bsmbackup"
+            await report_stage("Building decrypted export")
             await run_in_thread(write_archive, contents, exported, manifest, None, None)
-        stream = exported.open("rb")
+        await run_in_thread(open_export, exported)
     except BaseException:
-        temporary.cleanup()
+        if stream is not None:
+            await run_in_thread(stream.close)
+        if temporary is not None:
+            await run_in_thread(temporary.cleanup)
         raise
 
     async def chunks():
@@ -657,7 +697,7 @@ async def export_snapshot(
             while chunk := await run_in_thread(stream.read, 1024 * 1024):
                 yield chunk
         finally:
-            stream.close()
+            await run_in_thread(stream.close)
             await run_in_thread(temporary.cleanup)
 
     return StreamingResponse(

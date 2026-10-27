@@ -565,3 +565,58 @@ Live-world captures, generated settings, and files whose staged size or
 modification time changed use normal file reads. The `spooled_files` DEBUG metric
 shows how many archive entries used the single staging file. The backup format
 and restore behavior are unchanged.
+
+
+## Recovery performance and safety limits
+
+Inspection authenticates the complete encrypted stream and checks the inventory
+and file checksums without writing every contained file. Verification extracts
+once and hashes each file as it is written. A recovery drill reuses one validated
+extraction, copies selected components into a private directory on the destination
+filesystem, flushes those copies, and reads them back to check their hashes. It
+never applies replacements to the live server. Restore comparisons reuse the
+validated extracted-file hashes, while destination files are checked separately.
+
+The existing task messages report authentication, extraction and hashing,
+destination checks, isolated copying, flushing, checksum checks, and comparisons.
+Long extraction and read-back phases publish bounded file-count updates. DEBUG
+logs include worker durations without file contents or recovery keys. Import and
+decrypted export retain their existing HTTP responses; their filesystem work and
+cleanup run outside the event loop. No new endpoints are required.
+
+`backups.max_files` limits all payload entries, including the manifest and
+directories. `backups.max_expanded_bytes` bounds both the authenticated compressed
+payload and the manifest-plus-file contents; `backups.max_archive_bytes` bounds
+the final stored archive. Creation checks these limits before publication, with
+early checks where source sizes are known. These checks do not enable full
+verification after creation, which remains disabled by default.
+
+Capture and extraction check available staging space before writing large amounts
+of temporary data. Estimates include private staging, the sequential spool,
+compressed payload, final archive, and conservative filesystem overhead. Space can
+still change while an operation runs; write failures remain possible and do not
+authorize replacing live data or removing the previous recovery point.
+
+Retention requires unchanged integrity evidence and recorded requirements that
+fit the current reader limits before a capture can replace older recovery points.
+Older archives without recorded requirements are retained conservatively until
+new capture or verification evidence is available. Invalid individual catalog
+records are isolated and protected from automatic deletion; their original values
+are preserved under `invalid_archives` when the catalog is next saved. Catalog
+problems must not be repaired by deleting archives blindly. A failure in retention
+after successful capture is reported as a maintenance warning on the created backup.
+
+Passed recovery drills are bound to the tested archive's size and modification
+time. Changing the archive invalidates that passed result. A new drill is required
+to establish fresh evidence. Failed or interrupted drill status remains visible
+for attention. Internal `.bsm-` paths are reserved case-insensitively, including in
+full-directory archives, to protect Windows recovery storage.
+
+Legacy and portable backup listings, archive downloads, and recovery reports do
+not wait for a long recovery drill's server mutation lock. Downloads hold an open
+archive handle; deletion behavior follows the host filesystem, and failures to
+remove an in-use file are retained for retry. Mutations remain serialized.
+Preparation workers check cancellation while walking, hashing, comparing, and
+flushing. Restore commit and rollback recovery continue to finish safely before
+releasing ownership. POSIX rollback flushes both affected parent directories before
+recording that each entry has been restored.

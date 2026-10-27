@@ -11,14 +11,14 @@ import tarfile
 import tempfile
 import threading
 import time
-from contextlib import ExitStack
+from contextlib import ExitStack, nullcontext
 from pathlib import Path, PurePosixPath
 from typing import Any
 
 from securetar import SecureTarArchive, SecureTarHeader
 
 from ..error import BackupRestoreError
-from ..utils.threads import check_cancellation, copy_stream
+from ..utils.threads import check_cancellation
 from .credentials import private_directory
 from .models import PREFIXES, BackupHeader, BackupManifest
 from .spool import CaptureSpool
@@ -297,6 +297,28 @@ def publish_archive(source: Path, destination: Path) -> None:
             os.close(descriptor)
 
 
+def manifest_requirements(manifest: BackupManifest) -> dict[str, int]:
+    """Use the same entry/byte accounting as the portable reader."""
+    encoded = json.dumps(manifest.model_dump(mode="json"), allow_nan=False).encode()
+    return {
+        "entries": 1 + len(manifest.files) + len(manifest.directories),
+        "expanded_bytes": len(encoded) + sum(item.size for item in manifest.files),
+        "metadata_bytes": len(encoded),
+    }
+
+
+def check_manifest_limits(manifest, max_bytes=MAX_BYTES, max_files=MAX_FILES):
+    requirements = manifest_requirements(manifest)
+    if (
+        requirements["entries"] > max_files
+        or requirements["expanded_bytes"] > max_bytes
+        or requirements["metadata_bytes"] > MAX_METADATA
+    ):
+        raise BackupRestoreError("Backup contents exceed configured recovery limits.")
+    validate_manifest(manifest)
+    return requirements
+
+
 def unpack(
     path: Path,
     destination: Path,
@@ -305,12 +327,18 @@ def unpack(
     max_bytes: int = MAX_BYTES,
     max_files: int = MAX_FILES,
     cancellation_event: threading.Event | None = None,
+    materialize: bool = True,
+    stage_callback=None,
+    read_stats=None,
 ) -> BackupManifest:
     """Authenticate the complete stream and validate inventory before using contents."""
+    from .space import ensure_free_space
+
     public = header(path)
     if public.encrypted and not password:
         raise BackupRestoreError("This backup requires its recovery key.")
     try:
+        private_directory(destination)
         with SecureTarArchive(
             path, "r", password=password if public.encrypted else None
         ) as archive:
@@ -334,7 +362,11 @@ def unpack(
                     encryption_header = SecureTarHeader.from_bytes(encrypted_stream)
                 if encryption_header.version != 3:
                     raise ValueError("Unsupported encryption format")
-            # Consume and authenticate to the final tag before parsing or applying data.
+            # Reserve space before materializing the authenticated compressed stream.
+            ensure_free_space(destination, members[1].size)
+            if stage_callback is not None:
+                stage_callback("Authenticating backup payload")
+            authenticated_at = time.monotonic()
             packed = destination / ".payload"
             source = (
                 archive.extract_tar(members[1])
@@ -350,7 +382,21 @@ def unpack(
                     if total > max_bytes:
                         raise ValueError("Archive exceeds size limit")
                     output.write(chunk)
+        logging.getLogger(__name__).debug(
+            "Backup payload authenticated: duration_ms=%.3f",
+            (time.monotonic() - authenticated_at) * 1000,
+        )
+        if stage_callback is not None:
+            stage_callback(
+                "Extracting and hashing backup contents"
+                if materialize
+                else "Validating backup inventory and checksums"
+            )
+        extraction_started = time.monotonic()
+        last_progress = extraction_started
+        completed_files = 0
         seen: dict[str, bool] = {}
+        ancestors: set[str] = set()
         total = 0
         manifest = None
         with tarfile.open(packed, "r|gz", tarinfo=BoundedTarInfo) as payload:
@@ -364,13 +410,14 @@ def unpack(
                     or len(seen) >= max_files
                 ):
                     raise ValueError("Invalid or duplicate entry")
-                for parent in PurePosixPath(name).parents:
-                    if seen.get(str(parent).casefold()) is False:
-                        raise ValueError("Conflicting entry")
-                if member.isfile() and any(
-                    key.startswith(folded + "/") for key in seen
-                ):
+                parents = {
+                    str(parent).casefold() for parent in PurePosixPath(name).parents
+                }
+                if any(seen.get(parent) is False for parent in parents):
                     raise ValueError("Conflicting entry")
+                if member.isfile() and folded in ancestors:
+                    raise ValueError("Conflicting entry")
+                ancestors.update(parents)
                 seen[folded] = member.isdir()
                 total += member.size
                 if total > max_bytes or member.size < 0:
@@ -385,7 +432,14 @@ def unpack(
                     stream = payload.extractfile(member)
                     assert stream is not None
                     manifest = BackupManifest.model_validate_json(stream.read())
-                    validate_manifest(manifest)
+                    check_manifest_limits(manifest, max_bytes, max_files)
+                    if materialize:
+                        ensure_free_space(
+                            destination,
+                            sum(item.size for item in manifest.files)
+                            + len(manifest.files) * 4096
+                            + len(manifest.directories) * 4096,
+                        )
                     file_inventory = {item.path: item for item in manifest.files}
                     directory_inventory = set(manifest.directories)
                     continue
@@ -398,13 +452,40 @@ def unpack(
                     raise ValueError("Unexpected directory")
                 target = destination / name
                 if member.isdir():
-                    target.mkdir(parents=True, exist_ok=True)
+                    if materialize:
+                        target.mkdir(parents=True, exist_ok=True)
                 else:
-                    target.parent.mkdir(parents=True, exist_ok=True)
+                    assert expected_file is not None
+                    if materialize:
+                        target.parent.mkdir(parents=True, exist_ok=True)
                     stream = payload.extractfile(member)
                     assert stream is not None
-                    with stream, target.open("wb") as output:
-                        copy_stream(stream, output, cancellation_event)
+                    checksum = hashlib.sha256()
+                    with (
+                        stream,
+                        target.open("wb") if materialize else nullcontext() as output,
+                    ):
+                        while chunk := stream.read(1024 * 1024):
+                            check_cancellation(cancellation_event)
+                            checksum.update(chunk)
+                            if output is not None:
+                                output.write(chunk)
+                            moment = time.monotonic()
+                            if (
+                                stage_callback is not None
+                                and moment - last_progress >= 1
+                            ):
+                                stage_callback(
+                                    f"Validating backup contents ({completed_files}/{len(manifest.files)} files)"
+                                )
+                                last_progress = moment
+                    completed_files += 1
+                    if checksum.hexdigest() != expected_file.sha256:
+                        raise ValueError("Checksum mismatch")
+                    if materialize and expected_file.executable and os.name != "nt":
+                        target.chmod(0o700)
+        if read_stats is not None:
+            read_stats["payload_bytes"] = packed.stat().st_size
         packed.unlink()
         if manifest is None:
             raise ValueError("Missing manifest")
@@ -414,17 +495,14 @@ def unpack(
             key: value for key, value in seen.items() if key != "manifest.json"
         } != expected:
             raise ValueError("Inventory mismatch")
-        for item in manifest.files:
-            extracted = destination / item.path
-            if (
-                extracted.stat().st_size != item.size
-                or digest(extracted, cancellation_event) != item.sha256
-            ):
-                raise ValueError("Checksum mismatch")
-            if item.executable and os.name != "nt":
-                extracted.chmod(0o700)
+        logging.getLogger(__name__).debug(
+            "Backup inventory validated: files=%d materialized=%s duration_ms=%.3f",
+            len(manifest.files),
+            materialize,
+            (time.monotonic() - extraction_started) * 1000,
+        )
         return manifest
-    except BackupRestoreError:
+    except (BackupRestoreError, InterruptedError):
         raise
     except Exception as error:
         # Never include potentially secret archive values in the public error.
@@ -445,7 +523,7 @@ def validate_manifest(manifest: BackupManifest) -> None:
         if (
             parts[0] == "server-directory"
             and len(parts) > 1
-            and parts[1].startswith(".bsm-")
+            and parts[1].casefold().startswith(".bsm-")
         ):
             raise ValueError("Reserved BSM internal storage")
     names = [safe_name(item.path).casefold() for item in manifest.files]

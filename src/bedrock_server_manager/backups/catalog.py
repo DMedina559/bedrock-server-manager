@@ -2,6 +2,7 @@
 
 import json
 import os
+import tarfile
 import tempfile
 import threading
 from datetime import datetime, timedelta, timezone
@@ -10,7 +11,6 @@ from typing import TYPE_CHECKING, Any, Protocol, cast
 
 if TYPE_CHECKING:
     from .credentials import BackupCredentials
-    from .models import BackupSummary
 
 from ..error import BackupRestoreError
 from ..events.backup import BackupActivity
@@ -22,10 +22,12 @@ from .archive import digest, safe_name
 from .credentials import atomic_json, private_directory
 from .models import (
     BackupHealth,
+    BackupSummary,
     BackupVerification,
     RestoreFileChange,
     RestoreValueChange,
 )
+from .work import tree_paths
 
 
 def now() -> str:
@@ -88,6 +90,49 @@ class DirectoryDestination:
             Path(temporary).unlink(missing_ok=True)
 
 
+def _clean_metadata(identifier, metadata):
+    """Validate allowlisted UI fields without trusting catalog integrity evidence."""
+    if not isinstance(metadata, dict):
+        raise ValueError("Invalid archive metadata")
+    fields = {
+        name: value
+        for name, value in metadata.items()
+        if name in BackupSummary.model_fields
+        and name not in {"backup_id", "filename", "size", "encrypted", "manifest"}
+    }
+    BackupSummary(
+        backup_id=identifier, filename=identifier, size=0, encrypted=False, **fields
+    )
+    for name in ("created_at", "protected_until"):
+        value = metadata.get(name)
+        if value is not None:
+            datetime.fromisoformat(value)
+    verification = metadata.get("verification", {})
+    if verification.get("verified_at"):
+        stamp = datetime.fromisoformat(verification["verified_at"])
+        if stamp.tzinfo is None:
+            raise ValueError("Verification timestamp needs a timezone")
+    for copy in metadata.get("copies", {}).values():
+        for name in ("completed_at", "next_retry_at"):
+            if copy.get(name):
+                stamp = datetime.fromisoformat(copy[name])
+                if stamp.tzinfo is None:
+                    raise ValueError("Copy timestamp needs a timezone")
+    requirements = metadata.get("read_requirements")
+    if requirements is not None and (
+        not isinstance(requirements, dict)
+        or any(
+            type(requirements.get(name)) is not int or requirements[name] < 0
+            for name in ("entries", "expanded_bytes", "metadata_bytes", "payload_bytes")
+        )
+    ):
+        raise ValueError("Invalid reader requirements")
+    result = dict(metadata)
+    if result.get("created_at") is None:
+        result.pop("created_at", None)
+    return result
+
+
 class BackupCatalog:
     """Store metadata separately from portable archives; never store file values or keys."""
 
@@ -104,6 +149,23 @@ class BackupCatalog:
             value = json.loads(self.path.read_bytes())
             if value.get("version") != 1 or not isinstance(value.get("archives"), dict):
                 raise ValueError
+            rejected = value.setdefault("invalid_archives", {})
+            if not isinstance(rejected, dict):
+                raise ValueError
+            for identifier, metadata in list(value["archives"].items()):
+                try:
+                    value["archives"][identifier] = _clean_metadata(
+                        identifier, metadata
+                    )
+                except (ValueError, TypeError, AttributeError):
+                    rejected[identifier] = metadata
+                    value["archives"][identifier] = {
+                        "pinned": True,
+                        "metadata_error": "Backup metadata requires attention; original metadata is preserved.",
+                    }
+            for name in ("drill", "schedule", "destinations"):
+                if name in value and not isinstance(value[name], dict):
+                    value.setdefault("invalid_metadata", {})[name] = value.pop(name)
             return cast(dict, value)
         except (ValueError, AttributeError):
             raise BackupRestoreError(
@@ -180,7 +242,22 @@ class ManagedBackups:
     def catalog(self) -> BackupCatalog:
         return BackupCatalog(Path(self._directory()))
 
-    def _record_verified(self, path, manifest, *, verified=True) -> None:
+    def _record_verified(
+        self,
+        path,
+        manifest,
+        cancellation_event=None,
+        *,
+        verified=True,
+        payload_bytes=None,
+    ) -> None:
+        from .archive import manifest_requirements
+
+        requirements = manifest_requirements(manifest)
+        if payload_bytes is None:
+            with tarfile.open(path, "r:") as archive:
+                payload_bytes = archive.getmember("payload.tar.gz").size
+        requirements["payload_bytes"] = payload_bytes
         self.catalog.update(
             path.name,
             verification={
@@ -188,7 +265,8 @@ class ManagedBackups:
                 "verified_at": now() if verified else None,
                 "error": None,
             },
-            sha256=digest(path),
+            sha256=digest(path, cancellation_event),
+            read_requirements=requirements,
             fingerprint=[path.stat().st_size, path.stat().st_mtime_ns],
             created_at=manifest.created_at.isoformat(),
             purpose=manifest.reason,
@@ -228,13 +306,27 @@ class ManagedBackups:
                     prefix=".bsm-verify-", parent=path.parent
                 ) as directory:
                     staging = Path(directory)
-                    manifest = await run_in_thread(
-                        self.unpack_snapshot, path, staging, password
+                    from .work import backup_worker
+
+                    read_stats: dict[str, int] = {}
+                    manifest = await backup_worker(
+                        self.unpack_snapshot,
+                        path,
+                        staging,
+                        password,
+                        read_stats=read_stats,
                     )
-                    await run_in_thread(
+                    await report_stage("Validating restorable backup structures")
+                    await backup_worker(
                         self._validate_recovery_contents, staging, manifest
                     )
-                await run_in_thread(self._record_verified, path, manifest)
+                await report_stage("Recording backup verification")
+                await run_in_thread(
+                    self._record_verified,
+                    path,
+                    manifest,
+                    payload_bytes=read_stats["payload_bytes"],
+                )
             except Exception:
                 if record_failure:
                     await run_in_thread(
@@ -487,9 +579,8 @@ class ManagedBackups:
             metadata = value["archives"]
             ordered = sorted(
                 files,
-                key=lambda i: metadata.get(i.filename, {}).get(
-                    "created_at", i.filename
-                ),
+                key=lambda i: metadata.get(i.filename, {}).get("created_at")
+                or i.filename,
                 reverse=True,
             )
             retained = {i.filename for i in ordered[:count]}
@@ -542,7 +633,24 @@ class ManagedBackups:
                     ) and record.get("sha256") == await run_in_thread(
                         digest, self.resolve_backup(item.filename)
                     )
-                    if not trusted:
+                    requirements = record.get("read_requirements", {})
+                    within_limits = (
+                        bool(requirements)
+                        and requirements.get("entries", 1_000_001)
+                        <= self.server.settings.get("backups.max_files", 1_000_000)
+                        and max(
+                            requirements.get("expanded_bytes", 1024**4 + 1),
+                            requirements.get("payload_bytes", 1024**4 + 1),
+                        )
+                        <= self.server.settings.get(
+                            "backups.max_expanded_bytes", 1024**4
+                        )
+                        and item.size
+                        <= self.server.settings.get(
+                            "backups.max_archive_bytes", 1024**4
+                        )
+                    )
+                    if not trusted or not within_limits:
                         continue
                     usable = item.filename
                     retained.add(usable)
@@ -590,12 +698,34 @@ class ManagedBackups:
                 deleted=deleted, retained=sorted(retained), failures=failures
             )
 
-    def restore_comparison(self, staging, targets):
+    def restore_comparison(
+        self, staging, targets, cancellation_event=None, *, manifest=None, hashes=None
+    ):
         from .models import PREFIXES
         from .recovery import settings_export
 
+        validated = (
+            {staging / item.path: item.sha256 for item in manifest.files}
+            if manifest
+            else {}
+        )
+
+        def checksum(path):
+            check_cancellation(cancellation_event)
+            if path in validated:
+                return validated[path]
+            cached = hashes.get(path) if hashes is not None else None
+            metadata = path.stat()
+            if cached is not None and cached[:2] == (
+                metadata.st_size,
+                metadata.st_mtime_ns,
+            ):
+                return cached[2]
+            return digest(path, cancellation_event)
+
         changes, settings, counts = [], [], {"added": 0, "replaced": 0, "removed": 0}
         for component, name in targets.items():
+            check_cancellation(cancellation_event)
             if component == "bsm_settings":
                 before = settings_export(self.server).model_dump(mode="json")
                 after = json.loads((staging / PREFIXES[component]).read_bytes())
@@ -625,9 +755,9 @@ class ManagedBackups:
                 from .selection import server_entries
 
                 for entry in server_entries(target):
-                    self._check_tree(entry)
+                    self._check_tree(entry, cancellation_event)
             elif target.exists():
-                self._check_tree(target)
+                self._check_tree(target, cancellation_event)
 
             def files(root):
                 if not root.exists():
@@ -635,9 +765,13 @@ class ManagedBackups:
                 return (
                     {
                         p.relative_to(root).as_posix(): p
-                        for p in root.rglob("*")
+                        for p in tree_paths(root, cancellation_event)
+                        if p != root
                         if component != "server_directory"
-                        or not p.relative_to(root).parts[0].startswith(".bsm-")
+                        or not p.relative_to(root)
+                        .parts[0]
+                        .casefold()
+                        .startswith(".bsm-")
                         if p.is_file()
                     }
                     if root.is_dir()
@@ -646,6 +780,7 @@ class ManagedBackups:
 
             old, new = files(target), files(source)
             for relative in sorted(old.keys() | new.keys()):
+                check_cancellation(cancellation_event)
                 action = (
                     "added"
                     if relative not in old
@@ -654,7 +789,7 @@ class ManagedBackups:
                         if relative not in new
                         else (
                             "replaced"
-                            if digest(old[relative]) != digest(new[relative])
+                            if checksum(old[relative]) != checksum(new[relative])
                             else None
                         )
                     )

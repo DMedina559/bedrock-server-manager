@@ -82,22 +82,21 @@ class ServerBackups(UnifiedServerBackups):
         if kind not in BACKUP_PATTERNS and kind != "all":
             raise UserInputError(f"Invalid backup type: '{backup_type}'.")
         directory = self._directory()
-        async with self.server.operation_lock:
-            if not await aiofiles.ospath.isdir(directory):
-                return {} if kind == "all" else []
-            try:
-                if kind != "all":
-                    return await self._find(BACKUP_PATTERNS[kind])
-                result = {}
-                for category, pattern in BACKUP_PATTERNS.items():
-                    files = await self._find(pattern)
-                    if files:
-                        result[f"{category}_backups"] = files
-                return result
-            except OSError as error:
-                raise FileOperationError(
-                    f"Cannot list backups for '{self.server.server_name}': {error}"
-                ) from error
+        if not await aiofiles.ospath.isdir(directory):
+            return {} if kind == "all" else []
+        try:
+            if kind != "all":
+                return await self._find(BACKUP_PATTERNS[kind])
+            result = {}
+            for category, pattern in BACKUP_PATTERNS.items():
+                files = await self._find(pattern)
+                if files:
+                    result[f"{category}_backups"] = files
+            return result
+        except OSError as error:
+            raise FileOperationError(
+                f"Cannot list backups for '{self.server.server_name}': {error}"
+            ) from error
 
     async def prune_server_backups(
         self, component_prefix: str, file_extension: str
