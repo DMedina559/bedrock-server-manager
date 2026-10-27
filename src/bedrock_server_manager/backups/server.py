@@ -24,6 +24,7 @@ from ..utils.files import temporary_directory
 from ..utils.threads import check_cancellation, copy_stream, run_in_thread
 from .archive import digest, header, safe_name, unpack, write_archive
 from .catalog import ManagedBackups, now
+from .contents import SelectableComponent
 from .credentials import (
     BackupCredentials,
     KeyRecord,
@@ -207,7 +208,7 @@ class UnifiedServerBackups(ManagedBackups):
         _schedule_slot: str | None = None,
         include_packs: bool | None = None,
         mode: BackupMode | None = None,
-        components: list[Component] | None = None,
+        components: list[SelectableComponent] | None = None,
     ) -> BackupSummary:
         try:
             return await self._create_snapshot(
@@ -244,7 +245,7 @@ class UnifiedServerBackups(ManagedBackups):
         _schedule_slot: str | None = None,
         include_packs: bool | None = None,
         mode: BackupMode | None = None,
-        components: list[Component] | None = None,
+        components: list[SelectableComponent] | None = None,
     ) -> BackupSummary:
         import time
 

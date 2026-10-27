@@ -6,6 +6,8 @@ from uuid import UUID
 
 from pydantic import BaseModel, ConfigDict, Field, JsonValue
 
+from .contents import DEFAULT_COMPONENTS, BackupMode
+
 ConfigComponent = Literal["server.properties", "allowlist.json", "permissions.json"]
 
 Component = Literal[
@@ -21,14 +23,7 @@ Component = Literal[
     "development_behavior_packs",
     "development_resource_packs",
 ]
-BASE_COMPONENTS: tuple[Component, ...] = (
-    "world",
-    "server.properties",
-    "allowlist.json",
-    "permissions.json",
-    "script_config",
-    "bsm_settings",
-)
+BASE_COMPONENTS: tuple[Component, ...] = DEFAULT_COMPONENTS
 PACK_COMPONENTS: tuple[Component, ...] = (
     "behavior_packs",
     "resource_packs",
@@ -37,7 +32,6 @@ PACK_COMPONENTS: tuple[Component, ...] = (
 )
 COMPONENTS = BASE_COMPONENTS + PACK_COMPONENTS + ("server_directory",)
 DIRECTORY_COMPONENTS = ("server_directory", "world", "script_config", *PACK_COMPONENTS)
-BackupMode = Literal["world", "selected", "full"]
 
 PREFIXES = {
     "server_directory": "server-directory",
@@ -282,14 +276,8 @@ def validate_selection_options(value):
     """Validate explicit content overrides before a background task is accepted."""
     mode = value.mode
     components = value.components
-    if components is not None:
-        if (
-            mode not in (None, "selected")
-            or not components
-            or len(set(components)) != len(components)
-            or "server_directory" in components
-        ):
-            raise ValueError("Choose unique components in selected mode")
+    if components is not None and mode not in (None, "selected"):
+        raise ValueError("Components are only supported in selected mode")
     if getattr(value, "include_packs", None) is not None and (
         components is not None or mode not in (None, "selected")
     ):

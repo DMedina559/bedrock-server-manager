@@ -1,6 +1,9 @@
 """Resolve backup content without classifying bundled packs."""
 
+from pydantic import ValidationError
+
 from ..error import BackupRestoreError
+from .contents import BackupContentSelection
 from .models import BASE_COMPONENTS, PACK_COMPONENTS, BackupMode, Component
 
 
@@ -31,13 +34,13 @@ def selection(
         chosen = [c for c in chosen if c not in PACK_COMPONENTS]
         if include_packs is not False:
             chosen.extend(PACK_COMPONENTS)
-    if (
-        not chosen
-        or len(chosen) != len(set(chosen))
-        or any(c not in BASE_COMPONENTS + PACK_COMPONENTS for c in chosen)
-    ):
-        raise BackupRestoreError("Select at least one component without duplicates.")
-    return mode, chosen
+    try:
+        validated = BackupContentSelection(mode=mode, components=chosen)
+    except ValidationError as error:
+        raise BackupRestoreError(
+            "Select at least one valid component without duplicates."
+        ) from error
+    return validated.mode, list(validated.components)
 
 
 def server_entries(root):

@@ -51,6 +51,7 @@ from ...api.models.backup_restore import (
     RestoreSnapshotRequest,
 )
 from ...backups.archive import MAX_BYTES, write_archive
+from ...backups.contents import BackupComponents
 from ...backups.credentials import BackupCredentials, private_directory
 from ...backups.models import Component, ConfigComponent
 from ...backups.recovery import sync_tree
@@ -362,7 +363,7 @@ class SnapshotCreatePayload(APIRequest):
     encrypted: bool | None = None
     include_packs: bool | None = None
     mode: Literal["world", "selected", "full"] | None = None
-    components: list[Component] | None = None
+    components: BackupComponents | None = None
 
     _validate_selection = model_validator(mode="after")(validate_selection_options)
 

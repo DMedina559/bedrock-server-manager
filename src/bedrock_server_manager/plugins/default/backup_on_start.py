@@ -5,10 +5,10 @@ Plugin to automatically back up a server before it starts.
 
 from typing import Any, Literal
 
-from pydantic import BaseModel, ConfigDict, Field, field_validator
+from pydantic import BaseModel, ConfigDict, Field
 
 from bedrock_server_manager import ExistingServerName, PluginBase, app_event
-from bedrock_server_manager.backups.models import BASE_COMPONENTS, Component
+from bedrock_server_manager.backups.contents import DEFAULT_COMPONENTS, BackupComponents
 from bedrock_server_manager.logging import log_operation_error
 
 
@@ -29,8 +29,8 @@ class PluginSettings(BaseModel):
         default="world",
         description="Contents to capture before start. Default uses global backup settings.",
     )
-    components: list[Component] = Field(
-        default_factory=lambda: list(BASE_COMPONENTS),
+    components: BackupComponents = Field(
+        default_factory=lambda: list(DEFAULT_COMPONENTS),
         description="Components used only in selected mode.",
     )
     encryption: Literal["default", "on", "off"] = Field(
@@ -40,15 +40,6 @@ class PluginSettings(BaseModel):
     enable_backup_on_start: bool = Field(
         default=True, description="Back up this server before starting it."
     )
-
-    @field_validator("components")
-    @classmethod
-    def validate_components(cls, value):
-        if not value or len(set(value)) != len(value) or "server_directory" in value:
-            raise ValueError(
-                "Choose unique components; use full mode for the server directory"
-            )
-        return value
 
 
 class AutoBackupOnStart(PluginBase):
@@ -103,7 +94,7 @@ class AutoBackupOnStart(PluginBase):
         }
         if mode == "selected":
             request["components"] = await self.get_plugin_setting(
-                "components", default=list(BASE_COMPONENTS)
+                "components", default=list(DEFAULT_COMPONENTS)
             )
         if await self.get_plugin_setting("reuse_sequence_backup", default=True):
             coverage = await self.api.backup_restore.can_reuse_server_backup(

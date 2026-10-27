@@ -6,6 +6,7 @@ from pydantic import Field, SecretStr, model_validator
 
 from bedrock_server_manager.backups.models import validate_selection_options
 
+from ...backups.contents import BackupComponents
 from ...backups.models import (
     BackupHealth,
     BackupSummary,
@@ -59,7 +60,7 @@ class BackupAllRequest(APIRequest):
     mode: Literal["world", "selected", "full"] | None = Field(
         default=None, exclude=True
     )
-    components: list[Component] | None = Field(default=None, exclude=True)
+    components: BackupComponents | None = Field(default=None, exclude=True)
     encrypted: bool | None = Field(default=None, exclude=True)
 
     _validate_selection = model_validator(mode="after")(validate_selection_options)
@@ -120,7 +121,7 @@ class CreateSnapshotRequest(APIRequest):
     mode: Literal["world", "selected", "full"] | None = Field(
         default=None, exclude=True
     )
-    components: list[Component] | None = Field(default=None, exclude=True)
+    components: BackupComponents | None = Field(default=None, exclude=True)
     purpose: Literal["manual", "scheduled"] = "manual"
     schedule_slot: str | None = Field(default=None, max_length=128)
 
@@ -140,7 +141,7 @@ class SnapshotReuseRequest(ListSnapshotsRequest):
     mode: Literal["world", "selected", "full"] | None = Field(
         default=None, exclude=True
     )
-    components: list[Component] | None = Field(default=None, exclude=True)
+    components: BackupComponents | None = Field(default=None, exclude=True)
 
     _validate_selection = model_validator(mode="after")(validate_selection_options)
 

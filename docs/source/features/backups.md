@@ -27,6 +27,8 @@ Choose a content mode:
 - **Selected components:** choose from the table above. Global defaults include the first six components and exclude all server-level pack directories.
 - **Full server directory:** every world, executable, log, configuration file and server-level pack in this server's directory. BSM server settings are exported separately. Stop the server first and keep backup storage outside the server directory. BSM's reserved `.bsm-*` staging and recovery entries are excluded.
 
+Creation, global settings and Backup on Start share the `BackupComponents` Pydantic type. Its JSON Schema defines the selectable names, labels, defaults and nonempty/unique constraints. The plugin settings editor renders these as checkboxes; the frontend backup picker uses metadata generated from the same schema. `server_directory` is an archive/restore component selected through full mode, rather than an individual creation component.
+
 BSM does not classify bundled or custom server packs. Selecting a server pack directory captures the entire directory. World-local packs are always part of the world component.
 
 Configure `backups.mode` (`world`, `selected`, or `full`) and `backups.components` in global settings. Existing `include_packs` request overrides and `backups.include_server_packs` remain supported; the latter defaults to false. Explicit existing settings are preserved. Schedules can inherit defaults or override mode and components.

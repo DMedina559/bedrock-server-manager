@@ -375,7 +375,6 @@ Schemas are listed once. Local `$defs` references identify other models on this 
         {
           "items": {
             "enum": [
-              "server_directory",
               "world",
               "server.properties",
               "allowlist.json",
@@ -389,7 +388,29 @@ Schemas are listed once. Local `$defs` references identify other models on this 
             ],
             "type": "string"
           },
-          "type": "array"
+          "minItems": 1,
+          "type": "array",
+          "uniqueItems": true,
+          "x-bsm-choice-labels": {
+            "allowlist.json": "Allowlist",
+            "behavior_packs": "Server behavior packs",
+            "bsm_settings": "BSM server settings",
+            "development_behavior_packs": "Development behavior packs",
+            "development_resource_packs": "Development resource packs",
+            "permissions.json": "Player permissions",
+            "resource_packs": "Server resource packs",
+            "script_config": "Script configuration",
+            "server.properties": "Server properties",
+            "world": "Active world (includes world packs)"
+          },
+          "x-bsm-default-components": [
+            "world",
+            "server.properties",
+            "allowlist.json",
+            "permissions.json",
+            "script_config",
+            "bsm_settings"
+          ]
         },
         {
           "type": "null"
@@ -1978,7 +1999,6 @@ Schemas are listed once. Local `$defs` references identify other models on this 
         {
           "items": {
             "enum": [
-              "server_directory",
               "world",
               "server.properties",
               "allowlist.json",
@@ -1992,7 +2012,29 @@ Schemas are listed once. Local `$defs` references identify other models on this 
             ],
             "type": "string"
           },
-          "type": "array"
+          "minItems": 1,
+          "type": "array",
+          "uniqueItems": true,
+          "x-bsm-choice-labels": {
+            "allowlist.json": "Allowlist",
+            "behavior_packs": "Server behavior packs",
+            "bsm_settings": "BSM server settings",
+            "development_behavior_packs": "Development behavior packs",
+            "development_resource_packs": "Development resource packs",
+            "permissions.json": "Player permissions",
+            "resource_packs": "Server resource packs",
+            "script_config": "Script configuration",
+            "server.properties": "Server properties",
+            "world": "Active world (includes world packs)"
+          },
+          "x-bsm-default-components": [
+            "world",
+            "server.properties",
+            "allowlist.json",
+            "permissions.json",
+            "script_config",
+            "bsm_settings"
+          ]
         },
         {
           "type": "null"
@@ -11757,7 +11799,6 @@ Schemas are listed once. Local `$defs` references identify other models on this 
         {
           "items": {
             "enum": [
-              "server_directory",
               "world",
               "server.properties",
               "allowlist.json",
@@ -11771,7 +11812,29 @@ Schemas are listed once. Local `$defs` references identify other models on this 
             ],
             "type": "string"
           },
-          "type": "array"
+          "minItems": 1,
+          "type": "array",
+          "uniqueItems": true,
+          "x-bsm-choice-labels": {
+            "allowlist.json": "Allowlist",
+            "behavior_packs": "Server behavior packs",
+            "bsm_settings": "BSM server settings",
+            "development_behavior_packs": "Development behavior packs",
+            "development_resource_packs": "Development resource packs",
+            "permissions.json": "Player permissions",
+            "resource_packs": "Server resource packs",
+            "script_config": "Script configuration",
+            "server.properties": "Server properties",
+            "world": "Active world (includes world packs)"
+          },
+          "x-bsm-default-components": [
+            "world",
+            "server.properties",
+            "allowlist.json",
+            "permissions.json",
+            "script_config",
+            "bsm_settings"
+          ]
         },
         {
           "type": "null"
