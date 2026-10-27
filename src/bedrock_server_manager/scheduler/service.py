@@ -11,7 +11,8 @@ if TYPE_CHECKING:
 from datetime import datetime, timezone
 
 from ..utils.threads import run_in_thread
-from .engine import occurrences, run_due
+from .engine import occurrences, signature
+from .runner import DeferredRun, next_attempt, run_schedule
 
 
 class Scheduler:
@@ -20,6 +21,9 @@ class Scheduler:
         self.task = None
         self._jobs = {}
         self._slots = asyncio.Semaphore(4)
+        self._limit = 4
+        self._interval = 60
+        self._wake = asyncio.Event()
         self._handlers = {}
         self._settings_lock = asyncio.Lock()
         self._migration_lock = asyncio.Lock()
@@ -31,7 +35,18 @@ class Scheduler:
     def repository(self):
         return self.context.storage.scheduler_repo
 
-    def register(self, name, handler, *, owner, generation):
+    def register(
+        self,
+        name,
+        handler,
+        *,
+        owner,
+        generation,
+        options_model=None,
+        timeout_seconds=300,
+        requires_server_lock=True,
+        with_context=False,
+    ):
         if not inspect.iscoroutinefunction(handler):
             raise TypeError("Scheduled task handlers must be async functions")
         import re
@@ -47,7 +62,29 @@ class Scheduler:
             raise ValueError("Scheduled task names must use the plugin namespace")
         if name in self._handlers and self.available(name):
             raise ValueError("Scheduled task is already registered")
-        self._handlers[name] = (handler, owner, generation)
+        from pydantic import BaseModel
+
+        if options_model is not None and (
+            not inspect.isclass(options_model)
+            or not issubclass(options_model, BaseModel)
+        ):
+            raise TypeError("Task options_model must be a Pydantic model class")
+        if (
+            type(timeout_seconds) not in (int, float)
+            or not 1 <= timeout_seconds <= 86400
+        ):
+            raise ValueError("Task timeout must be from 1 through 86400 seconds")
+        if options_model is not None:
+            options_model.model_json_schema()
+        self._handlers[name] = (
+            handler,
+            owner,
+            generation,
+            options_model,
+            timeout_seconds,
+            requires_server_lock,
+            with_context,
+        )
 
     def remove_owner(self, owner):
         for name, entry in list(self._handlers.items()):
@@ -77,6 +114,7 @@ class Scheduler:
         # Existing settings remain a compatibility adapter. Stable IDs prevent duplication.
         rows = await self.repository.list()
         known = {row[0]: row for row in rows}
+        changed = False
         for server, raw in self.context.settings.get("backups.schedules", {}).items():
             name = "backup-" + hashlib.sha256(server.encode()).hexdigest()[:20]
             config = raw.model_dump() if hasattr(raw, "model_dump") else raw
@@ -96,13 +134,16 @@ class Scheduler:
                 await self.repository.save(
                     name, config, legacy_server=server, initial_state=state
                 )
+                changed = True
         legacy = self.context.settings.get("backups.schedules", {})
         for name, _, _, server in rows:
             if server and server not in legacy:
                 await self.repository.delete(name)
+                changed = True
+        loaded = await self.repository.list() if changed else rows
         return {
             name: (config, state, server)
-            for name, config, state, server in await self.repository.list()
+            for name, config, state, server in loaded
             if server_name is None or config["server_name"] == server_name
         }
 
@@ -110,16 +151,17 @@ class Scheduler:
         from ..api.models.scheduler import ListSchedulesResponse, ScheduleEntry
 
         entries = []
-        for name, (config, record, legacy) in (
-            await self.configurations(server_name)
-        ).items():
+        definitions = await self.configurations(server_name)
+        histories = await self.repository.histories(definitions)
+        now = datetime.now(timezone.utc)
+        for name, (config, record, legacy) in definitions.items():
             try:
                 self.context.get_server(
                     config["server_name"], require_installation=False
                 )
                 available = self.available(config["task"])
             except Exception:
-                record, available = {}, False
+                available = False
             try:
                 slots = occurrences(
                     config, config["server_name"], datetime.now(timezone.utc)
@@ -142,7 +184,16 @@ class Scheduler:
                     last_success_at=record.get("last_success_at"),
                     last_error=record.get("error"),
                     attempts=record.get("attempts", 0),
-                    runs=await self.repository.history(name),
+                    runs=histories.get(name, []),
+                    revision=signature(config),
+                    next_attempt_at=next_attempt(config, record, now, name),
+                    retry_exhausted=(
+                        record.get("attempts", 0) >= 3
+                        and record.get("status") in ("failed", "interrupted")
+                    )
+                    or record.get("blocked_reason") == "retry_expired",
+                    blocked_reason=record.get("blocked_reason"),
+                    last_evaluated_at=record.get("last_evaluated_at"),
                 )
             )
         types = ["backup", "verify"] + [
@@ -153,6 +204,18 @@ class Scheduler:
         return ListSchedulesResponse(
             schedules=entries,
             task_types=sorted(types),
+            task_definitions={
+                name: {
+                    "options_schema": (
+                        entry[3].model_json_schema() if entry[3] else None
+                    ),
+                    "timeout_seconds": entry[4],
+                    "requires_server_lock": entry[5],
+                    "with_context": entry[6],
+                }
+                for name, entry in list(self._handlers.items())
+                if self.available(name)
+            },
             server_time=datetime.now(timezone.utc).isoformat(),
             host_timezone=datetime.now().astimezone().tzname(),
             timezone_database_available=timezone_database_available(),
@@ -197,6 +260,28 @@ class Scheduler:
             or not 0 <= options.get("minimum_age_hours", 168) <= 8760
         ):
             raise UserInputError("Verification age must be an integer from 0 to 8760")
+        if ":" in task and self.available(task):
+            entry = self._handlers[task]
+            if entry[3] is not None:
+                import json
+
+                try:
+                    from ..services.plugin_service import _json_settings
+
+                    checked = _json_settings(
+                        entry[3].model_validate_json(json.dumps(options), strict=True)
+                    )
+                except ValueError as error:
+                    raise UserInputError(
+                        "Invalid scheduled plugin task options"
+                    ) from error
+                request = request.model_copy(
+                    update={
+                        "configuration": request.configuration.model_copy(
+                            update={"options": checked}
+                        )
+                    }
+                )
         async with self._settings_lock:
             rows = await self.configurations()
             previous = rows.get(request.schedule_id)
@@ -230,6 +315,7 @@ class Scheduler:
                 legacy[previous[2]] = config
                 await self.context.settings.set("backups.schedules", legacy)
             await self.repository.save(request.schedule_id, configuration.model_dump())
+            self._wake.set()
 
     async def delete(self, name):
         async with self._settings_lock:
@@ -249,8 +335,9 @@ class Scheduler:
                 }
                 await self.context.settings.set("backups.schedules", legacy)
             await self.repository.delete(name)
+            self._wake.set()
 
-    async def execute(self, name, config, server, slot):
+    async def execute(self, name, config, server, slot, execution=None):
         import time
         from uuid import uuid4
 
@@ -270,7 +357,7 @@ class Scheduler:
                 correlation_id=current_correlation_id(),
             )
             try:
-                await self._execute(config, server, slot)
+                await self._execute(config, server, slot, execution=execution)
             except BaseException as error:
                 failure = error
                 await self.repository.run(
@@ -280,7 +367,7 @@ class Scheduler:
                     status=(
                         "interrupted"
                         if isinstance(error, asyncio.CancelledError)
-                        else "failed"
+                        else "deferred" if isinstance(error, DeferredRun) else "failed"
                     ),
                     error="Scheduled task did not complete; inspect diagnostics and logs.",
                 )
@@ -303,7 +390,7 @@ class Scheduler:
                         ),
                     )
 
-    async def _execute(self, config, server, slot):
+    async def _execute(self, config, server, slot, *, execution=None):
         if config["task"] == "backup":
             result = await self.context.api.backup_restore.create_server_backup(
                 request={
@@ -322,9 +409,7 @@ class Scheduler:
             failed = 0
             for item in await server.backups.list_snapshots():
                 if server.operation_lock.waiting:
-                    raise RuntimeError(
-                        "Verification yielded to interactive work; retry later"
-                    )
+                    raise DeferredRun("Verification yielded to interactive work")
                 checked = item.verification.verified_at
                 if (
                     item.verification.status != "verified"
@@ -343,7 +428,9 @@ class Scheduler:
         else:
             if not self.available(config["task"]):
                 raise RuntimeError("Scheduled task handler is unavailable")
-            handler, owner, _ = self._handlers[config["task"]]
+            handler, owner, _, model, timeout, requires_lock, with_context = (
+                self._handlers[config["task"]]
+            )
             manager = self.context._plugin_manager
             current = asyncio.current_task()
             tasks = (
@@ -354,70 +441,179 @@ class Scheduler:
             if current is not None:
                 tasks.append(current)
             try:
-                await handler(
-                    server_name=server.server_name,
-                    options=dict(config.get("options", {})),
-                )
+                import json
+                from contextlib import nullcontext
+
+                from ..events.bus import current_correlation_id
+
+                options = dict(config.get("options", {}))
+                if model is not None:
+                    from ..services.plugin_service import _json_settings
+
+                    options = _json_settings(
+                        model.model_validate_json(json.dumps(options), strict=True)
+                    )
+                kwargs = {"server_name": server.server_name, "options": options}
+                if with_context:
+                    kwargs["execution_context"] = {
+                        "slot": slot,
+                        "idempotency_key": slot,
+                        "attempt": (execution or {}).get("attempts", 1),
+                        "correlation_id": current_correlation_id(),
+                    }
+                async with asyncio.timeout(timeout):
+                    async with (
+                        server.operation_lock if requires_lock else nullcontext()
+                    ):
+                        await handler(**kwargs)
             finally:
                 if current in tasks:
                     tasks.remove(current)
 
-    async def _maintain_server(self, name):
-        try:
-            server = self.context.get_server(name, require_installation=False)
-            async with self._slots:
-                performed = False
-                for identifier, (config, state, legacy) in (
-                    await self.configurations(name)
-                ).items():
+    async def _maintain_server(self, name, definitions=None):
+        server = self.context.get_server(name, require_installation=False)
+        async with self._slots:
+            performed = False
+            entries = (
+                definitions
+                if definitions is not None
+                else await self.configurations(name)
+            )
+            for identifier, (config, state, legacy) in entries.items():
+                try:
                     if not self.available(config["task"]):
-                        continue
-                    # A host losing one timezone must not block other jobs for the server.
+                        raise ValueError("handler_unavailable")
                     from ..utils.timezones import resolve_timezone
 
-                    try:
-                        resolve_timezone(config["timezone"])
-                    except (ValueError, KeyError):
-                        logging.getLogger(__name__).warning(
-                            "Scheduled timezone unavailable for '%s'.", identifier
-                        )
-                        continue
+                    resolve_timezone(config["timezone"])
 
-                    async def capture(slot):
-                        await self.execute(identifier, config, server, slot)
+                    if state.get("blocked_reason") == "preparation_failed":
 
-                    # Keep the legacy signature stable to retain existing activation/history.
-                    legacy_config = {
-                        k: v
-                        for k, v in config.items()
-                        if k not in ("task", "server_name", "options")
-                    }
+                        def repaired(current, record):
+                            if current == config:
+                                record.update(blocked_reason=None, error=None)
 
-                    async def read_state():
-                        return await self.repository.state(identifier)
+                        await self.repository.mutate(identifier, repaired)
 
-                    async def write_state(value):
-                        await self.repository.state(identifier, value)
+                    async def execute(slot, execution):
+                        await self.execute(identifier, config, server, slot, execution)
+
+                    async def reconcile(slot):
+                        # Only backups consult archives. Other task types are independent.
+                        async with server.operation_lock:
+                            value = await run_in_thread(server.backups.catalog.load)
+                            return any(
+                                item.get("schedule_slot") == slot
+                                and (
+                                    server.backups.catalog.directory / filename
+                                ).is_file()
+                                for filename, item in value["archives"].items()
+                            )
 
                     performed = (
-                        await run_due(
-                            server.backups,
-                            config=legacy_config if legacy else config,
-                            record_key=(
-                                "schedule" if legacy else f"schedule:{identifier}"
+                        await run_schedule(
+                            self.repository,
+                            identifier,
+                            config,
+                            server,
+                            execute,
+                            reconcile=reconcile if config["task"] == "backup" else None,
+                            check_contention=(
+                                config["task"] in ("backup", "verify")
+                                or self._handlers[config["task"]][5]
                             ),
-                            capture=capture,
-                            read_state=read_state,
-                            write_state=write_state,
                         )
                         or performed
                     )
-                if not performed:
+                except asyncio.CancelledError:
+                    raise
+                except Exception:
+
+                    def blocked(current, record):
+                        if current == config and not record.get("lease"):
+                            record.update(
+                                blocked_reason="preparation_failed",
+                                error="Scheduled work could not be prepared; inspect diagnostics and logs.",
+                                last_evaluated_at=datetime.now(
+                                    timezone.utc
+                                ).isoformat(),
+                            )
+
+                    await self.repository.mutate(identifier, blocked)
+                    logging.getLogger(__name__).warning(
+                        "Scheduled work needs attention for '%s'.",
+                        identifier,
+                        exc_info=True,
+                    )
+            if not performed:
+                try:
                     await server.backups.maintain_backups()
-        except Exception:
-            logging.getLogger(__name__).warning(
-                "Scheduled work needs attention for '%s'.", name, exc_info=True
-            )
+                except Exception:
+                    logging.getLogger(__name__).warning(
+                        "Backup maintenance failed for '%s'.", name, exc_info=True
+                    )
+
+    async def control(self, request):
+        """Explicit controls are revision checked and never replay an active run."""
+        from uuid import uuid4
+
+        from ..error import UserInputError
+
+        async with self._settings_lock:
+            rows = await self.configurations()
+            previous = rows.get(request.schedule_id)
+            if previous is None:
+                raise UserInputError("Schedule does not exist")
+            config, _, _ = previous
+            if request.revision is not None and signature(config) != request.revision:
+                raise UserInputError("Schedule changed; refresh before trying again")
+            if request.action in ("pause", "resume"):
+                configuration = dict(config, enabled=request.action == "resume")
+                if previous[2]:
+                    legacy = self.context.settings.get("backups.schedules", {})
+                    legacy = {
+                        k: v.model_dump() if hasattr(v, "model_dump") else v
+                        for k, v in legacy.items()
+                    }
+                    legacy[previous[2]] = {
+                        k: v
+                        for k, v in configuration.items()
+                        if k not in ("task", "server_name", "options")
+                    }
+                    await self.context.settings.set("backups.schedules", legacy)
+                await self.repository.save(request.schedule_id, configuration)
+                self._wake.set()
+                return
+            else:
+                if not self.available(config["task"]):
+                    raise UserInputError("Scheduled task handler is unavailable")
+
+                self.context.get_server(
+                    config["server_name"], require_installation=False
+                )
+
+                def mutate(current, state):
+                    if current != config or state.get("lease"):
+                        raise UserInputError(
+                            "Schedule changed or is already running; refresh first"
+                        )
+                    if state.get("requested_slot"):
+                        raise UserInputError("A run is already queued")
+                    if request.action == "retry":
+                        if state.get("status") not in (
+                            "failed",
+                            "interrupted",
+                            "deferred",
+                        ) or not state.get("slot"):
+                            raise UserInputError("No failed run is available to retry")
+                        state.update(attempts=0, next_retry_at=None)
+                        state["requested_slot"] = state["slot"]
+                    else:
+                        state["requested_slot"] = "manual:" + uuid4().hex
+
+                await self.repository.mutate(request.schedule_id, mutate)
+                self._wake.set()
+                return
 
     async def diagnostic_snapshot(self):
         import time
@@ -431,18 +627,32 @@ class Scheduler:
             for config, state, legacy in entries.values()
             if config["enabled"]
         ]
-        missing = sum(
-            not self.available(config["task"])
-            or config["server_name"] not in self.context.state.servers.servers
-            for config, state in enabled
-        )
+        from ..utils.timezones import resolve_timezone
+
+        def unavailable(config):
+            if (
+                not self.available(config["task"])
+                or config["server_name"] not in self.context.state.servers.servers
+            ):
+                return True
+            try:
+                resolve_timezone(config["timezone"])
+            except (ValueError, KeyError):
+                return True
+            return False
+
+        missing = sum(unavailable(config) for config, state in enabled)
         observation = SchedulerDiagnostics(
             running=self.task is not None and not self.task.done(),
             schedules=len(entries),
             enabled=len(enabled),
             active_jobs=len(self._jobs),
             failed=sum(
-                state.get("status") in ("failed", "interrupted")
+                (
+                    state.get("status") in ("failed", "interrupted")
+                    or state.get("blocked_reason")
+                    in ("preparation_failed", "retry_exhausted", "retry_expired")
+                )
                 for config, state in enabled
             ),
             unavailable=missing,
@@ -467,9 +677,17 @@ class Scheduler:
                 else "degraded"
             ),
             values={
-                key: value
-                for key, value in observation.model_dump().items()
-                if key not in ("kind", "last_error_type")
+                **{
+                    key: value
+                    for key, value in observation.model_dump().items()
+                    if key not in ("kind", "last_error_type")
+                },
+                "running_executions": sum(
+                    bool(state.get("lease"))
+                    for config, state, legacy in entries.values()
+                ),
+                "concurrency_limit": self._limit,
+                "queued_workers": max(0, len(self._jobs) - self._limit),
             },
             units={"tick_age_seconds": "seconds"},
         )
@@ -487,6 +705,13 @@ class Scheduler:
 
     def start(self):
         if self.task is None or self.task.done():
+            self._limit = self.context.settings.get(
+                "scheduler.max_concurrent_servers", 4
+            )
+            self._interval = self.context.settings.get(
+                "scheduler.poll_interval_seconds", 60
+            )
+            self._slots = asyncio.Semaphore(self._limit)
             self.task = asyncio.create_task(self._run(), name="scheduler")
 
     def _finished(self, name, task):
@@ -494,7 +719,11 @@ class Scheduler:
             self._jobs.pop(name, None)
         self.context.state.runtime.scheduler["active_jobs"] = len(self._jobs)
         if not task.cancelled():
-            task.exception()
+            error = task.exception()
+            if error is not None:
+                logging.getLogger(__name__).warning(
+                    "Scheduler worker failed for '%s': %s", name, type(error).__name__
+                )
 
     async def _run(self):
         import time
@@ -521,17 +750,27 @@ class Scheduler:
                 for name, task in list(self._jobs.items()):
                     if name not in names:
                         task.cancel()
+                definitions = await self.configurations()
+                grouped = {name: {} for name in names}
+                for identifier, entry in definitions.items():
+                    if entry[0]["server_name"] in grouped:
+                        grouped[entry[0]["server_name"]][identifier] = entry
                 for name in sorted(names):
                     if name not in self._jobs:
                         task = asyncio.create_task(
-                            self._maintain_server(name), name=f"scheduler:{name}"
+                            self._maintain_server(name, grouped[name]),
+                            name=f"scheduler:{name}",
                         )
                         self._jobs[name] = task
                         task.add_done_callback(
                             lambda done, name=name: self._finished(name, done)
                         )
                 self.context.state.runtime.scheduler["active_jobs"] = len(self._jobs)
-                await asyncio.sleep(60)
+                try:
+                    await asyncio.wait_for(self._wake.wait(), timeout=self._interval)
+                except TimeoutError:
+                    pass
+                self._wake.clear()
         except Exception as error:
             self.last_error_type = type(error).__name__
             logging.getLogger(__name__).exception("Scheduler loop stopped unexpectedly")

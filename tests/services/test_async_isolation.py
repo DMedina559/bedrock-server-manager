@@ -40,8 +40,6 @@ async def test_monitor_keeps_peer_responsive_and_drains_checks(
 
 
 async def test_slow_maintenance_does_not_delay_other_servers(monkeypatch):
-    from bedrock_server_manager.backups import schedule
-
     entered, observed = asyncio.Event(), asyncio.Event()
 
     async def slow():
@@ -60,11 +58,11 @@ async def test_slow_maintenance_does_not_delay_other_servers(monkeypatch):
     }
     context = SimpleNamespace(
         db=None,
+        settings={},
         lifecycle_phase=LifecyclePhase.READY,
         state=SimpleNamespace(servers=SimpleNamespace(servers=servers)),
         get_server=lambda name, **kwargs: servers[name],
     )
-    monkeypatch.setattr(schedule, "run_due", AsyncMock(return_value=False))
     from bedrock_server_manager.db.repositories.scheduler import SchedulerRepository
 
     monkeypatch.setattr(SchedulerRepository, "recover", AsyncMock())

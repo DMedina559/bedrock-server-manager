@@ -472,3 +472,29 @@ Legacy backup-creation API names now create unified archives. Legacy restore-all
 selects one latest unified archive rather than combining separately dated files.
 Minecraft `.mcworld` import and export remain available as
 [content operations](content_management.md).
+
+### Scheduler execution and controls
+
+Schedules activate when saved, so the first poll shortly after their due time can
+still execute them. Catch-up controls missed first attempts; it does not disable
+retries of a run that already started. Automatic failures receive up to three
+attempts with backoff, within a one-day retry window. Interactive contention defers
+work without consuming that budget. A new occurrence has a separate budget.
+
+The scheduler page provides **Run now**, **Pause/Resume**, and **Retry now**. Manual
+runs use distinct execution identities and do not consume a calendar occurrence.
+Pausing prevents future claims; an already claimed run may finish. Retry now is an
+explicit request to retry a failed slot. Controls can include the listed
+configuration revision to reject stale requests. Run history remains the source
+of outcomes; acknowledgement of a control does not mean its work has completed.
+
+Listings distinguish `next_run_at` (the next calendar occurrence) from
+`next_attempt_at` (a retry, deferral, or queued manual request), and report exhausted
+retries and blocked reasons. Diagnostics include running executions, worker queue
+size, and concurrency limits. Preparation failures remain visible until repaired.
+
+`scheduler.max_concurrent_servers` defaults to 4 (range 1–32).
+`scheduler.poll_interval_seconds` defaults to 60 (range 1–60). Both apply after a
+BSM restart. Schedule controls wake the loop immediately. Definitions and cursors
+use the existing scheduler tables; execution leases and cursor metadata are stored
+in their JSON state, so these additions require no new database migration.

@@ -164,3 +164,40 @@ Omitting scope continues to address plugin-local settings. Server scope requires
 Ordinary global/server setting writes and server-settings restores validate changed registered namespaces at the storage transaction boundary, before database commit and state publication. Unchanged namespaces are not rewritten as a side effect of unrelated updates. Stored values remain when a plugin is disabled or removed; discovery retains models for installed disabled plugins, and refreshes registrations when plugins reload. Plugins without the new declarations keep their existing behavior.
 
 The existing `GET /api/plugins/{plugin_name}/settings` accepts `scope` and optional `server_name` query parameters. The existing PUT accepts the same fields with `settings` in its body. These administrative endpoints return the scope's model schema for the frontend editor. The plugin bridge injects caller identity into the existing singular get/set APIs; the plural `PluginBase` helpers use those APIs for whole-namespace operations.
+
+## Scheduled task options and execution context
+
+Register plugin tasks with `self.api.runtime.register_scheduled_task`:
+
+```python
+class TaskOptions(BaseModel):
+    count: int = Field(default=1, ge=1, le=100)
+
+self.api.runtime.register_scheduled_task(
+    "my_plugin:cleanup", self.cleanup,
+    options_model=TaskOptions,
+    timeout_seconds=300,
+    requires_server_lock=False,
+    with_context=True,
+)
+
+async def cleanup(self, *, server_name, options, execution_context):
+    key = execution_context["idempotency_key"]
+    # Use key to recognize a repeated attempt before producing external effects.
+```
+
+All registration keywords are optional. Existing handlers continue receiving only
+`server_name` and `options`. The default server lock remains enabled. Choose
+`requires_server_lock=False` only when the task does not need exclusive server
+access; operations called through the API still apply their own locks. Plugin task
+timeouts default to 300 seconds and can be set from 1 through 86400 seconds.
+Cancellation is cooperative; handlers must propagate cancellation and clean up in
+`finally` blocks. Long built-in backups do not inherit this plugin timeout.
+
+An options model validates saved options and validates again before execution.
+The scheduler listing exposes its JSON Schema for clients. With context enabled,
+the handler additionally receives a stable slot/idempotency key, attempt number,
+and operation correlation ID. A manual run has its own slot. Execution is
+at-least-once across a crash; database claims and completed-run reconciliation do
+not replace idempotency for external effects. Disabled or unloaded plugin owners
+cannot run registered handlers.

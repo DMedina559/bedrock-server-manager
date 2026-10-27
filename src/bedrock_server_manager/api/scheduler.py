@@ -4,6 +4,7 @@ from ..context import AppContext
 from ..plugins.api_bridge import api_method
 from .models.common import SuccessResponse
 from .models.scheduler import (
+    ControlScheduleRequest,
     DeleteScheduleRequest,
     ListSchedulesRequest,
     ListSchedulesResponse,
@@ -35,3 +36,12 @@ async def delete_schedule(
     """Remove a named schedule without deleting archives or stopping an active run."""
     await app_context.scheduler.delete(request.schedule_id)
     return SuccessResponse(message="Schedule removed.")
+
+
+@api_method("control_schedule", expose_to_plugins=False)
+async def control_schedule(
+    request: ControlScheduleRequest, *, app_context: AppContext
+) -> SuccessResponse:
+    """Queue a manual run/retry or pause/resume a revision-checked schedule."""
+    await app_context.scheduler.control(request)
+    return SuccessResponse(message="Schedule action accepted.")

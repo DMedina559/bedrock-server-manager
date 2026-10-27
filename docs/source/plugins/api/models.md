@@ -7214,6 +7214,16 @@ Schemas are listed once. Local `$defs` references identify other models on this 
       "default": null,
       "title": "Server Time"
     },
+    "task_definitions": {
+      "additionalProperties": {
+        "additionalProperties": {
+          "$ref": "#/$defs/JsonValue"
+        },
+        "type": "object"
+      },
+      "title": "Task Definitions",
+      "type": "object"
+    },
     "task_types": {
       "items": {
         "type": "string"
@@ -10948,107 +10958,12 @@ Schemas are listed once. Local `$defs` references identify other models on this 
 }
 ```
 
-## ScheduleEntry
+## ScheduleConfigurationView
 
 ```json
 {
   "additionalProperties": false,
-  "properties": {
-    "attempts": {
-      "default": 0,
-      "title": "Attempts",
-      "type": "integer"
-    },
-    "available": {
-      "title": "Available",
-      "type": "boolean"
-    },
-    "configuration": {
-      "$ref": "#/$defs/ScheduledTask"
-    },
-    "last_error": {
-      "anyOf": [
-        {
-          "type": "string"
-        },
-        {
-          "type": "null"
-        }
-      ],
-      "default": null,
-      "title": "Last Error"
-    },
-    "last_status": {
-      "anyOf": [
-        {
-          "type": "string"
-        },
-        {
-          "type": "null"
-        }
-      ],
-      "default": null,
-      "title": "Last Status"
-    },
-    "last_success_at": {
-      "anyOf": [
-        {
-          "type": "string"
-        },
-        {
-          "type": "null"
-        }
-      ],
-      "default": null,
-      "title": "Last Success At"
-    },
-    "legacy": {
-      "default": false,
-      "title": "Legacy",
-      "type": "boolean"
-    },
-    "next_run_at": {
-      "anyOf": [
-        {
-          "type": "string"
-        },
-        {
-          "type": "null"
-        }
-      ],
-      "default": null,
-      "title": "Next Run At"
-    },
-    "runs": {
-      "items": {
-        "additionalProperties": {
-          "$ref": "#/$defs/JsonValue"
-        },
-        "type": "object"
-      },
-      "title": "Runs",
-      "type": "array"
-    },
-    "schedule_id": {
-      "title": "Schedule Id",
-      "type": "string"
-    }
-  },
-  "required": [
-    "schedule_id",
-    "configuration",
-    "available"
-  ],
-  "title": "ScheduleEntry",
-  "type": "object"
-}
-```
-
-## ScheduledTask
-
-```json
-{
-  "additionalProperties": false,
+  "description": "Read saved definitions even if this host has lost their timezone data.",
   "properties": {
     "catch_up": {
       "default": true,
@@ -11111,7 +11026,156 @@ Schemas are listed once. Local `$defs` references identify other models on this 
     "task",
     "server_name"
   ],
-  "title": "ScheduledTask",
+  "title": "ScheduleConfigurationView",
+  "type": "object"
+}
+```
+
+## ScheduleEntry
+
+```json
+{
+  "additionalProperties": false,
+  "properties": {
+    "attempts": {
+      "default": 0,
+      "title": "Attempts",
+      "type": "integer"
+    },
+    "available": {
+      "title": "Available",
+      "type": "boolean"
+    },
+    "blocked_reason": {
+      "anyOf": [
+        {
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "title": "Blocked Reason"
+    },
+    "configuration": {
+      "$ref": "#/$defs/ScheduleConfigurationView"
+    },
+    "last_error": {
+      "anyOf": [
+        {
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "title": "Last Error"
+    },
+    "last_evaluated_at": {
+      "anyOf": [
+        {
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "title": "Last Evaluated At"
+    },
+    "last_status": {
+      "anyOf": [
+        {
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "title": "Last Status"
+    },
+    "last_success_at": {
+      "anyOf": [
+        {
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "title": "Last Success At"
+    },
+    "legacy": {
+      "default": false,
+      "title": "Legacy",
+      "type": "boolean"
+    },
+    "next_attempt_at": {
+      "anyOf": [
+        {
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "title": "Next Attempt At"
+    },
+    "next_run_at": {
+      "anyOf": [
+        {
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "title": "Next Run At"
+    },
+    "retry_exhausted": {
+      "default": false,
+      "title": "Retry Exhausted",
+      "type": "boolean"
+    },
+    "revision": {
+      "anyOf": [
+        {
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "title": "Revision"
+    },
+    "runs": {
+      "items": {
+        "additionalProperties": {
+          "$ref": "#/$defs/JsonValue"
+        },
+        "type": "object"
+      },
+      "title": "Runs",
+      "type": "array"
+    },
+    "schedule_id": {
+      "title": "Schedule Id",
+      "type": "string"
+    }
+  },
+  "required": [
+    "schedule_id",
+    "configuration",
+    "available"
+  ],
+  "title": "ScheduleEntry",
   "type": "object"
 }
 ```

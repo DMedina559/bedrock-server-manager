@@ -22,6 +22,7 @@ from bedrock_server_manager.api.models import (
     CleanupBackupDestinationResponse,
     CompareDiagnosticSnapshotsRequest,
     CompareDiagnosticSnapshotsResponse,
+    ControlScheduleRequest,
     CreateSnapshotRequest,
     CreateSnapshotResponse,
     DeleteScheduleRequest,
@@ -444,6 +445,10 @@ class PropertiesAPI(Protocol):
 
 
 class SchedulerAPI(Protocol):
+    async def control_schedule(
+        self, request: ControlScheduleRequest | Mapping[str, object]
+    ) -> SuccessResponse: ...
+
     async def delete_schedule(
         self, request: DeleteScheduleRequest | Mapping[str, object]
     ) -> SuccessResponse: ...
@@ -573,7 +578,14 @@ class WorldAPI(Protocol):
 
 class RuntimeAPI(Protocol):
     def register_scheduled_task(
-        self, name: str, handler: Callable[..., Any]
+        self,
+        name: str,
+        handler: Callable[..., Any],
+        *,
+        options_model: Any = None,
+        timeout_seconds: float = 300,
+        requires_server_lock: bool = True,
+        with_context: bool = False,
     ) -> None: ...
 
     async def run_task(
@@ -688,6 +700,7 @@ API_METHODS: dict[str, dict[str, str]] = {
         "validate_property_value": "validate_property_value",
     },
     "scheduler": {
+        "control_schedule": "control_schedule",
         "delete_schedule": "delete_schedule",
         "list_schedules": "list_schedules",
         "save_schedule": "save_schedule",
