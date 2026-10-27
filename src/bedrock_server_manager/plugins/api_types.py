@@ -156,6 +156,7 @@ from bedrock_server_manager.api.models import (
     SetServerCustomValueResponse,
     SetServerStatusRequest,
     SetServerStatusResponse,
+    SnapshotReuseRequest,
     SnapshotReuseResponse,
     StartServerRequest,
     StartServerResponse,
@@ -250,7 +251,7 @@ class BackupRestoreAPI(Protocol):
     ) -> BackupWorldResponse: ...
 
     async def can_reuse_server_backup(
-        self, request: ListSnapshotsRequest | Mapping[str, object]
+        self, request: SnapshotReuseRequest | Mapping[str, object]
     ) -> SnapshotReuseResponse: ...
 
     async def cleanup_backup_destination(

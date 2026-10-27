@@ -20,7 +20,7 @@ from fastapi import (
     status,
 )
 from fastapi.responses import Response, StreamingResponse
-from pydantic import Field, SecretStr
+from pydantic import Field, SecretStr, model_validator
 
 from bedrock_server_manager.api.models import (
     APIRequest,
@@ -33,6 +33,7 @@ from bedrock_server_manager.api.models import (
     RestoreConfigFileRequest,
     RestoreWorldRequest,
 )
+from bedrock_server_manager.backups.models import validate_selection_options
 
 from ...api import backup_restore as backup_restore_api
 from ...api.models.backup_restore import (
@@ -360,6 +361,10 @@ async def post_restore_action(  # noqa: C901
 class SnapshotCreatePayload(APIRequest):
     encrypted: bool | None = None
     include_packs: bool | None = None
+    mode: Literal["world", "selected", "full"] | None = None
+    components: list[Component] | None = None
+
+    _validate_selection = model_validator(mode="after")(validate_selection_options)
 
 
 class SnapshotInspectPayload(APIRequest):

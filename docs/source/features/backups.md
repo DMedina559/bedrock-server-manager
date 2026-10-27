@@ -21,26 +21,28 @@ a successful server start alone does not prove that an optional backup succeeded
 | BSM server settings | This server's autostart, autoupdate, target version, and custom settings |
 | Server packs | `behavior_packs/`, `resource_packs/`, `development_behavior_packs/`, and `development_resource_packs/` |
 
-Server packs are included by default. You can exclude them for a capture or change
-`backups.include_server_packs`. Each pack directory is a separate restore component.
-Missing components are recorded as absent; unreadable existing sources fail the
-capture. A new server without a generated world can have a configuration-only
-backup. Inspect the inventory to see what a recovery point actually contains.
+Choose a content mode:
 
-Archives contain a versioned manifest, component inventory, and file hashes. The
-manifest format version is **1**, including archives with optional server packs.
-Older version-1 archives without pack entries remain readable.
+- **World only:** active world, including its world-local packs and activation files.
+- **Selected components:** choose from the table above. Global defaults include the first six components and exclude all server-level pack directories.
+- **Full server directory:** every world, executable, log, configuration file and server-level pack in this server's directory. BSM server settings are exported separately. Stop the server first and keep backup storage outside the server directory. BSM's reserved `.bsm-*` staging and recovery entries are excluded.
 
-Server executables, logs, process state, other servers, global BSM users and
-settings, and backup encryption keys are excluded. This is a server recovery
-point. Preserve the BSM database, manager configuration, host credentials, and
-external dependencies separately to recover the whole installation. The server's
-`config/` directory is distinct from BSM's own configuration directory.
+BSM does not classify bundled or custom server packs. Selecting a server pack directory captures the entire directory. World-local packs are always part of the world component.
+
+Configure `backups.mode` (`world`, `selected`, or `full`) and `backups.components` in global settings. Existing `include_packs` request overrides and `backups.include_server_packs` remain supported; the latter defaults to false. Explicit existing settings are preserved. Schedules can inherit defaults or override mode and components.
+
+Missing sources are recorded as absent; `selected_components` distinguishes omitted components from selected sources that do not exist. Unreadable sources and symbolic links fail capture. Archives keep format version **1** with optional selection, platform and executable-permission metadata; older archives remain readable.
+
+Full-directory restore requires a stopped server, the same operating system and architecture, and the same installed Bedrock version. It replaces all ordinary top-level server entries, including removing entries absent from the archive. Review the plan first. A comprehensive full-directory safety archive is created before replacement; the persistent recovery journal rolls back interrupted changes. Other restores continue to make comprehensive component safety archives. Full-directory archives do not support the separate server-copy workflow; use a component archive for that workflow.
+
+These archives cover one server. Global BSM users, settings, database, backup encryption keys and host dependencies remain separate. Preserve those separately to recover the manager installation.
+
+The **Backup on Start** plugin defaults to world only. Set its `backup_mode` to `selected`, `full`, or `default` to override this, and use `components` for selected mode. Its `encryption` setting accepts `default`, `on`, or `off`. Sequence reuse requires a still-valid archive with the requested coverage: a world-only capture cannot satisfy a later full-directory request. A full-directory capture can satisfy a world request. Cancellation of server startup after backup failure remains controlled by `require_complete_backup`.
 
 ## Create and download a backup
 
 1. Open the server's **Backups** page.
-2. Choose encryption and pack coverage, then select **Create backup**.
+2. Choose contents and encryption, then select **Create backup**.
 3. Wait for completion and check verification and destination-copy results.
 4. Download the archive or confirm that a copy exists outside the BSM host.
 

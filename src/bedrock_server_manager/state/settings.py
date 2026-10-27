@@ -8,7 +8,7 @@ import copy
 import logging
 import os
 import time
-from typing import Any, Dict, Optional, Set
+from typing import Any, Dict, Literal, Optional, Set
 
 from pydantic import (
     AnyHttpUrl,
@@ -191,7 +191,39 @@ class BackupSettings(SettingsRecord):
     readiness_max_age_hours: int = Field(default=48, ge=1, le=8760)
     recovery_drill_interval_hours: int = Field(default=0, ge=0, le=8760)
     encryption: bool = False
-    include_server_packs: bool = True
+    mode: Literal["world", "selected", "full"] = "selected"
+    components: list[
+        Literal[
+            "world",
+            "server.properties",
+            "allowlist.json",
+            "permissions.json",
+            "script_config",
+            "bsm_settings",
+            "behavior_packs",
+            "resource_packs",
+            "development_behavior_packs",
+            "development_resource_packs",
+        ]
+    ] = Field(
+        default=[
+            "world",
+            "server.properties",
+            "allowlist.json",
+            "permissions.json",
+            "script_config",
+            "bsm_settings",
+        ]
+    )
+    include_server_packs: bool = False
+
+    @field_validator("components")
+    @classmethod
+    def validate_backup_components(cls, value):
+        if not value or len(value) != len(set(value)):
+            raise ValueError("Select at least one backup component without duplicates")
+        return value
+
     schedules: dict[str, BackupSchedule] = Field(default_factory=dict)
     verify_after_create: bool = False
     verification_interval_hours: int = Field(default=0, ge=0, le=8760)

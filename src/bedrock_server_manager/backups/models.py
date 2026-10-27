@@ -9,6 +9,7 @@ from pydantic import BaseModel, ConfigDict, Field, JsonValue
 ConfigComponent = Literal["server.properties", "allowlist.json", "permissions.json"]
 
 Component = Literal[
+    "server_directory",
     "world",
     "server.properties",
     "allowlist.json",
@@ -34,9 +35,12 @@ PACK_COMPONENTS: tuple[Component, ...] = (
     "development_behavior_packs",
     "development_resource_packs",
 )
-COMPONENTS = BASE_COMPONENTS + PACK_COMPONENTS
-DIRECTORY_COMPONENTS = ("world", "script_config", *PACK_COMPONENTS)
+COMPONENTS = BASE_COMPONENTS + PACK_COMPONENTS + ("server_directory",)
+DIRECTORY_COMPONENTS = ("server_directory", "world", "script_config", *PACK_COMPONENTS)
+BackupMode = Literal["world", "selected", "full"]
+
 PREFIXES = {
+    "server_directory": "server-directory",
     "world": "world",
     "server.properties": "config/server.properties",
     "allowlist.json": "config/allowlist.json",
@@ -63,10 +67,15 @@ class BackupFile(Record):
     path: str
     component: Component
     size: int = Field(ge=0)
+    executable: bool = False
     sha256: str = Field(pattern=r"^[a-f0-9]{64}$")
 
 
 class BackupManifest(Record):
+    source_platform: str | None = None
+    source_architecture: str | None = None
+    mode: BackupMode | None = None
+    selected_components: list[Component] | None = None
     format: Literal["bsmbackup"] = "bsmbackup"
     format_version: Literal[1] = 1
     backup_id: UUID
@@ -267,3 +276,22 @@ class RecoveryReport(Record):
     last_review: RecoveryReportReview | None = None
     last_restore: RecoveryReportOutcome | None = None
     last_drill: RecoveryReportDrill | None = None
+
+
+def validate_selection_options(value):
+    """Validate explicit content overrides before a background task is accepted."""
+    mode = value.mode
+    components = value.components
+    if components is not None:
+        if (
+            mode not in (None, "selected")
+            or not components
+            or len(set(components)) != len(components)
+            or "server_directory" in components
+        ):
+            raise ValueError("Choose unique components in selected mode")
+    if getattr(value, "include_packs", None) is not None and (
+        components is not None or mode not in (None, "selected")
+    ):
+        raise ValueError("Use component selection instead of include_packs")
+    return value

@@ -91,7 +91,7 @@ async def test_pack_capture_dry_run_and_restore(populated_server):
     for name in PACK_COMPONENTS:
         (root / name).mkdir(exist_ok=True)
         (root / name / "manifest.json").write_text('{"pack":"original"}')
-    snapshot = await server.backups.create_snapshot()
+    snapshot = await server.backups.create_snapshot(include_packs=True)
     assert snapshot.manifest.format_version == 1
     assert all(
         snapshot.manifest.components[name] == "included" for name in PACK_COMPONENTS

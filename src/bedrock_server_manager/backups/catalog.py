@@ -148,6 +148,8 @@ class ManagedBackups:
         async def list_snapshots(self) -> list[BackupSummary]:
             raise NotImplementedError
 
+        def _component_target(self, component, name: str) -> Path: ...
+
         def _safe_target(self, name: str) -> Path:
             raise NotImplementedError
 
@@ -612,8 +614,16 @@ class ManagedBackups:
                             )
                         )
                 continue
-            source, target = staging / PREFIXES[component], self._safe_target(name)
-            self._check_tree(target) if target.exists() else None
+            source, target = staging / PREFIXES[component], self._component_target(
+                component, name
+            )
+            if component == "server_directory":
+                from .selection import server_entries
+
+                for entry in server_entries(target):
+                    self._check_tree(entry)
+            elif target.exists():
+                self._check_tree(target)
 
             def files(root):
                 if not root.exists():
@@ -622,6 +632,8 @@ class ManagedBackups:
                     {
                         p.relative_to(root).as_posix(): p
                         for p in root.rglob("*")
+                        if component != "server_directory"
+                        or not p.relative_to(root).parts[0].startswith(".bsm-")
                         if p.is_file()
                     }
                     if root.is_dir()

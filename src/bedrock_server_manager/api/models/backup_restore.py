@@ -2,7 +2,9 @@
 
 from typing import Literal
 
-from pydantic import Field, SecretStr
+from pydantic import Field, SecretStr, model_validator
+
+from bedrock_server_manager.backups.models import validate_selection_options
 
 from ...backups.models import (
     BackupHealth,
@@ -54,6 +56,13 @@ class BackupConfigFileResponse(ActionResponse):
 
 class BackupAllRequest(APIRequest):
     server_name: ServerName
+    mode: Literal["world", "selected", "full"] | None = Field(
+        default=None, exclude=True
+    )
+    components: list[Component] | None = Field(default=None, exclude=True)
+    encrypted: bool | None = Field(default=None, exclude=True)
+
+    _validate_selection = model_validator(mode="after")(validate_selection_options)
 
 
 class BackupAllResponse(ActionResponse):
@@ -108,8 +117,14 @@ class CreateSnapshotRequest(APIRequest):
     server_name: ServerName
     encrypted: bool | None = None
     include_packs: bool | None = None
+    mode: Literal["world", "selected", "full"] | None = Field(
+        default=None, exclude=True
+    )
+    components: list[Component] | None = Field(default=None, exclude=True)
     purpose: Literal["manual", "scheduled"] = "manual"
     schedule_slot: str | None = Field(default=None, max_length=128)
+
+    _validate_selection = model_validator(mode="after")(validate_selection_options)
 
 
 class CreateSnapshotResponse(ActionResponse):
@@ -119,6 +134,15 @@ class CreateSnapshotResponse(ActionResponse):
 
 class ListSnapshotsRequest(APIRequest):
     server_name: ServerName
+
+
+class SnapshotReuseRequest(ListSnapshotsRequest):
+    mode: Literal["world", "selected", "full"] | None = Field(
+        default=None, exclude=True
+    )
+    components: list[Component] | None = Field(default=None, exclude=True)
+
+    _validate_selection = model_validator(mode="after")(validate_selection_options)
 
 
 class ListSnapshotsResponse(SuccessResponse):

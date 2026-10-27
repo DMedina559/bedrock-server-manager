@@ -57,6 +57,7 @@ from .models.backup_restore import (
     RestoreWorldRequest,
     RestoreWorldResponse,
     SnapshotReuseResponse,
+    SnapshotReuseRequest,
 )
 
 logger = logging.getLogger(__name__)
@@ -243,7 +244,12 @@ async def backup_all(
                 if OperationName.SERVER_UPDATE in names
                 else "pre_start" if OperationName.SERVER_START in names else "manual"
             )
-            backup_results = await server.backups.backup_all_data(purpose=purpose)
+            backup_results = await server.backups.backup_all_data(
+                purpose=purpose,
+                mode=request.mode,
+                components=request.components,
+                encrypted=request.encrypted,
+            )
             return BackupAllResponse(
                 server_name=server_name,
                 status="partial" if backup_results.outcome == "partial" else "success",
@@ -549,6 +555,8 @@ async def create_server_backup(
     snapshot = await server.backups.create_snapshot(
         encrypted=request.encrypted,
         include_packs=request.include_packs,
+        mode=request.mode,
+        components=request.components,
         purpose=request.purpose,
         _schedule_slot=request.schedule_slot,
         progress=app_context.task_manager.report_stage,
@@ -720,12 +728,14 @@ async def prepare_backup_copy(
 
 @api_method("can_reuse_server_backup")
 async def can_reuse_server_backup(
-    request: ListSnapshotsRequest, *, app_context: AppContext
+    request: SnapshotReuseRequest, *, app_context: AppContext
 ) -> SnapshotReuseResponse:
     """Check coverage and availability without exposing archive paths or file values."""
     server = app_context.get_server(request.server_name, require_installation=False)
     return SnapshotReuseResponse(
-        reusable=await server.backups.can_reuse_sequence_snapshot()
+        reusable=await server.backups.can_reuse_sequence_snapshot(
+            mode=request.mode, components=request.components
+        )
     )
 
 

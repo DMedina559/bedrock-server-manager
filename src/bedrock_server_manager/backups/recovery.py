@@ -100,11 +100,14 @@ class RestoreJournal:
                 "An unfinished restore requires recovery before modifying this server."
             )
 
-    def begin(self, targets: list[str], restore_settings: bool) -> None:
+    def begin(
+        self, targets: list[str], restore_settings: bool, full_directory: bool = False
+    ) -> None:
         self.ensure_clear()
         private_directory(self.path)
         state = {
             "version": 1,
+            "full_directory": full_directory,
             "server_name": self.server.server_name,
             "committed": False,
             "settings": (
@@ -137,20 +140,29 @@ class RestoreJournal:
             raise BackupRestoreError("Invalid restore recovery journal.")
         for entry in state["entries"]:
             name = safe_name(entry["target"])
-            if name not in (
-                "server.properties",
-                "allowlist.json",
-                "permissions.json",
-                "config",
-                *PACK_COMPONENTS,
-            ) and not (name.startswith("worlds/") and len(Path(name).parts) == 2):
+            if (
+                name
+                not in (
+                    "server.properties",
+                    "allowlist.json",
+                    "permissions.json",
+                    "config",
+                    *PACK_COMPONENTS,
+                )
+                and not (name.startswith("worlds/") and len(Path(name).parts) == 2)
+                and not (
+                    state.get("full_directory") is True
+                    and len(Path(name).parts) == 1
+                    and not name.startswith(".bsm-")
+                )
+            ):
                 raise BackupRestoreError("Invalid recovery destination.")
             target = self.root / name
             if target.resolve() != self.root.resolve().joinpath(*Path(name).parts):
                 raise BackupRestoreError("Recovery destination contains a link.")
         return state
 
-    def replace(self, index: int, source: Path) -> None:
+    def replace(self, index: int, source: Path | None) -> None:
         state = self._load()
         entry = state["entries"][index]
         target = self.root / entry["target"]
@@ -160,7 +172,8 @@ class RestoreJournal:
         target.parent.mkdir(parents=True, exist_ok=True)
         if entry["existed"]:
             os.replace(target, saved)
-        os.replace(source, target)
+        if source is not None:
+            os.replace(source, target)
         # Directory renames and journal writes must reach disk before commit.
         if os.name != "nt":
             for folder in (target.parent, self.path):

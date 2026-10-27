@@ -168,13 +168,31 @@ class Scheduler:
         task = request.configuration.task
         options = request.configuration.options
         allowed = {
-            "backup": {"encrypted", "include_packs"},
+            "backup": {"encrypted", "include_packs", "mode", "components"},
             "verify": {"minimum_age_hours"},
         }.get(task)
         if allowed is not None and set(options) - allowed:
             raise UserInputError("Unknown scheduled task option")
-        if task == "backup" and any(type(v) is not bool for v in options.values()):
-            raise UserInputError("Backup options must be booleans")
+        if task == "backup":
+            from ..api.models.backup_restore import CreateSnapshotRequest
+            from ..error import BackupRestoreError
+
+            try:
+                CreateSnapshotRequest(
+                    server_name=request.configuration.server_name or "all", **options
+                )
+                from ..backups.selection import selection
+
+                selection(
+                    self.context.settings,
+                    options.get("mode"),
+                    options.get("components"),
+                    options.get("include_packs"),
+                )
+            except (ValueError, TypeError, BackupRestoreError) as error:
+                raise UserInputError(
+                    "Invalid backup content or encryption options"
+                ) from error
         if task == "verify" and (
             type(options.get("minimum_age_hours", 168)) is not int
             or not 0 <= options.get("minimum_age_hours", 168) <= 8760

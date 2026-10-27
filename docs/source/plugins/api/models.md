@@ -370,6 +370,63 @@ Schemas are listed once. Local `$defs` references identify other models on this 
 {
   "additionalProperties": false,
   "properties": {
+    "components": {
+      "anyOf": [
+        {
+          "items": {
+            "enum": [
+              "server_directory",
+              "world",
+              "server.properties",
+              "allowlist.json",
+              "permissions.json",
+              "script_config",
+              "bsm_settings",
+              "behavior_packs",
+              "resource_packs",
+              "development_behavior_packs",
+              "development_resource_packs"
+            ],
+            "type": "string"
+          },
+          "type": "array"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "title": "Components"
+    },
+    "encrypted": {
+      "anyOf": [
+        {
+          "type": "boolean"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "title": "Encrypted"
+    },
+    "mode": {
+      "anyOf": [
+        {
+          "enum": [
+            "world",
+            "selected",
+            "full"
+          ],
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "title": "Mode"
+    },
     "server_name": {
       "examples": [
         "example"
@@ -574,6 +631,7 @@ Schemas are listed once. Local `$defs` references identify other models on this 
   "properties": {
     "component": {
       "enum": [
+        "server_directory",
         "world",
         "server.properties",
         "allowlist.json",
@@ -587,6 +645,11 @@ Schemas are listed once. Local `$defs` references identify other models on this 
       ],
       "title": "Component",
       "type": "string"
+    },
+    "executable": {
+      "default": false,
+      "title": "Executable",
+      "type": "boolean"
     },
     "path": {
       "title": "Path",
@@ -879,6 +942,7 @@ Schemas are listed once. Local `$defs` references identify other models on this 
       },
       "propertyNames": {
         "enum": [
+          "server_directory",
           "world",
           "server.properties",
           "allowlist.json",
@@ -925,6 +989,23 @@ Schemas are listed once. Local `$defs` references identify other models on this 
       "title": "Format Version",
       "type": "integer"
     },
+    "mode": {
+      "anyOf": [
+        {
+          "enum": [
+            "world",
+            "selected",
+            "full"
+          ],
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "title": "Mode"
+    },
     "reason": {
       "default": "manual",
       "enum": [
@@ -936,6 +1017,58 @@ Schemas are listed once. Local `$defs` references identify other models on this 
       ],
       "title": "Reason",
       "type": "string"
+    },
+    "selected_components": {
+      "anyOf": [
+        {
+          "items": {
+            "enum": [
+              "server_directory",
+              "world",
+              "server.properties",
+              "allowlist.json",
+              "permissions.json",
+              "script_config",
+              "bsm_settings",
+              "behavior_packs",
+              "resource_packs",
+              "development_behavior_packs",
+              "development_resource_packs"
+            ],
+            "type": "string"
+          },
+          "type": "array"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "title": "Selected Components"
+    },
+    "source_architecture": {
+      "anyOf": [
+        {
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "title": "Source Architecture"
+    },
+    "source_platform": {
+      "anyOf": [
+        {
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "title": "Source Platform"
     },
     "source_server": {
       "title": "Source Server",
@@ -1840,6 +1973,34 @@ Schemas are listed once. Local `$defs` references identify other models on this 
 {
   "additionalProperties": false,
   "properties": {
+    "components": {
+      "anyOf": [
+        {
+          "items": {
+            "enum": [
+              "server_directory",
+              "world",
+              "server.properties",
+              "allowlist.json",
+              "permissions.json",
+              "script_config",
+              "bsm_settings",
+              "behavior_packs",
+              "resource_packs",
+              "development_behavior_packs",
+              "development_resource_packs"
+            ],
+            "type": "string"
+          },
+          "type": "array"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "title": "Components"
+    },
     "encrypted": {
       "anyOf": [
         {
@@ -1863,6 +2024,23 @@ Schemas are listed once. Local `$defs` references identify other models on this 
       ],
       "default": null,
       "title": "Include Packs"
+    },
+    "mode": {
+      "anyOf": [
+        {
+          "enum": [
+            "world",
+            "selected",
+            "full"
+          ],
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "title": "Mode"
     },
     "purpose": {
       "default": "manual",
@@ -7960,6 +8138,7 @@ Schemas are listed once. Local `$defs` references identify other models on this 
     "components": {
       "items": {
         "enum": [
+          "server_directory",
           "world",
           "server.properties",
           "allowlist.json",
@@ -9206,6 +9385,7 @@ Schemas are listed once. Local `$defs` references identify other models on this 
     "components": {
       "items": {
         "enum": [
+          "server_directory",
           "world",
           "server.properties",
           "allowlist.json",
@@ -9317,6 +9497,7 @@ Schemas are listed once. Local `$defs` references identify other models on this 
     "components": {
       "items": {
         "enum": [
+          "server_directory",
           "world",
           "server.properties",
           "allowlist.json",
@@ -9865,6 +10046,7 @@ Schemas are listed once. Local `$defs` references identify other models on this 
     },
     "component": {
       "enum": [
+        "server_directory",
         "world",
         "server.properties",
         "allowlist.json",
@@ -9931,6 +10113,7 @@ Schemas are listed once. Local `$defs` references identify other models on this 
     "components": {
       "items": {
         "enum": [
+          "server_directory",
           "world",
           "server.properties",
           "allowlist.json",
@@ -9953,6 +10136,7 @@ Schemas are listed once. Local `$defs` references identify other models on this 
       },
       "propertyNames": {
         "enum": [
+          "server_directory",
           "world",
           "server.properties",
           "allowlist.json",
@@ -10148,6 +10332,7 @@ Schemas are listed once. Local `$defs` references identify other models on this 
     "restored": {
       "items": {
         "enum": [
+          "server_directory",
           "world",
           "server.properties",
           "allowlist.json",
@@ -10200,6 +10385,7 @@ Schemas are listed once. Local `$defs` references identify other models on this 
     "components": {
       "items": {
         "enum": [
+          "server_directory",
           "world",
           "server.properties",
           "allowlist.json",
@@ -10341,6 +10527,7 @@ Schemas are listed once. Local `$defs` references identify other models on this 
     },
     "component": {
       "enum": [
+        "server_directory",
         "world",
         "server.properties",
         "allowlist.json",
@@ -11555,6 +11742,75 @@ Schemas are listed once. Local `$defs` references identify other models on this 
     "reason"
   ],
   "title": "SkippedItem",
+  "type": "object"
+}
+```
+
+## SnapshotReuseRequest
+
+```json
+{
+  "additionalProperties": false,
+  "properties": {
+    "components": {
+      "anyOf": [
+        {
+          "items": {
+            "enum": [
+              "server_directory",
+              "world",
+              "server.properties",
+              "allowlist.json",
+              "permissions.json",
+              "script_config",
+              "bsm_settings",
+              "behavior_packs",
+              "resource_packs",
+              "development_behavior_packs",
+              "development_resource_packs"
+            ],
+            "type": "string"
+          },
+          "type": "array"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "title": "Components"
+    },
+    "mode": {
+      "anyOf": [
+        {
+          "enum": [
+            "world",
+            "selected",
+            "full"
+          ],
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "title": "Mode"
+    },
+    "server_name": {
+      "examples": [
+        "example"
+      ],
+      "minLength": 1,
+      "pattern": "^[a-zA-Z0-9_-]+$",
+      "title": "Server Name",
+      "type": "string"
+    }
+  },
+  "required": [
+    "server_name"
+  ],
+  "title": "SnapshotReuseRequest",
   "type": "object"
 }
 ```
