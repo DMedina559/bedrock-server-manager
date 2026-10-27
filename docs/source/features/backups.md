@@ -546,4 +546,9 @@ not listed. Verify, delete, restore, and metadata mutations retain their locks.
 
 DEBUG logs and task updates distinguish compression, archive writing/encryption,
 content validation, publication, archive fingerprinting, destination copies, and
-retention. This separates CPU work from filesystem and finalization delays.
+retention. The capture-start log records the effective compression profile, and
+DEBUG payload logs record its gzip level. Payload timings separately report
+source-file open, read, and close wall time. The remaining `archive_other_ms`
+includes tar processing, gzip, output I/O, metadata, and finalization; it is not a
+measurement of gzip CPU time. Timings are aggregated without logging file names
+or contents and require no additional file reads.

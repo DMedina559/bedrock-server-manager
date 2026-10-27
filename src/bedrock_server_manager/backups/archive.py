@@ -4,11 +4,13 @@ import gzip
 import hashlib
 import io
 import json
+import logging
 import os
 import re
 import tarfile
 import tempfile
 import threading
+import time
 from pathlib import Path, PurePosixPath
 from typing import Any
 
@@ -32,6 +34,22 @@ class _CancellableReader(io.BufferedReader):
         check_cancellation(self.cancellation_event)
         data = super().read(size)
         check_cancellation(self.cancellation_event)
+        return data
+
+
+class _MeasuredReader(_CancellableReader):
+    """Measure source reads without counting tar/gzip work between reads."""
+
+    read_seconds: float = 0.0
+    bytes_read: int = 0
+
+    def read(self, size: int | None = -1) -> bytes:
+        started = time.perf_counter()
+        try:
+            data = super().read(size)
+        finally:
+            self.read_seconds += time.perf_counter() - started
+        self.bytes_read += len(data)
         return data
 
 
@@ -122,6 +140,16 @@ def build_payload(
 ) -> None:
     """Build a portable gzip payload using a supported compression level."""
     level = COMPRESSION_LEVELS[compression]
+    logger = logging.getLogger(__name__)
+    logger.debug(
+        "Backup payload started: compression=%s gzip_level=%d files=%d",
+        compression,
+        level,
+        len(manifest.files),
+    )
+    started = time.perf_counter()
+    open_seconds = read_seconds = close_seconds = 0.0
+    bytes_read = 0
     with target.open("wb", buffering=ARCHIVE_BUFFER_SIZE) as output:
         with gzip.GzipFile(
             fileobj=output, mode="wb", compresslevel=level, mtime=0
@@ -142,12 +170,36 @@ def build_payload(
                     info = tarfile.TarInfo(item.path)
                     info.mode = 0o700 if item.executable else 0o600
                     info.size = item.size
-                    with (
-                        source.open("rb") as stream,
-                        _CancellableReader(stream) as reader,
-                    ):
+                    opened = time.perf_counter()
+                    stream = source.open("rb")
+                    open_seconds += time.perf_counter() - opened
+                    try:
+                        reader = _MeasuredReader(stream)
                         reader.cancellation_event = cancellation_event
                         payload.addfile(info, reader)
+                        read_seconds += reader.read_seconds
+                        bytes_read += reader.bytes_read
+                    finally:
+                        closing = time.perf_counter()
+                        stream.close()
+                        close_seconds += time.perf_counter() - closing
+    total = time.perf_counter() - started
+    source_seconds = open_seconds + read_seconds + close_seconds
+    logger.debug(
+        "Backup payload completed: compression=%s gzip_level=%d files=%d "
+        "bytes_read=%d source_open_ms=%.3f source_read_ms=%.3f "
+        "source_close_ms=%.3f archive_other_ms=%.3f total_ms=%.3f "
+        "(archive_other includes tar, gzip, output I/O, metadata, and finalization)",
+        compression,
+        level,
+        len(manifest.files),
+        bytes_read,
+        open_seconds * 1000,
+        read_seconds * 1000,
+        close_seconds * 1000,
+        max(0.0, total - source_seconds) * 1000,
+        total * 1000,
+    )
 
 
 def write_archive(

@@ -15,8 +15,9 @@ from bedrock_server_manager.backups.credentials import private_directory
 @pytest.mark.parametrize("compression", ["fast", "balanced", "small"])
 @pytest.mark.parametrize("encrypted", [False, True])
 async def test_compression_profiles_preserve_recovery(
-    populated_server, compression, encrypted
+    populated_server, compression, encrypted, caplog
 ):
+    caplog.set_level("DEBUG")
     server = populated_server
     await server.settings.set("backups.compression", compression)
     if encrypted:
@@ -29,6 +30,26 @@ async def test_compression_profiles_preserve_recovery(
     assert inspected.encrypted is encrypted
     assert "Compressing backup" in backup.stage_durations_ms
     assert "Recording archive integrity" in backup.stage_durations_ms
+    assert f"purpose=manual compression={compression}" in caplog.text
+    messages = [
+        record.message
+        for record in caplog.records
+        if record.message.startswith("Backup payload completed:")
+    ]
+    assert len(messages) == 1
+    message = messages[0]
+    level = {"fast": 1, "balanced": 6, "small": 9}[compression]
+    assert f"compression={compression} gzip_level={level}" in message
+    for metric in (
+        "source_open_ms",
+        "source_read_ms",
+        "source_close_ms",
+        "archive_other_ms",
+        "total_ms",
+        "bytes_read",
+    ):
+        assert f"{metric}=" in message
+    assert "includes tar, gzip, output I/O" in message
 
 
 async def test_backup_reads_do_not_wait_for_capture(populated_server, monkeypatch):
@@ -135,3 +156,16 @@ async def test_archive_file_is_flushed_once_before_publication(
     backup = await populated_server.backups.create_snapshot(mode="world")
     metadata = populated_server.backups.resolve_backup(backup.backup_id).stat()
     assert calls.count((metadata.st_dev, metadata.st_ino)) == 1
+
+
+def test_payload_reader_measures_only_read_calls(monkeypatch):
+    import io
+    from bedrock_server_manager.backups import archive
+
+    ticks = iter([1.0, 1.25, 10.0, 10.5])
+    monkeypatch.setattr(archive.time, "perf_counter", lambda: next(ticks))
+    with archive._MeasuredReader(io.BytesIO(b"abcdef")) as reader:
+        assert reader.read(2) == b"ab"
+        assert reader.read() == b"cdef"
+        assert reader.read_seconds == 0.75
+        assert reader.bytes_read == 6

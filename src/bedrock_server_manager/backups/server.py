@@ -396,12 +396,16 @@ class UnifiedServerBackups(ManagedBackups):
                     mode, chosen = selection(
                         self.server.settings, "selected", list(COMPONENTS[:-1])
                     )
+                compression = self.server.settings.get(
+                    "backups.compression", "balanced"
+                )
                 self.logger.info(
-                    "Backup capture started: mode=%s components=%s encrypted=%s purpose=%s",
+                    "Backup capture started: mode=%s components=%s encrypted=%s purpose=%s compression=%s",
                     mode,
                     ",".join(chosen),
                     use_encryption,
                     purpose,
+                    compression,
                 )
                 full = mode == "full"
                 server_root = Path(self.server.paths.server_dir)
@@ -586,7 +590,7 @@ class UnifiedServerBackups(ManagedBackups):
                         staging,
                         packed_payload,
                         manifest,
-                        self.server.settings.get("backups.compression", "balanced"),
+                        compression,
                     )
                     await self._stage(
                         progress,
