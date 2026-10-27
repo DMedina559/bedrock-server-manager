@@ -146,6 +146,11 @@ class LifecycleSettings(SettingsRecord):
     request_drain_timeout_seconds: float = Field(default=10.0, gt=0, le=600)
 
 
+class SchedulerSettings(SettingsRecord):
+    max_concurrent_servers: int = Field(default=4, ge=1, le=32)
+    poll_interval_seconds: int = Field(default=60, ge=1, le=60)
+
+
 class BackupDestination(SettingsRecord):
     path: str = Field(min_length=1)
     enabled: bool = True
@@ -226,6 +231,7 @@ class SettingsState(BaseModel):
         revalidate_instances="always",
     )
     general: GeneralSettings = Field(default_factory=GeneralSettings)
+    scheduler: SchedulerSettings = Field(default_factory=SchedulerSettings)
     paths: PathsSettings = Field(default_factory=PathsSettings)
     retention: RetentionSettings = Field(default_factory=RetentionSettings)
     backups: BackupSettings = Field(default_factory=BackupSettings)

@@ -38,8 +38,16 @@ async def test_capture_does_not_unpack_until_requested(populated_server, monkeyp
     assert unpack.call_count == 1
 
 
-async def test_scheduler_persists_runs_and_restarts(app_context, populated_server):
+async def test_scheduler_persists_runs_and_restarts(
+    app_context, populated_server, monkeypatch
+):
     service = app_context.scheduler
+    from bedrock_server_manager.scheduler.runner import activation
+
+    moment = datetime(2026, 1, 1, 2, tzinfo=timezone.utc)
+    monkeypatch.setattr(
+        service.repository, "_activation", lambda config: activation(config, moment)
+    )
     config = ScheduledTask(
         task="verify",
         server_name=populated_server.server_name,

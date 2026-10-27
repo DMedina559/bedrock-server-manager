@@ -215,7 +215,15 @@ async def write_plugin_file(
 
 
 def register_scheduled_task(
-    name: str, handler: Callable[..., Any], *, app_context: AppContext, plugin_name: str
+    name: str,
+    handler: Callable[..., Any],
+    *,
+    app_context: AppContext,
+    plugin_name: str,
+    options_model=None,
+    timeout_seconds=300,
+    requires_server_lock=True,
+    with_context=False,
 ):
     """Register an async ``plugin_name:task`` handler accepting server_name and options.
 
@@ -224,5 +232,12 @@ def register_scheduled_task(
     owner = f"plugin:{plugin_name}"
     bus = app_context.events
     app_context.scheduler.register(
-        name, handler, owner=owner, generation=bus.owner_generation(owner)
+        name,
+        handler,
+        owner=owner,
+        generation=bus.owner_generation(owner),
+        options_model=options_model,
+        timeout_seconds=timeout_seconds,
+        requires_server_lock=requires_server_lock,
+        with_context=with_context,
     )
