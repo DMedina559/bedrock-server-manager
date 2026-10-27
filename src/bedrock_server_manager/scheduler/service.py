@@ -12,7 +12,7 @@ from datetime import datetime, timezone
 
 from ..utils.threads import run_in_thread
 from .engine import occurrences, signature
-from .runner import DeferredRun, run_schedule
+from .runner import DeferredRun, next_attempt, run_schedule
 
 
 class Scheduler:
@@ -186,15 +186,7 @@ class Scheduler:
                     attempts=record.get("attempts", 0),
                     runs=histories.get(name, []),
                     revision=signature(config),
-                    next_attempt_at=(
-                        record.get("next_retry_at")
-                        or (
-                            now.isoformat()
-                            if record.get("status") == "deferred"
-                            or record.get("requested_slot")
-                            else None
-                        )
-                    ),
+                    next_attempt_at=next_attempt(config, record, now, name),
                     retry_exhausted=(
                         record.get("attempts", 0) >= 3
                         and record.get("status") in ("failed", "interrupted")

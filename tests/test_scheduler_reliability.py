@@ -402,3 +402,22 @@ async def test_intentionally_skipped_run_does_not_count_as_failure(
         "job", {"status": "skipped", "blocked_reason": "missed_occurrence"}
     )
     assert (await service.diagnostic_snapshot()).values["failed"] == 0
+
+
+@pytest.mark.parametrize("catch_up,expected", [(True, True), (False, False)])
+def test_forecast_includes_eligible_catch_up_before_first_claim(catch_up, expected):
+    from bedrock_server_manager.scheduler.runner import next_attempt
+
+    config = ScheduledTask(
+        task="verify",
+        server_name="test",
+        time="03:00",
+        timezone="UTC",
+        stagger_minutes=0,
+        catch_up=catch_up,
+    ).model_dump()
+    record = activation(config, START)
+    assert (
+        bool(next_attempt(config, record, START + timedelta(hours=1), "job"))
+        is expected
+    )

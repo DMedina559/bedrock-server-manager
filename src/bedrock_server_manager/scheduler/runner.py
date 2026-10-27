@@ -34,7 +34,11 @@ def candidate(config, record, moment, name=""):
     if pending and record.get("slot") and record.get("occurrence_at"):
         occurrence = datetime.fromisoformat(record["occurrence_at"])
         retry = record.get("next_retry_at")
-        if record.get("attempts", 0) < 3 and moment - occurrence < timedelta(days=1):
+        if (
+            record.get("blocked_reason") != "retry_expired"
+            and record.get("attempts", 0) < 3
+            and moment - occurrence < timedelta(days=1)
+        ):
             if retry and moment < datetime.fromisoformat(retry):
                 return None
             return record["slot"], occurrence, bool(record.get("manual"))
@@ -54,6 +58,7 @@ def candidate(config, record, moment, name=""):
         return None
     if record.get("slot") == slot and (
         record.get("attempts", 0) >= 3
+        or record.get("blocked_reason") == "retry_expired"
         or (pending and moment - occurrence >= timedelta(days=1))
     ):
         return None
@@ -76,7 +81,7 @@ async def run_schedule(
     lease = uuid4().hex
 
     def claim(current, record):
-        if current != config:
+        if signature(current) != signature(config):
             return None
         if record.get("configuration") != signature(config):
             # Upgrade legacy identities without replaying a completed occurrence.
@@ -190,6 +195,8 @@ async def run_schedule(
             "Scheduled task failed; inspect diagnostics and logs.",
         )
 
+    finished = now if moment is not None else datetime.now(timezone.utc)
+
     def finish(current, record):
         if record.get("lease") != lease:
             return
@@ -200,7 +207,7 @@ async def run_schedule(
         record.update(status=outcome, error=error)
         if outcome == "completed":
             record.update(
-                last_success_at=datetime.now(timezone.utc).isoformat(),
+                last_success_at=finished.isoformat(),
                 next_retry_at=None,
             )
             record["completed_slots"] = (record.get("completed_slots", []) + [slot])[
@@ -213,15 +220,48 @@ async def run_schedule(
             )
         else:
             record["next_retry_at"] = (
-                (now + timedelta(seconds=60 * 2 ** record["attempts"])).isoformat()
+                (finished + timedelta(seconds=60 * 2 ** record["attempts"])).isoformat()
                 if record["attempts"] < 3
                 else None
             )
             record["blocked_reason"] = (
                 "retry_exhausted" if record["attempts"] >= 3 else None
             )
+            if record["next_retry_at"] and datetime.fromisoformat(
+                record["next_retry_at"]
+            ) - datetime.fromisoformat(record["occurrence_at"]) >= timedelta(days=1):
+                record.update(next_retry_at=None, blocked_reason="retry_expired")
 
     await repository.mutate(name, finish)
     if cancelled is not None:
         raise cancelled
     return True
+
+
+def next_attempt(config, record, moment, name):
+    """Forecast pending work separately from the next calendar occurrence."""
+    if record.get("lease"):
+        return None
+    try:
+        retry = record.get("next_retry_at")
+        if retry and config["enabled"] and record.get("attempts", 0) < 3:
+            occurrence = datetime.fromisoformat(record["occurrence_at"])
+            if moment - occurrence < timedelta(days=1):
+                return retry
+        choice = candidate(config, record, moment, name)
+        if choice is None:
+            return None
+        _, occurrence, manual = choice
+        begun = choice[0] == record.get("slot") and (
+            record.get("begun") or record.get("attempts", 0) > 0
+        )
+        if (
+            manual
+            or begun
+            or config["catch_up"]
+            or (moment - occurrence).total_seconds() <= 120
+        ):
+            return moment.isoformat()
+    except (ValueError, KeyError):
+        return None
+    return None
