@@ -361,7 +361,6 @@ async def post_restore_action(  # noqa: C901
 
 class SnapshotCreatePayload(APIRequest):
     encrypted: bool | None = None
-    include_packs: bool | None = None
     mode: Literal["world", "selected", "full"] | None = None
     components: BackupComponents | None = None
 

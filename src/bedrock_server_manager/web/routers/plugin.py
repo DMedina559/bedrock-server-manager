@@ -2,6 +2,7 @@
 """FastAPI router for managing the application's plugin system."""
 
 import logging
+from typing import Literal
 
 from fastapi import APIRouter, Depends
 
@@ -173,11 +174,15 @@ async def put_reload_plugins(
 )
 async def get_plugin_settings(
     plugin_name: str,
+    scope: Literal["plugin", "global", "server"] = "plugin",
+    server_name: str | None = None,
     current_user: UserResponse = Depends(get_admin_user),
     app_context: AppContext = Depends(get_app_context),
 ):
     return await plugins_api.get_plugin_settings(
-        plugins_api.GetPluginSettingsRequest(target_plugin_name=plugin_name),
+        plugins_api.GetPluginSettingsRequest(
+            target_plugin_name=plugin_name, scope=scope, server_name=server_name
+        ),
         app_context=app_context,
     )
 
@@ -195,7 +200,10 @@ async def update_plugin_settings(
 ):
     return await plugins_api.update_plugin_settings(
         plugins_api.UpdatePluginSettingsRequest(
-            target_plugin_name=plugin_name, settings=payload.settings
+            target_plugin_name=plugin_name,
+            settings=payload.settings,
+            scope=payload.scope,
+            server_name=payload.server_name,
         ),
         app_context=app_context,
     )

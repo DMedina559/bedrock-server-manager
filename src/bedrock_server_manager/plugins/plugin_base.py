@@ -27,6 +27,8 @@ class PluginBase(ABC):
     # but the PluginManager's synchronization step enforces its presence for a plugin
     # to be considered valid and loadable.
     settings_model: ClassVar[type[BaseModel] | None] = None
+    global_settings_model: ClassVar[type[BaseModel] | None] = None
+    server_settings_model: ClassVar[type[BaseModel] | None] = None
 
     name: str = "N/A"  # Optional class attribute for a friendly display name.
     version: str = "N/A"  # Default placeholder, should be overridden.
@@ -65,7 +67,14 @@ class PluginBase(ABC):
         # Construction precedes on_load; activation is reported by the manager.
         self.logger.debug("Plugin '%s' v%s initialized.", self.name, self.version)
 
-    async def get_plugin_setting(self, key: str, default: Any = None) -> Any:
+    async def get_plugin_setting(
+        self,
+        key: str,
+        default: Any = None,
+        *,
+        scope="plugin",
+        server_name: str | None = None,
+    ) -> Any:
         """Return a setting specific to this plugin.
 
         :param key: The setting key.
@@ -73,7 +82,9 @@ class PluginBase(ABC):
 
         :returns: The setting value or the default.
         """
-        result = await self.api.plugins.get_plugin_setting(request={"key": key})
+        result = await self.api.plugins.get_plugin_setting(
+            request={"key": key, "scope": scope, "server_name": server_name}
+        )
         if result and result.status == "success":
             value = result.value
             if value is not None:
@@ -81,7 +92,7 @@ class PluginBase(ABC):
         return default
 
     async def set_plugin_setting(
-        self, key: str, value: Any
+        self, key: str, value: Any, *, scope="plugin", server_name: str | None = None
     ) -> SetPluginSettingResponse:
         """Save a setting specific to this plugin.
 
@@ -93,7 +104,32 @@ class PluginBase(ABC):
         return cast(
             SetPluginSettingResponse,
             await self.api.plugins.set_plugin_setting(
-                request={"key": key, "value": value}
+                request={
+                    "key": key,
+                    "value": value,
+                    "scope": scope,
+                    "server_name": server_name,
+                }
+            ),
+        )
+
+    async def get_plugin_settings(
+        self, *, scope="plugin", server_name: str | None = None
+    ) -> dict:
+        """Read the caller's effective settings for one scope, including defaults."""
+        result = await self.api.plugins.get_plugin_setting(
+            request={"scope": scope, "server_name": server_name}
+        )
+        return cast(dict, result.value)
+
+    async def set_plugin_settings(
+        self, values: dict, *, scope="plugin", server_name: str | None = None
+    ) -> SetPluginSettingResponse:
+        """Atomically replace the caller's settings namespace after validation."""
+        return cast(
+            SetPluginSettingResponse,
+            await self.api.plugins.set_plugin_setting(
+                request={"value": values, "scope": scope, "server_name": server_name}
             ),
         )
 

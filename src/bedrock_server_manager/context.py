@@ -691,6 +691,8 @@ class AppContext:
                 events=self.events,
                 api_factory=lambda name: create_app_api(name, self),
                 settings_models=self.plugin_service.settings_models,
+                global_settings_models=self.plugin_service.global_settings_models,
+                server_settings_models=self.plugin_service.server_settings_models,
                 task_manager_provider=lambda: self._task_manager,
                 connection_manager_provider=lambda: self._connection_manager,
                 diagnostic_cleanup=self._cleanup_plugin_capabilities,

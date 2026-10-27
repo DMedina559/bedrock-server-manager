@@ -20,7 +20,7 @@ Runtime context and plugin identity are injected by the bridge. Failures raise a
 
 ```python
 from bedrock_server_manager.api.models import GetPluginSettingRequest
-payload = {...}  # Supply required request fields below.
+payload = {}
 request = GetPluginSettingRequest(**payload)
 result = await self.api.plugins.get_plugin_setting(request)
 data = result.model_dump(mode="json")

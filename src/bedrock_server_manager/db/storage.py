@@ -29,6 +29,7 @@ from ..error import BSMError, StorageError
 from ..logging import log_operation_error
 from ..state.app_state import AppState
 from ..state.changeset import ChangeSet
+from ..state.models import ServerConfigState
 from ..state.settings import SettingsState
 from ..state.validation import json_equal
 from .repositories import (
@@ -73,6 +74,9 @@ class Storage:
         self._flush_lock = asyncio.Lock()
         self.diagnostics: Diagnostics | None = None
         self.telemetry = StorageDiagnostics()
+        self.custom_settings_validator: (
+            Callable[[str, dict, dict, str | None], dict] | None
+        ) = None
 
     @asynccontextmanager
     async def _write_scope(self):
@@ -202,7 +206,23 @@ class Storage:
         """Publish a service mutation only after its transaction commits."""
         async with self._write_scope():
             async with get_lock(name):
-                record = build(get(name))
+                previous = get(name)
+                record = build(previous)
+                if (
+                    isinstance(record, ServerConfigState)
+                    and self.custom_settings_validator is not None
+                ):
+                    checked = self.custom_settings_validator(
+                        "server",
+                        (
+                            previous.custom
+                            if isinstance(previous, ServerConfigState)
+                            else {}
+                        ),
+                        record.custom,
+                        name,
+                    )
+                    record = record.model_copy(update={"custom": checked})
                 async with self.transaction() as session:
                     await save(session, record)
                 if before_publish is not None:
@@ -224,6 +244,10 @@ class Storage:
                     state.settings.model_dump()
                 )
                 mutate(candidate)
+                if self.custom_settings_validator is not None:
+                    candidate.custom = self.custom_settings_validator(
+                        "global", state.settings.custom, candidate.custom, None
+                    )
                 if candidate.model_dump() == state.settings.model_dump():
                     return
                 async with self.transaction() as session:

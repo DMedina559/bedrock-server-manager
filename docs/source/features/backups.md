@@ -47,13 +47,14 @@ world component.
 
 In **Global Settings → Backups**, choose the default mode and components. Manual
 backups and schedules can use those defaults or override them. New defaults
-exclude server-level packs; existing explicit settings are preserved.
+exclude server-level packs. Saved `include_server_packs` settings are converted
+to component selections when loaded; that flag and the `include_packs` request
+override are no longer accepted. Select the desired pack directories explicitly.
 
 | Setting | Default | Purpose |
 |---|---|---|
 | `backups.mode` | `selected` | World only, selected components, or full directory |
 | `backups.components` | World, properties, allowlist, permissions, script configuration and BSM server settings | Contents used in selected mode |
-| `backups.include_server_packs` | `false` | Compatibility option to include all server-level pack directories when using global component defaults |
 | `backups.encryption` | `false` | Encryption default, overridable for an individual capture |
 | `backups.verify_after_create` | `false` | Optional full readback after creation |
 

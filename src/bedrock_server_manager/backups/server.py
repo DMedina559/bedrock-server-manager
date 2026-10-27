@@ -206,7 +206,6 @@ class UnifiedServerBackups(ManagedBackups):
         _safety_world: str | None = None,
         _safety_password: str | None = None,
         _schedule_slot: str | None = None,
-        include_packs: bool | None = None,
         mode: BackupMode | None = None,
         components: list[SelectableComponent] | None = None,
     ) -> BackupSummary:
@@ -218,7 +217,6 @@ class UnifiedServerBackups(ManagedBackups):
                 _safety_world=_safety_world,
                 _safety_password=_safety_password,
                 _schedule_slot=_schedule_slot,
-                include_packs=include_packs,
                 mode=mode,
                 components=components,
             )
@@ -243,7 +241,6 @@ class UnifiedServerBackups(ManagedBackups):
         _safety_world: str | None = None,
         _safety_password: str | None = None,
         _schedule_slot: str | None = None,
-        include_packs: bool | None = None,
         mode: BackupMode | None = None,
         components: list[SelectableComponent] | None = None,
     ) -> BackupSummary:
@@ -305,9 +302,7 @@ class UnifiedServerBackups(ManagedBackups):
                     await run_in_thread(
                         self.catalog.update, filename, schedule_slot=_schedule_slot
                     )
-                mode, chosen = selection(
-                    self.server.settings, mode, components, include_packs
-                )
+                mode, chosen = selection(self.server.settings, mode, components)
                 if purpose == "pre_restore" and mode != "full":
                     mode, chosen = selection(
                         self.server.settings, "selected", list(COMPONENTS[:-1])
@@ -814,6 +809,18 @@ class UnifiedServerBackups(ManagedBackups):
             raise BackupRestoreError(
                 "Select available backup components without duplicates."
             )
+        if "bsm_settings" in components:
+            exported = ServerSettingsExport.model_validate_json(
+                (staging / PREFIXES["bsm_settings"]).read_bytes()
+            )
+            validator = getattr(self.server.storage, "custom_settings_validator", None)
+            if validator is not None:
+                validator(
+                    "server",
+                    self.server.configuration.snapshot().custom,
+                    exported.custom,
+                    self.server.server_name,
+                )
         if "server_directory" in components:
             if (manifest.source_platform, manifest.source_architecture) != (
                 platform.system(),

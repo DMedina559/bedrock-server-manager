@@ -2055,18 +2055,6 @@ Schemas are listed once. Local `$defs` references identify other models on this 
       "default": null,
       "title": "Encrypted"
     },
-    "include_packs": {
-      "anyOf": [
-        {
-          "type": "boolean"
-        },
-        {
-          "type": "null"
-        }
-      ],
-      "default": null,
-      "title": "Include Packs"
-    },
     "mode": {
       "anyOf": [
         {
@@ -5682,15 +5670,47 @@ Schemas are listed once. Local `$defs` references identify other models on this 
   "additionalProperties": false,
   "properties": {
     "key": {
-      "minLength": 1,
-      "pattern": ".*\\S.*",
-      "title": "Key",
+      "anyOf": [
+        {
+          "minLength": 1,
+          "pattern": ".*\\S.*",
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "title": "Key"
+    },
+    "scope": {
+      "default": "plugin",
+      "enum": [
+        "plugin",
+        "global",
+        "server"
+      ],
+      "title": "Scope",
       "type": "string"
+    },
+    "server_name": {
+      "anyOf": [
+        {
+          "examples": [
+            "example"
+          ],
+          "minLength": 1,
+          "pattern": "^[a-zA-Z0-9_-]+$",
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "title": "Server Name"
     }
   },
-  "required": [
-    "key"
-  ],
   "title": "GetPluginSettingRequest",
   "type": "object"
 }
@@ -8506,6 +8526,16 @@ Schemas are listed once. Local `$defs` references identify other models on this 
     },
     "enabled": {
       "title": "Enabled",
+      "type": "boolean"
+    },
+    "has_global_settings": {
+      "default": false,
+      "title": "Has Global Settings",
+      "type": "boolean"
+    },
+    "has_server_settings": {
+      "default": false,
+      "title": "Has Server Settings",
       "type": "boolean"
     },
     "has_settings": {
@@ -11556,17 +11586,51 @@ Schemas are listed once. Local `$defs` references identify other models on this 
   "additionalProperties": false,
   "properties": {
     "key": {
-      "minLength": 1,
-      "pattern": ".*\\S.*",
-      "title": "Key",
+      "anyOf": [
+        {
+          "minLength": 1,
+          "pattern": ".*\\S.*",
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "title": "Key"
+    },
+    "scope": {
+      "default": "plugin",
+      "enum": [
+        "plugin",
+        "global",
+        "server"
+      ],
+      "title": "Scope",
       "type": "string"
+    },
+    "server_name": {
+      "anyOf": [
+        {
+          "examples": [
+            "example"
+          ],
+          "minLength": 1,
+          "pattern": "^[a-zA-Z0-9_-]+$",
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "title": "Server Name"
     },
     "value": {
       "$ref": "#/$defs/JsonValue"
     }
   },
   "required": [
-    "key",
     "value"
   ],
   "title": "SetPluginSettingRequest",

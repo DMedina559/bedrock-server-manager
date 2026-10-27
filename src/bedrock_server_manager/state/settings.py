@@ -21,7 +21,12 @@ from pydantic import (
     field_validator,
 )
 
-from ..backups.contents import DEFAULT_COMPONENTS, BackupComponents, BackupMode
+from ..backups.contents import (
+    DEFAULT_COMPONENTS,
+    SERVER_PACK_COMPONENTS,
+    BackupComponents,
+    BackupMode,
+)
 from ..diagnostics.models import DiagnosticOptions
 from ..error import ConfigurationError
 from ..events.models import EventOptions
@@ -196,7 +201,6 @@ class BackupSettings(SettingsRecord):
     components: BackupComponents = Field(
         default_factory=lambda: list(DEFAULT_COMPONENTS)
     )
-    include_server_packs: bool = False
 
     schedules: dict[str, BackupSchedule] = Field(default_factory=dict)
     verify_after_create: bool = False
@@ -475,6 +479,22 @@ class SettingsState(BaseModel):
                         logger.warning(
                             "Ignoring removed legacy setting %s.%s", section, name
                         )
+
+        # Retired pack toggle is migrated only when reading saved settings.
+        # Current writes and schema expose components as the single source of truth.
+        backups = merged.get("backups", {})
+        if isinstance(backups, dict) and "include_server_packs" in backups:
+            include = backups.pop("include_server_packs")
+            if type(include) is not bool:
+                raise ValueError("Saved include_server_packs must be a boolean")
+            if include:
+                chosen = backups.get("components", list(DEFAULT_COMPONENTS))
+                if not isinstance(chosen, list):
+                    raise ValueError("Saved backup components must be a list")
+                backups["components"] = [
+                    *chosen,
+                    *(name for name in SERVER_PACK_COMPONENTS if name not in chosen),
+                ]
 
         monitoring = merged.get("monitoring", {})
         if "max_retiries" in monitoring:
