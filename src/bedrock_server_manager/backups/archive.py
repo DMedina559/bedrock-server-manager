@@ -11,6 +11,7 @@ import tarfile
 import tempfile
 import threading
 import time
+from contextlib import ExitStack
 from pathlib import Path, PurePosixPath
 from typing import Any
 
@@ -20,6 +21,7 @@ from ..error import BackupRestoreError
 from ..utils.threads import check_cancellation, copy_stream
 from .credentials import private_directory
 from .models import PREFIXES, BackupHeader, BackupManifest
+from .spool import CaptureSpool
 
 MAX_FILES = 1_000_000
 MAX_BYTES = 1024**4
@@ -137,6 +139,8 @@ def build_payload(
     manifest: BackupManifest,
     compression: str = "balanced",
     cancellation_event: threading.Event | None = None,
+    *,
+    spool: CaptureSpool | None = None,
 ) -> None:
     """Build a portable gzip payload using a supported compression level."""
     level = COMPRESSION_LEVELS[compression]
@@ -150,7 +154,19 @@ def build_payload(
     started = time.perf_counter()
     open_seconds = read_seconds = close_seconds = 0.0
     bytes_read = 0
-    with target.open("wb", buffering=ARCHIVE_BUFFER_SIZE) as output:
+    spooled_files = 0
+    with ExitStack() as resources:
+        spool_reader = None
+        if spool is not None:
+            opened = time.perf_counter()
+            spool_reader = resources.enter_context(
+                _MeasuredReader(spool.path.open("rb"))
+            )
+            spool_reader.cancellation_event = cancellation_event
+            open_seconds += time.perf_counter() - opened
+        output = resources.enter_context(
+            target.open("wb", buffering=ARCHIVE_BUFFER_SIZE)
+        )
         with gzip.GzipFile(
             fileobj=output, mode="wb", compresslevel=level, mtime=0
         ) as compressed:
@@ -171,28 +187,39 @@ def build_payload(
                     info.mode = 0o700 if item.executable else 0o600
                     info.size = item.size
                     opened = time.perf_counter()
-                    stream = source.open("rb")
-                    open_seconds += time.perf_counter() - opened
-                    try:
-                        reader = _MeasuredReader(stream)
-                        reader.cancellation_event = cancellation_event
-                        payload.addfile(info, reader)
-                        read_seconds += reader.read_seconds
-                        bytes_read += reader.bytes_read
-                    finally:
-                        closing = time.perf_counter()
-                        stream.close()
-                        close_seconds += time.perf_counter() - closing
+                    offset = spool.offset(source) if spool is not None else None
+                    if offset is not None and spool_reader is not None:
+                        spool_reader.seek(offset)
+                        open_seconds += time.perf_counter() - opened
+                        before = spool_reader.read_seconds
+                        before_bytes = spool_reader.bytes_read
+                        payload.addfile(info, spool_reader)
+                        read_seconds += spool_reader.read_seconds - before
+                        bytes_read += spool_reader.bytes_read - before_bytes
+                        spooled_files += 1
+                    else:
+                        reader = _MeasuredReader(source.open("rb"))
+                        open_seconds += time.perf_counter() - opened
+                        try:
+                            reader.cancellation_event = cancellation_event
+                            payload.addfile(info, reader)
+                            read_seconds += reader.read_seconds
+                            bytes_read += reader.bytes_read
+                        finally:
+                            closing = time.perf_counter()
+                            reader.close()
+                            close_seconds += time.perf_counter() - closing
     total = time.perf_counter() - started
     source_seconds = open_seconds + read_seconds + close_seconds
     logger.debug(
         "Backup payload completed: compression=%s gzip_level=%d files=%d "
-        "bytes_read=%d source_open_ms=%.3f source_read_ms=%.3f "
+        "spooled_files=%d bytes_read=%d source_open_ms=%.3f source_read_ms=%.3f "
         "source_close_ms=%.3f archive_other_ms=%.3f total_ms=%.3f "
         "(archive_other includes tar, gzip, output I/O, metadata, and finalization)",
         compression,
         level,
         len(manifest.files),
+        spooled_files,
         bytes_read,
         open_seconds * 1000,
         read_seconds * 1000,

@@ -60,6 +60,7 @@ from .models import (
 )
 from .recovery import RestoreJournal, apply_settings, settings_export, sync_tree
 from .selection import selection, server_entries
+from .spool import CaptureSpool
 
 if TYPE_CHECKING:
     from ..core.bedrock_server import BedrockServer
@@ -79,6 +80,7 @@ def copy_source(
     *,
     hashes: dict[Path, tuple[int, int, str]] | None = None,
     inherited_private: bool = False,
+    spool: CaptureSpool | None = None,
 ) -> None:
     """Copy only portable regular files and directories, never following links."""
     check_cancellation(cancellation_event)
@@ -94,21 +96,36 @@ def copy_source(
                 cancellation_event,
                 hashes=hashes,
                 inherited_private=inherited_private,
+                spool=spool,
             )
     elif source.is_file():
         target.parent.mkdir(parents=True, exist_ok=True)
         hasher = hashlib.sha256() if hashes is not None else None
+        spool_stream = spool.stream if spool is not None else None
+        offset = spool_stream.tell() if spool_stream is not None else 0
+
+        def captured(chunk: bytes) -> None:
+            if hasher is not None:
+                hasher.update(chunk)
+            if spool_stream is not None:
+                spool_stream.write(chunk)
+
         with source.open("rb") as stream, target.open("wb") as output:
             copy_stream(
                 stream,
                 output,
                 cancellation_event,
-                on_chunk=hasher.update if hasher else None,
+                on_chunk=(
+                    captured if hasher is not None or spool_stream is not None else None
+                ),
             )
         if not (inherited_private and os.name == "nt"):
             protect(target)
         if os.name != "nt" and source.stat().st_mode & stat.S_IXUSR:
             target.chmod(0o700)
+        if spool is not None:
+            metadata = target.stat()
+            spool.entries[target] = (metadata.st_size, metadata.st_mtime_ns, offset)
         if hashes is not None and hasher is not None:
             metadata = target.stat()
             hashes[target] = (
@@ -418,10 +435,16 @@ class UnifiedServerBackups(ManagedBackups):
                         raise BackupRestoreError(
                             "Full-directory backup storage must be outside the server directory."
                         )
-                async with temporary_directory(
-                    prefix=".bsm-capture-", parent=root
-                ) as directory:
+                async with (
+                    temporary_directory(
+                        prefix=".bsm-capture-", parent=root
+                    ) as directory,
+                    AsyncExitStack() as capture_resources,
+                ):
                     await run_in_thread(private_directory, Path(directory))
+                    spool = capture_resources.enter_context(
+                        CaptureSpool(Path(directory) / "captured.bin")
+                    )
                     staging = Path(directory) / "contents"
                     capture_hashes: dict[Path, tuple[int, int, str]] = {}
                     await run_in_thread(private_directory, staging)
@@ -486,6 +509,7 @@ class UnifiedServerBackups(ManagedBackups):
                                     staging / "world",
                                     hashes=capture_hashes,
                                     inherited_private=True,
+                                    spool=spool,
                                 )
                             states["world"] = "included"
                         elif (
@@ -514,6 +538,7 @@ class UnifiedServerBackups(ManagedBackups):
                                     full_target / entry.name,
                                     hashes=capture_hashes,
                                     inherited_private=True,
+                                    spool=spool,
                                 )
                             states["server_directory"] = "included"
                         for component, source_name in sources:
@@ -534,6 +559,7 @@ class UnifiedServerBackups(ManagedBackups):
                                     staging / PREFIXES[component],
                                     hashes=capture_hashes,
                                     inherited_private=True,
+                                    spool=spool,
                                 )
                                 states[component] = "included"
                         if "bsm_settings" in chosen:
@@ -585,12 +611,14 @@ class UnifiedServerBackups(ManagedBackups):
                     password = record.secret.get_secret_value() if record else None
                     await self._stage(progress, "Compressing backup")
                     packed_payload = Path(directory) / "payload.tar.gz"
+                    await run_in_thread(spool.flush)
                     await run_in_thread(
                         build_payload,
                         staging,
                         packed_payload,
                         manifest,
                         compression,
+                        spool=spool,
                     )
                     await self._stage(
                         progress,

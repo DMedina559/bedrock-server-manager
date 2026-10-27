@@ -169,3 +169,68 @@ def test_payload_reader_measures_only_read_calls(monkeypatch):
         assert reader.read() == b"cdef"
         assert reader.read_seconds == 0.75
         assert reader.bytes_read == 6
+
+
+@pytest.mark.parametrize("invalidate", [False, True])
+@pytest.mark.parametrize("mode", ["world", "full", "selected"])
+async def test_spooled_capture_recovery_and_fallback(
+    populated_server, monkeypatch, mode, invalidate, caplog
+):
+    from pathlib import Path
+
+    original = capture.build_payload
+    original_open = Path.open
+    observed = []
+
+    def build(*args, **kwargs):
+        spool = kwargs["spool"]
+        assert spool.entries
+        observed.append(spool.path)
+        if invalidate:
+            spool.entries = {
+                path: (size, -1, offset)
+                for path, (size, modified, offset) in spool.entries.items()
+            }
+
+        def guarded_open(path, *open_args, **open_kwargs):
+            if not invalidate and path in spool.entries:
+                pytest.fail("Archive creation reopened a spooled staged file")
+            return original_open(path, *open_args, **open_kwargs)
+
+        with monkeypatch.context() as patch:
+            patch.setattr(Path, "open", guarded_open)
+            return original(*args, **kwargs)
+
+    caplog.set_level("DEBUG")
+    monkeypatch.setattr(capture, "build_payload", build)
+    options = (
+        {"components": ["world", "server.properties", "bsm_settings"]}
+        if mode == "selected"
+        else {}
+    )
+    backup = await populated_server.backups.create_snapshot(mode=mode, **options)
+    verified = await populated_server.backups.verify_snapshot(backup.backup_id)
+    assert verified.status == "verified"
+    assert not observed[0].exists()
+    message = next(
+        record.message
+        for record in caplog.records
+        if record.message.startswith("Backup payload completed:")
+    )
+    assert ("spooled_files=0 " in message) is invalidate
+
+
+async def test_spool_cleanup_when_payload_is_canceled(populated_server, monkeypatch):
+    observed = []
+
+    def canceled(*args, **kwargs):
+        spool = kwargs["spool"]
+        assert spool.entries
+        observed.append(spool)
+        raise InterruptedError("Capture canceled")
+
+    monkeypatch.setattr(capture, "build_payload", canceled)
+    with pytest.raises(Exception):
+        await populated_server.backups.create_snapshot(mode="world")
+    assert observed[0].stream.closed
+    assert not observed[0].path.exists()

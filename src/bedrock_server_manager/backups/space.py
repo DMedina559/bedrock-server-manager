@@ -65,7 +65,9 @@ def restore_capacity(
             Path(backups.server.paths.server_dir),
             HEADROOM + (0 if staged else expanded * 2 + len(manifest.files) * 2048),
         ),
-        ("backups", Path(backups._directory()), size * 4 + files * 4096 + HEADROOM),
+        # Staged tree, sequential spool, compressed payload, final archive,
+        # and headroom for incompressible data during the safety capture.
+        ("backups", Path(backups._directory()), size * 5 + files * 4096 + HEADROOM),
     ]
     volumes: dict[int, RestoreVolume] = {}
     for role, path, required in requests:

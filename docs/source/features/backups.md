@@ -552,3 +552,16 @@ source-file open, read, and close wall time. The remaining `archive_other_ms`
 includes tar processing, gzip, output I/O, metadata, and finalization; it is not a
 measurement of gzip CPU time. Timings are aggregated without logging file names
 or contents and require no additional file reads.
+
+
+Offline captures also append copied file contents to one private, capture-local
+staging file. Archive creation reads that file instead of reopening each copied
+file, reducing Windows file-open overhead. Copying remains sequential. The
+original staged tree remains available for validation, so this optimization
+requires additional temporary space approximately equal to the copied contents,
+on top of the staged tree and compressed payload. The staging file and its
+in-memory index are discarded after capture, including cancellation and failure.
+Live-world captures, generated settings, and files whose staged size or
+modification time changed use normal file reads. The `spooled_files` DEBUG metric
+shows how many archive entries used the single staging file. The backup format
+and restore behavior are unchanged.
