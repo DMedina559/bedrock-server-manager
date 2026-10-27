@@ -8,7 +8,7 @@ import copy
 import logging
 import os
 import time
-from typing import Any, Dict, Optional, Set
+from typing import Any, Dict, Literal, Optional, Set
 
 from pydantic import (
     AnyHttpUrl,
@@ -208,6 +208,10 @@ class BackupSettings(SettingsRecord):
     )
 
     schedules: dict[str, BackupSchedule] = Field(default_factory=dict)
+    compression: Literal["fast", "balanced", "small"] = Field(
+        default="balanced",
+        description="Fast uses less compression; Small favors archive size. All modes preserve encryption and integrity checks.",
+    )
     verify_after_create: bool = False
     verification_interval_hours: int = Field(default=0, ge=0, le=8760)
     safety_window_hours: int = Field(default=168, ge=1, le=8760)

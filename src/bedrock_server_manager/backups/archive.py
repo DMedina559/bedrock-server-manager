@@ -1,11 +1,13 @@
 """Bounded SecureTar v3 containers, shared by the server and offline recovery."""
 
+import gzip
 import hashlib
 import io
 import json
 import os
 import re
 import tarfile
+import tempfile
 import threading
 from pathlib import Path, PurePosixPath
 from typing import Any
@@ -14,6 +16,7 @@ from securetar import SecureTarArchive, SecureTarHeader
 
 from ..error import BackupRestoreError
 from ..utils.threads import check_cancellation, copy_stream
+from .credentials import private_directory
 from .models import PREFIXES, BackupHeader, BackupManifest
 
 MAX_FILES = 1_000_000
@@ -106,6 +109,47 @@ def header(path: Path) -> BackupHeader:
         raise BackupRestoreError("Invalid or unsupported BSM backup header.") from error
 
 
+ARCHIVE_BUFFER_SIZE = 1024 * 1024
+COMPRESSION_LEVELS = {"fast": 1, "balanced": 6, "small": 9}
+
+
+def build_payload(
+    staging: Path,
+    target: Path,
+    manifest: BackupManifest,
+    compression: str = "balanced",
+    cancellation_event: threading.Event | None = None,
+) -> None:
+    """Build a portable gzip payload using a supported compression level."""
+    level = COMPRESSION_LEVELS[compression]
+    with target.open("wb", buffering=ARCHIVE_BUFFER_SIZE) as output:
+        with gzip.GzipFile(
+            fileobj=output, mode="wb", compresslevel=level, mtime=0
+        ) as compressed:
+            with tarfile.open(
+                fileobj=compressed, mode="w|", bufsize=ARCHIVE_BUFFER_SIZE
+            ) as payload:
+                add_json(payload, "manifest.json", manifest.model_dump(mode="json"))
+                for name in manifest.directories:
+                    check_cancellation(cancellation_event)
+                    info = tarfile.TarInfo(safe_name(name))
+                    info.type = tarfile.DIRTYPE
+                    info.mode = 0o700
+                    payload.addfile(info)
+                for item in manifest.files:
+                    check_cancellation(cancellation_event)
+                    source = staging / safe_name(item.path)
+                    info = tarfile.TarInfo(item.path)
+                    info.mode = 0o700 if item.executable else 0o600
+                    info.size = item.size
+                    with (
+                        source.open("rb") as stream,
+                        _CancellableReader(stream) as reader,
+                    ):
+                        reader.cancellation_event = cancellation_event
+                        payload.addfile(info, reader)
+
+
 def write_archive(
     staging: Path,
     target: Path,
@@ -113,34 +157,65 @@ def write_archive(
     password: str | None,
     key_id: str | None,
     cancellation_event: threading.Event | None = None,
+    *,
+    compression: str = "balanced",
+    prepared_payload: Path | None = None,
 ) -> None:
-    """Write to a private temporary target; the caller publishes after verification."""
-    with SecureTarArchive(target, "w", password=password, create_version=3) as archive:
-        add_json(
-            archive.tar,
-            "bsm.json",
-            BackupHeader(encrypted=password is not None, key_id=key_id).model_dump(),
-        )
-        with archive.create_tar("payload.tar.gz") as payload:
-            add_json(payload, "manifest.json", manifest.model_dump(mode="json"))
-            for name in manifest.directories:
-                check_cancellation(cancellation_event)
-                info = tarfile.TarInfo(safe_name(name))
-                info.type = tarfile.DIRTYPE
-                info.mode = 0o700
-                payload.addfile(info)
-            for item in manifest.files:
-                check_cancellation(cancellation_event)
-                source = staging / safe_name(item.path)
-                info = tarfile.TarInfo(item.path)
-                info.mode = 0o700 if item.executable else 0o600
-                info.size = item.size
-                with source.open("rb") as stream, _CancellableReader(stream) as reader:
-                    reader.cancellation_event = cancellation_event
-                    payload.addfile(info, reader)
-    # Windows requires a writable handle for its underlying FlushFileBuffers call.
-    with target.open("r+b") as completed:
-        os.fsync(completed.fileno())
+    """Publish a gzip payload into the existing SecureTar v3 container."""
+
+    def package(payload: Path) -> None:
+        check_cancellation(cancellation_event)
+        with SecureTarArchive(
+            target,
+            "w",
+            password=password,
+            create_version=3,
+            bufsize=ARCHIVE_BUFFER_SIZE,
+        ) as archive:
+            add_json(
+                archive.tar,
+                "bsm.json",
+                BackupHeader(
+                    encrypted=password is not None, key_id=key_id
+                ).model_dump(),
+            )
+            info = tarfile.TarInfo("payload.tar.gz")
+            info.size = payload.stat().st_size
+            info.mode = 0o600
+            with (
+                payload.open("rb", buffering=0) as source,
+                _CancellableReader(source, buffer_size=ARCHIVE_BUFFER_SIZE) as reader,
+            ):
+                reader.cancellation_event = cancellation_event
+                if password is not None:
+                    archive.import_tar(reader, info)
+                else:
+                    archive.tar.addfile(info, reader)
+        # Flush the completed archive once, before the caller atomically publishes it.
+        with target.open("r+b") as completed:
+            os.fsync(completed.fileno())
+
+    if prepared_payload is not None:
+        package(prepared_payload)
+    else:
+        with tempfile.TemporaryDirectory(
+            prefix=".bsm-payload-", dir=target.parent
+        ) as directory:
+            private_directory(Path(directory))
+            payload = Path(directory) / "payload.tar.gz"
+            build_payload(staging, payload, manifest, compression, cancellation_event)
+            package(payload)
+
+
+def publish_archive(source: Path, destination: Path) -> None:
+    """Publish an already-flushed archive and persist the directory entry."""
+    os.replace(source, destination)
+    if os.name != "nt":
+        descriptor = os.open(destination.parent, os.O_RDONLY)
+        try:
+            os.fsync(descriptor)
+        finally:
+            os.close(descriptor)
 
 
 def unpack(

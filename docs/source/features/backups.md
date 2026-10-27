@@ -502,8 +502,8 @@ in their JSON state, so these additions require no new database migration.
 
 ## Pre-start backup deadlines
 
-Backup On Start has a `timeout_seconds` setting, defaulting to 900 seconds
-(15 minutes), with a maximum of 3600 seconds. This budget applies to the backup
+Backup On Start has a `timeout_seconds` setting, defaulting to 300 seconds
+(5 minutes), with a maximum of 3600 seconds. This budget applies to the backup
 inside the start operation; ordinary event hooks retain their existing default
 limits. Settings changes take effect on the next attempt.
 
@@ -518,3 +518,32 @@ staging storage. Inventory reuses those hashes when the staged file's size and
 modification time still match. Live world captures and newly generated files
 are hashed during inventory. These changes preserve the backup format and
 restore checks. Optional verification after creation remains disabled by default.
+
+## Compression and capture performance
+
+Choose **Fast**, **Balanced**, or **Small** in Settings → Backups. Balanced is
+used by default. Fast uses gzip level 1, Balanced level 6, and Small level 9;
+all produce the same portable `.bsmbackup` format and retain integrity checks
+and optional encryption. Older backups remain readable.
+
+The archive writer uses bounded 1 MiB buffers. Compression builds a temporary
+payload before encryption and archive publication, so capture storage must also
+accommodate that compressed payload. Temporary payloads live in private staging
+storage and are removed on completion, failure, or cancellation. Copies remain
+sequential.
+
+On Windows, staged files inherit the private capture directory's ACL instead
+of rebuilding an ACL for each file. Other copy paths keep their explicit
+permission handling; POSIX file modes remain unchanged. The completed archive
+is flushed once before publication, and POSIX publication also flushes the
+containing directory.
+
+Backup listing and health read complete, atomically published archives and
+catalog snapshots without taking the capture operation lock. A newly published
+archive can briefly appear without its final catalog metadata; it is not shown
+as verified until matching verification metadata exists. Temporary captures are
+not listed. Verify, delete, restore, and metadata mutations retain their locks.
+
+DEBUG logs and task updates distinguish compression, archive writing/encryption,
+content validation, publication, archive fingerprinting, destination copies, and
+retention. This separates CPU work from filesystem and finalization delays.

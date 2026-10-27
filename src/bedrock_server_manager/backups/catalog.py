@@ -355,57 +355,54 @@ class ManagedBackups:
             await self._notify_backup(identifier, "copy", "completed", destination)
 
     async def backup_health(self) -> BackupHealth:
-        async with self.server.operation_lock:
-            summaries = await self.list_snapshots()
-            value = await run_in_thread(self.catalog.load)
-            entries = [value["archives"].get(item.backup_id, {}) for item in summaries]
-            keys = await run_in_thread(self.credentials.metadata)
-            known = {item["key_id"] for item in keys["keys"]}
-            used = {item.key_id for item in summaries if item.encrypted and item.key_id}
-            from .assurance import readiness
-            from .schedule import status
+        summaries = await self.list_snapshots()
+        value = await run_in_thread(self.catalog.load)
+        entries = [value["archives"].get(item.backup_id, {}) for item in summaries]
+        keys = await run_in_thread(self.credentials.metadata)
+        known = {item["key_id"] for item in keys["keys"]}
+        used = {item.key_id for item in summaries if item.encrypted and item.key_id}
+        from .assurance import readiness
+        from .schedule import status
 
-            assurance = await run_in_thread(readiness, self, summaries, value, known)
-            return BackupHealth(
-                **assurance,
-                schedule=status(self, value),
-                count=len(summaries),
-                total_bytes=sum(item.size for item in summaries),
-                last_success_at=max(
-                    (e.get("created_at", "") for e in entries), default=""
-                )
-                or None,
-                last_verified_at=max(
-                    (
-                        e.get("verification", {}).get("verified_at", "")
-                        for e in entries
-                        if e.get("verification", {}).get("status") == "verified"
-                    ),
-                    default="",
-                )
-                or None,
-                last_failure_at=value.get("last_failure_at"),
-                last_error=value.get("last_error"),
-                unverified_count=sum(
-                    i.verification.status == "unverified" for i in summaries
+        assurance = await run_in_thread(readiness, self, summaries, value, known)
+        return BackupHealth(
+            **assurance,
+            schedule=status(self, value),
+            count=len(summaries),
+            total_bytes=sum(item.size for item in summaries),
+            last_success_at=max((e.get("created_at", "") for e in entries), default="")
+            or None,
+            last_verified_at=max(
+                (
+                    e.get("verification", {}).get("verified_at", "")
+                    for e in entries
+                    if e.get("verification", {}).get("status") == "verified"
                 ),
-                failed_count=sum(
-                    i.error is not None or i.verification.status == "failed"
-                    for i in summaries
-                ),
-                missing_key_ids=sorted(used - known),
-                older_key_ids=sorted(used - {keys["active"]}),
-                destination_failures=sum(
-                    copy.status not in ("completed", "pruned")
-                    for i in summaries
-                    for name, copy in i.copies.items()
-                    if name in self.destination_configs()
-                    and self.destination_configs()[name].get("enabled", True)
-                ),
-                verification_interval_hours=self.server.settings.get(
-                    "backups.verification_interval_hours", 0
-                ),
+                default="",
             )
+            or None,
+            last_failure_at=value.get("last_failure_at"),
+            last_error=value.get("last_error"),
+            unverified_count=sum(
+                i.verification.status == "unverified" for i in summaries
+            ),
+            failed_count=sum(
+                i.error is not None or i.verification.status == "failed"
+                for i in summaries
+            ),
+            missing_key_ids=sorted(used - known),
+            older_key_ids=sorted(used - {keys["active"]}),
+            destination_failures=sum(
+                copy.status not in ("completed", "pruned")
+                for i in summaries
+                for name, copy in i.copies.items()
+                if name in self.destination_configs()
+                and self.destination_configs()[name].get("enabled", True)
+            ),
+            verification_interval_hours=self.server.settings.get(
+                "backups.verification_interval_hours", 0
+            ),
+        )
 
     async def maintain_backups(self):
         """Perform one bounded unit, leaving queued interactive work first in line."""

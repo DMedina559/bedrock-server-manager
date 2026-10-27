@@ -120,7 +120,7 @@ class AutoBackupOnStart(PluginBase):
             # The start operation holds the server lock and verified it is offline.
 
             encryption = await self.get_plugin_setting("encryption", default="default")
-            timeout = await self.get_plugin_setting("timeout_seconds", default=900.0)
+            timeout = await self.get_plugin_setting("timeout_seconds", default=300.0)
             self.logger.debug("Pre-start backup deadline: %.3f seconds", timeout)
             async with asyncio.timeout(timeout):
                 result = await self.api.backup_restore.backup_all(

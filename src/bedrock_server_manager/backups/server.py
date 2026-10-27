@@ -26,7 +26,15 @@ from ..results import CleanupResult, CompletedItem, ComponentResults, SkippedIte
 from ..utils.files import temporary_directory
 from ..utils.progress import report_stage
 from ..utils.threads import check_cancellation, copy_stream, run_in_thread
-from .archive import digest, header, safe_name, unpack, write_archive
+from .archive import (
+    build_payload,
+    digest,
+    header,
+    publish_archive,
+    safe_name,
+    unpack,
+    write_archive,
+)
 from .catalog import ManagedBackups, now
 from .contents import SelectableComponent
 from .credentials import (
@@ -70,6 +78,7 @@ def copy_source(
     cancellation_event: threading.Event | None = None,
     *,
     hashes: dict[Path, tuple[int, int, str]] | None = None,
+    inherited_private: bool = False,
 ) -> None:
     """Copy only portable regular files and directories, never following links."""
     check_cancellation(cancellation_event)
@@ -79,7 +88,13 @@ def copy_source(
     if source.is_dir():
         target.mkdir(parents=True, exist_ok=True)
         for child in source.iterdir():
-            copy_source(child, target / child.name, cancellation_event, hashes=hashes)
+            copy_source(
+                child,
+                target / child.name,
+                cancellation_event,
+                hashes=hashes,
+                inherited_private=inherited_private,
+            )
     elif source.is_file():
         target.parent.mkdir(parents=True, exist_ok=True)
         hasher = hashlib.sha256() if hashes is not None else None
@@ -90,7 +105,8 @@ def copy_source(
                 cancellation_event,
                 on_chunk=hasher.update if hasher else None,
             )
-        protect(target)
+        if not (inherited_private and os.name == "nt"):
+            protect(target)
         if os.name != "nt" and source.stat().st_mode & stat.S_IXUSR:
             target.chmod(0o700)
         if hashes is not None and hasher is not None:
@@ -401,6 +417,7 @@ class UnifiedServerBackups(ManagedBackups):
                 async with temporary_directory(
                     prefix=".bsm-capture-", parent=root
                 ) as directory:
+                    await run_in_thread(private_directory, Path(directory))
                     staging = Path(directory) / "contents"
                     capture_hashes: dict[Path, tuple[int, int, str]] = {}
                     await run_in_thread(private_directory, staging)
@@ -464,6 +481,7 @@ class UnifiedServerBackups(ManagedBackups):
                                     source_world,
                                     staging / "world",
                                     hashes=capture_hashes,
+                                    inherited_private=True,
                                 )
                             states["world"] = "included"
                         elif (
@@ -491,6 +509,7 @@ class UnifiedServerBackups(ManagedBackups):
                                     entry,
                                     full_target / entry.name,
                                     hashes=capture_hashes,
+                                    inherited_private=True,
                                 )
                             states["server_directory"] = "included"
                         for component, source_name in sources:
@@ -510,6 +529,7 @@ class UnifiedServerBackups(ManagedBackups):
                                     source,
                                     staging / PREFIXES[component],
                                     hashes=capture_hashes,
+                                    inherited_private=True,
                                 )
                                 states[component] = "included"
                         if "bsm_settings" in chosen:
@@ -559,12 +579,21 @@ class UnifiedServerBackups(ManagedBackups):
                     )
                     temporary = Path(directory) / "snapshot"
                     password = record.secret.get_secret_value() if record else None
+                    await self._stage(progress, "Compressing backup")
+                    packed_payload = Path(directory) / "payload.tar.gz"
+                    await run_in_thread(
+                        build_payload,
+                        staging,
+                        packed_payload,
+                        manifest,
+                        self.server.settings.get("backups.compression", "balanced"),
+                    )
                     await self._stage(
                         progress,
                         (
-                            "Compressing and encrypting backup"
+                            "Encrypting and writing archive"
                             if record
-                            else "Compressing backup"
+                            else "Writing archive"
                         ),
                     )
                     await run_in_thread(
@@ -574,6 +603,7 @@ class UnifiedServerBackups(ManagedBackups):
                         manifest,
                         password,
                         record.key_id if record else None,
+                        prepared_payload=packed_payload,
                     )
                     verify_created = self.server.settings.get(
                         "backups.verify_after_create", False
@@ -585,6 +615,7 @@ class UnifiedServerBackups(ManagedBackups):
                         await run_in_thread(
                             self.unpack_snapshot, temporary, verification, password
                         )
+                    await self._stage(progress, "Validating captured contents")
                     structure_valid = True
                     try:
                         await run_in_thread(
@@ -594,8 +625,9 @@ class UnifiedServerBackups(ManagedBackups):
                         if purpose != "pre_restore":
                             raise
                         structure_valid = False
-                    await run_in_thread(sync_tree, temporary)
-                    await run_in_thread(os.replace, temporary, destination)
+                    await self._stage(progress, "Publishing backup archive")
+                    await run_in_thread(publish_archive, temporary, destination)
+                await self._stage(progress, "Recording archive integrity")
                 await run_in_thread(
                     self._record_verified,
                     destination,
@@ -626,6 +658,7 @@ class UnifiedServerBackups(ManagedBackups):
                             )
                         ).isoformat(),
                     )
+                await self._stage(progress, "Copying backup destinations")
                 for name, config in self.destination_configs().items():
                     if purpose != "scheduled" and config.get("enabled", True):
                         try:
@@ -652,6 +685,7 @@ class UnifiedServerBackups(ManagedBackups):
                     ),
                 )
                 await self._notify_backup(filename, "capture", "completed")
+                await self._stage(progress, "Applying backup retention")
                 retention = await self.prune_snapshots()
                 if retention.failures:
                     self.logger.warning(
@@ -812,75 +846,74 @@ class UnifiedServerBackups(ManagedBackups):
             )
 
     async def list_snapshots(self) -> list[BackupSummary]:
-        async with self.server.operation_lock:
-            root = Path(self._directory())
+        root = Path(self._directory())
 
-            def scan():
-                if not root.exists():
-                    return []
-                entries = []
-                for path in sorted(root.glob("*.bsmbackup"), reverse=True):
-                    if path.is_symlink() or not path.is_file():
-                        continue
-                    try:
-                        entries.append((path, path.stat()))
-                    except FileNotFoundError:
-                        continue
-                return entries
-
-            result = []
-            catalog = await run_in_thread(self.catalog.load)
-            for path, metadata_stat in await run_in_thread(scan):
-                metadata = dict(catalog["archives"].get(path.name, {}))
-                if metadata.get("fingerprint") != [
-                    metadata_stat.st_size,
-                    metadata_stat.st_mtime_ns,
-                ]:
-                    metadata.pop("verification", None)
+        def scan():
+            if not root.exists():
+                return []
+            entries = []
+            for path in sorted(root.glob("*.bsmbackup"), reverse=True):
+                if path.is_symlink() or not path.is_file():
+                    continue
                 try:
-                    info = await run_in_thread(header, path)
-                    result.append(
-                        BackupSummary(
-                            backup_id=path.name,
-                            filename=path.name,
-                            created_at=metadata.get("created_at"),
-                            drill=metadata.get("drill"),
-                            size=metadata_stat.st_size,
-                            verification=metadata.get("verification", {}),
-                            stage_durations_ms=metadata.get("stage_durations_ms", {}),
-                            pinned=metadata.get("pinned", False),
-                            protected_until=metadata.get("protected_until"),
-                            purpose=metadata.get("purpose"),
-                            copies=metadata.get("copies", {}),
-                            label=metadata.get("label", ""),
-                            notes=metadata.get("notes", ""),
-                            origin=metadata.get("origin", "captured"),
-                            encrypted=info.encrypted,
-                            key_id=info.key_id,
-                        )
+                    entries.append((path, path.stat()))
+                except FileNotFoundError:
+                    continue
+            return entries
+
+        result = []
+        catalog = await run_in_thread(self.catalog.load)
+        for path, metadata_stat in await run_in_thread(scan):
+            metadata = dict(catalog["archives"].get(path.name, {}))
+            if metadata.get("fingerprint") != [
+                metadata_stat.st_size,
+                metadata_stat.st_mtime_ns,
+            ]:
+                metadata.pop("verification", None)
+            try:
+                info = await run_in_thread(header, path)
+                result.append(
+                    BackupSummary(
+                        backup_id=path.name,
+                        filename=path.name,
+                        created_at=metadata.get("created_at"),
+                        drill=metadata.get("drill"),
+                        size=metadata_stat.st_size,
+                        verification=metadata.get("verification", {}),
+                        stage_durations_ms=metadata.get("stage_durations_ms", {}),
+                        pinned=metadata.get("pinned", False),
+                        protected_until=metadata.get("protected_until"),
+                        purpose=metadata.get("purpose"),
+                        copies=metadata.get("copies", {}),
+                        label=metadata.get("label", ""),
+                        notes=metadata.get("notes", ""),
+                        origin=metadata.get("origin", "captured"),
+                        encrypted=info.encrypted,
+                        key_id=info.key_id,
                     )
-                except BackupRestoreError:
-                    result.append(
-                        BackupSummary(
-                            backup_id=path.name,
-                            filename=path.name,
-                            created_at=metadata.get("created_at"),
-                            drill=metadata.get("drill"),
-                            size=metadata_stat.st_size,
-                            encrypted=False,
-                            verification=metadata.get("verification", {}),
-                            stage_durations_ms=metadata.get("stage_durations_ms", {}),
-                            pinned=metadata.get("pinned", False),
-                            protected_until=metadata.get("protected_until"),
-                            purpose=metadata.get("purpose"),
-                            copies=metadata.get("copies", {}),
-                            label=metadata.get("label", ""),
-                            notes=metadata.get("notes", ""),
-                            origin=metadata.get("origin", "captured"),
-                            error="Invalid backup header.",
-                        )
+                )
+            except BackupRestoreError:
+                result.append(
+                    BackupSummary(
+                        backup_id=path.name,
+                        filename=path.name,
+                        created_at=metadata.get("created_at"),
+                        drill=metadata.get("drill"),
+                        size=metadata_stat.st_size,
+                        encrypted=False,
+                        verification=metadata.get("verification", {}),
+                        stage_durations_ms=metadata.get("stage_durations_ms", {}),
+                        pinned=metadata.get("pinned", False),
+                        protected_until=metadata.get("protected_until"),
+                        purpose=metadata.get("purpose"),
+                        copies=metadata.get("copies", {}),
+                        label=metadata.get("label", ""),
+                        notes=metadata.get("notes", ""),
+                        origin=metadata.get("origin", "captured"),
+                        error="Invalid backup header.",
                     )
-            return result
+                )
+        return result
 
     async def prune_snapshots(self) -> CleanupResult:
         return await self.prune_managed_snapshots()
