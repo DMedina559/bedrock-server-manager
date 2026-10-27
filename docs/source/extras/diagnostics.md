@@ -149,7 +149,7 @@ administrator activity responses.
 
 Use INFO logs for backup selection and completion, scheduled-run outcomes, and
 operational warnings. Enable DEBUG temporarily to include API durations,
-backup/restore stages, inventory file counts and sizes, and event-listener
+backup/restore stages, reused capture hash counts, inventory file counts and sizes, and event-listener
 start/finish records. Event records include the listener owner, event ID,
 deadline, outcome, and elapsed time. A hook deadline can cancel a pre-start
 backup even when the same backup succeeds manually.

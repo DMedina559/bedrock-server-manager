@@ -39,6 +39,8 @@ def copy_stream(
     source: IO[bytes],
     target: IO[bytes],
     cancellation_event: threading.Event | None = None,
+    *,
+    on_chunk: Callable[[bytes], None] | None = None,
 ) -> None:
     """Copy in bounded chunks and check cancellation between reads and writes."""
     while True:
@@ -48,6 +50,8 @@ def copy_stream(
             break
         check_cancellation(cancellation_event)
         target.write(chunk)
+        if on_chunk is not None:
+            on_chunk(chunk)
 
 
 def worker_snapshot() -> WorkerSnapshot:
@@ -101,7 +105,8 @@ async def run_in_thread(
     _workers[worker] = record
     worker.add_done_callback(lambda task: _workers.pop(task, None))
     try:
-        return await asyncio.shield(worker)
+        await asyncio.wait({worker})
+        return worker.result()
     except asyncio.CancelledError:
         record.cancelled_at = time.monotonic()
         cancellation_event.set()
@@ -111,11 +116,9 @@ async def run_in_thread(
         )
         while not worker.done():
             try:
-                await asyncio.shield(worker)
+                await asyncio.wait({worker})
             except asyncio.CancelledError:
                 continue
-            except Exception:
-                break
         if not worker.cancelled():
             error = worker.exception()
             if error is not None and not isinstance(error, InterruptedError):

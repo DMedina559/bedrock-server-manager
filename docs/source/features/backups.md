@@ -498,3 +498,23 @@ size, and concurrency limits. Preparation failures remain visible until repaired
 BSM restart. Schedule controls wake the loop immediately. Definitions and cursors
 use the existing scheduler tables; execution leases and cursor metadata are stored
 in their JSON state, so these additions require no new database migration.
+
+
+## Pre-start backup deadlines
+
+Backup On Start has a `timeout_seconds` setting, defaulting to 900 seconds
+(15 minutes), with a maximum of 3600 seconds. This budget applies to the backup
+inside the start operation; ordinary event hooks retain their existing default
+limits. Settings changes take effect on the next attempt.
+
+If the backup times out, its filesystem worker stops and temporary capture data
+is cleaned up before startup proceeds. With `require_complete_backup` enabled,
+startup is cancelled. Otherwise the timeout is logged and startup continues.
+Explicit cancellation of the start operation, plugin unload, or an enclosing
+operation deadline still cancels the operation; it is not treated as an optional backup failure.
+
+Offline captures calculate SHA-256 hashes while copying files into private
+staging storage. Inventory reuses those hashes when the staged file's size and
+modification time still match. Live world captures and newly generated files
+are hashed during inventory. These changes preserve the backup format and
+restore checks. Optional verification after creation remains disabled by default.

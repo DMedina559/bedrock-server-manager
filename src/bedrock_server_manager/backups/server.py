@@ -65,7 +65,11 @@ def is_link(source: Path) -> bool:
 
 
 def copy_source(
-    source: Path, target: Path, cancellation_event: threading.Event | None = None
+    source: Path,
+    target: Path,
+    cancellation_event: threading.Event | None = None,
+    *,
+    hashes: dict[Path, tuple[int, int, str]] | None = None,
 ) -> None:
     """Copy only portable regular files and directories, never following links."""
     check_cancellation(cancellation_event)
@@ -75,20 +79,37 @@ def copy_source(
     if source.is_dir():
         target.mkdir(parents=True, exist_ok=True)
         for child in source.iterdir():
-            copy_source(child, target / child.name, cancellation_event)
+            copy_source(child, target / child.name, cancellation_event, hashes=hashes)
     elif source.is_file():
         target.parent.mkdir(parents=True, exist_ok=True)
+        hasher = hashlib.sha256() if hashes is not None else None
         with source.open("rb") as stream, target.open("wb") as output:
-            copy_stream(stream, output, cancellation_event)
+            copy_stream(
+                stream,
+                output,
+                cancellation_event,
+                on_chunk=hasher.update if hasher else None,
+            )
         protect(target)
         if os.name != "nt" and source.stat().st_mode & stat.S_IXUSR:
             target.chmod(0o700)
+        if hashes is not None and hasher is not None:
+            metadata = target.stat()
+            hashes[target] = (
+                metadata.st_size,
+                metadata.st_mtime_ns,
+                hasher.hexdigest(),
+            )
     else:
         raise BackupRestoreError("Backup source is not a regular file or directory.")
 
 
 def inventory(
-    staging: Path, components, cancellation_event: threading.Event | None = None
+    staging: Path,
+    components,
+    cancellation_event: threading.Event | None = None,
+    *,
+    hashes: dict[Path, tuple[int, int, str]] | None = None,
 ) -> tuple[list[BackupFile], list[str]]:
     files = []
     directories = []
@@ -103,13 +124,21 @@ def inventory(
             if path.is_dir():
                 directories.append(name)
             else:
+                metadata = path.stat()
+                cached = hashes.get(path) if hashes is not None else None
+                checksum = (
+                    cached[2]
+                    if cached is not None
+                    and cached[:2] == (metadata.st_size, metadata.st_mtime_ns)
+                    else digest(path, cancellation_event)
+                )
                 files.append(
                     BackupFile(
                         path=name,
                         component=component,
-                        size=path.stat().st_size,
-                        sha256=digest(path, cancellation_event),
-                        executable=bool(path.stat().st_mode & stat.S_IXUSR),
+                        size=metadata.st_size,
+                        sha256=checksum,
+                        executable=bool(metadata.st_mode & stat.S_IXUSR),
                     )
                 )
     return files, directories
@@ -373,6 +402,7 @@ class UnifiedServerBackups(ManagedBackups):
                     prefix=".bsm-capture-", parent=root
                 ) as directory:
                     staging = Path(directory) / "contents"
+                    capture_hashes: dict[Path, tuple[int, int, str]] = {}
                     await run_in_thread(private_directory, staging)
                     states: dict[Component, Literal["included", "absent"]] = {
                         name: "absent" for name in COMPONENTS
@@ -430,7 +460,10 @@ class UnifiedServerBackups(ManagedBackups):
                                 )
                             else:
                                 await run_in_thread(
-                                    copy_source, source_world, staging / "world"
+                                    copy_source,
+                                    source_world,
+                                    staging / "world",
+                                    hashes=capture_hashes,
                                 )
                             states["world"] = "included"
                         elif (
@@ -454,7 +487,10 @@ class UnifiedServerBackups(ManagedBackups):
                             await run_in_thread(private_directory, full_target)
                             for entry in server_entries(server_root):
                                 await run_in_thread(
-                                    copy_source, entry, full_target / entry.name
+                                    copy_source,
+                                    entry,
+                                    full_target / entry.name,
+                                    hashes=capture_hashes,
                                 )
                             states["server_directory"] = "included"
                         for component, source_name in sources:
@@ -470,7 +506,10 @@ class UnifiedServerBackups(ManagedBackups):
                                 )
                             if source.exists() or source.is_symlink():
                                 await run_in_thread(
-                                    copy_source, source, staging / PREFIXES[component]
+                                    copy_source,
+                                    source,
+                                    staging / PREFIXES[component],
+                                    hashes=capture_hashes,
                                 )
                                 states[component] = "included"
                         if "bsm_settings" in chosen:
@@ -484,8 +523,14 @@ class UnifiedServerBackups(ManagedBackups):
                                 encoding="utf-8",
                             )
                             states["bsm_settings"] = "included"
+                    self.logger.debug(
+                        "Reusing streaming hashes from %d captured files",
+                        len(capture_hashes),
+                    )
                     await self._stage(progress, "Building backup inventory")
-                    files, directories = await run_in_thread(inventory, staging, states)
+                    files, directories = await run_in_thread(
+                        inventory, staging, states, hashes=capture_hashes
+                    )
                     self.logger.debug(
                         "Backup inventory complete: files=%d directories=%d bytes=%d",
                         len(files),

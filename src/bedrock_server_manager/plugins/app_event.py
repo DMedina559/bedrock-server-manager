@@ -11,6 +11,7 @@ def app_event(
     listener_id: str | None = None,
     before: tuple[str, ...] = (),
     after: tuple[str, ...] = (),
+    timeout_seconds: float | None = None,
 ) -> Callable:
     """Decorator to easily register a plugin method as an event listener for an event.
 
@@ -26,7 +27,17 @@ def app_event(
         setattr(
             func,
             "_app_event_options",
-            dict(filters=filters, listener_id=listener_id, before=before, after=after),
+            dict(
+                filters=filters,
+                listener_id=listener_id,
+                before=before,
+                after=after,
+                **(
+                    {"timeout_seconds": timeout_seconds}
+                    if timeout_seconds is not None
+                    else {}
+                ),
+            ),
         )
         return func
 

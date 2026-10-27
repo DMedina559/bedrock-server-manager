@@ -81,6 +81,7 @@ class Subscription:
     after: tuple[str, ...] = ()
     kind: str = "legacy"
     callback_identity: tuple[int, ...] | None = None
+    timeout_seconds: float | None = None
 
 
 @dataclass
@@ -157,7 +158,16 @@ class EventBus:
         kind: str = "legacy",
         callback_identity: tuple[int, ...] | None = None,
         temporary: bool = False,
+        timeout_seconds: float | None = None,
     ) -> str:
+        if timeout_seconds is not None and (
+            isinstance(timeout_seconds, bool)
+            or not isinstance(timeout_seconds, (int, float))
+            or not 0 < timeout_seconds <= 3600
+        ):
+            raise ValueError(
+                "Listener timeout must be finite and between 0 and 3600 seconds"
+            )
         with self._lock:
             self.check_owner(owner, generation)
             if not callable(callback):
@@ -186,6 +196,7 @@ class EventBus:
                     subscription.before,
                     subscription.after,
                     subscription.kind,
+                    subscription.timeout_seconds,
                 ) == (
                     name,
                     owner,
@@ -199,6 +210,7 @@ class EventBus:
                     before,
                     after,
                     kind,
+                    timeout_seconds,
                 ):
                     if temporary:
                         self._subscription_leases[subscription.token] += 1
@@ -225,6 +237,7 @@ class EventBus:
                 after,
                 kind,
                 callback_identity,
+                timeout_seconds,
             )
             try:
                 if listener_id or before or after:
@@ -702,7 +715,7 @@ class EventBus:
         previous = self._current.get()
         token = self._current.set((envelope, asyncio.current_task()))
         parent = self._handler.get()
-        timeout = (
+        timeout = subscription.timeout_seconds or (
             self.options.hook_timeout_seconds
             if self.registry.definition(envelope.name).phase == "before"
             and not subscription.observer
@@ -825,7 +838,8 @@ class EventBus:
 
         worker.add_done_callback(finished)
         try:
-            result = await asyncio.shield(worker)
+            await asyncio.wait({worker})
+            result = worker.result()
         except asyncio.CancelledError:
             abandoned = True
             cancellation.set()
@@ -901,7 +915,7 @@ class EventBus:
         started = monotonic()
         stats = self._subscription_stats.get(subscription.token)
         try:
-            timeout = (
+            timeout = subscription.timeout_seconds or (
                 self.options.hook_timeout_seconds
                 if definition.phase == "before" and not subscription.observer
                 else self.options.listener_timeout_seconds
