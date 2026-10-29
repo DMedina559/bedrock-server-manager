@@ -18,6 +18,7 @@ from ..error import (
 from ..failures import classify_failure
 from ..logging import log_operation_error
 from ..results import ResourceFailure
+from .threads import run_in_thread
 
 logger = logging.getLogger(__name__)
 
@@ -68,14 +69,14 @@ async def get_servers_data(
     error_messages: List[ResourceFailure] = []
 
     base_dir = app_context.settings.get("paths.servers")
-    if not base_dir or not os.path.isdir(base_dir):
-        raise AppFileNotFoundError(str(base_dir), "Server base directory")
 
-    for server_name_candidate in os.listdir(base_dir):
-        potential_server_path = os.path.join(base_dir, server_name_candidate)
-        if not os.path.isdir(potential_server_path):
-            continue
+    def discover():
+        if not base_dir or not os.path.isdir(base_dir):
+            raise AppFileNotFoundError(str(base_dir), "Server base directory")
+        with os.scandir(base_dir) as entries:
+            return [entry.name for entry in entries if entry.is_dir()]
 
+    for server_name_candidate in await run_in_thread(discover):
         try:
             server = app_context.prepare_server(server_name_candidate)
 

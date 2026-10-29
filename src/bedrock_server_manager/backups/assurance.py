@@ -229,7 +229,7 @@ async def recovery_drill(
                 "status": "passed",
                 "checked_files": plan.checked_files,
             }
-            path = backups.resolve_backup(identifier)
+            path = await run_in_thread(backups.resolve_backup, identifier)
             metadata = await run_in_thread(path.stat)
             record["fingerprint"] = [metadata.st_size, metadata.st_mtime_ns]
         except Exception:

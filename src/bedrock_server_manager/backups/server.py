@@ -1362,7 +1362,7 @@ class UnifiedServerBackups(ManagedBackups):
                 raise BackupRestoreError(
                     "Stop the server before reviewing a full-directory restore."
                 )
-            path = self.resolve_backup(identifier)
+            path = await run_in_thread(self.resolve_backup, identifier)
             password = await run_in_thread(self._password, path, recovery_key)
             from .space import existing_parent, restore_capacity
 

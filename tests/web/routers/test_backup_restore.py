@@ -200,3 +200,65 @@ async def test_recovery_report_requires_moderation(auth_client, real_bedrock_ser
         f"/api/server/{real_bedrock_server.server_name}/backups/report"
     )
     assert response.status_code == 403
+
+
+async def test_slow_drill_keeps_reads_responsive_and_mutations_serialized(
+    admin_auth_client, app_context, populated_server, wait_for_task, monkeypatch
+):
+    import asyncio
+    import threading
+
+    from bedrock_server_manager.backups import server as implementation
+
+    server = populated_server
+    snapshot = await server.backups.create_snapshot(mode="world")
+    entered, release = threading.Event(), threading.Event()
+    original = implementation.verify_staging
+
+    def slow(*args, cancellation_event=None, stage_callback=None, **kwargs):
+        entered.set()
+        while not release.wait(0.01):
+            from bedrock_server_manager.utils.threads import check_cancellation
+
+            check_cancellation(cancellation_event)
+        return original(
+            *args,
+            cancellation_event=cancellation_event,
+            stage_callback=stage_callback,
+            **kwargs,
+        )
+
+    monkeypatch.setattr(implementation, "verify_staging", slow)
+    client = admin_auth_client
+    base = f"/api/server/{server.server_name}/backups"
+    response = await client.post(
+        f"{base}/{snapshot.backup_id}/manage", json={"action": "drill"}
+    )
+    assert response.status_code == 202
+    task_id = response.json()["task_id"]
+    waiting = None
+    try:
+        assert await asyncio.wait_for(asyncio.to_thread(entered.wait, 5), 6)
+
+        async def mutate():
+            async with server.operation_lock:
+                return True
+
+        waiting = asyncio.create_task(mutate())
+        for url in (
+            "/api/account",
+            "/api/servers",
+            base,
+            f"{base}/health",
+            f"/api/tasks/status/{task_id}",
+        ):
+            observed = await asyncio.wait_for(client.get(url), 2)
+            assert observed.status_code == 200, observed.text
+        assert not waiting.done(), "Server mutation escaped drill serialization"
+    finally:
+        release.set()
+        await wait_for_task(app_context, task_id)
+        if waiting is not None:
+            await waiting
+    result = await client.get(f"/api/tasks/status/{task_id}")
+    assert result.json()["status"] == "completed"
