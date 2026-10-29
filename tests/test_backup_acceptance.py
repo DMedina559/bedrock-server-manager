@@ -94,10 +94,10 @@ async def test_disk_full_staging_does_not_stop_minecraft(populated_server, monke
     plan = await server.backups.plan_restore(snapshot.backup_id, ["world"])
     original = server.backups.unpack_snapshot
 
-    def no_space(path, destination, password=None):
+    def no_space(path, destination, password=None, **kwargs):
         if ".bsm-restore-stage-" in str(destination):
             raise OSError(errno.ENOSPC, "No space")
-        return original(path, destination, password)
+        return original(path, destination, password, **kwargs)
 
     stop = AsyncMock()
     monkeypatch.setattr(server.backups, "unpack_snapshot", no_space)

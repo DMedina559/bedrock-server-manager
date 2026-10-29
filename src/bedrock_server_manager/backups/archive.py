@@ -22,6 +22,7 @@ from ..utils.threads import check_cancellation
 from .credentials import private_directory
 from .models import PREFIXES, BackupHeader, BackupManifest
 from .spool import CaptureSpool
+from .work import FileWork
 
 MAX_FILES = 1_000_000
 MAX_BYTES = 1024**4
@@ -330,10 +331,18 @@ def unpack(
     materialize: bool = True,
     stage_callback=None,
     read_stats=None,
+    durable: bool = False,
 ) -> BackupManifest:
     """Authenticate the complete stream and validate inventory before using contents."""
     from .space import ensure_free_space
 
+    if durable and not materialize:
+        raise ValueError("Durable extraction requires materialized files")
+    work = (
+        FileWork("Extracting durable restore files", stage_callback)
+        if durable
+        else None
+    )
     public = header(path)
     if public.encrypted and not password:
         raise BackupRestoreError("This backup requires its recovery key.")
@@ -453,37 +462,66 @@ def unpack(
                 target = destination / name
                 if member.isdir():
                     if materialize:
-                        target.mkdir(parents=True, exist_ok=True)
+                        target.mkdir(parents=True, exist_ok=True, mode=0o700)
                 else:
                     assert expected_file is not None
                     if materialize:
-                        target.parent.mkdir(parents=True, exist_ok=True)
+                        target.parent.mkdir(parents=True, exist_ok=True, mode=0o700)
                     stream = payload.extractfile(member)
                     assert stream is not None
                     checksum = hashlib.sha256()
-                    with (
-                        stream,
-                        target.open("wb") if materialize else nullcontext() as output,
-                    ):
-                        while chunk := stream.read(1024 * 1024):
+                    with work.phase("open") if work else nullcontext():
+                        extracted_output = target.open("wb") if materialize else None
+                    try:
+                        with stream:
+                            while True:
+                                check_cancellation(cancellation_event)
+                                with work.phase("read") if work else nullcontext():
+                                    chunk = stream.read(1024 * 1024)
+                                if not chunk:
+                                    break
+                                check_cancellation(cancellation_event)
+                                with work.phase("hash") if work else nullcontext():
+                                    checksum.update(chunk)
+                                if extracted_output is not None:
+                                    with work.phase("write") if work else nullcontext():
+                                        extracted_output.write(chunk)
+                                moment = time.monotonic()
+                                if (
+                                    stage_callback is not None
+                                    and moment - last_progress >= 1
+                                ):
+                                    stage_callback(
+                                        f"Validating backup contents ({completed_files}/{len(manifest.files)} files)"
+                                    )
+                                    last_progress = moment
+                        if checksum.hexdigest() != expected_file.sha256:
+                            raise ValueError("Checksum mismatch")
+                        if extracted_output is not None and durable:
+                            assert work is not None
+                            with work.phase("permissions"):
+                                if os.name != "nt":
+                                    os.fchmod(
+                                        extracted_output.fileno(),
+                                        0o700 if expected_file.executable else 0o600,
+                                    )
                             check_cancellation(cancellation_event)
-                            checksum.update(chunk)
-                            if output is not None:
-                                output.write(chunk)
-                            moment = time.monotonic()
-                            if (
-                                stage_callback is not None
-                                and moment - last_progress >= 1
-                            ):
-                                stage_callback(
-                                    f"Validating backup contents ({completed_files}/{len(manifest.files)} files)"
-                                )
-                                last_progress = moment
+                            with work.phase("flush"):
+                                extracted_output.flush()
+                            with work.phase("fsync"):
+                                os.fsync(extracted_output.fileno())
+                        elif (
+                            materialize and expected_file.executable and os.name != "nt"
+                        ):
+                            target.chmod(0o700)
+                    finally:
+                        if extracted_output is not None:
+                            with work.phase("close") if work else nullcontext():
+                                extracted_output.close()
                     completed_files += 1
-                    if checksum.hexdigest() != expected_file.sha256:
-                        raise ValueError("Checksum mismatch")
-                    if materialize and expected_file.executable and os.name != "nt":
-                        target.chmod(0o700)
+                    if work is not None:
+                        work.files += 1
+                        work.bytes += expected_file.size
         if read_stats is not None:
             read_stats["payload_bytes"] = packed.stat().st_size
         packed.unlink()
@@ -501,10 +539,25 @@ def unpack(
             materialize,
             (time.monotonic() - extraction_started) * 1000,
         )
+        if durable:
+            from .recovery import sync_tree
+
+            sync_tree(
+                destination,
+                cancellation_event,
+                stage_callback=stage_callback,
+                include_files=False,
+            )
+        if work is not None:
+            work.finish("completed")
         return manifest
     except (BackupRestoreError, InterruptedError):
+        if work is not None:
+            work.finish("failed")
         raise
     except Exception as error:
+        if work is not None:
+            work.finish("failed")
         # Never include potentially secret archive values in the public error.
         raise BackupRestoreError(
             "Backup validation failed: wrong key, damaged data, or invalid inventory."

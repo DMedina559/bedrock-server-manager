@@ -130,7 +130,7 @@ async def test_drill_uses_one_extraction_and_reports_stages(
     assert count == 1 and result["status"] == "passed"
     assert "Authenticating backup payload" in stages
     assert "Extracting and hashing backup contents" in stages
-    assert "Testing isolated restore copies" in stages
+    assert "Testing isolated restore extraction" in stages
 
 
 async def test_changed_archive_invalidates_passed_drill(populated_server):
@@ -374,3 +374,96 @@ async def test_download_cancellation_closes_worker_owned_handle(
         if not task.done():
             await task
     assert handles and handles[0].closed
+
+
+async def test_durable_extraction_syncs_existing_write_handles(
+    populated_server, tmp_path, monkeypatch
+):
+    backup = await populated_server.backups.create_snapshot(mode="world")
+    destination = tmp_path / "durable"
+    original_open = Path.open
+    original_sync = os.fsync
+    handles = {}
+    synced = set()
+
+    def opened(path, mode="r", *args, **kwargs):
+        if path.is_relative_to(destination) and path.name != ".payload":
+            assert mode == "wb", "Durability must not reopen extracted files"
+        handle = original_open(path, mode, *args, **kwargs)
+        if (
+            path.is_relative_to(destination)
+            and mode == "wb"
+            and path.name != ".payload"
+        ):
+            handles[handle.fileno()] = handle
+        return handle
+
+    def synced_handle(fd):
+        if fd in handles:
+            assert not handles[fd].closed
+            assert handles[fd].writable()
+            synced.add(handles[fd].name)
+        return original_sync(fd)
+
+    monkeypatch.setattr(Path, "open", opened)
+    monkeypatch.setattr(os, "fsync", synced_handle)
+    populated_server.backups.unpack_snapshot(
+        populated_server.backups.resolve_backup(backup.backup_id),
+        destination,
+        None,
+        durable=True,
+    )
+    assert synced == {str(destination / item.path) for item in backup.manifest.files}
+
+
+async def test_drill_extracts_on_destination_without_copy_pass(
+    populated_server, monkeypatch
+):
+    from bedrock_server_manager.backups import server as implementation
+
+    backup = await populated_server.backups.create_snapshot(mode="world")
+    original = populated_server.backups.unpack_snapshot
+    original_verify = implementation.verify_copy
+    checked = []
+
+    def extracted(path, destination, *args, **kwargs):
+        assert destination.parent == Path(populated_server.paths.server_dir)
+        assert kwargs["durable"] is True
+        return original(path, destination, *args, **kwargs)
+
+    def verified(destination, *args, **kwargs):
+        checked.append(destination)
+        return original_verify(destination, *args, **kwargs)
+
+    def unexpected(*args, **kwargs):
+        pytest.fail("Drill performed a second copy pass")
+
+    monkeypatch.setattr(populated_server.backups, "unpack_snapshot", extracted)
+    monkeypatch.setattr(implementation, "copy_source", unexpected)
+    monkeypatch.setattr(implementation, "verify_copy", verified)
+    await assurance.recovery_drill(populated_server.backups, backup.backup_id)
+    assert len(checked) == 1
+    assert not checked[0].exists()
+
+
+async def test_failed_durable_extraction_does_not_stop_or_replace_server(
+    populated_server, monkeypatch
+):
+    server = populated_server
+    snapshot = await server.backups.create_snapshot(mode="world")
+    plan = await server.backups.plan_restore(snapshot.backup_id, ["world"])
+    live = next((Path(server.paths.server_dir) / "worlds").rglob("level.dat"))
+    before = live.read_bytes()
+    stop = AsyncMock()
+
+    def failed_sync(fd):
+        raise OSError("Simulated flush failure")
+
+    monkeypatch.setattr(os, "fsync", failed_sync)
+    with pytest.raises(BackupRestoreError, match="Backup validation failed"):
+        await server.backups.restore_snapshot(
+            snapshot.backup_id, plan.components, plan.token, stop_server=stop
+        )
+    stop.assert_not_awaited()
+    assert live.read_bytes() == before
+    assert not list(Path(server.paths.server_dir).glob(".bsm-restore-stage-*"))

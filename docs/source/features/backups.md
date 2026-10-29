@@ -381,7 +381,7 @@ mean creation failed. Changed archive bytes invalidate a previous verified statu
 | Action | What it checks | Live-server effects |
 |---|---|---|
 | **Verify** | Opens/decrypts the archive, checks inventory, file sizes and hashes, and validates supported world/configuration metadata | No live files changed and Minecraft is not stopped |
-| **Dry run** | Reviews a chosen restore selection, checks capacity, copies it into isolated staging on the destination filesystem, flushes it and checks hashes | No replacement or Minecraft startup; full-directory review requires Minecraft already stopped |
+| **Dry run** | Reviews a chosen restore selection, checks capacity, extracts into private staging on the destination filesystem, flushes it and reads it back to check hashes | No replacement or Minecraft startup; full-directory review requires Minecraft already stopped |
 | **Recovery drill** | Runs the dry-run restore checks for every included component and records a passed/failed result for readiness | No replacement or Minecraft startup; full-directory archives require Minecraft already stopped and compatible platform/version |
 
 All three can read substantial data and require temporary disk space. Verification
@@ -571,14 +571,15 @@ and restore behavior are unchanged.
 
 Inspection authenticates the complete encrypted stream and checks the inventory
 and file checksums without writing every contained file. Verification extracts
-once and hashes each file as it is written. A recovery drill reuses one validated
-extraction, copies selected components into a private directory on the destination
-filesystem, flushes those copies, and reads them back to check their hashes. It
+once and hashes each file as it is written. A recovery drill extracts once into a private directory on the destination
+filesystem and flushes each file through its existing write handle before closing
+it. Directory entries are then flushed on POSIX, and selected files are read back
+to check their hashes. Actual restores use the same durable extraction path. It
 never applies replacements to the live server. Restore comparisons reuse the
 validated extracted-file hashes, while destination files are checked separately.
 
 The existing task messages report authentication, extraction and hashing,
-destination checks, isolated copying, flushing, checksum checks, and comparisons.
+destination checks, durable extraction, directory flushing, checksum checks, and comparisons.
 Long extraction and read-back phases publish bounded file-count updates. DEBUG
 logs include worker durations without file contents or recovery keys. Import and
 decrypted export retain their existing HTTP responses; their filesystem work and

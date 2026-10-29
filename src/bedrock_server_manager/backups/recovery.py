@@ -30,15 +30,19 @@ def sync_tree(
     cancellation_event: threading.Event | None = None,
     *,
     stage_callback=None,
+    include_files: bool = True,
 ) -> None:
-    """Flush every replacement file and POSIX directory before journal commit."""
-    work = FileWork("Flushing restore files", stage_callback)
+    """Flush replacement files, or only directories after durable writes."""
+    work = FileWork(
+        "Flushing restore files" if include_files else "Flushing restore directories",
+        stage_callback,
+    )
     status = "failed"
     try:
         work.progress(force=True)
         with work.phase("metadata"):
             paths = list(tree_paths(path, cancellation_event))
-        for item in paths:
+        for item in paths if include_files else ():
             check_cancellation(cancellation_event)
             with work.phase("metadata"):
                 metadata = item.stat()

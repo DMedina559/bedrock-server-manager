@@ -59,7 +59,7 @@ from .models import (
     RestoreResult,
     ServerSettingsExport,
 )
-from .recovery import RestoreJournal, apply_settings, settings_export, sync_tree
+from .recovery import RestoreJournal, apply_settings, settings_export
 from .selection import selection, server_entries
 from .spool import CaptureSpool
 from .work import FileWork, backup_worker, tree_paths
@@ -89,6 +89,7 @@ def copy_source(
     inherited_private: bool = False,
     spool: CaptureSpool | None = None,
     stage_callback=None,
+    durable: bool = False,
 ) -> None:
     """Sequential portable copy with aggregate timing and bounded progress."""
     work = FileWork("Copying backup files", stage_callback)
@@ -103,6 +104,7 @@ def copy_source(
             inherited_private=inherited_private,
             spool=spool,
             work=work,
+            durable=durable,
         )
         work.progress(force=True)
         status = "completed"
@@ -119,6 +121,7 @@ def _copy_source(
     inherited_private: bool = False,
     spool: CaptureSpool | None = None,
     work: FileWork,
+    durable: bool,
 ) -> None:
     """Copy only portable regular files and directories, never following links."""
     check_cancellation(cancellation_event)
@@ -141,6 +144,7 @@ def _copy_source(
                 inherited_private=inherited_private,
                 spool=spool,
                 work=work,
+                durable=durable,
             )
     elif regular:
         with work.phase("metadata"):
@@ -176,11 +180,18 @@ def _copy_source(
                         captured(chunk)
                 work.bytes += len(chunk)
                 work.progress()
-        with work.phase("permissions"):
-            if not (inherited_private and os.name == "nt"):
-                protect(target)
-            if os.name != "nt" and source.stat().st_mode & stat.S_IXUSR:
-                target.chmod(0o700)
+            with work.phase("permissions"):
+                if not (inherited_private and os.name == "nt"):
+                    protect(target)
+                if os.name != "nt" and source.stat().st_mode & stat.S_IXUSR:
+                    target.chmod(0o700)
+            if durable:
+                check_cancellation(cancellation_event)
+                with work.phase("flush"):
+                    output.flush()
+                with work.phase("fsync"):
+                    os.fsync(output.fileno())
+
         work.files += 1
         work.progress()
         if spool is not None:
@@ -304,6 +315,7 @@ class UnifiedServerBackups(ManagedBackups):
         materialize: bool = True,
         stage_callback=None,
         read_stats=None,
+        durable: bool = False,
     ) -> BackupManifest:
         if path.stat().st_size > self.server.settings.get(
             "backups.max_archive_bytes", 1024**4
@@ -319,6 +331,7 @@ class UnifiedServerBackups(ManagedBackups):
             materialize=materialize,
             stage_callback=stage_callback,
             read_stats=read_stats,
+            durable=durable,
         )
 
     def resolve_backup(self, identifier: str) -> Path:
@@ -1340,12 +1353,18 @@ class UnifiedServerBackups(ManagedBackups):
                 )
             path = self.resolve_backup(identifier)
             password = await run_in_thread(self._password, path, recovery_key)
+            from .space import existing_parent, restore_capacity
+
+            target_root = Path(self.server.paths.server_dir)
+            if dry_run:
+                await report_stage("Testing isolated restore extraction")
             async with temporary_directory(
-                prefix=".bsm-plan-", parent=path.parent
+                prefix=".bsm-dry-run-" if dry_run else ".bsm-plan-",
+                parent=existing_parent(target_root) if dry_run else path.parent,
             ) as directory:
                 staging = Path(directory)
                 manifest = await backup_worker(
-                    self.unpack_snapshot, path, staging, password
+                    self.unpack_snapshot, path, staging, password, durable=dry_run
                 )
                 if _all_components:
                     components = [
@@ -1365,31 +1384,14 @@ class UnifiedServerBackups(ManagedBackups):
                 token, old_bytes = await backup_worker(
                     self._plan_token, path, targets, hashes=current_hashes
                 )
-                from .space import existing_parent, restore_capacity
-
                 volumes = await run_in_thread(restore_capacity, self, manifest, targets)
                 checked = 0
                 if dry_run and all(volume.sufficient for volume in volumes):
-                    await report_stage("Testing isolated restore copies")
-                    # Exercise replacement copies on the destination filesystem in isolation.
-                    target_root = Path(self.server.paths.server_dir)
-                    async with temporary_directory(
-                        prefix=".bsm-dry-run-", parent=existing_parent(target_root)
-                    ) as probe:
-                        await run_in_thread(private_directory, Path(probe))
-                        for component in components:
-                            await backup_worker(
-                                copy_source,
-                                staging / PREFIXES[component],
-                                Path(probe) / PREFIXES[component],
-                                inherited_private=True,
-                            )
-                        await report_stage("Flushing isolated restore copies")
-                        await backup_worker(sync_tree, Path(probe))
-                        await report_stage("Checking isolated restore checksums")
-                        checked = await backup_worker(
-                            verify_copy, Path(probe), manifest, components
-                        )
+                    # Materialize once on the destination filesystem, then read it back.
+                    await report_stage("Checking isolated restore checksums")
+                    checked = await backup_worker(
+                        verify_copy, staging, manifest, components
+                    )
                 await report_stage("Comparing restore contents")
                 changes, counts, settings = await backup_worker(
                     self.restore_comparison,
@@ -1479,7 +1481,7 @@ class UnifiedServerBackups(ManagedBackups):
             ) as directory:
                 staging = Path(directory)
                 manifest = await backup_worker(
-                    self.unpack_snapshot, path, staging, password
+                    self.unpack_snapshot, path, staging, password, durable=True
                 )
                 targets, _ = await run_in_thread(
                     self._destinations, staging, manifest, components
@@ -1500,7 +1502,6 @@ class UnifiedServerBackups(ManagedBackups):
                     raise BackupRestoreError(
                         "Insufficient space on the server or backup volume for staging and a safety archive."
                     )
-                await backup_worker(sync_tree, staging)
                 was_running = await self.server.is_running()
                 await self._stage(progress, "Preparing restore recovery")
                 if was_running:
