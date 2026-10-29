@@ -1,12 +1,11 @@
 """Bedrock process component."""
 
 import asyncio
-import inspect
 import logging
 import platform
 import subprocess
 from io import BufferedWriter
-from typing import TYPE_CHECKING, Any, Callable, Dict, Optional, Union, cast
+from typing import TYPE_CHECKING, Any, Dict, Optional, Union
 
 import aiofiles
 import aiofiles.ospath
@@ -39,16 +38,14 @@ class ServerProcess:
         self.logger = logging.LoggerAdapter(
             logging.getLogger(__name__), {"server_name": server.server_name}
         )
-        self._process: Optional[
-            Union[subprocess.Popen[Any], asyncio.subprocess.Process, "psutil.Process"]
-        ] = None
+        self._process: Optional[Union[asyncio.subprocess.Process, "psutil.Process"]] = (
+            None
+        )
         self.intentionally_stopped = True
         self._log_file_handle: BufferedWriter | None = None
         self._resource_monitor = system_base.ResourceMonitor()
 
-    _process: Optional[
-        Union[subprocess.Popen[Any], asyncio.subprocess.Process, "psutil.Process"]
-    ]
+    _process: Optional[Union[asyncio.subprocess.Process, "psutil.Process"]]
     intentionally_stopped: bool
     failure_count: int
     _log_file_handle: BufferedWriter | None
@@ -60,37 +57,37 @@ class ServerProcess:
         self.logger.debug(
             "Checking if server '%s' is running.", self.server.server_name
         )
-        if (
-            self._process is not None
-            and hasattr(self._process, "poll")
-            and (self._process.poll() is None)
-        ):
-            return self._publish_running(True)
-        elif (
-            self._process is not None
-            and hasattr(self._process, "is_running")
-            and self._process.is_running()
-        ):
-            return self._publish_running(True)
-        elif (
-            self._process is not None
-            and hasattr(self._process, "returncode")
-            and (self._process.returncode is None)
-        ):
-            return self._publish_running(True)
+        process = self._process
+        if isinstance(process, asyncio.subprocess.Process):
+            if process.returncode is None:
+                return self._publish_running(True)
+        elif isinstance(process, system_process.psutil.Process):
+            running = await run_in_thread(process.is_running)
+            if self._process is not process:
+                return await self.is_running()
+            if running:
+                return self._publish_running(True)
+        # Probes do not hold operation_lock: discard results from before a
+        # concurrent start or another probe installed a different handle.
+        observed_process = self._process
         running = await system_base.is_server_running(
             self.server.server_name,
             self.server.paths.server_dir,
             self.server.paths.app_config_dir,
         )
-        self._process = None
+        if self._process is not observed_process:
+            return await self.is_running()
+        verified_process = None
         if running:
-            self._process = await system_process.get_verified_bedrock_process(
+            verified_process = await system_process.get_verified_bedrock_process(
                 self.server.server_name,
                 self.server.paths.server_dir,
                 self.server.paths.app_config_dir,
             )
-        return self._publish_running(running)
+            if self._process is not observed_process:
+                return await self.is_running()
+        self._process = verified_process
+        return self._publish_running(verified_process is not None)
 
     async def send_command(self, command: str) -> None:
         """Sends a command string to the running Bedrock server process asynchronously."""
@@ -100,22 +97,15 @@ class ServerProcess:
             raise ServerNotRunningError(
                 f"Cannot send command: Server '{self.server.server_name}' is not running."
             )
-        if self._process is None or self._process.stdin is None:
+        process = self._process
+        if not isinstance(process, asyncio.subprocess.Process) or process.stdin is None:
             raise SendCommandError(
                 f"Cannot send command to '{self.server.server_name}': no process handle or stdin."
             )
         self.logger.debug("Sending command to server '%s'.", self.server.server_name)
         try:
-            if hasattr(self._process.stdin, "drain"):
-                self._process.stdin.write(f"{command}\n".encode())
-                await self._process.stdin.drain()
-            else:
-
-                def _write_stdin():
-                    self._process.stdin.write(f"{command}\n".encode())
-                    self._process.stdin.flush()
-
-                await run_in_thread(_write_stdin)
+            process.stdin.write(f"{command}\n".encode())
+            await process.stdin.drain()
             self.logger.debug(
                 "Command delivered to server '%s'.", self.server.server_name
             )
@@ -162,6 +152,7 @@ class ServerProcess:
                 raise ServerStartError(
                     f"Server '{self.server.server_name}' has a stale PID file."
                 )
+            started_process = None
             try:
                 async with aiofiles.open(output_file, "w") as f:
                     await f.truncate(0)
@@ -181,16 +172,20 @@ class ServerProcess:
                     )
                 )
                 try:
-                    self._process = await asyncio.shield(spawn)
+                    started_process = await asyncio.shield(spawn)
+                    self._process = started_process
                 except asyncio.CancelledError:
                     while not spawn.done():
                         try:
                             await asyncio.shield(spawn)
                         except asyncio.CancelledError:
                             continue
-                    self._process = spawn.result()
+                    started_process = spawn.result()
+                    self._process = started_process
                     raise
-                await system_process.write_pid_to_file(pid_file_path, self._process.pid)
+                await system_process.write_pid_to_file(
+                    pid_file_path, started_process.pid
+                )
                 self._publish_running(True)
                 self.intentionally_stopped = False
                 setattr(self.server, "players", [])
@@ -199,13 +194,13 @@ class ServerProcess:
                 self.logger.info(
                     "Server '%s' started (PID %s).",
                     self.server.server_name,
-                    self._process.pid,
+                    started_process.pid,
                 )
             except asyncio.CancelledError:
-                await self._rollback_start()
+                await self._rollback_start(started_process)
                 raise
             except FileNotFoundError:
-                await self._rollback_start()
+                await self._rollback_start(started_process)
                 await self.server.set_status_in_config("ERROR")
                 self.logger.error(
                     "Executable not found for server '%s' at path '%s'.",
@@ -216,7 +211,7 @@ class ServerProcess:
                     f"Executable not found for server '{self.server.server_name}'."
                 )
             except Exception as e:
-                await self._rollback_start()
+                await self._rollback_start(started_process)
                 await self.server.set_status_in_config("ERROR")
                 log_operation_error(
                     self.logger,
@@ -229,9 +224,8 @@ class ServerProcess:
                     f"Failed to start server '{self.server.server_name}': {e}"
                 )
 
-    async def _rollback_start(self) -> None:
+    async def _rollback_start(self, process: asyncio.subprocess.Process | None) -> None:
         """Release resources acquired by a startup that did not complete."""
-        process = self._process
         try:
             if process is not None:
                 try:
@@ -239,23 +233,13 @@ class ServerProcess:
                         process.terminate()
                     except ProcessLookupError:
                         pass
-                    if inspect.iscoroutinefunction(process.wait):
-                        await asyncio.wait_for(process.wait(), timeout=5)
-                    else:
-                        await run_in_thread(
-                            cast(Callable[[float], int], process.wait), 5
-                        )
+                    await asyncio.wait_for(process.wait(), timeout=5)
                 except Exception:
                     try:
                         process.kill()
                     except ProcessLookupError:
                         pass
-                    if inspect.iscoroutinefunction(process.wait):
-                        await asyncio.wait_for(process.wait(), timeout=5)
-                    else:
-                        await run_in_thread(
-                            cast(Callable[[float], int], process.wait), 5
-                        )
+                    await asyncio.wait_for(process.wait(), timeout=5)
             self._process = None
         finally:
             if self._log_file_handle is not None:
@@ -265,19 +249,31 @@ class ServerProcess:
         self._publish_running(False)
         await system_process.remove_pid_file_if_exists(self.server.get_pid_file_path())
 
-    async def _wait_for_exit(self, process: Any, timeout: float) -> None:
-        if not hasattr(process, "wait"):
-            raise ServerStopError("Process exit cannot be confirmed.")
+    async def _wait_for_exit(
+        self,
+        process: Union[asyncio.subprocess.Process, "psutil.Process"],
+        timeout: float,
+    ) -> None:
         try:
-            if inspect.iscoroutinefunction(process.wait):
-                await asyncio.wait_for(process.wait(), timeout=timeout)
-            else:
-                await run_in_thread(process.wait, timeout=timeout)
+            async with asyncio.timeout(timeout):
+                if isinstance(process, asyncio.subprocess.Process):
+                    await process.wait()
+                else:
+                    # A PID recovered after BSM restart is not our asyncio child.
+                    # Poll without a blocking psutil.wait or a worker held until exit.
+                    while await run_in_thread(process.is_running):
+                        if (
+                            await run_in_thread(process.status)
+                            == system_process.psutil.STATUS_ZOMBIE
+                        ):
+                            break
+                        await asyncio.sleep(0.1)
         except (ProcessLookupError, system_process.psutil.NoSuchProcess):
             return
-        if hasattr(process, "poll") and process.poll() is None:
-            raise ServerStopError("Process remains running after waiting for exit.")
-        if hasattr(process, "returncode") and process.returncode is None:
+        if (
+            isinstance(process, asyncio.subprocess.Process)
+            and process.returncode is None
+        ):
             raise ServerStopError("Process remains running after waiting for exit.")
 
     async def stop(self) -> None:
@@ -298,18 +294,12 @@ class ServerProcess:
             try:
                 await self.server.set_status_in_config("STOPPING")
                 try:
-                    channel: Any = getattr(process, "stdin", None)
-                    if channel:
-                        if hasattr(channel, "drain"):
-                            channel.write(b"stop\n")
-                            await channel.drain()
-                        else:
-
-                            def write_stop() -> None:
-                                channel.write(b"stop\n")
-                                channel.flush()
-
-                            await run_in_thread(write_stop)
+                    if (
+                        isinstance(process, asyncio.subprocess.Process)
+                        and process.stdin
+                    ):
+                        process.stdin.write(b"stop\n")
+                        await process.stdin.drain()
                     elif isinstance(process, system_process.psutil.Process):
                         process.terminate()
                     else:
