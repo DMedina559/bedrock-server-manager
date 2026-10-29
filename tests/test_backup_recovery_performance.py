@@ -423,7 +423,7 @@ async def test_drill_extracts_on_destination_without_copy_pass(
 
     backup = await populated_server.backups.create_snapshot(mode="world")
     original = populated_server.backups.unpack_snapshot
-    original_verify = implementation.verify_copy
+    original_verify = implementation.verify_staging
     checked = []
 
     def extracted(path, destination, *args, **kwargs):
@@ -440,7 +440,7 @@ async def test_drill_extracts_on_destination_without_copy_pass(
 
     monkeypatch.setattr(populated_server.backups, "unpack_snapshot", extracted)
     monkeypatch.setattr(implementation, "copy_source", unexpected)
-    monkeypatch.setattr(implementation, "verify_copy", verified)
+    monkeypatch.setattr(implementation, "verify_staging", verified)
     await assurance.recovery_drill(populated_server.backups, backup.backup_id)
     assert len(checked) == 1
     assert not checked[0].exists()
@@ -467,3 +467,68 @@ async def test_failed_durable_extraction_does_not_stop_or_replace_server(
     stop.assert_not_awaited()
     assert live.read_bytes() == before
     assert not list(Path(server.paths.server_dir).glob(".bsm-restore-stage-*"))
+
+
+@pytest.mark.parametrize("outcome", ["completed", "corrupt", "cancelled"])
+def test_staging_readback_timings_preserve_validation_and_privacy(
+    tmp_path, caplog, outcome
+):
+    from bedrock_server_manager.backups.server import verify_staging
+
+    content = b"private contents"
+    path = tmp_path / "private-filename"
+    path.write_bytes(content if outcome != "corrupt" else b"damaged")
+    manifest = SimpleNamespace(
+        files=[
+            SimpleNamespace(
+                path=path.name,
+                component="world",
+                sha256=hashlib.sha256(content).hexdigest(),
+            )
+        ]
+    )
+    event = threading.Event()
+    if outcome == "cancelled":
+        event.set()
+    with caplog.at_level("DEBUG", logger="bedrock_server_manager.backups.work"):
+        if outcome == "completed":
+            assert verify_staging(tmp_path, manifest, ["world"], event) == 1
+        else:
+            with pytest.raises(
+                InterruptedError if outcome == "cancelled" else BackupRestoreError
+            ):
+                verify_staging(tmp_path, manifest, ["world"], event)
+    summary = caplog.text
+    assert "Checking staged restore checksums" in summary
+    assert f"status={'completed' if outcome == 'completed' else 'failed'}" in summary
+    if outcome != "cancelled":
+        assert all(
+            f"{phase}_ms=" in summary for phase in ("open", "read", "hash", "close")
+        )
+    assert path.name not in summary and content.decode() not in summary
+
+
+async def test_repeated_drill_reads_same_archive_without_live_changes(
+    populated_server, caplog
+):
+    server = populated_server
+    snapshot = await server.backups.create_snapshot(mode="world")
+    root = Path(server.paths.server_dir)
+    live = next((root / "worlds").rglob("level.dat"))
+    before = live.read_bytes()
+    archive_path = server.backups.resolve_backup(snapshot.backup_id)
+    archive_before = archive_path.read_bytes()
+    with caplog.at_level("DEBUG"):
+        for _ in range(3):
+            result = await assurance.recovery_drill(server.backups, snapshot.backup_id)
+            assert result["status"] == "passed"
+    assert live.read_bytes() == before
+    assert archive_path.read_bytes() == archive_before
+    assert (
+        caplog.text.count(
+            "operation=Checking staged restore checksums status=completed"
+        )
+        == 3
+    )
+    assert "Temporary staging cleanup: status=completed" in caplog.text
+    assert not list(root.glob(".bsm-dry-run-*"))

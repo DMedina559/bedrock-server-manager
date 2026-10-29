@@ -89,7 +89,6 @@ def copy_source(
     inherited_private: bool = False,
     spool: CaptureSpool | None = None,
     stage_callback=None,
-    durable: bool = False,
 ) -> None:
     """Sequential portable copy with aggregate timing and bounded progress."""
     work = FileWork("Copying backup files", stage_callback)
@@ -104,7 +103,6 @@ def copy_source(
             inherited_private=inherited_private,
             spool=spool,
             work=work,
-            durable=durable,
         )
         work.progress(force=True)
         status = "completed"
@@ -121,7 +119,6 @@ def _copy_source(
     inherited_private: bool = False,
     spool: CaptureSpool | None = None,
     work: FileWork,
-    durable: bool,
 ) -> None:
     """Copy only portable regular files and directories, never following links."""
     check_cancellation(cancellation_event)
@@ -144,7 +141,6 @@ def _copy_source(
                 inherited_private=inherited_private,
                 spool=spool,
                 work=work,
-                durable=durable,
             )
     elif regular:
         with work.phase("metadata"):
@@ -185,12 +181,6 @@ def _copy_source(
                     protect(target)
                 if os.name != "nt" and source.stat().st_mode & stat.S_IXUSR:
                     target.chmod(0o700)
-            if durable:
-                check_cancellation(cancellation_event)
-                with work.phase("flush"):
-                    output.flush()
-                with work.phase("fsync"):
-                    os.fsync(output.fileno())
 
         work.files += 1
         work.progress()
@@ -248,24 +238,45 @@ def inventory(
     return files, directories
 
 
-def verify_copy(
+def verify_staging(
     root, manifest, components, cancellation_event=None, stage_callback=None
 ):
-    """Read back isolated replacement files in one cancellable worker."""
-    checked = 0
-    last_progress = time.monotonic()
-    for item in manifest.files:
-        check_cancellation(cancellation_event)
-        if item.component not in components:
-            continue
-        if digest(root / item.path, cancellation_event) != item.sha256:
-            raise BackupRestoreError("Dry-run replacement checksum validation failed.")
-        checked += 1
-        moment = time.monotonic()
-        if stage_callback is not None and moment - last_progress >= 1:
-            stage_callback(f"Checking isolated restore checksums ({checked} files)")
-            last_progress = moment
-    return checked
+    """Read back staged files with bounded progress and aggregate I/O timings."""
+    work = FileWork("Checking staged restore checksums", stage_callback)
+    status = "failed"
+    try:
+        work.progress(force=True)
+        for item in manifest.files:
+            check_cancellation(cancellation_event)
+            if item.component not in components:
+                continue
+            checksum = hashlib.sha256()
+            with work.phase("open"):
+                stream = (root / item.path).open("rb")
+            try:
+                while True:
+                    check_cancellation(cancellation_event)
+                    with work.phase("read"):
+                        chunk = stream.read(1024 * 1024)
+                    if not chunk:
+                        break
+                    check_cancellation(cancellation_event)
+                    with work.phase("hash"):
+                        checksum.update(chunk)
+                    work.bytes += len(chunk)
+                    work.progress()
+            finally:
+                with work.phase("close"):
+                    stream.close()
+            if checksum.hexdigest() != item.sha256:
+                raise BackupRestoreError("Staged restore checksum validation failed.")
+            work.files += 1
+            work.progress()
+        work.progress(force=True)
+        status = "completed"
+        return work.files
+    finally:
+        work.finish(status)
 
 
 class UnifiedServerBackups(ManagedBackups):
@@ -1388,9 +1399,9 @@ class UnifiedServerBackups(ManagedBackups):
                 checked = 0
                 if dry_run and all(volume.sufficient for volume in volumes):
                     # Materialize once on the destination filesystem, then read it back.
-                    await report_stage("Checking isolated restore checksums")
+                    await report_stage("Checking staged restore checksums")
                     checked = await backup_worker(
-                        verify_copy, staging, manifest, components
+                        verify_staging, staging, manifest, components
                     )
                 await report_stage("Comparing restore contents")
                 changes, counts, settings = await backup_worker(

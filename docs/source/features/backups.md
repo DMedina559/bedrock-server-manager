@@ -623,18 +623,31 @@ releasing ownership. POSIX rollback flushes both affected parent directories bef
 recording that each entry has been restored.
 
 
-### Copy and flush measurements
+### Recovery work measurements
 
-Long copy and flush workers update the existing task message with completed file
+Long copy, extraction, flush, and read-back workers update the existing task message with completed file
 and byte counts at most once per second, plus start and completion updates. No
 file names, contents, or keys are included. A DEBUG `Backup file work` summary
 separates copy source/target opens, reads, writes, permissions, closes, and optional
-hash/spool work. Flush summaries separately measure file opens, `fsync`, closes,
+hash/spool work. Staging read-back summaries separate opens, reads, hashing,
+and closes, including failed or cancelled checks. Temporary staging cleanup has
+a separate DEBUG duration without directory names. Durable extraction summaries
+include write-handle flushing and `fsync`. Flush summaries separately measure file opens, `fsync`, closes,
 and POSIX directory operations. `other_ms` includes unclassified traversal and
 bookkeeping. These are wall-clock measurements, not isolated CPU timings.
+Worker totals include their nested phase summaries; do not add a worker total
+to its own phase durations. The enclosing task also includes staging cleanup.
 
 All replacement-file and directory durability checks remain enabled. These
 measurements identify platform costs before any further optimization changes the
 recovery guarantees. Disposable-server acceptance coverage checks selected-world
 and settings restoration, unselected data preservation, the protected safety
 archive, an actual test-process restart, and interrupted-restore rollback.
+
+For timing comparisons, run a recovery drill against the same archive three times
+and retain each DEBUG log. Compare the first run with immediate repeats; report
+file counts, bytes, total task duration, and worker phases together. These checks
+still read every selected staged file; warm filesystem caches do not prove physical
+media durability. On Windows, also restore to a disposable server and check world
+contents, settings, restart, and failure recovery before using the result as
+platform acceptance evidence.
