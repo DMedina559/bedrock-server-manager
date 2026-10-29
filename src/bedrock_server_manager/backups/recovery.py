@@ -12,7 +12,7 @@ from ..utils.threads import check_cancellation
 from .archive import safe_name
 from .credentials import atomic_json, private_directory
 from .models import PACK_COMPONENTS, ServerSettingsExport
-from .work import tree_paths
+from .work import FileWork, tree_paths
 
 if TYPE_CHECKING:
     from ..core.bedrock_server import BedrockServer
@@ -25,24 +25,55 @@ def remove(path: Path) -> None:
         shutil.rmtree(path)
 
 
-def sync_tree(path: Path, cancellation_event: threading.Event | None = None) -> None:
-    """Flush replacement content before the recovery journal can commit it."""
-    paths = list(tree_paths(path, cancellation_event))
-    for item in paths:
-        check_cancellation(cancellation_event)
-        if item.is_file():
-            # Windows cannot flush a read-only file handle. Do not truncate content.
-            with item.open("r+b") as stream:
-                os.fsync(stream.fileno())
-    if os.name != "nt":
-        for item in reversed(paths):
+def sync_tree(
+    path: Path,
+    cancellation_event: threading.Event | None = None,
+    *,
+    stage_callback=None,
+) -> None:
+    """Flush every replacement file and POSIX directory before journal commit."""
+    work = FileWork("Flushing restore files", stage_callback)
+    status = "failed"
+    try:
+        work.progress(force=True)
+        with work.phase("metadata"):
+            paths = list(tree_paths(path, cancellation_event))
+        for item in paths:
             check_cancellation(cancellation_event)
-            if item.is_dir():
-                descriptor = os.open(item, os.O_RDONLY)
+            with work.phase("metadata"):
+                metadata = item.stat()
+                regular = item.is_file()
+            if regular:
+                with work.phase("open"):
+                    stream = item.open("r+b")
                 try:
-                    os.fsync(descriptor)
+                    with work.phase("fsync"):
+                        os.fsync(stream.fileno())
                 finally:
-                    os.close(descriptor)
+                    with work.phase("close"):
+                        stream.close()
+                work.files += 1
+                work.bytes += metadata.st_size
+            work.progress()
+        if os.name != "nt":
+            for item in reversed(paths):
+                check_cancellation(cancellation_event)
+                with work.phase("metadata"):
+                    directory = item.is_dir()
+                if directory:
+                    with work.phase("directory_open"):
+                        descriptor = os.open(item, os.O_RDONLY)
+                    try:
+                        with work.phase("directory_fsync"):
+                            os.fsync(descriptor)
+                    finally:
+                        with work.phase("directory_close"):
+                            os.close(descriptor)
+                work.progress()
+        work.progress(force=True)
+        status = "completed"
+    finally:
+        work.finish(status)
 
 
 async def apply_settings(

@@ -17,3 +17,20 @@ Record stable codes, durations, correlation and instance IDs; keep payloads, cre
 Test provider isolation, timeout/drain behavior, replacement generations, stale readings, health evidence, redaction, pagination, retention and restart persistence. Comparison tests should cover instance changes and counter resets. Use `tests/diagnostics` and `tests/services/test_health.py`.
 
 See [diagnostics reference](reference/diagnostics/index.rst). Existing HTTP snapshots remain the diagnostics transport; no diagnostic WebSocket update protocol is implemented.
+
+
+## Transient history persistence failures
+
+History remains independent of domain transactions and uses a bounded queue. A
+record gets at most three write attempts, each with the existing two-second
+deadline, with short asynchronous backoffs. Only deadlines, invalidated database
+connections, and SQLite busy/locked errors are retried. Invalid records and other
+non-transient database errors are not retried.
+
+Writes are idempotent by record ID, including a timeout observed after commit.
+Recovered transient attempts increase `write_failures` without increasing
+`dropped`; only an exhausted record, queue rejection, or shutdown cancellation is
+counted as dropped. Retry attempts are logged at DEBUG using the error type, while
+exhausted writes use the existing bounded warning reporter. Shutdown keeps its
+three-second queue-drain budget and cancels remaining work. No database migration,
+HTTP model, or user setting changes are required.

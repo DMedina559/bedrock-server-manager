@@ -3,11 +3,14 @@
 import asyncio
 import base64
 import logging
+import sqlite3
 import time
 from typing import TYPE_CHECKING, Literal
 
 from pydantic import BaseModel, ConfigDict, Field
 from sqlalchemy import case, delete, func, or_, select
+from sqlalchemy.exc import DBAPIError
+from sqlalchemy.exc import TimeoutError as PoolTimeoutError
 
 from ..db.models import DiagnosticHistoryRow
 from ..error import UserInputError
@@ -23,6 +26,27 @@ from .models import (
 
 if TYPE_CHECKING:
     from ..db.database import Database
+
+
+WRITE_ATTEMPTS = 3
+WRITE_TIMEOUT_SECONDS = 2.0
+RETRY_DELAYS = (0.1, 0.25)
+
+
+def retryable_write(error: Exception) -> bool:
+    """Retry deadlines and transient connections/SQLite locks, never bad records."""
+    if isinstance(error, (TimeoutError, PoolTimeoutError)):
+        return True
+    if isinstance(error, DBAPIError):
+        code = getattr(error.orig, "sqlite_errorcode", None)
+        return bool(
+            error.connection_invalidated
+            or (
+                isinstance(code, int)
+                and code & 0xFF in (sqlite3.SQLITE_BUSY, sqlite3.SQLITE_LOCKED)
+            )
+        )
+    return False
 
 
 class HistoryCursor(BaseModel):
@@ -87,25 +111,42 @@ class DiagnosticHistoryStore:
         while True:
             record = await self.queue.get()
             try:
-                async with asyncio.timeout(2):
-                    await self._write(record)
-                self._log_failures.recover("history-write")
+                for attempt in range(WRITE_ATTEMPTS):
+                    try:
+                        async with asyncio.timeout(WRITE_TIMEOUT_SECONDS):
+                            await self._write(record)
+                        self.last_error_type = None
+                        self._log_failures.recover("history-write")
+                        break
+                    except asyncio.CancelledError:
+                        raise
+                    except Exception as error:
+                        self.last_error_type = type(error).__name__
+                        self.write_failures += 1
+                        if retryable_write(error) and attempt + 1 < WRITE_ATTEMPTS:
+                            logging.getLogger(__name__).debug(
+                                "Diagnostic history write deferred: error_type=%s attempt=%d/%d",
+                                type(error).__name__,
+                                attempt + 1,
+                                WRITE_ATTEMPTS,
+                            )
+                            await asyncio.sleep(RETRY_DELAYS[attempt])
+                            continue
+                        self._log_failures.report(
+                            "history-write", "Diagnostic %s failed: %s", error
+                        )
+                        self.dropped += 1
+                        break
             except asyncio.CancelledError:
                 self.dropped += 1
                 raise
-            except Exception as error:
-                self._log_failures.report(
-                    "history-write", "Diagnostic %s failed: %s", error
-                )
-                self.last_error_type = type(error).__name__
-                self.write_failures += 1
-                self.dropped += 1
             finally:
                 self.queue.task_done()
 
     async def _write(self, record: DiagnosticRecord) -> None:
         async with self.database.session_manager() as session:
-            session.add(
+            # A deadline may expire after commit; retries of the same ID are idempotent.
+            await session.merge(
                 DiagnosticHistoryRow(
                     id=record.id,
                     instance_id=record.instance_id,

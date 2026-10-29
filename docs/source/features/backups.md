@@ -620,3 +620,20 @@ Preparation workers check cancellation while walking, hashing, comparing, and
 flushing. Restore commit and rollback recovery continue to finish safely before
 releasing ownership. POSIX rollback flushes both affected parent directories before
 recording that each entry has been restored.
+
+
+### Copy and flush measurements
+
+Long copy and flush workers update the existing task message with completed file
+and byte counts at most once per second, plus start and completion updates. No
+file names, contents, or keys are included. A DEBUG `Backup file work` summary
+separates copy source/target opens, reads, writes, permissions, closes, and optional
+hash/spool work. Flush summaries separately measure file opens, `fsync`, closes,
+and POSIX directory operations. `other_ms` includes unclassified traversal and
+bookkeeping. These are wall-clock measurements, not isolated CPU timings.
+
+All replacement-file and directory durability checks remain enabled. These
+measurements identify platform costs before any further optimization changes the
+recovery guarantees. Disposable-server acceptance coverage checks selected-world
+and settings restoration, unselected data preservation, the protected safety
+archive, an actual test-process restart, and interrupted-restore rollback.

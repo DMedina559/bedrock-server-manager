@@ -10,7 +10,7 @@ import shutil
 import stat
 import threading
 import time
-from contextlib import AsyncExitStack
+from contextlib import AsyncExitStack, ExitStack
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from typing import TYPE_CHECKING, Awaitable, Callable, Literal
@@ -25,7 +25,7 @@ from ..operations import OperationName
 from ..results import CleanupResult, CompletedItem, ComponentResults, SkippedItem
 from ..utils.files import temporary_directory
 from ..utils.progress import report_stage
-from ..utils.threads import check_cancellation, copy_stream, run_in_thread
+from ..utils.threads import check_cancellation, run_in_thread
 from .archive import (
     build_payload,
     check_manifest_limits,
@@ -62,7 +62,7 @@ from .models import (
 from .recovery import RestoreJournal, apply_settings, settings_export, sync_tree
 from .selection import selection, server_entries
 from .spool import CaptureSpool
-from .work import backup_worker, tree_paths
+from .work import FileWork, backup_worker, tree_paths
 
 if TYPE_CHECKING:
     from ..core.bedrock_server import BedrockServer
@@ -75,6 +75,11 @@ def is_link(source: Path) -> bool:
     )
 
 
+def _close_copy_stream(stream, work, phase):
+    with work.phase(phase):
+        stream.close()
+
+
 def copy_source(
     source: Path,
     target: Path,
@@ -83,25 +88,63 @@ def copy_source(
     hashes: dict[Path, tuple[int, int, str]] | None = None,
     inherited_private: bool = False,
     spool: CaptureSpool | None = None,
+    stage_callback=None,
+) -> None:
+    """Sequential portable copy with aggregate timing and bounded progress."""
+    work = FileWork("Copying backup files", stage_callback)
+    status = "failed"
+    try:
+        work.progress(force=True)
+        _copy_source(
+            source,
+            target,
+            cancellation_event,
+            hashes=hashes,
+            inherited_private=inherited_private,
+            spool=spool,
+            work=work,
+        )
+        work.progress(force=True)
+        status = "completed"
+    finally:
+        work.finish(status)
+
+
+def _copy_source(
+    source: Path,
+    target: Path,
+    cancellation_event: threading.Event | None = None,
+    *,
+    hashes: dict[Path, tuple[int, int, str]] | None = None,
+    inherited_private: bool = False,
+    spool: CaptureSpool | None = None,
+    work: FileWork,
 ) -> None:
     """Copy only portable regular files and directories, never following links."""
     check_cancellation(cancellation_event)
     safe_name(source.name)
-    if is_link(source):
+    with work.phase("metadata"):
+        linked = is_link(source)
+        directory = source.is_dir()
+        regular = source.is_file()
+    if linked:
         raise BackupRestoreError("Backup sources must not contain symbolic links.")
-    if source.is_dir():
-        target.mkdir(parents=True, exist_ok=True)
+    if directory:
+        with work.phase("metadata"):
+            target.mkdir(parents=True, exist_ok=True)
         for child in source.iterdir():
-            copy_source(
+            _copy_source(
                 child,
                 target / child.name,
                 cancellation_event,
                 hashes=hashes,
                 inherited_private=inherited_private,
                 spool=spool,
+                work=work,
             )
-    elif source.is_file():
-        target.parent.mkdir(parents=True, exist_ok=True)
+    elif regular:
+        with work.phase("metadata"):
+            target.parent.mkdir(parents=True, exist_ok=True)
         hasher = hashlib.sha256() if hashes is not None else None
         spool_stream = spool.stream if spool is not None else None
         offset = spool_stream.tell() if spool_stream is not None else 0
@@ -112,19 +155,34 @@ def copy_source(
             if spool_stream is not None:
                 spool_stream.write(chunk)
 
-        with source.open("rb") as stream, target.open("wb") as output:
-            copy_stream(
-                stream,
-                output,
-                cancellation_event,
-                on_chunk=(
-                    captured if hasher is not None or spool_stream is not None else None
-                ),
-            )
-        if not (inherited_private and os.name == "nt"):
-            protect(target)
-        if os.name != "nt" and source.stat().st_mode & stat.S_IXUSR:
-            target.chmod(0o700)
+        with ExitStack() as resources:
+            with work.phase("source_open"):
+                stream = source.open("rb")
+            resources.callback(_close_copy_stream, stream, work, "source_close")
+            with work.phase("target_open"):
+                output = target.open("wb")
+            resources.callback(_close_copy_stream, output, work, "target_close")
+            while True:
+                check_cancellation(cancellation_event)
+                with work.phase("read"):
+                    chunk = stream.read(1024 * 1024)
+                if not chunk:
+                    break
+                check_cancellation(cancellation_event)
+                with work.phase("write"):
+                    output.write(chunk)
+                if hasher is not None or spool_stream is not None:
+                    with work.phase("hash_spool"):
+                        captured(chunk)
+                work.bytes += len(chunk)
+                work.progress()
+        with work.phase("permissions"):
+            if not (inherited_private and os.name == "nt"):
+                protect(target)
+            if os.name != "nt" and source.stat().st_mode & stat.S_IXUSR:
+                target.chmod(0o700)
+        work.files += 1
+        work.progress()
         if spool is not None:
             metadata = target.stat()
             spool.entries[target] = (metadata.st_size, metadata.st_mtime_ns, offset)
