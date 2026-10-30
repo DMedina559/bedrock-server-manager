@@ -109,16 +109,19 @@ async def test_concurrent_claims_execute_once(
             moment=START + timedelta(minutes=2),
         )
     )
-    await entered.wait()
-    assert not await run_schedule(
-        service.repository,
-        "job",
-        config,
-        populated_server,
-        AsyncMock(),
-        moment=START + timedelta(minutes=2),
-    )
-    release.set()
+    try:
+        async with asyncio.timeout(5):
+            await entered.wait()
+        assert not await run_schedule(
+            service.repository,
+            "job",
+            config,
+            populated_server,
+            AsyncMock(),
+            moment=START + timedelta(minutes=2),
+        )
+    finally:
+        release.set()
     assert await first
 
 

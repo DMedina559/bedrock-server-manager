@@ -749,7 +749,11 @@ class Scheduler:
             await self.repository.recover()
             while True:
                 if self.context.lifecycle_phase != LifecyclePhase.READY:
-                    await asyncio.sleep(1)
+                    try:
+                        await asyncio.wait_for(self._wake.wait(), timeout=0.1)
+                    except TimeoutError:
+                        pass
+                    self._wake.clear()
                     continue
                 self.last_tick_at = time.time()
                 self._last_tick_monotonic = time.monotonic()

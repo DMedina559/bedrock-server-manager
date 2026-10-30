@@ -652,20 +652,26 @@ class UnifiedServerBackups(ManagedBackups):
                             *((name, name) for name in PACK_COMPONENTS),
                         )
 
-                        def _capture_other_components() -> None:
+                        def _capture_other_components(
+                            cancellation_event: threading.Event | None = None,
+                        ) -> None:
+                            check_cancellation(cancellation_event)
                             if full:
                                 full_target = staging / PREFIXES["server_directory"]
                                 private_directory(full_target)
                                 for entry in server_entries(server_root):
+                                    check_cancellation(cancellation_event)
                                     copy_source(
                                         entry,
                                         full_target / entry.name,
+                                        cancellation_event,
                                         hashes=capture_hashes,
                                         inherited_private=True,
                                         spool=spool,
                                     )
                                 states["server_directory"] = "included"
                             for component, source_name in sources:
+                                check_cancellation(cancellation_event)
                                 if component not in chosen:
                                     continue
                                 source = (
@@ -682,12 +688,14 @@ class UnifiedServerBackups(ManagedBackups):
                                     copy_source(
                                         source,
                                         staging / PREFIXES[component],
+                                        cancellation_event,
                                         hashes=capture_hashes,
                                         inherited_private=True,
                                         spool=spool,
                                     )
                                     states[component] = "included"
                             if "bsm_settings" in chosen:
+                                check_cancellation(cancellation_event)
                                 settings_path = staging / PREFIXES["bsm_settings"]
                                 settings_path.parent.mkdir(parents=True, exist_ok=True)
                                 settings_path.write_text(

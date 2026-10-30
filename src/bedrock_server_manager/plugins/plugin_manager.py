@@ -10,6 +10,7 @@ import inspect
 import logging
 import os
 import sys
+import threading
 import time
 import types
 import warnings
@@ -46,7 +47,7 @@ from ..config.const import DEFAULT_ENABLED_PLUGINS
 from ..events import EventBus
 from ..logging import log_operation_error
 from ..utils.general import ReentrantAsyncLock
-from ..utils.threads import run_in_thread
+from ..utils.threads import check_cancellation, run_in_thread
 from .api_bridge import create_app_api
 from .lifespan import RouterLifespan
 from .plugin_base import PluginBase
@@ -249,9 +250,13 @@ class PluginManager:
         return None
 
     def _get_plugin_class_from_path(
-        self, path: Path, plugin_name_override: Optional[str] = None
+        self,
+        path: Path,
+        plugin_name_override: Optional[str] = None,
+        cancellation_event: Optional[threading.Event] = None,
     ) -> Optional[Type[PluginBase]]:
         """Dynamically imports a plugin module or package under the bsm_plugins namespace."""
+        check_cancellation(cancellation_event)
         plugin_name = (
             plugin_name_override
             if plugin_name_override
@@ -271,6 +276,15 @@ class PluginManager:
                 ):
                     return obj
 
+        existing_modules = set(sys.modules)
+
+        def _cleanup_imported_modules() -> None:
+            sys.modules.pop(full_module_name, None)
+            prefix = f"{full_module_name}."
+            for mod_name in list(sys.modules):
+                if mod_name.startswith(prefix) and mod_name not in existing_modules:
+                    sys.modules.pop(mod_name, None)
+
         try:
             submodule_locations = [str(path.parent)] if is_package else None
 
@@ -283,9 +297,11 @@ class PluginManager:
                 raise ImportError(f"Could not create spec for '{full_module_name}'")
 
             module = importlib.util.module_from_spec(spec)
+            check_cancellation(cancellation_event)
 
             sys.modules[full_module_name] = module
             spec.loader.exec_module(module)
+            check_cancellation(cancellation_event)
 
             for _, obj in inspect.getmembers(module):
                 if (
@@ -296,11 +312,17 @@ class PluginManager:
                     return obj
 
             logger.warning("No PluginBase subclass found in '%s'.", path)
-        except Exception as e:
+            _cleanup_imported_modules()
+        except InterruptedError:
+            _cleanup_imported_modules()
+            raise
+        except BaseException as e:
+            _cleanup_imported_modules()
+            if not isinstance(e, Exception):
+                raise
             log_operation_error(
                 logger, "Failed to load plugin file at '%s': %s", path, e, error=e
             )
-            sys.modules.pop(full_module_name, None)
         return None
 
     async def quiesce(self) -> None:
@@ -557,62 +579,73 @@ class PluginManager:
                         )
             return found
 
-        found_paths = await asyncio.to_thread(_scan_disk_for_plugins)
+        found_paths = await run_in_thread(_scan_disk_for_plugins)
+        existing_modules = set(sys.modules)
 
-        for path, override_name in found_paths:
-            p_name = override_name if override_name else path.stem
-            p_class = await asyncio.to_thread(
-                self._get_plugin_class_from_path, path, override_name
-            )
-            if p_class:
-                version = getattr(p_class, "version", None)
-                if version and version != "N/A":
-                    self._discovered_classes[p_name] = p_class
-                    if not self._register_settings_models(p_name, p_class):
-                        continue
-                    valid_plugin_names.add(p_name)
-                    description = p_class.__doc__.strip() if p_class.__doc__ else ""
-                    author = getattr(p_class, "author", "N/A")
+        try:
+            for path, override_name in found_paths:
+                p_name = override_name if override_name else path.stem
+                p_class = await run_in_thread(
+                    self._get_plugin_class_from_path, path, override_name
+                )
+                if p_class:
+                    version = getattr(p_class, "version", None)
+                    if version and version != "N/A":
+                        self._discovered_classes[p_name] = p_class
+                        if not self._register_settings_models(p_name, p_class):
+                            continue
+                        valid_plugin_names.add(p_name)
+                        description = p_class.__doc__.strip() if p_class.__doc__ else ""
+                        author = getattr(p_class, "author", "N/A")
 
-                    existing = self.plugin_config.get(p_name)
-                    enabled_val = (
-                        p_name in DEFAULT_ENABLED_PLUGINS
-                        if existing is None
-                        else (
-                            existing
-                            if isinstance(existing, bool)
-                            else existing.get("enabled", False)
+                        existing = self.plugin_config.get(p_name)
+                        enabled_val = (
+                            p_name in DEFAULT_ENABLED_PLUGINS
+                            if existing is None
+                            else (
+                                existing
+                                if isinstance(existing, bool)
+                                else existing.get("enabled", False)
+                            )
                         )
-                    )
-                    status_val = self.get_plugin_status(p_name)
-                    if status_val == "UNKNOWN":
-                        status_val = "DISABLED" if not enabled_val else "UNLOADED"
+                        status_val = self.get_plugin_status(p_name)
+                        if status_val == "UNKNOWN":
+                            status_val = "DISABLED" if not enabled_val else "UNLOADED"
 
-                    if existing is None or isinstance(existing, bool):
-                        self.plugin_config[p_name] = {
-                            "enabled": enabled_val,
-                            "description": description,
-                            "version": str(version),
-                            "author": author,
-                        }
-                    else:
-                        existing["description"] = description
-                        existing["version"] = str(version)
-                        existing["author"] = author
-                        existing["enabled"] = enabled_val
-                    self._set_runtime_status(p_name, status_val)
+                        if existing is None or isinstance(existing, bool):
+                            self.plugin_config[p_name] = {
+                                "enabled": enabled_val,
+                                "description": description,
+                                "version": str(version),
+                                "author": author,
+                            }
+                        else:
+                            existing["description"] = description
+                            existing["version"] = str(version)
+                            existing["author"] = author
+                            existing["enabled"] = enabled_val
+                        self._set_runtime_status(p_name, status_val)
 
-        plugins_to_remove = [
-            p for p in self.plugin_config if p not in valid_plugin_names
-        ]
-        for plugin_name in plugins_to_remove:
-            del self.plugin_config[plugin_name]
-            if self.settings_models is not None:
-                self.settings_models.pop(plugin_name, None)
-                self.global_settings_models.pop(plugin_name, None)
-                self.server_settings_models.pop(plugin_name, None)
+            plugins_to_remove = [
+                p for p in self.plugin_config if p not in valid_plugin_names
+            ]
+            for plugin_name in plugins_to_remove:
+                del self.plugin_config[plugin_name]
+                if self.settings_models is not None:
+                    self.settings_models.pop(plugin_name, None)
+                    self.global_settings_models.pop(plugin_name, None)
+                    self.server_settings_models.pop(plugin_name, None)
 
-        await self._save_config()
+            await self._save_config()
+        except BaseException:
+            self._discovered_classes.clear()
+            for mod_name in list(sys.modules):
+                if (
+                    mod_name.startswith("bsm_plugins.")
+                    and mod_name not in existing_modules
+                ):
+                    sys.modules.pop(mod_name, None)
+            raise
 
     def _sort_plugin_dependencies(
         self, plugin_classes: Dict[str, Type[PluginBase]]
@@ -757,7 +790,7 @@ class PluginManager:
                     if callable(getattr(instance, "get_static_mounts", None)):
                         mounts = instance.get_static_mounts()
                         if isinstance(mounts, list):
-                            valid_mounts = await asyncio.to_thread(
+                            valid_mounts = await run_in_thread(
                                 self._validate_static_mounts,
                                 plugin_name,
                                 mounts,
@@ -1263,7 +1296,7 @@ class PluginManager:
                     logger.debug("Plugin '%s' is already loaded.", plugin_name)
                     return True
 
-            path = await asyncio.to_thread(self._find_plugin_path, plugin_name)
+            path = await run_in_thread(self._find_plugin_path, plugin_name)
             if not path:
                 logger.error(
                     "Cannot load plugin '%s': File or directory not found.", plugin_name
@@ -1272,7 +1305,7 @@ class PluginManager:
                     self._set_runtime_status(plugin_name, "ERROR")
                 return False
 
-            p_class = await asyncio.to_thread(
+            p_class = await run_in_thread(
                 self._get_plugin_class_from_path, path, plugin_name
             )
             if not p_class:
@@ -1324,7 +1357,7 @@ class PluginManager:
                 if callable(getattr(instance, "get_static_mounts", None)):
                     mounts = instance.get_static_mounts()
                     if isinstance(mounts, list):
-                        valid_mounts = await asyncio.to_thread(
+                        valid_mounts = await run_in_thread(
                             self._validate_static_mounts, plugin_name, mounts
                         )
                         for mount_entry in valid_mounts:
@@ -1345,6 +1378,7 @@ class PluginManager:
                     await self.unload_plugin_by_name(plugin_name)
                 else:
                     self.events.remove_owner(f"plugin:{plugin_name}")
+                    sys.modules.pop(f"bsm_plugins.{plugin_name}", None)
                 if not isinstance(e, Exception):
                     raise
                 log_operation_error(

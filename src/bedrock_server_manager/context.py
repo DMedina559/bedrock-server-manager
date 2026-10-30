@@ -291,6 +291,7 @@ class AppContext:
                     diagnostics=self._diagnostics,
                 )
             self.lifecycle_phase = LifecyclePhase.READY
+            self.scheduler._wake.set()
             getLogger(__name__).info("Application runtime ready.")
         except BaseException as error:
             self._startup_failed = True

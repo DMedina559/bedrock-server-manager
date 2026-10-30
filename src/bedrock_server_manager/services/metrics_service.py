@@ -210,26 +210,29 @@ class MetricsService:
         task_count = len(asyncio.all_tasks())
         values = await run_in_thread(self._collect)
 
+        semaphore = asyncio.Semaphore(16)
+
         async def _sample_server(name: str) -> ServerMetrics:
-            try:
-                info = await self.context.get_server(name).get_process_info()
-                return ServerMetrics.model_validate(
-                    {
-                        "server_name": name,
-                        **{
-                            key: value
-                            for key, value in (info or {}).items()
-                            if key in {"pid", "cpu_percent", "memory_mb"}
-                        },
-                    }
-                )
-            except Exception:
-                logger.debug(
-                    "Process metrics unavailable for server '%s'.",
-                    name,
-                    exc_info=True,
-                )
-                return ServerMetrics(server_name=name)
+            async with semaphore:
+                try:
+                    info = await self.context.get_server(name).get_process_info()
+                    return ServerMetrics.model_validate(
+                        {
+                            "server_name": name,
+                            **{
+                                key: value
+                                for key, value in (info or {}).items()
+                                if key in {"pid", "cpu_percent", "memory_mb"}
+                            },
+                        }
+                    )
+                except Exception:
+                    logger.debug(
+                        "Process metrics unavailable for server '%s'.",
+                        name,
+                        exc_info=True,
+                    )
+                    return ServerMetrics(server_name=name)
 
         running_names = [
             name
@@ -345,6 +348,8 @@ class ResourceMonitor:
                 # Get a copy of topics to avoid issues with concurrent modifications
                 topics = list(connection_manager.subscriptions.keys())
 
+                semaphore = asyncio.Semaphore(16)
+
                 async def _broadcast_topic(topic: str) -> None:
                     if not topic.startswith("resource-monitor:"):
                         return
@@ -354,20 +359,23 @@ class ResourceMonitor:
 
                     server_name = topic.split(":", 1)[1]
                     if server_name and callable(self.server_provider):
-                        server = self.server_provider(server_name)
-                        if server:
-                            revision = revision_clock.capture()
-                            process_info = await server.get_process_info()
-                            message = {
-                                "type": "resource_update",
-                                "topic": topic,
-                                "data": {
-                                    "status": "success",
-                                    "process_info": process_info,
-                                    **revision,
-                                },
-                            }
-                            await connection_manager.broadcast_to_topic(topic, message)
+                        async with semaphore:
+                            server = self.server_provider(server_name)
+                            if server:
+                                revision = revision_clock.capture()
+                                process_info = await server.get_process_info()
+                                message = {
+                                    "type": "resource_update",
+                                    "topic": topic,
+                                    "data": {
+                                        "status": "success",
+                                        "process_info": process_info,
+                                        **revision,
+                                    },
+                                }
+                                await connection_manager.broadcast_to_topic(
+                                    topic, message
+                                )
 
                 await asyncio.gather(*(_broadcast_topic(topic) for topic in topics))
                 self._failures.recover("resource monitoring")

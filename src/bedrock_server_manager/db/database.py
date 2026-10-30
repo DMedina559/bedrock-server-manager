@@ -107,6 +107,22 @@ class Database:
 
             @event.listens_for(self.engine.sync_engine, "connect")
             def set_sqlite_pragma_async(dbapi_connection, connection_record):
+                raw_conn = getattr(dbapi_connection, "_connection", None)
+                if raw_conn is not None and not getattr(
+                    raw_conn, "_bsm_idempotent_stop", False
+                ):
+                    orig_stop = raw_conn.stop
+                    stop_future = None
+
+                    def _idempotent_stop():
+                        nonlocal stop_future
+                        if stop_future is None:
+                            stop_future = orig_stop()
+                        return stop_future
+
+                    raw_conn.stop = _idempotent_stop
+                    raw_conn._bsm_idempotent_stop = True
+
                 cursor = dbapi_connection.cursor()
                 cursor.execute("PRAGMA journal_mode=WAL")
                 cursor.execute("PRAGMA synchronous=NORMAL")

@@ -60,17 +60,12 @@ def isolated_bcm_config(monkeypatch, tmp_path):
     bcm_config.set_custom_log_level(None)
 
 
-@pytest_asyncio.fixture(scope="session", loop_scope="session")
-async def migrated_database(tmp_path_factory):
+@pytest.fixture(scope="session")
+def migrated_database(tmp_path_factory):
     """Migrate an empty SQLite template once; share no engines or live state."""
     path = tmp_path_factory.mktemp("database-schema") / "empty.db"
-    database = Database(f"sqlite+aiosqlite:///{path}")
-    database.initialize()
-    try:
-        async with database.session_manager():
-            pass
-    finally:
-        await database.shutdown()
+    database = Database(f"sqlite:///{path}")
+    database._run_alembic_upgrade()
     return path
 
 
@@ -85,9 +80,8 @@ def schema_revision(migrated_database):
 async def db(isolated_bcm_config, tmp_path, migrated_database, schema_revision):
     """Give each test its own migrated database, engine and event-loop resources."""
     path = tmp_path / "test_data" / "test.db"
-    with closing(sqlite3.connect(migrated_database)) as source:
-        with closing(sqlite3.connect(path)) as destination:
-            source.backup(destination)
+    path.parent.mkdir(parents=True, exist_ok=True)
+    shutil.copyfile(migrated_database, path)
     database = Database(f"sqlite+aiosqlite:///{path}")
     database.initialize()
     database.schema_revision = schema_revision

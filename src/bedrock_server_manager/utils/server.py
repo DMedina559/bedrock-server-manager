@@ -100,37 +100,44 @@ async def get_servers_data(
 
     candidates = await run_in_thread(discover)
 
+    semaphore = asyncio.Semaphore(16)
+
     async def _inspect_candidate(server_name_candidate: str) -> None:
-        try:
-            server = app_context.prepare_server(server_name_candidate)
+        async with semaphore:
+            try:
+                server = app_context.prepare_server(server_name_candidate)
 
-            if not await server.is_installed():
-                logger.debug(
-                    "Skipping '%s': Not a valid server installation.",
-                    server_name_candidate,
-                )
-                return
+                if not await server.is_installed():
+                    logger.debug(
+                        "Skipping '%s': Not a valid server installation.",
+                        server_name_candidate,
+                    )
+                    return
 
-            servers_data.append(
-                (await server.get_summary_info()).model_dump(mode="json")
-            )
+                servers_data.append(
+                    (await server.get_summary_info()).model_dump(mode="json")
+                )
 
-        except (FileOperationError, ConfigurationError, InvalidServerNameError) as e:
-            msg = f"Could not get info for server '{server_name_candidate}': {e}"
-            logger.warning(msg)
-            error_messages.append(
-                ResourceFailure(
-                    resource=server_name_candidate, error=classify_failure(e).error
+            except (
+                FileOperationError,
+                ConfigurationError,
+                InvalidServerNameError,
+            ) as e:
+                msg = f"Could not get info for server '{server_name_candidate}': {e}"
+                logger.warning(msg)
+                error_messages.append(
+                    ResourceFailure(
+                        resource=server_name_candidate, error=classify_failure(e).error
+                    )
                 )
-            )
-        except Exception as e:
-            msg = f"An unexpected error occurred while processing server '{server_name_candidate}': {e}"
-            log_operation_error(logger, msg, error=e)
-            error_messages.append(
-                ResourceFailure(
-                    resource=server_name_candidate, error=classify_failure(e).error
+            except Exception as e:
+                msg = f"An unexpected error occurred while processing server '{server_name_candidate}': {e}"
+                log_operation_error(logger, msg, error=e)
+                error_messages.append(
+                    ResourceFailure(
+                        resource=server_name_candidate, error=classify_failure(e).error
+                    )
                 )
-            )
 
     await asyncio.gather(*(_inspect_candidate(name) for name in candidates))
 

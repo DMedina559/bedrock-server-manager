@@ -21,12 +21,20 @@ class CaptureSpool:
     def __exit__(self, *args):
         if self.stream is not None:
             self.stream.close()
+            self.stream = None
 
     async def __aenter__(self):
-        return await run_in_thread(self.__enter__)
+        try:
+            return await run_in_thread(self.__enter__)
+        except BaseException:
+            self.__exit__(None, None, None)
+            raise
 
     async def __aexit__(self, *args):
-        await run_in_thread(self.__exit__, *args)
+        try:
+            await run_in_thread(self.__exit__, *args)
+        finally:
+            self.__exit__(*args)
 
     def flush(self) -> None:
         assert self.stream is not None
