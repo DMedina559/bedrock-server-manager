@@ -3,12 +3,9 @@
 The web host owns a single Uvicorn server and a `WebRuntime` controller. Core
 application cleanup remains in AppContext's FastAPI lifespan: drain requests,
 quiesce producers, drain managed operations, stop Bedrock servers, unload plugins,
-drain events, close WebSockets, flush state and close the database.
-
-Web start, stop and process-status proxies have been removed from AppAPI and its
-Pydantic API models. CLI hosting calls the web subsystem directly; service
-configuration APIs remain available. Hosting configuration and runtime responses
-use their own Pydantic models.
+drain events, close WebSockets, flush state and close the database. CLI hosting
+calls the web subsystem directly; hosting configuration and runtime responses
+use typed Pydantic models.
 
 ## HTTP control
 
@@ -56,14 +53,13 @@ supervisor. Trusted forwarding sources are configured by `web.forwarded_allow_ip
 
 ## Service supervision
 
-Recreate existing BSM service definitions to install the updated command and stop
-policy. They preserve the selected configuration/data directories; database
+Service definitions preserve the selected configuration/data directories; database
 configuration belongs in that configuration directory.
 
 Generated systemd units use `Restart=on-failure`, normal SIGTERM handling, and a
-180-second stop allowance. They no longer invoke a PID-based `ExecStop`. A clean
-HTTP shutdown exits successfully and stays stopped without disabling autostart.
-Increase the service deadline if you configure longer application stage deadlines.
+180-second stop allowance. A clean HTTP shutdown exits successfully and stays
+stopped without disabling autostart. Increase the service deadline if you
+configure longer application stage deadlines.
 
 Windows SCM stops signal the same runtime and wait for cleanup. Intentional HTTP
 shutdown also returns through the service host normally. Runtime failures are
@@ -104,5 +100,4 @@ If a readiness header is supplied, it must be valid even when a user is logged i
 
 Supervisors should verify control-record ownership, PID/process generation and
 configuration identity before using its credentials, refuse redirects, and reread
-identity after a health request. Older BSM releases have no readiness credential;
-their clients can continue using the user-authenticated health API.
+identity after a health request.

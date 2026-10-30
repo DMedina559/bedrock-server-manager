@@ -1,4 +1,4 @@
-# Calling the plugin API in 4.0
+# Calling the plugin API
 
 Use `self.api` to access supported operations. Each data operation accepts one
 request model or mapping and returns a Pydantic response model.
@@ -16,10 +16,9 @@ The same call can use a mapping:
 result = await self.api.server.start({"server_name": "example"})
 ```
 
-Use domain names such as `server`, `settings`, and `websocket`. Flat calls such as
-`self.api.start_server(...)` and plural aliases such as `self.api.servers` are
-removed. See [Available APIs](../../plugins/plugin_apis.md) for request fields,
-response fields, and available operations. Import request models from
+Use domain names such as `server`, `settings`, and `websocket`. See
+[Available APIs](../../plugins/plugin_apis.md) for request fields, response
+fields, and available operations. Import request models from
 `bedrock_server_manager.api.models`.
 
 Read response attributes directly. Use `result.model_dump(mode="json")` when you
@@ -69,10 +68,6 @@ propagate. Malformed existing allowlist and permission files are preserved for
 repair. Recovery failures retain the primary exception when the main operation
 also failed. Python exceptions are classified into stable codes and safe messages
 at HTTP, WebSocket, and background-task boundaries.
-
-Player summaries require `player_count == len(players)`. Player scan counts obey
-`saved <= unique <= discovered`. Contradictory API output fails validation rather
-than reaching a plugin as a successful result.
 
 ## Events
 
@@ -167,16 +162,13 @@ work starts an independent sequence when it invokes a tracked operation.
 
 ### Additional event capabilities
 
-Existing 4.0 callbacks keep their signatures. Opt into typed hooks with
-`events.listen_typed` or `events.hook`, and immutable notification data with
-`events.observe`. Discover contracts through `events.catalog`/`describe`, inspect
-owned listeners through `events.subscriptions`, and manage temporary registrations
-with `with` or `async with events.subscription(...)`. Filters and ordering are also
-optional additions to existing listeners and decorators. Namespaced custom work
-can use `with api.operations.scope("plugin_name:operation")`.
-
-See [typed event access, filtering, and lifecycle cleanup](custom_events.md#opt-in-typed-hooks-and-observers)
-for complete examples, visibility rules, deadlines, and compatibility guarantees.
+Opt into typed hooks with `events.listen_typed` or `events.hook`, and immutable
+notification data with `events.observe`. Discover contracts through
+`events.catalog`/`describe`, inspect owned listeners through
+`events.subscriptions`, and manage temporary registrations with `with` or
+`async with events.subscription(...)`. See
+[typed event access, filtering, and lifecycle cleanup](custom_events.md#opt-in-typed-hooks-and-observers)
+for complete examples, visibility rules, and deadlines.
 
 
 ### Backup component settings

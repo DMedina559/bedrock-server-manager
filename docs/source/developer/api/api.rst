@@ -131,7 +131,3 @@ Account mutations that commit before connection revocation fails raise an
 incomplete-operation error. Its validated result identifies the account and
 action, includes ``committed: true``, and describes the recovery failure. The
 committed mutation must not be treated as rolled back.
-
-Password request fields are masked secrets and accept nonempty values of at most
-72 UTF-8 bytes, matching the password hashing limit. Player summaries and scan
-results validate their counters against the corresponding lists or input counts.

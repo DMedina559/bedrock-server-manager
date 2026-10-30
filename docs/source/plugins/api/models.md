@@ -9770,6 +9770,76 @@ Schemas are listed once. Local `$defs` references identify other models on this 
 }
 ```
 
+## RemoveServerBanRequest
+
+```json
+{
+  "additionalProperties": false,
+  "properties": {
+    "server_name": {
+      "examples": [
+        "example"
+      ],
+      "minLength": 1,
+      "pattern": "^[a-zA-Z0-9_-]+$",
+      "title": "Server Name",
+      "type": "string"
+    },
+    "xuid": {
+      "minLength": 1,
+      "pattern": ".*\\S.*",
+      "title": "Xuid",
+      "type": "string"
+    }
+  },
+  "required": [
+    "server_name",
+    "xuid"
+  ],
+  "title": "RemoveServerBanRequest",
+  "type": "object"
+}
+```
+
+## RemoveServerBanResponse
+
+```json
+{
+  "additionalProperties": false,
+  "properties": {
+    "message": {
+      "title": "Message",
+      "type": "string"
+    },
+    "server_name": {
+      "examples": [
+        "example"
+      ],
+      "minLength": 1,
+      "pattern": "^[a-zA-Z0-9_-]+$",
+      "title": "Server Name",
+      "type": "string"
+    },
+    "status": {
+      "default": "success",
+      "enum": [
+        "success",
+        "skipped",
+        "partial"
+      ],
+      "title": "Status",
+      "type": "string"
+    }
+  },
+  "required": [
+    "message",
+    "server_name"
+  ],
+  "title": "RemoveServerBanResponse",
+  "type": "object"
+}
+```
+
 ## ReorderAddonsRequest
 
 ```json

@@ -1,12 +1,6 @@
 import logging
 
 from ..context import AppContext
-from ..core.server.properties import (
-    _validate_properties_payload,
-)
-from ..core.server.properties import (
-    validate_property_value as _core_validate_property_value,
-)
 from ..error import (
     AppFileNotFoundError,
     BSMError,
@@ -87,6 +81,10 @@ def validate_property_value(
     request: ValidatePropertyValueRequest,
 ) -> ValidatePropertyValueResponse:
     """Validates a specific server property value before it gets applied."""
+    from ..core.server.properties import (
+        validate_property_value as _core_validate_property_value,
+    )
+
     return _core_validate_property_value(request)
 
 
@@ -100,6 +98,8 @@ async def set_properties(
     request: SetPropertiesRequest, *, app_context: AppContext
 ) -> SetPropertiesResponse:
     """Set one or multiple server properties for a given server."""
+    from ..core.server.properties import _validate_properties_payload
+
     server_name = request.server_name
     properties_to_update = request.properties_to_update
     restart_after_modify = request.restart_after_modify

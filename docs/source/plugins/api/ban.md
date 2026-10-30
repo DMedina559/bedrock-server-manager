@@ -64,3 +64,34 @@ data = result.model_dump(mode="json")
 | Name | Type | Default |
 |------|------|---------|
 | `request` | `bedrock_server_manager.api.models.ban.GetServerBansRequest` | `REQUIRED` |
+
+---
+
+
+## `ban.remove_server_ban`
+```python
+await self.api.ban.remove_server_ban(request: bedrock_server_manager.api.models.ban.RemoveServerBanRequest)
+```
+- **Async (Requires await):** Yes
+
+- **Description:** Remove a player from the server ban list.
+
+- **Returns:** `RemoveServerBanResponse`
+
+Runtime context and plugin identity are injected by the bridge. Failures raise application exceptions; plugin cancellation raises `APICancelledError`.
+
+```python
+from bedrock_server_manager.api.models import RemoveServerBanRequest
+payload = {...}  # Supply required request fields below.
+request = RemoveServerBanRequest(**payload)
+result = await self.api.ban.remove_server_ban(request)
+data = result.model_dump(mode="json")
+```
+- **Request schema:** [RemoveServerBanRequest](models.md#removeserverbanrequest)
+- **Response schema:** [RemoveServerBanResponse](models.md#removeserverbanresponse)
+- **Transport error schema:** [APIErrorResponse](models.md#apierrorresponse)
+**Parameters:**
+
+| Name | Type | Default |
+|------|------|---------|
+| `request` | `bedrock_server_manager.api.models.ban.RemoveServerBanRequest` | `REQUIRED` |

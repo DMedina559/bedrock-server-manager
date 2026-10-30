@@ -8,14 +8,14 @@ Internal contributor reference. Plugins should use supported capabilities.
 
    addon
    allowlist
+   api_contract
    application
    backup_restore
    ban
    common
    diagnostics
-   health
+   failures
    install
-   metrics
    misc
    permissions
    player
@@ -24,6 +24,7 @@ Internal contributor reference. Plugins should use supported capabilities.
    scheduler
    server
    settings
+   shared_contracts
    system
    tasks
    web

@@ -12,4 +12,5 @@ Internal contributor reference. Plugins should use supported capabilities.
    plugin_service
    server_service
    settings_service
+   task_service
    user_service

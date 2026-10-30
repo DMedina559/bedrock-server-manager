@@ -3,7 +3,7 @@
 Task Manager
 ============
 
-.. autoclass:: bedrock_server_manager.web.tasks.TaskManager
+.. autoclass:: bedrock_server_manager.services.task_service.TaskManager
    :members:
    :undoc-members:
    :show-inheritance:

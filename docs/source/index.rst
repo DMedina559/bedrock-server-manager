@@ -18,7 +18,6 @@ documentation matching your installed release.
    cli/general.md
    web/general.md
    web/role_access_table.md
-   general/plugins.md
    general/troubleshooting.md
 
 .. toctree::
@@ -107,3 +106,7 @@ Source Code: `Github <https://github.com/DMedina559/bedrock-server-manager>`_
    developer/reference/runtime/index
    developer/reference/contracts/index
    developer/reference/components/index
+   developer/reference/backups/index
+   developer/reference/scheduler/index
+   developer/reference/plugins/index
+   developer/reference/utils/index
