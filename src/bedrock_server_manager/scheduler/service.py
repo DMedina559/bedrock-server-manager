@@ -496,7 +496,7 @@ class Scheduler:
                         raise ValueError("handler_unavailable")
                     from ..utils.timezones import resolve_timezone
 
-                    resolve_timezone(config["timezone"])
+                    await run_in_thread(resolve_timezone, config["timezone"])
 
                     if state.get("blocked_reason") == "preparation_failed":
 
@@ -512,14 +512,18 @@ class Scheduler:
                     async def reconcile(slot):
                         # Only backups consult archives. Other task types are independent.
                         async with server.operation_lock:
-                            value = await run_in_thread(server.backups.catalog.load)
-                            return any(
-                                item.get("schedule_slot") == slot
-                                and (
-                                    server.backups.catalog.directory / filename
-                                ).is_file()
-                                for filename, item in value["archives"].items()
-                            )
+
+                            def _has_slot_archive() -> bool:
+                                value = server.backups.catalog.load()
+                                return any(
+                                    item.get("schedule_slot") == slot
+                                    and (
+                                        server.backups.catalog.directory / filename
+                                    ).is_file()
+                                    for filename, item in value["archives"].items()
+                                )
+
+                            return await run_in_thread(_has_slot_archive)
 
                     performed = (
                         await run_schedule(

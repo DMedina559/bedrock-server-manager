@@ -201,11 +201,11 @@ async def get_world_icon(
 ):
     """Serves the ``world_icon.jpeg`` for a server, or a default icon if not found."""
     logger.debug("Request to serve world icon for server '%s'.", server_name)
+    import aiofiles.ospath
+
     try:
         server = app_context.get_server(server_name)
         icon_path = await server.worlds.get_world_icon_filesystem_path()
-
-        import aiofiles.ospath
 
         if (
             await server.worlds.has_world_icon()
@@ -227,7 +227,7 @@ async def get_world_icon(
         default_icon_path = os.path.join(
             STATIC_DIR, "image", "icon", "web-app-manifest-192x192.png"
         )
-        if os.path.isfile(default_icon_path):
+        if await aiofiles.ospath.isfile(default_icon_path):
             logger.debug("Serving default world icon from: %s", default_icon_path)
             return FileResponse(default_icon_path, media_type="image/png")
         else:

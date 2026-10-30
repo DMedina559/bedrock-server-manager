@@ -147,9 +147,13 @@ async def start_detached(
         command.extend(["--port", str(options.port)])
     if options.debug:
         command.append("--debug")
-    probe = ControlFiles(paths.config_dir, WebRuntime())
-    probe.acquire()
-    probe.close()
+
+    def _probe_control() -> None:
+        probe = ControlFiles(paths.config_dir, WebRuntime())
+        probe.acquire()
+        probe.close()
+
+    await asyncio.to_thread(_probe_control)
     child = await asyncio.to_thread(
         processes.GuardedProcess(command).popen,
         stdin=subprocess.DEVNULL,
@@ -169,7 +173,7 @@ async def start_detached(
                         raise ServerStartError(
                             "Detached web runtime exited before HTTP readiness; inspect the application log"
                         )
-                    record = read_control(paths)
+                    record = await asyncio.to_thread(read_control, paths)
                     if record is not None:
                         if record.instance_id != instance_id:
                             raise OperationConflictError(
@@ -203,10 +207,10 @@ async def start_detached(
 async def stop_local(
     paths: WebProcessPaths, *, timeout: float = 180, force: bool = False
 ) -> str:
-    record = read_control(paths)
+    record = await asyncio.to_thread(read_control, paths)
     if record is None:
         pid_file = Path(paths.config_dir) / "web_server.pid"
-        if not pid_file.exists():
+        if not await asyncio.to_thread(pid_file.exists):
             return "Web server not running."
         if not force:
             raise ServerStopError(
@@ -216,10 +220,10 @@ async def stop_local(
         if pid == os.getpid():
             raise ServerProcessError("Refusing to terminate the current process")
         if pid is None or not await processes.is_process_running(pid):
-            pid_file.unlink(missing_ok=True)
+            await asyncio.to_thread(pid_file.unlink, missing_ok=True)
             return "Web server not running (stale PID removed)."
         await force_stop_verified(paths, pid)
-        pid_file.unlink(missing_ok=True)
+        await asyncio.to_thread(pid_file.unlink, missing_ok=True)
         return "Web server stopped by forced termination."
     try:
         async with AsyncClient(timeout=5, trust_env=False) as client:
@@ -240,7 +244,7 @@ async def stop_local(
             raise ServerStopError("Shutdown response belongs to another runtime")
         async with asyncio.timeout(timeout):
             while True:
-                current = read_control(paths)
+                current = await asyncio.to_thread(read_control, paths)
                 if current is None or current.instance_id != record.instance_id:
                     return "Web server stopped gracefully."
                 await asyncio.sleep(0.05)
@@ -252,8 +256,10 @@ async def stop_local(
         if record.pid == os.getpid():
             raise ServerProcessError("Refusing to terminate the current process")
         await force_stop_verified(paths, record.pid, record)
-        current = read_control(paths)
+        current = await asyncio.to_thread(read_control, paths)
         if current is not None and current.instance_id == record.instance_id:
-            paths.control_file.unlink(missing_ok=True)
-            (Path(paths.config_dir) / "web_server.pid").unlink(missing_ok=True)
+            await asyncio.to_thread(paths.control_file.unlink, missing_ok=True)
+            await asyncio.to_thread(
+                (Path(paths.config_dir) / "web_server.pid").unlink, missing_ok=True
+            )
         return "Web server stopped by forced termination."

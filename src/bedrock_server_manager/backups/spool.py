@@ -3,6 +3,8 @@
 from pathlib import Path
 from typing import BinaryIO
 
+from ..utils.threads import run_in_thread
+
 
 class CaptureSpool:
     """Keep one open file during sequential capture; never persist its index."""
@@ -19,6 +21,12 @@ class CaptureSpool:
     def __exit__(self, *args):
         if self.stream is not None:
             self.stream.close()
+
+    async def __aenter__(self):
+        return await run_in_thread(self.__enter__)
+
+    async def __aexit__(self, *args):
+        await run_in_thread(self.__exit__, *args)
 
     def flush(self) -> None:
         assert self.stream is not None

@@ -3,7 +3,6 @@
 
 import asyncio
 import logging
-import os
 from contextlib import asynccontextmanager
 from typing import Any, Dict
 
@@ -27,6 +26,7 @@ from ..events.operations import OperationName, track_operation
 from ..logging import log_operation_error
 from ..plugins.api_bridge import api_method
 from ..state.revision import revision_clock
+from ..utils.threads import run_in_thread
 from .contract import validate_contract
 from .models import (
     RestartServerRequest,
@@ -315,8 +315,10 @@ async def stop_server(
             # A failed stop may leave a live process: retain its PID file.
             if stopped:
                 try:
+                    import aiofiles.ospath
+
                     pid_file_path = server.get_pid_file_path()
-                    if os.path.isfile(pid_file_path):
+                    if await aiofiles.ospath.isfile(pid_file_path):
                         await remove_pid_file_if_exists(pid_file_path)
                 except Exception as cleanup_error:
                     logger.warning(
@@ -525,7 +527,7 @@ async def get_valid_server_names(
 ) -> GetValidServerNamesResponse:
     """Return current registered server names without sampling processes."""
     return GetValidServerNamesResponse(
-        server_names=app_context.get_valid_server_names()
+        server_names=await run_in_thread(app_context.get_valid_server_names)
     )
 
 

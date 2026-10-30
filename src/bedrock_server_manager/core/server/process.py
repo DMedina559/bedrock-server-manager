@@ -110,7 +110,7 @@ class ServerProcess:
         async with self.server.operation_lock:
             from ...backups.recovery import RestoreJournal
 
-            RestoreJournal(self.server).ensure_clear()
+            await run_in_thread(RestoreJournal(self.server).ensure_clear)
             is_inst = await self.server.is_installed()
             if not is_inst:
                 raise ServerStartError(
@@ -151,7 +151,7 @@ class ServerProcess:
             try:
                 async with aiofiles.open(output_file, "w") as f:
                     await f.truncate(0)
-                self._log_file_handle = open(output_file, "ab")
+                self._log_file_handle = await run_in_thread(open, output_file, "ab")
                 spawn = asyncio.create_task(
                     asyncio.create_subprocess_exec(
                         self.server.paths.bedrock_executable_path,
@@ -238,7 +238,7 @@ class ServerProcess:
             self._process = None
         finally:
             if self._log_file_handle is not None:
-                self._log_file_handle.close()
+                await run_in_thread(self._log_file_handle.close)
                 self._log_file_handle = None
         self.intentionally_stopped = True
         self._publish_running(False)
@@ -334,7 +334,7 @@ class ServerProcess:
             self._publish_running(False)
             if self._log_file_handle is not None:
                 try:
-                    self._log_file_handle.close()
+                    await run_in_thread(self._log_file_handle.close)
                 finally:
                     self._log_file_handle = None
             await system_process.remove_pid_file_if_exists(

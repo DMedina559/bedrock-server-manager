@@ -146,8 +146,8 @@ class ServerWorlds:
         """Executes a live world backup using Bedrock server's save hold/query/resume protocol."""
         log_path = self.server.paths.server_log_path
         start_cursor = 0
-        if log_path and os.path.isfile(log_path):
-            start_cursor = os.path.getsize(log_path)
+        if log_path and await aiofiles.ospath.isfile(log_path):
+            start_cursor = await aiofiles.ospath.getsize(log_path)
         self.logger.debug(
             "Server '%s': Initiating live backup using 'save hold'...",
             self.server.server_name,
@@ -166,10 +166,12 @@ class ServerWorlds:
             while time.time() - start_time < timeout:
                 await asyncio.sleep(poll_interval)
                 await self.server.send_command("save query")
-                if log_path and os.path.isfile(log_path):
-                    with open(log_path, "r", encoding="utf-8", errors="ignore") as f:
-                        f.seek(start_cursor)
-                        log_text = f.read()
+                if log_path and await aiofiles.ospath.isfile(log_path):
+                    async with aiofiles.open(
+                        log_path, "r", encoding="utf-8", errors="ignore"
+                    ) as f:
+                        await f.seek(start_cursor)
+                        log_text = await f.read()
                     match = re.search(
                         "(?:Data saved\\. Files are now ready to be copied\\.|Data the world is saved:?)\\s*([\\s\\S]*?)(?=\\n\\r?\\n|\\r?\\n\\r?\\n|\\[\\d{4}-|$)",
                         log_text,

@@ -184,7 +184,7 @@ async def write_pid_to_file(pid_file_path: str, pid: int):
     directory = os.path.dirname(pid_file_path)
     if directory and not await aiofiles.ospath.exists(directory):
         try:
-            os.makedirs(directory, exist_ok=True)
+            await aiofiles.os.makedirs(directory, exist_ok=True)
             logger.debug("Created directory for PID file: %s", directory)
         except OSError as e:
             raise FileOperationError(

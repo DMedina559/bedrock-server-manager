@@ -138,7 +138,7 @@ async def export_decrypted_snapshot(
         await run_in_thread(create_export)
         async with backups.server.operation_lock:
             staging = await run_in_thread(private_directory, Path(temporary.name))
-            path = backups.resolve_backup(backup_id)
+            path = await run_in_thread(backups.resolve_backup, backup_id)
             password = await run_in_thread(
                 backups._password,
                 path,

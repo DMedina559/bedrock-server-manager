@@ -384,7 +384,7 @@ class BedrockDownloader:
         target_dir = os.path.dirname(self.zip_file_path)
         try:
             if target_dir and not await aiofiles.ospath.exists(target_dir):
-                os.makedirs(target_dir, exist_ok=True)
+                await aiofiles.os.makedirs(target_dir, exist_ok=True)
         except OSError as e:
             raise FileOperationError(
                 f"Cannot create directory '{target_dir}' for download: {e}"

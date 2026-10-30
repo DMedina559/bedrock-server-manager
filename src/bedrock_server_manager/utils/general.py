@@ -225,13 +225,15 @@ async def list_content_files(
     Internal helper to list files with specified extensions from a sub-folder
     within the global content directory.
     """
+    import aiofiles.ospath
+
     from ..core.system import find_files
 
-    if not content_dir or not os.path.isdir(content_dir):
+    if not content_dir or not await aiofiles.ospath.isdir(content_dir):
         raise AppFileNotFoundError(str(content_dir), "Content directory")
 
     target_dir = os.path.join(content_dir, sub_folder)
-    if not os.path.isdir(target_dir):
+    if not await aiofiles.ospath.isdir(target_dir):
         logger.debug(
             "Content sub-directory '%s' not found. Returning empty list.", target_dir
         )

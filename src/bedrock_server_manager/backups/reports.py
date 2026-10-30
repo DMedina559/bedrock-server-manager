@@ -45,6 +45,11 @@ def record_review(backups, plan):
 
 
 async def record_outcome(backups, identifier, components, result=None, error=None):
+    cleanup_needed = (
+        bool(result.cleanup_warning)
+        if result is not None
+        else await run_in_thread(RestoreJournal(backups.server).path.exists)
+    )
     outcome = RecoveryReportOutcome(
         recorded_at=now(),
         archive_reference=reference(identifier),
@@ -57,11 +62,7 @@ async def record_outcome(backups, identifier, components, result=None, error=Non
         committed=result.committed if result is not None else None,
         restarted=result.restarted if result is not None else False,
         restart_failed=bool(result.restart_error) if result is not None else False,
-        cleanup_needed=(
-            bool(result.cleanup_warning)
-            if result is not None
-            else RestoreJournal(backups.server).path.exists()
-        ),
+        cleanup_needed=cleanup_needed,
     )
 
     def save():
@@ -96,6 +97,7 @@ async def recovery_report(backups):
         for item in summaries[:100]
     ]
     drill = health.drill
+    recovery_pending = await run_in_thread(RestoreJournal(backups.server).path.exists)
     return RecoveryReport(
         generated_at=now(),
         readiness=health.readiness,
@@ -103,7 +105,7 @@ async def recovery_report(backups):
         archives_omitted=max(0, len(summaries) - len(archives)),
         missing_key_count=len(health.missing_key_ids),
         destination_failures=health.destination_failures,
-        recovery_pending=RestoreJournal(backups.server).path.exists(),
+        recovery_pending=recovery_pending,
         archives=archives,
         last_review=(
             RecoveryReportReview.model_validate(value["last_review"])

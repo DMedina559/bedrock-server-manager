@@ -19,6 +19,7 @@ from ..events import trigger_event
 from ..events.operations import OperationName, track_operation
 from ..logging import log_operation_error
 from ..plugins.api_bridge import api_method
+from ..utils.threads import run_in_thread
 from .models.backup_restore import (
     BackupAllRequest,
     BackupAllResponse,
@@ -377,7 +378,9 @@ async def restore_world(
             stop_start_server,
         )
         try:
-            if not os.path.isfile(backup_file_path):
+            import aiofiles.ospath
+
+            if not await aiofiles.ospath.isfile(backup_file_path):
                 raise AppFileNotFoundError(backup_file_path, "Backup file")
             async with server_lifecycle_manager(
                 server_name,
@@ -387,8 +390,9 @@ async def restore_world(
             ):
                 if backup_file_path.endswith(".bsmbackup"):
                     identifier = os.path.basename(backup_file_path)
-                    if os.path.realpath(backup_file_path) != str(
-                        server.backups.resolve_backup(identifier)
+                    if await run_in_thread(
+                        lambda: os.path.realpath(backup_file_path)
+                        != str(server.backups.resolve_backup(identifier))
                     ):
                         raise ValueError("Backup must belong to this server.")
                     plan = await server.backups.plan_restore(identifier, ["world"])
@@ -456,7 +460,9 @@ async def restore_config_file(
             stop_start_server,
         )
         try:
-            if not os.path.isfile(backup_file_path):
+            import aiofiles.ospath
+
+            if not await aiofiles.ospath.isfile(backup_file_path):
                 raise AppFileNotFoundError(backup_file_path, "Backup file")
             async with server_lifecycle_manager(
                 server_name,

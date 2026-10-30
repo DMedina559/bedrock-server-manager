@@ -58,7 +58,7 @@ async def discover_and_store_players(  # noqa: C901
         "Starting discovery of players from all server logs in '%s'.", base_dir
     )
 
-    for server_name_candidate in os.listdir(base_dir):
+    for server_name_candidate in await aiofiles.os.listdir(base_dir):
         potential_server_path = os.path.join(base_dir, server_name_candidate)
         if not await aiofiles.ospath.isdir(potential_server_path):
             continue

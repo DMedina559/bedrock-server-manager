@@ -209,25 +209,19 @@ class MetricsService:
         stamp = revision_clock.capture()
         task_count = len(asyncio.all_tasks())
         values = await run_in_thread(self._collect)
-        servers = []
-        for name in self.context.state.servers.servers:
-            # Lifecycle/startup monitoring owns process discovery. Sampling
-            # must not repeatedly probe PID files for known stopped servers.
-            if not self.context.state.runtime.get_server_runtime(name).running:
-                continue
+
+        async def _sample_server(name: str) -> ServerMetrics:
             try:
                 info = await self.context.get_server(name).get_process_info()
-                servers.append(
-                    ServerMetrics.model_validate(
-                        {
-                            "server_name": name,
-                            **{
-                                key: value
-                                for key, value in (info or {}).items()
-                                if key in {"pid", "cpu_percent", "memory_mb"}
-                            },
-                        }
-                    )
+                return ServerMetrics.model_validate(
+                    {
+                        "server_name": name,
+                        **{
+                            key: value
+                            for key, value in (info or {}).items()
+                            if key in {"pid", "cpu_percent", "memory_mb"}
+                        },
+                    }
                 )
             except Exception:
                 logger.debug(
@@ -235,7 +229,18 @@ class MetricsService:
                     name,
                     exc_info=True,
                 )
-                servers.append(ServerMetrics(server_name=name))
+                return ServerMetrics(server_name=name)
+
+        running_names = [
+            name
+            for name in self.context.state.servers.servers
+            # Lifecycle/startup monitoring owns process discovery. Sampling
+            # must not repeatedly probe PID files for known stopped servers.
+            if self.context.state.runtime.get_server_runtime(name).running
+        ]
+        servers = list(
+            await asyncio.gather(*(_sample_server(name) for name in running_names))
+        )
         sample = MetricsSample(
             timestamp=time.time(),
             asyncio_task_count=task_count,
@@ -340,30 +345,31 @@ class ResourceMonitor:
                 # Get a copy of topics to avoid issues with concurrent modifications
                 topics = list(connection_manager.subscriptions.keys())
 
-                for topic in topics:
-                    if topic.startswith("resource-monitor:"):
-                        # Check if anyone is actually subscribed to this topic
-                        if not connection_manager.subscriptions.get(topic):
-                            continue
+                async def _broadcast_topic(topic: str) -> None:
+                    if not topic.startswith("resource-monitor:"):
+                        return
+                    # Check if anyone is actually subscribed to this topic
+                    if not connection_manager.subscriptions.get(topic):
+                        return
 
-                        server_name = topic.split(":", 1)[1]
-                        if server_name and callable(self.server_provider):
-                            server = self.server_provider(server_name)
-                            if server:
-                                revision = revision_clock.capture()
-                                process_info = await server.get_process_info()
-                                message = {
-                                    "type": "resource_update",
-                                    "topic": topic,
-                                    "data": {
-                                        "status": "success",
-                                        "process_info": process_info,
-                                        **revision,
-                                    },
-                                }
-                                await connection_manager.broadcast_to_topic(
-                                    topic, message
-                                )
+                    server_name = topic.split(":", 1)[1]
+                    if server_name and callable(self.server_provider):
+                        server = self.server_provider(server_name)
+                        if server:
+                            revision = revision_clock.capture()
+                            process_info = await server.get_process_info()
+                            message = {
+                                "type": "resource_update",
+                                "topic": topic,
+                                "data": {
+                                    "status": "success",
+                                    "process_info": process_info,
+                                    **revision,
+                                },
+                            }
+                            await connection_manager.broadcast_to_topic(topic, message)
+
+                await asyncio.gather(*(_broadcast_topic(topic) for topic in topics))
                 self._failures.recover("resource monitoring")
             except Exception as e:
                 self._failures.report(

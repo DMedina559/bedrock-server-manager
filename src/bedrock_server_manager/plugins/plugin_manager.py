@@ -561,7 +561,9 @@ class PluginManager:
 
         for path, override_name in found_paths:
             p_name = override_name if override_name else path.stem
-            p_class = self._get_plugin_class_from_path(path, override_name)
+            p_class = await asyncio.to_thread(
+                self._get_plugin_class_from_path, path, override_name
+            )
             if p_class:
                 version = getattr(p_class, "version", None)
                 if version and version != "N/A":
@@ -660,6 +662,32 @@ class PluginManager:
 
         return [p for p in sorted_plugins if p in plugin_classes]
 
+    def _validate_static_mounts(
+        self, plugin_name: str, mounts: list[Any], *, warn_invalid: bool = False
+    ) -> list[tuple[str, Path, str]]:
+        valid_mounts: list[tuple[str, Path, str]] = []
+        for m in mounts:
+            if isinstance(m, tuple) and len(m) == 3:
+                route_path, static_dir, mount_name = m
+                resolved_dir = Path(static_dir).resolve()
+                is_safe = False
+                for p_dir in self.plugin_dirs:
+                    try:
+                        if resolved_dir.is_relative_to(p_dir.resolve()):
+                            is_safe = True
+                            break
+                    except ValueError:
+                        continue
+                if is_safe and resolved_dir.is_dir():
+                    valid_mounts.append((route_path, resolved_dir, mount_name))
+                elif warn_invalid:
+                    logger.warning(
+                        "Plugin '%s' provided invalid or out-of-bounds static mount path: '%s'",
+                        plugin_name,
+                        static_dir,
+                    )
+        return valid_mounts
+
     async def load_plugins(self) -> None:
         """Discovers, loads, initializes, and starts tasks for all enabled plugins."""
         self._check_lifecycle_task()
@@ -729,32 +757,12 @@ class PluginManager:
                     if callable(getattr(instance, "get_static_mounts", None)):
                         mounts = instance.get_static_mounts()
                         if isinstance(mounts, list):
-                            valid_mounts = []
-                            for m in mounts:
-                                if isinstance(m, tuple) and len(m) == 3:
-                                    route_path, static_dir, mount_name = m
-                                    resolved_dir = Path(static_dir).resolve()
-                                    # Verify resolved static dir is within one of the allowed plugin directories
-                                    is_safe = False
-                                    for p_dir in self.plugin_dirs:
-                                        try:
-                                            if resolved_dir.is_relative_to(
-                                                p_dir.resolve()
-                                            ):
-                                                is_safe = True
-                                                break
-                                        except ValueError:
-                                            continue
-                                    if is_safe and resolved_dir.is_dir():
-                                        valid_mounts.append(
-                                            (route_path, resolved_dir, mount_name)
-                                        )
-                                    else:
-                                        logger.warning(
-                                            "Plugin '%s' provided invalid or out-of-bounds static mount path: '%s'",
-                                            plugin_name,
-                                            static_dir,
-                                        )
+                            valid_mounts = await asyncio.to_thread(
+                                self._validate_static_mounts,
+                                plugin_name,
+                                mounts,
+                                warn_invalid=True,
+                            )
                             self._register_mounts(plugin_name, valid_mounts)
 
                     self.plugins.append(instance)
@@ -1255,7 +1263,7 @@ class PluginManager:
                     logger.debug("Plugin '%s' is already loaded.", plugin_name)
                     return True
 
-            path = self._find_plugin_path(plugin_name)
+            path = await asyncio.to_thread(self._find_plugin_path, plugin_name)
             if not path:
                 logger.error(
                     "Cannot load plugin '%s': File or directory not found.", plugin_name
@@ -1264,7 +1272,9 @@ class PluginManager:
                     self._set_runtime_status(plugin_name, "ERROR")
                 return False
 
-            p_class = self._get_plugin_class_from_path(path, plugin_name)
+            p_class = await asyncio.to_thread(
+                self._get_plugin_class_from_path, path, plugin_name
+            )
             if not p_class:
                 logger.error(
                     "Cannot load plugin '%s': No PluginBase subclass found.",
@@ -1314,23 +1324,11 @@ class PluginManager:
                 if callable(getattr(instance, "get_static_mounts", None)):
                     mounts = instance.get_static_mounts()
                     if isinstance(mounts, list):
-                        for m in mounts:
-                            if isinstance(m, tuple) and len(m) == 3:
-                                route_path, static_dir, mount_name = m
-                                resolved_dir = Path(static_dir).resolve()
-                                is_safe = False
-                                for p_dir in self.plugin_dirs:
-                                    try:
-                                        if resolved_dir.is_relative_to(p_dir.resolve()):
-                                            is_safe = True
-                                            break
-                                    except ValueError:
-                                        continue
-                                if is_safe and resolved_dir.is_dir():
-                                    self._register_mounts(
-                                        plugin_name,
-                                        [(route_path, resolved_dir, mount_name)],
-                                    )
+                        valid_mounts = await asyncio.to_thread(
+                            self._validate_static_mounts, plugin_name, mounts
+                        )
+                        for mount_entry in valid_mounts:
+                            self._register_mounts(plugin_name, [mount_entry])
 
                 self._start_plugin_task_loops(plugin_name, instance)
 

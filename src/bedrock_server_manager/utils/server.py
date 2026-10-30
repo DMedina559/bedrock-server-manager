@@ -3,6 +3,7 @@
 
 from __future__ import annotations
 
+import asyncio
 import logging
 import os
 import platform
@@ -97,7 +98,9 @@ async def get_servers_data(
         with os.scandir(base_dir) as entries:
             return [entry.name for entry in entries if entry.is_dir()]
 
-    for server_name_candidate in await run_in_thread(discover):
+    candidates = await run_in_thread(discover)
+
+    async def _inspect_candidate(server_name_candidate: str) -> None:
         try:
             server = app_context.prepare_server(server_name_candidate)
 
@@ -106,7 +109,7 @@ async def get_servers_data(
                     "Skipping '%s': Not a valid server installation.",
                     server_name_candidate,
                 )
-                continue
+                return
 
             servers_data.append(
                 (await server.get_summary_info()).model_dump(mode="json")
@@ -128,6 +131,8 @@ async def get_servers_data(
                     resource=server_name_candidate, error=classify_failure(e).error
                 )
             )
+
+    await asyncio.gather(*(_inspect_candidate(name) for name in candidates))
 
     servers_data.sort(key=lambda s: s.get("name", "").lower())
     return servers_data, error_messages

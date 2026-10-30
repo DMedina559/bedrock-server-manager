@@ -1,3 +1,4 @@
+import asyncio
 import os
 import re
 from pathlib import Path
@@ -352,17 +353,19 @@ class DownloadPagePlugin(PluginBase):
                 if not isinstance(backup_dir_str, str) or not backup_dir_str:
                     raise HTTPException(500, "Backup directory not configured")
 
-                # Trust anchor for backups
-                backup_root = Path(backup_dir_str).resolve()
-                if not backup_root.exists():
-                    raise HTTPException(500, "Backup root directory does not exist")
+                def _resolve_backup_base() -> Path:
+                    backup_root = Path(backup_dir_str).resolve()
+                    if not backup_root.exists():
+                        raise HTTPException(500, "Backup root directory does not exist")
+                    assert server is not None
+                    resolved_base = (backup_root / server).resolve()
+                    try:
+                        resolved_base.relative_to(backup_root)
+                    except ValueError:
+                        raise HTTPException(403, "Access denied: Invalid server path")
+                    return resolved_base
 
-                # Construct and verify server path
-                base_path = (backup_root / server).resolve()
-                try:
-                    base_path.relative_to(backup_root)
-                except ValueError:
-                    raise HTTPException(403, "Access denied: Invalid server path")
+                base_path = await asyncio.to_thread(_resolve_backup_base)
 
             elif file_type in ("content_world", "content_addon"):
                 result = await self.api.settings.get_global_setting(
@@ -372,44 +375,47 @@ class DownloadPagePlugin(PluginBase):
                 if not isinstance(content_dir_str, str) or not content_dir_str:
                     raise HTTPException(500, "Content directory not configured")
 
-                # Trust anchor for content
-                content_root = Path(content_dir_str).resolve()
-                if not content_root.exists():
-                    raise HTTPException(500, "Content root directory does not exist")
+                def _resolve_content_base() -> Path:
+                    content_root = Path(content_dir_str).resolve()
+                    if not content_root.exists():
+                        raise HTTPException(
+                            500, "Content root directory does not exist"
+                        )
+                    if file_type == "content_world":
+                        resolved_base = (content_root / "worlds").resolve()
+                    else:
+                        resolved_base = (content_root / "addons").resolve()
+                    try:
+                        resolved_base.relative_to(content_root)
+                    except ValueError:
+                        raise HTTPException(
+                            500, "Content subdirectory is outside content root"
+                        )
+                    return resolved_base
 
-                if file_type == "content_world":
-                    base_path = (content_root / "worlds").resolve()
-                else:
-                    base_path = (content_root / "addons").resolve()
-
-                try:
-                    base_path.relative_to(content_root)
-                except ValueError:
-                    raise HTTPException(
-                        500, "Content subdirectory is outside content root"
-                    )
+                base_path = await asyncio.to_thread(_resolve_content_base)
             else:
                 raise HTTPException(400, "Invalid file type")
 
-            if not base_path.exists():
-                raise HTTPException(404, "Base directory not found or does not exist")
+            def _resolve_file_path() -> Path:
+                if not base_path.exists():
+                    raise HTTPException(
+                        404, "Base directory not found or does not exist"
+                    )
+                if (base_path / filename).is_symlink():
+                    raise HTTPException(403, "File links are not supported")
+                resolved_file = (base_path / filename).resolve()
+                try:
+                    resolved_file.relative_to(base_path)
+                except ValueError:
+                    raise HTTPException(403, "Access denied: Path traversal detected")
+                if not resolved_file.exists() or not resolved_file.is_file():
+                    raise HTTPException(404, "File not found")
+                return resolved_file
 
             # Secure path joining
             try:
-                # Join filename and resolve
-                if (base_path / filename).is_symlink():
-                    raise HTTPException(403, "File links are not supported")
-                file_path = (base_path / filename).resolve()
-
-                # Check traversal using Path.relative_to to ensure containment
-                try:
-                    file_path.relative_to(base_path)
-                except ValueError:
-                    raise HTTPException(403, "Access denied: Path traversal detected")
-
-                if not file_path.exists() or not file_path.is_file():
-                    raise HTTPException(404, "File not found")
-
+                file_path = await asyncio.to_thread(_resolve_file_path)
                 return FileResponse(path=file_path, filename=filename)
             except HTTPException:
                 # Re-raise HTTPExceptions as-is

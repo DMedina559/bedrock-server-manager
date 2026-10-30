@@ -278,8 +278,8 @@ class ManagedBackups:
         async with self.server.operation_lock:
             from .recovery import RestoreJournal
 
-            RestoreJournal(self.server).ensure_clear()
-            path = self.resolve_backup(identifier)
+            await run_in_thread(RestoreJournal(self.server).ensure_clear)
+            path = await run_in_thread(self.resolve_backup, identifier)
             value = await run_in_thread(self.catalog.load)
             record = value["archives"].get(path.name, {})
             if record.get("pinned") or (
@@ -299,7 +299,7 @@ class ManagedBackups:
         """Extract and authenticate in isolation, then validate restorable structures."""
         await report_stage("Verifying backup contents")
         async with self.server.operation_lock:
-            path = self.resolve_backup(identifier)
+            path = await run_in_thread(self.resolve_backup, identifier)
             try:
                 password = await run_in_thread(self._password, path, recovery_key)
                 async with temporary_directory(
@@ -329,10 +329,11 @@ class ManagedBackups:
                 )
             except Exception:
                 if record_failure:
+                    stat_result = await run_in_thread(path.stat)
                     await run_in_thread(
                         self.catalog.update,
                         identifier,
-                        fingerprint=[path.stat().st_size, path.stat().st_mtime_ns],
+                        fingerprint=[stat_result.st_size, stat_result.st_mtime_ns],
                         verification={
                             "status": "failed",
                             "verified_at": now(),
@@ -369,7 +370,7 @@ class ManagedBackups:
 
     async def annotate_snapshot(self, identifier, label=None, notes=None):
         async with self.server.operation_lock:
-            self.resolve_backup(identifier)
+            await run_in_thread(self.resolve_backup, identifier)
             updates = {}
             if label is not None:
                 if len(label) > 120:
@@ -387,7 +388,7 @@ class ManagedBackups:
 
     async def pin_snapshot(self, identifier: str, pinned: bool):
         async with self.server.operation_lock:
-            self.resolve_backup(identifier)
+            await run_in_thread(self.resolve_backup, identifier)
             await run_in_thread(self.catalog.update, identifier, pinned=pinned)
 
     def destination_configs(self) -> dict:
@@ -407,7 +408,7 @@ class ManagedBackups:
             item = configured.get(destination)
             if not item or not item.get("enabled", True):
                 raise BackupRestoreError("Backup destination is not enabled.")
-            path = self.resolve_backup(identifier)
+            path = await run_in_thread(self.resolve_backup, identifier)
             value = await run_in_thread(self.catalog.load)
             copies = value["archives"].get(identifier, {}).get("copies", {})
             previous = copies.get(destination, {})
@@ -567,7 +568,7 @@ class ManagedBackups:
         async with self.server.operation_lock:
             from .recovery import RestoreJournal
 
-            if RestoreJournal(self.server).path.exists():
+            if await run_in_thread(RestoreJournal(self.server).path.exists):
                 return CleanupResult(
                     retained=[i.filename for i in await self.list_snapshots()]
                 )
@@ -631,7 +632,7 @@ class ManagedBackups:
                             and item.verification.status != "failed"
                         )
                     ) and record.get("sha256") == await run_in_thread(
-                        digest, self.resolve_backup(item.filename)
+                        lambda fn=item.filename: digest(self.resolve_backup(fn))
                     )
                     requirements = record.get("read_requirements", {})
                     within_limits = (
@@ -680,7 +681,9 @@ class ManagedBackups:
                 if item.filename in retained:
                     continue
                 try:
-                    await run_in_thread(self.resolve_backup(item.filename).unlink)
+                    await run_in_thread(
+                        lambda fn=item.filename: self.resolve_backup(fn).unlink()
+                    )
                     deleted.append(item.filename)
                     metadata.pop(item.filename, None)
                 except OSError:

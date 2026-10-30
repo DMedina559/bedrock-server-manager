@@ -122,7 +122,9 @@ async def export_world(
             effective_export_dir = os.path.join(content_base_dir, "worlds")
         logger.debug("Initiating world export for '%s'", server_name)
         try:
-            os.makedirs(effective_export_dir, exist_ok=True)
+            import aiofiles.os
+
+            await aiofiles.os.makedirs(effective_export_dir, exist_ok=True)
             world_name_str = await server.get_world_name()
             timestamp = get_timestamp()
             export_filename = f"{world_name_str}_export_{timestamp}.mcworld"
@@ -195,7 +197,9 @@ async def import_world(
             stop_start_server,
         )
         try:
-            if not os.path.isfile(selected_file_path):
+            import aiofiles.ospath
+
+            if not await aiofiles.ospath.isfile(selected_file_path):
                 raise FileNotFoundError(
                     f"Source .mcworld file not found: {selected_file_path}"
                 )

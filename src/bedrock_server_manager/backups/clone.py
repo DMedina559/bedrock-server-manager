@@ -27,13 +27,13 @@ async def prepare_copy(request, context) -> PrepareBackupCopyResponse:
     target_directory = (
         Path(context.settings.get("paths.servers")) / request.target_server
     )
-    if target_directory.exists():
+    if await run_in_thread(target_directory.exists):
         raise BackupRestoreError(
             "Destination directory already exists; choose an unused server name."
         )
     source = context.get_server(request.server_name, require_installation=False).backups
     async with source.server.operation_lock:
-        archive = source.resolve_backup(request.backup_id)
+        archive = await run_in_thread(source.resolve_backup, request.backup_id)
         key = request.recovery_key.get_secret_value() if request.recovery_key else None
         password = await run_in_thread(source._password, archive, key)
         async with temporary_directory(
@@ -53,7 +53,7 @@ async def prepare_copy(request, context) -> PrepareBackupCopyResponse:
             for name in context.state.servers.servers:
                 server = context.get_server(name, require_installation=False)
                 properties = Path(server.paths.server_properties_path)
-                if not properties.is_file():
+                if not await run_in_thread(properties.is_file):
                     continue
                 text = await run_in_thread(properties.read_text, encoding="utf-8-sig")
                 for line in text.splitlines():

@@ -231,7 +231,7 @@ class RestoreJournal:
     async def recover(self) -> None:
         from ..utils.threads import run_in_thread
 
-        if not self.path.exists():
+        if not await run_in_thread(self.path.exists):
             return
         state = await run_in_thread(self._load)
         if state["committed"]:

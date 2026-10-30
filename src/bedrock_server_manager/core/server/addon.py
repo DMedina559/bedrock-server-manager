@@ -562,11 +562,27 @@ class ServerAddons:
             try:
                 self.logger.debug("Extracting '%s' to temp dir...", mcpack_filename)
 
-                def _extract():
+                def _extract() -> str:
                     with zipfile.ZipFile(mcpack_file_path, "r") as zip_ref:
                         extract_archive(zip_ref, temp_dir)
+                    source_dir = temp_dir
+                    if not os.path.isfile(os.path.join(temp_dir, "manifest.json")):
+                        entries = os.listdir(temp_dir)
+                        if len(entries) == 1 and os.path.isdir(
+                            os.path.join(temp_dir, entries[0])
+                        ):
+                            potential_nested_dir = os.path.join(temp_dir, entries[0])
+                            if os.path.isfile(
+                                os.path.join(potential_nested_dir, "manifest.json")
+                            ):
+                                self.logger.debug(
+                                    "Detected nested pack directory: '%s'. Adjusting source.",
+                                    entries[0],
+                                )
+                                source_dir = potential_nested_dir
+                    return source_dir
 
-                await run_in_thread(_extract)
+                install_source_dir = await run_in_thread(_extract)
                 self.logger.debug("Successfully extracted '%s'.", mcpack_filename)
             except zipfile.BadZipFile as e:
                 raise ExtractError(
@@ -576,21 +592,6 @@ class ServerAddons:
                 raise FileOperationError(
                     f"Error extracting '{mcpack_filename}': {e}"
                 ) from e
-            install_source_dir = temp_dir
-            if not os.path.isfile(os.path.join(temp_dir, "manifest.json")):
-                entries = os.listdir(temp_dir)
-                if len(entries) == 1 and os.path.isdir(
-                    os.path.join(temp_dir, entries[0])
-                ):
-                    potential_nested_dir = os.path.join(temp_dir, entries[0])
-                    if os.path.isfile(
-                        os.path.join(potential_nested_dir, "manifest.json")
-                    ):
-                        self.logger.debug(
-                            "Detected nested pack directory: '%s'. Adjusting source.",
-                            entries[0],
-                        )
-                        install_source_dir = potential_nested_dir
             await self._install_pack_from_extracted_data(
                 install_source_dir, mcpack_file_path
             )
@@ -869,7 +870,7 @@ class ServerAddons:
         installed_packs = []
         for pack_dir_name in await run_in_thread(os.listdir, pack_base_dir):
             pack_full_path = os.path.join(pack_base_dir, pack_dir_name)
-            if os.path.isdir(pack_full_path):
+            if await aiofiles.ospath.isdir(pack_full_path):
                 try:
                     manifest = await self._extract_manifest_info(pack_full_path)
                     uuid = manifest.header.uuid

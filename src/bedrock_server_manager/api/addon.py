@@ -72,11 +72,13 @@ async def import_addon(
     request: ImportAddonRequest, *, app_context: AppContext
 ) -> ImportAddonResponse:
     """Installs an addon to a specified Bedrock server."""
+    import aiofiles.ospath
+
     server_name = request.server_name
     addon_file_path = request.addon_file_path
     stop_start_server = request.stop_start_server
     restart_only_on_success = request.restart_only_on_success
-    if not os.path.isfile(addon_file_path):
+    if not await aiofiles.ospath.isfile(addon_file_path):
         raise AppFileNotFoundError(addon_file_path, "Addon file")
     server = app_context.get_server(server_name)
     try:
