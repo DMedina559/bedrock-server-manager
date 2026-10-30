@@ -10,6 +10,11 @@ import aiofiles.ospath
 
 from ...backups.models import ConfigComponent
 from ...backups.server import UnifiedServerBackups
+from ...contracts import (
+    CleanupResult,
+    CompletedItem,
+    ComponentResults,
+)
 from ...error import (
     AppFileNotFoundError,
     BackupRestoreError,
@@ -19,11 +24,6 @@ from ...error import (
     UserInputError,
 )
 from ...failures import classify_failure
-from ...results import (
-    CleanupResult,
-    CompletedItem,
-    ComponentResults,
-)
 from ...utils.threads import run_in_thread
 from ..files import atomic_copy_file
 from ..system import find_files

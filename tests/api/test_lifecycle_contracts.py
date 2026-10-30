@@ -5,7 +5,6 @@ from pathlib import Path
 import pytest
 from pydantic import ValidationError
 
-from bedrock_server_manager.api.errors import error_response
 from bedrock_server_manager.api.models import (
     RestartServerRequest,
     StartServerRequest,
@@ -17,6 +16,7 @@ from bedrock_server_manager.error import (
     ServerStartError,
     ServerStopError,
 )
+from bedrock_server_manager.failures import error_response
 from bedrock_server_manager.plugins.api_bridge import create_app_api
 
 

@@ -10,17 +10,12 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.future import select
 from sqlalchemy.orm.attributes import flag_modified
 
-from ...state.models import ServerConfigState
-from ...state.validation import json_equal
-from ..database import Database
+from ...state.models import ServerConfigState, json_equal
 from ..models import Server, ServerBan
 
 
 class ServerRepository:
     """Handle database persistence for server configurations."""
-
-    def __init__(self, db: Database | None = None):
-        self.db = db
 
     async def get_all_servers(self, session: AsyncSession) -> List[ServerConfigState]:
         """Return all servers from the database as ServerConfigState models."""

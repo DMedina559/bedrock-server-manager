@@ -1,7 +1,6 @@
 # bedrock_server_manager/config/settings.py
 """Application settings backed by typed state and durable storage."""
 
-import collections.abc
 import logging
 from typing import TYPE_CHECKING, Any, Dict, Optional, cast
 
@@ -11,39 +10,6 @@ if TYPE_CHECKING:
 
 
 logger = logging.getLogger(__name__)
-
-
-def deep_merge(
-    source: Dict[Any, Any] | collections.abc.Mapping, destination: Dict[Any, Any]
-) -> Dict[Any, Any]:
-    """Merge source values recursively into destination and return destination.
-
-    Conflicting source values take precedence; destination is modified in place.
-    """
-    for key, value in source.items():
-        if isinstance(value, dict):
-            destination[key] = deep_merge(value, destination.get(key, {}))
-        else:
-            destination[key] = value
-    return destination
-
-
-async def migrate_bootstrap_cors(storage: "Storage", value: Any) -> None:
-    """Import legacy CORS policy once, without replacing a database policy."""
-    from ..state.settings import SettingsState
-
-    async with storage.transaction() as session:
-        existing = await storage.settings_repo.get_all_settings(session)
-        web = existing.get("web", {})
-        if "web.cors_origins" in existing or (
-            isinstance(web, dict) and "cors_origins" in web
-        ):
-            return
-        origins = [value] if isinstance(value, str) else value
-        candidate = SettingsState.from_dict(existing, data_dir=storage.data_dir)
-        candidate.set("web.cors_origins", origins)
-        await storage.settings_repo.save_settings(session, candidate.to_dict())
-        logger.info("Imported legacy web.cors_origins into database settings")
 
 
 class Settings:

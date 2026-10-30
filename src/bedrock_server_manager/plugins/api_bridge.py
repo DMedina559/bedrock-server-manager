@@ -19,8 +19,6 @@ from typing import (
     cast,
 )
 
-from .api_contract import get_contract, validate_contract
-
 if TYPE_CHECKING:
     from ..context import AppContext
     from ..events import EventBus
@@ -117,6 +115,8 @@ def api_method(name: str, expose_to_plugins: bool = True) -> Callable[[F], F]:
         except (ValueError, TypeError):
             pass
 
+        from ..api.contract import validate_contract
+
         func = cast(F, validate_contract(func))
         _api_registry[name] = (
             func,
@@ -167,6 +167,7 @@ def create_app_api(
     file_generation = file_bus.owner_generation(file_owner) if file_bus else 0
 
     def runtime_dispatcher(name: str) -> Callable[..., Any]:
+        from ..api.server import server_lifecycle_manager
         from . import runtime_capabilities
 
         if app_context is None:
@@ -179,7 +180,7 @@ def create_app_api(
             "register_scheduled_task": runtime_capabilities.register_scheduled_task,
             "read_plugin_file": runtime_capabilities.read_plugin_file,
             "write_plugin_file": runtime_capabilities.write_plugin_file,
-            "server_lifecycle_manager": runtime_capabilities.server_lifecycle_manager,
+            "server_lifecycle_manager": server_lifecycle_manager,
             "websocket_register_data_provider": runtime_capabilities.register_data_provider,
         }
         function = functions[name]
@@ -276,7 +277,7 @@ def create_app_api(
             @functools.wraps(api_function)
             async def async_wrapper(*args: Any, **kwargs: Any) -> Any:
                 kwargs = inject_runtime(args, kwargs)
-                from ..operations import operation_source
+                from ..events.operations import operation_source
 
                 with operation_source(
                     "application" if is_core else f"plugin:{plugin_name}"
@@ -489,6 +490,8 @@ class AppAPI:
                 self._namespaces[name] = CapabilityNamespace(self, name)
             return self._namespaces[name]
         entry = _api_registry.get(name)
+        from ..api.contract import get_contract
+
         if entry is not None and get_contract(entry[0]) is None:
             return self._api_dispatcher(name)
         raise AttributeError(f"Use a typed API namespace instead of '{name}'")
@@ -497,6 +500,8 @@ class AppAPI:
         self, include_internal: Optional[bool] = None
     ) -> List[Dict[str, Any]]:
         """Return details of all registered APIs from allowed modules."""
+        from ..api.contract import get_contract
+
         if include_internal is None:
             include_internal = self._is_core
         include_internal = include_internal and self._is_core

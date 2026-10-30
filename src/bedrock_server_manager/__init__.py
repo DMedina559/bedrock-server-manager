@@ -11,10 +11,6 @@ if TYPE_CHECKING:
     from .plugins.app_event import app_event as app_event
     from .plugins.settings import ExistingServerName as ExistingServerName
     from .plugins.task_loop import task_loop as task_loop
-    from .web.deps.auth import get_admin_user as get_admin_user
-    from .web.deps.auth import get_current_user as get_current_user
-    from .web.deps.auth import get_current_user_optional as get_current_user_optional
-    from .web.deps.auth import get_moderator_user as get_moderator_user
 
 __version__ = get_installed_version()
 _EXPORTS = {
@@ -22,15 +18,6 @@ _EXPORTS = {
     "app_event": ("plugins", "app_event"),
     "task_loop": ("plugins", "task_loop"),
     "ExistingServerName": ("plugins.settings", "ExistingServerName"),
-    **{
-        name: ("web.deps.auth", name)
-        for name in (
-            "get_admin_user",
-            "get_current_user",
-            "get_current_user_optional",
-            "get_moderator_user",
-        )
-    },
 }
 
 
@@ -53,8 +40,4 @@ __all__ = [
     "app_event",
     "task_loop",
     "ExistingServerName",
-    "get_admin_user",
-    "get_current_user",
-    "get_current_user_optional",
-    "get_moderator_user",
 ]

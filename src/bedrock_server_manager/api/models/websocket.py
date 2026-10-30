@@ -4,7 +4,7 @@ from typing import Literal
 
 from pydantic import Field, JsonValue
 
-from ...results import DeliveryResult
+from ...contracts import DeliveryResult
 from .common import ActionResponse, APIRequest, NonEmptyStr
 
 

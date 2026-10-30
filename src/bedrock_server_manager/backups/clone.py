@@ -8,7 +8,7 @@ from uuid import uuid4
 from ..api.models.backup_restore import PrepareBackupCopyResponse
 from ..api.models.install import InstallNewServerRequest
 from ..error import BackupRestoreError
-from ..utils.files import temporary_directory
+from ..utils.io import temporary_directory
 from ..utils.server import core_validate_server_name_format
 from ..utils.threads import run_in_thread
 from .archive import write_archive

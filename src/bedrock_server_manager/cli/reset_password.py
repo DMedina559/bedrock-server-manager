@@ -1,6 +1,5 @@
 import click
 
-from ..utils import get_password_hash
 from ..utils.general import run_async
 
 
@@ -17,18 +16,14 @@ def reset_password_command(ctx, username: str):
     )
 
     async def _reset():
-        async with app_context.storage.transaction() as session:
-            hashed_pwd = get_password_hash(password)
-            success = await app_context.storage.user_repo.update_password(
-                session, username, hashed_pwd
-            )
-            if not success:
-                click.secho(f"Error: User '{username}' not found.", fg="red")
-                return
+        success = await app_context.user_service.reset_password(username, password)
+        if not success:
+            click.secho(f"Error: User '{username}' not found.", fg="red")
+            return
 
-            click.secho(
-                f"Password for user '{username}' has been reset successfully.",
-                fg="green",
-            )
+        click.secho(
+            f"Password for user '{username}' has been reset successfully.",
+            fg="green",
+        )
 
     run_async(_reset())

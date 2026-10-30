@@ -8,12 +8,12 @@ from unittest.mock import AsyncMock
 import pytest
 from pydantic import ValidationError
 
+from bedrock_server_manager.api.contract import validate_contract
 from bedrock_server_manager.backups.server import inventory
 from bedrock_server_manager.contracts import DataContract
 from bedrock_server_manager.logging import ApplicationFormatter, _TransportFilter
-from bedrock_server_manager.plugins.api_contract import validate_contract
+from bedrock_server_manager.services.task_service import TaskManager
 from bedrock_server_manager.utils.progress import report_stage
-from bedrock_server_manager.web.tasks import TaskManager
 
 
 class SensitiveRequest(DataContract):

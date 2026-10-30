@@ -3,14 +3,14 @@
 import pytest
 from pydantic import ValidationError
 
+from bedrock_server_manager.api.contract import APIResponseValidationError
 from bedrock_server_manager.api.models import APIRequest, APIResponse
+from bedrock_server_manager.events import trigger_event
 from bedrock_server_manager.plugins.api_bridge import (
     _api_registry,
     api_method,
     create_app_api,
 )
-from bedrock_server_manager.plugins.api_contract import APIResponseValidationError
-from bedrock_server_manager.plugins.event_trigger import trigger_event
 
 
 class ExampleRequest(APIRequest):

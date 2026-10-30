@@ -1,8 +1,10 @@
 # bedrock_server_manager/api/server.py
 """Provide API functions for managing Bedrock server instances."""
 
+import asyncio
 import logging
 import os
+from contextlib import asynccontextmanager
 from typing import Any, Dict
 
 from pydantic import ValidationError
@@ -21,11 +23,11 @@ from ..error import (
     UserInputError,
 )
 from ..events import trigger_event
+from ..events.operations import OperationName, track_operation
 from ..logging import log_operation_error
-from ..operations import OperationName, track_operation
 from ..plugins.api_bridge import api_method
-from ..plugins.api_contract import validate_contract
-from ..state_revision import revision_clock
+from ..state.revision import revision_clock
+from .contract import validate_contract
 from .models import (
     RestartServerRequest,
     RestartServerResponse,
@@ -525,3 +527,82 @@ async def get_valid_server_names(
     return GetValidServerNamesResponse(
         server_names=app_context.get_valid_server_names()
     )
+
+
+@asynccontextmanager
+async def server_lifecycle_manager(
+    server_name: str,
+    stop_before: bool,
+    start_after: bool = True,
+    restart_on_success_only: bool = False,
+    *,
+    app_context: AppContext,
+):
+    """A context manager to safely stop and restart a server for an operation."""
+    server = app_context.get_server(server_name, require_installation=False)
+    was_running = False
+    operation_succeeded = True
+    operation_cancelled = False
+    original_error: BaseException | None = None
+
+    if not stop_before:
+        logger.debug("Stop/Start not flagged for '%s'. Skipping.", server_name)
+        yield
+        return
+
+    try:
+        if await server.is_running():
+            logger.debug("Server '%s' is running. Stopping...", server_name)
+            await stop_server(
+                StopServerRequest(server_name=server_name), app_context=app_context
+            )
+            was_running = True
+            logger.debug("Server '%s' stopped.", server_name)
+        else:
+            logger.debug("Server '%s' is not running. No stop needed.", server_name)
+
+        yield
+
+    except asyncio.CancelledError:
+        original_error = asyncio.CancelledError()
+        operation_cancelled = True
+        operation_succeeded = False
+        raise
+    except Exception as error:
+        original_error = error
+        operation_succeeded = False
+        log_operation_error(
+            logger,
+            "Exception occurred during managed operation for '%s'.",
+            server_name,
+            error=error,
+        )
+        raise
+    finally:
+        if was_running and start_after and not operation_cancelled:
+            should_restart = True
+            if restart_on_success_only and not operation_succeeded:
+                should_restart = False
+                logger.warning(
+                    "Operation for '%s' failed. Skipping restart as requested.",
+                    server_name,
+                )
+
+            if should_restart:
+                logger.debug("Restarting server '%s'...", server_name)
+                try:
+                    await start_server(
+                        StartServerRequest(server_name=str(server_name)),
+                        app_context=app_context,
+                    )
+                    logger.debug("Server '%s' restart initiated.", server_name)
+                except Exception as e:
+                    log_operation_error(
+                        logger, "FAILED to restart '%s': %s", server_name, e, error=e
+                    )
+                    if operation_succeeded:
+                        raise
+                    if original_error is not None:
+                        original_error.add_note(
+                            f"Server restart also failed: {type(e).__name__}"
+                        )

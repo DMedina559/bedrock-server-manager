@@ -14,7 +14,6 @@ from typing import TYPE_CHECKING, Any, Awaitable, Callable, Dict, Optional
 
 from ..error import BSMError, FileOperationError
 from ..logging import RepeatedFailureReporter, log_operation_error
-from .player import save_player_data
 
 if TYPE_CHECKING:
     from ..config.settings import Settings
@@ -471,11 +470,8 @@ class BedrockProcessManager:
                         incremental=True
                     )
 
-                    if players:
-                        await save_player_data(
-                            self.storage,
-                            players,
-                        )
+                    if players and self.storage is not None:
+                        await self.storage.save_players(players)
                 self._failures.recover(f"players:{server_name}")
             except Exception as e:
                 if not observed:

@@ -7,8 +7,7 @@ import asyncio
 from dataclasses import dataclass, field
 from typing import Optional
 
-from .models import PluginState, RuntimeState, ServerState, UserState
-from .scheduler import SchedulerState
+from .models import PluginState, RuntimeState, SchedulerState, ServerState, UserState
 from .settings import SettingsState
 
 

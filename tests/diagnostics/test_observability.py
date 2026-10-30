@@ -398,10 +398,10 @@ async def test_trace_preserves_history_when_live_sources_fail(db):
 
 
 async def test_nested_event_observations_are_bounded_without_altering_bus(db):
+    from bedrock_server_manager.contracts import DeliveryResult
     from bedrock_server_manager.diagnostics.models import EventsDiagnostics
     from bedrock_server_manager.events import EventBus
     from bedrock_server_manager.events.models import EventActivityQuery
-    from bedrock_server_manager.results import DeliveryResult
 
     bus = EventBus()
 

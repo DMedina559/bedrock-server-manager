@@ -12,9 +12,9 @@ from bedrock_server_manager.db.database import Database
 from bedrock_server_manager.db.models import User as UserModel
 from bedrock_server_manager.db.storage import Storage
 from bedrock_server_manager.state.app_state import AppState
-from bedrock_server_manager.utils.auth import create_access_token, get_password_hash
 from bedrock_server_manager.utils.general import startup_checks
 from bedrock_server_manager.web.app import create_web_app
+from bedrock_server_manager.web.auth import create_access_token, get_password_hash
 
 
 @pytest.fixture(autouse=True)

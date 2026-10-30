@@ -2,7 +2,7 @@
 
 from pydantic import Field
 
-from ...results import ResourceFailure
+from ...contracts import ResourceFailure
 from .common import (
     APIRequest,
     PartialResponse,

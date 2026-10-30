@@ -9,6 +9,7 @@ from typing import Any, ClassVar, List, cast
 from pydantic import BaseModel
 
 from ..api.models.plugins import SetPluginSettingResponse
+from ..logging import log_operation_error
 from .api_bridge import AppAPI
 
 
@@ -132,6 +133,33 @@ class PluginBase(ABC):
                 request={"value": values, "scope": scope, "server_name": server_name}
             ),
         )
+
+    async def _is_server_running(self, server_name: str) -> bool:
+        """Check if a server is currently running via the API."""
+        try:
+            response = await self.api.system.get_server_running_status(
+                request={"server_name": server_name}
+            )
+            if response and response.status == "success":
+                return bool(response.is_running)
+
+            self.logger.warning(
+                "Could not determine running status for '%s'.",
+                server_name,
+            )
+        except AttributeError:
+            self.logger.error(
+                "API is missing 'get_server_running_status'. Cannot check server status."
+            )
+        except Exception as e:
+            log_operation_error(
+                self.logger,
+                "Error checking server status for '%s': %s",
+                server_name,
+                e,
+                error=e,
+            )
+        return False
 
     # --- Plugin Extension Hooks ---
 

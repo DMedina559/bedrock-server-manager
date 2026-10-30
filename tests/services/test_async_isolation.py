@@ -4,7 +4,7 @@ import asyncio
 from types import SimpleNamespace
 from unittest.mock import AsyncMock
 
-from bedrock_server_manager.backups.maintenance import BackupMaintenance
+from bedrock_server_manager.scheduler.service import Scheduler
 from bedrock_server_manager.services.lifecycle import LifecyclePhase
 from bedrock_server_manager.utils.general import ReentrantAsyncLock
 
@@ -68,7 +68,7 @@ async def test_slow_maintenance_does_not_delay_other_servers(monkeypatch):
     monkeypatch.setattr(SchedulerRepository, "recover", AsyncMock())
     context.storage = SimpleNamespace(scheduler_repo=SchedulerRepository(None))
     context.state.runtime = SimpleNamespace(scheduler={})
-    maintenance = BackupMaintenance(context)
+    maintenance = Scheduler(context)
     monkeypatch.setattr(maintenance, "configurations", AsyncMock(return_value={}))
     maintenance.start()
     try:

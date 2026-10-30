@@ -4,7 +4,7 @@ import asyncio
 
 import pytest_asyncio
 
-from bedrock_server_manager.api.models.health import GetApplicationHealthResponse
+from bedrock_server_manager.api.models.system import GetApplicationHealthResponse
 
 
 async def wait_for_scheduler(service):

@@ -12,9 +12,9 @@ from bedrock_server_manager.api.models import (
 from ...api import permissions as permissions_api
 from ...api.models.common import APIErrorResponse, ErrorEnvelope
 from ...context import AppContext
+from ...contracts import CompletedItem, FailedItem, ItemResult, SkippedItem
 from ...failures import classify_failure
 from ...logging import log_operation_error
-from ...results import CompletedItem, FailedItem, ItemResult, SkippedItem
 from ..deps import get_app_context, get_moderator_user, validate_server_exists
 from ..schemas import (
     PermissionsGetResponse,

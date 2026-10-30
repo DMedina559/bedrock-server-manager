@@ -5,16 +5,20 @@ Application State package for Bedrock Server Manager.
 
 from .app_state import AppState
 from .models import (
+    EntityStateMap,
     PluginInfoState,
     PluginState,
     RuntimeState,
+    SchedulerState,
     ServerConfigState,
     ServerRuntimeInfo,
     ServerState,
     UserInfoState,
+    UserRole,
     UserState,
+    json_equal,
 )
-from .scheduler import SchedulerState
+from .revision import RevisionClock, StateRevision, revision_clock
 from .settings import (
     GeneralSettings,
     MonitoringSettings,
@@ -26,6 +30,7 @@ from .settings import (
 
 __all__ = [
     "AppState",
+    "EntityStateMap",
     "SchedulerState",
     "SettingsState",
     "GeneralSettings",
@@ -39,6 +44,11 @@ __all__ = [
     "PluginInfoState",
     "UserState",
     "UserInfoState",
+    "UserRole",
     "RuntimeState",
     "ServerRuntimeInfo",
+    "StateRevision",
+    "RevisionClock",
+    "revision_clock",
+    "json_equal",
 ]

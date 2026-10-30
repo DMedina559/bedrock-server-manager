@@ -52,7 +52,7 @@ async def test_process_observation_revision_precedes_delayed_read(
 
     from bedrock_server_manager.api.models.system import GetBedrockProcessInfoRequest
     from bedrock_server_manager.api.system import get_bedrock_process_info
-    from bedrock_server_manager.state_revision import revision_clock
+    from bedrock_server_manager.state.revision import revision_clock
 
     entered = asyncio.Event()
     release = asyncio.Event()

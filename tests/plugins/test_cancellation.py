@@ -1,6 +1,6 @@
 import pytest
 
-from bedrock_server_manager.plugins.event_trigger import trigger_event
+from bedrock_server_manager.events import trigger_event
 
 
 @pytest.mark.parametrize("async_handler", [False, True])

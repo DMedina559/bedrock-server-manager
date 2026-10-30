@@ -10,7 +10,7 @@ from fastapi.responses import JSONResponse
 from fastapi.security import OAuth2PasswordRequestForm
 
 from ...context import AppContext
-from ...utils import (
+from ..auth import (
     authenticate_user,
     create_access_token,
 )

@@ -1,5 +1,6 @@
 """Integration coverage for truthful results and recovery after I/O failures."""
 
+import asyncio
 import importlib
 import io
 from pathlib import Path
@@ -17,8 +18,9 @@ from bedrock_server_manager.api.models import (
 )
 from bedrock_server_manager.api.models.tasks import TaskSnapshot
 from bedrock_server_manager.api.player import add_players_manually
+from bedrock_server_manager.api.server import server_lifecycle_manager
 from bedrock_server_manager.api.websocket import send_to_client
-from bedrock_server_manager.contracts import FailureInfo
+from bedrock_server_manager.contracts import ComponentResults, FailedItem, FailureInfo
 from bedrock_server_manager.error import (
     DependencyUnavailableError,
     IncompleteOperationError,
@@ -26,8 +28,6 @@ from bedrock_server_manager.error import (
     StorageError,
     UserInputError,
 )
-from bedrock_server_manager.plugins.runtime_capabilities import server_lifecycle_manager
-from bedrock_server_manager.results import ComponentResults, FailedItem
 
 
 async def test_failed_stop_retains_process_and_runtime(
@@ -37,12 +37,13 @@ async def test_failed_stop_retains_process_and_runtime(
         def write(self, data):
             raise RuntimeError("command channel failure")
 
-    class UnkillableProcess:
+    class UnkillableProcess(asyncio.subprocess.Process):
         pid = 999999
+        returncode = None
         stdin = BrokenPipe()
 
-        def poll(self):
-            return None
+        def __init__(self):
+            pass
 
         def kill(self):
             raise PermissionError("cannot kill process")
@@ -59,11 +60,14 @@ async def test_failed_stop_retains_process_and_runtime(
 
 
 async def test_forced_stop_waits_for_exit(real_bedrock_server, monkeypatch):
-    class DelayedProcess:
+    class DelayedProcess(asyncio.subprocess.Process):
         pid = 999998
         returncode = None
         stdin = None
         killed = False
+
+        def __init__(self):
+            pass
 
         def kill(self):
             self.killed = True
@@ -102,7 +106,7 @@ async def test_failed_probe_cannot_select_offline_world_export(
 async def test_failed_capture_does_not_publish_a_partial_archive(
     app_context, populated_server, monkeypatch
 ):
-    def fail_copy(*args):
+    def fail_copy(*args, **kwargs):
         raise PermissionError("Cannot read source")
 
     monkeypatch.setattr("bedrock_server_manager.backups.server.copy_source", fail_copy)

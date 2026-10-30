@@ -8,11 +8,11 @@ from fastapi.responses import JSONResponse
 from pydantic import ValidationError
 from starlette.exceptions import HTTPException as StarletteHTTPException
 
+from ..api.contract import APIResponseValidationError
 from ..api.models.common import APIErrorResponse, ErrorEnvelope
 from ..error import BSMError
 from ..failures import classify_failure
 from ..logging import log_operation_error
-from ..plugins.api_contract import APIResponseValidationError
 
 logger = logging.getLogger(__name__)
 

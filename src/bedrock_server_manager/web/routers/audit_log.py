@@ -7,7 +7,6 @@ import logging
 from typing import List
 
 from fastapi import APIRouter, Depends
-from pydantic import JsonValue
 
 from ...context import AppContext
 from ..deps import get_admin_user, get_app_context
@@ -16,19 +15,6 @@ from ..schemas import AuditLogResponse, UserResponse
 logger = logging.getLogger(__name__)
 
 router = APIRouter(prefix="/audit-log", tags=["Audit Logs"])
-
-
-async def create_audit_log(
-    app_context: AppContext,
-    user_id: int,
-    action: str,
-    details: dict[str, JsonValue] | None = None,
-):
-    """Create an audit log entry."""
-    async with app_context.storage.transaction() as session:
-        await app_context.storage.audit_log_repo.create_audit_log(
-            session, user_id=user_id, action=action, details=details
-        )
 
 
 @router.get(

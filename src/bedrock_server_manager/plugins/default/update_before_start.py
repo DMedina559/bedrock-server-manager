@@ -37,7 +37,7 @@ class AutoupdatePlugin(PluginBase):
         if not server_name or server_name == "None":
             return
 
-        from bedrock_server_manager.operations import (
+        from bedrock_server_manager.events.operations import (
             OperationName,
             OperationResultQuery,
         )

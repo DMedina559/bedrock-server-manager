@@ -5,7 +5,7 @@ import threading
 import pytest
 from websockets.exceptions import ConnectionClosed
 
-from bedrock_server_manager.utils.auth import create_access_token
+from bedrock_server_manager.web.auth import create_access_token
 
 
 async def authenticate(socket, context, user):

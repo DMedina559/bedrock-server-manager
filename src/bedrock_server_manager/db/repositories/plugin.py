@@ -8,15 +8,11 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.future import select
 
 from ...state.models import PluginInfoState
-from ..database import Database
 from ..models import Plugin
 
 
 class PluginRepository:
     """Handle database persistence for plugin configurations."""
-
-    def __init__(self, db: Database | None = None):
-        self.db = db
 
     async def get_all_plugins(
         self,

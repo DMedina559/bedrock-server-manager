@@ -12,7 +12,7 @@ from fastapi import APIRouter, FastAPI
 from bedrock_server_manager.api.backup_restore import backup_config_file
 from bedrock_server_manager.api.models.backup_restore import BackupConfigFileRequest
 from bedrock_server_manager.plugins.plugin_base import PluginBase
-from bedrock_server_manager.web.tasks import TaskManager
+from bedrock_server_manager.services.task_service import TaskManager
 
 
 @pytest.mark.asyncio
@@ -37,11 +37,9 @@ async def test_overlapping_starts_retain_one_child(real_bedrock_server, monkeypa
         return child
 
     monkeypatch.setattr(server, "is_installed", AsyncMock(return_value=True))
-    monkeypatch.setattr(
-        server,
-        "is_running",
-        AsyncMock(side_effect=lambda: server.process._process is not None),
-    )
+    is_running_mock = AsyncMock(side_effect=lambda: server.process._process is not None)
+    monkeypatch.setattr(server, "is_running", is_running_mock)
+    monkeypatch.setattr(server.process, "is_running", is_running_mock)
     monkeypatch.setattr(server, "set_status_in_config", AsyncMock())
     monkeypatch.setattr("asyncio.create_subprocess_exec", spawn)
     monkeypatch.setattr(
@@ -114,7 +112,7 @@ async def test_async_backup_cancellation_retains_lock_until_thread_finishes(
     release = threading.Event()
     finished = threading.Event()
 
-    def copy(*args):
+    def copy(*args, **kwargs):
         started.set()
         release.wait(3)
         finished.set()
@@ -174,11 +172,11 @@ async def test_hot_router_lifespan_enters_and_exits(app_context):
 async def test_shutdown_drains_tasks_before_final_server_stop(app_context, monkeypatch):
     from unittest.mock import MagicMock
 
+    from bedrock_server_manager.api.server import (
+        server_lifecycle_manager,
+    )
     from bedrock_server_manager.core.bedrock_process_manager import (
         BedrockProcessManager,
-    )
-    from bedrock_server_manager.plugins.runtime_capabilities import (
-        server_lifecycle_manager,
     )
 
     entered = asyncio.Event()

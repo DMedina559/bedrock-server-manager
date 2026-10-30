@@ -13,10 +13,10 @@ from sqlalchemy import create_engine, inspect, select
 
 from ..context import AppContext
 from ..db import models
+from ..db.backup import backup_database, get_current_db_revision, restore_database
+from ..db.database import run_migrations_downgrade, run_migrations_upgrade
 from ..logging import log_operation_error
-from ..utils.database import backup_database, get_current_db_revision, restore_database
 from ..utils.general import run_async
-from ..utils.migration import run_migrations_downgrade, run_migrations_upgrade
 
 logger = logging.getLogger(__name__)
 

@@ -285,7 +285,7 @@ async def test_bootstrap_cors_migrates_once_without_overwriting_database(
 
 
 async def test_flat_database_cors_precedes_legacy_bootstrap(storage):
-    from bedrock_server_manager.config.settings import migrate_bootstrap_cors
+    from bedrock_server_manager.services.settings_service import migrate_bootstrap_cors
     from bedrock_server_manager.state.app_state import AppState
 
     async with storage.transaction() as session:

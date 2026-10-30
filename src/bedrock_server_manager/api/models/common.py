@@ -14,7 +14,7 @@ from pydantic.json_schema import JsonSchemaValue
 from ...contracts import DataContract, FailureInfo
 from ...contracts import NonEmptyStr as NonEmptyStr
 from ...contracts import ServerName as ServerName
-from ...state_revision import StateRevision as StateRevision
+from ...state.revision import StateRevision as StateRevision
 
 
 class APIRequest(DataContract):

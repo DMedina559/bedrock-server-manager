@@ -16,9 +16,8 @@ from ..error import (
 from ..events import trigger_event
 from ..logging import log_operation_error
 from ..plugins.api_bridge import api_method
-from ..plugins.api_contract import validate_contract
-from ..plugins.runtime_capabilities import server_lifecycle_manager
 from ..utils import list_content_files
+from .contract import validate_contract
 from .models.addon import (
     DisableAddonRequest,
     DisableAddonResponse,
@@ -37,6 +36,7 @@ from .models.addon import (
     UpdateSubpackRequest,
     UpdateSubpackResponse,
 )
+from .server import server_lifecycle_manager
 
 logger = logging.getLogger(__name__)
 

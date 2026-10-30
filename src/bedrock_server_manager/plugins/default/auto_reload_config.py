@@ -12,7 +12,6 @@ from bedrock_server_manager.api.models.allowlist import (
     AddToAllowlistResponse,
     RemoveFromAllowlistResponse,
 )
-from bedrock_server_manager.logging import log_operation_error
 
 
 class PluginSettings(BaseModel):
@@ -41,33 +40,6 @@ class AutoReloadPlugin(PluginBase):
         self.logger.debug(
             "Plugin loaded. Will send reload commands after config changes if server is running."
         )
-
-    async def _is_server_running(self, server_name: str) -> bool:
-        """Check if a server is currently running via the API."""
-        try:
-            response = await self.api.system.get_server_running_status(
-                request={"server_name": server_name}
-            )
-            if response and response.status == "success":
-                return bool(response.is_running)
-
-            self.logger.warning(
-                "Could not determine running status for '%s'.",
-                server_name,
-            )
-        except AttributeError:
-            self.logger.error(
-                "API is missing 'get_server_running_status'. Cannot check server status."
-            )
-        except Exception as e:
-            log_operation_error(
-                self.logger,
-                "Error checking server status for '%s': %s",
-                server_name,
-                e,
-                error=e,
-            )
-        return False
 
     async def _send_reload_command(self, server_name: str, command: str, context: str):
         """Sends a given command to a server if it's running."""

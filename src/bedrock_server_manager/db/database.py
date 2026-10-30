@@ -176,6 +176,14 @@ class Database:
             command.downgrade(alembic_cfg, revision)
         sync_engine.dispose()
 
+    async def upgrade_schema(self) -> None:
+        """Runs pending Alembic database migrations up to head asynchronously."""
+        await asyncio.to_thread(self._run_alembic_upgrade)
+
+    async def downgrade_schema(self, revision: str = "-1") -> None:
+        """Runs Alembic database migrations downgrade asynchronously."""
+        await asyncio.to_thread(self._run_alembic_downgrade, revision)
+
     async def _ensure_tables_created(self) -> None:
         """Ensure that the database tables are created asynchronously and auto-upgraded
         if out of date.
@@ -243,3 +251,13 @@ class Database:
             await self.engine.dispose()
             self.engine = None
             self.SessionLocal = None
+
+
+async def run_migrations_upgrade(db: Database) -> None:
+    """Runs pending Alembic database migrations up to head asynchronously."""
+    await db.upgrade_schema()
+
+
+async def run_migrations_downgrade(db: Database, revision: str = "-1") -> None:
+    """Runs Alembic database migrations downgrade asynchronously."""
+    await db.downgrade_schema(revision)

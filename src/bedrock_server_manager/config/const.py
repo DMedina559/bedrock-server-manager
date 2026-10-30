@@ -36,8 +36,17 @@ CONFIG_FILE_NAME = f"{app_module_name}.json"
 
 GUARD_VARIABLE = "BSM_PLUGIN_RECURSION_GUARD"
 
-# --- Application Constants ---
-SERVER_TIMEOUT = 30
+# --- Command Constants ---
+API_COMMAND_BLACKLIST: list[str] = [
+    "stop",  # Prevents stopping the server via general command send; use dedicated stop functions.
+    "save",  # Save commands are usually managed internally or via backup systems.
+    "allowlist off",  # Modifying allowlist should be through dedicated features.
+]
+"""
+A list of command strings (or prefixes) that are blocked from being sent
+through general-purpose command interfaces like the API's `send_command` endpoint.
+Commands are checked case-insensitively if they start with any string in this list.
+"""
 
 # --- PLUGIN Constants ---
 
@@ -50,9 +59,6 @@ DEFAULT_ENABLED_PLUGINS = [
     "world_operation_notifications",
     "autostart_plugin",
 ]
-
-# Placeholder for missing identifying keyword arguments
-_MISSING_PARAM_PLACEHOLDER = "<PARAM_UNSPECIFIED>"
 
 
 # --- Version Information ---

@@ -3,7 +3,7 @@
 from contextlib import contextmanager
 from typing import Any, Callable, Iterator, cast
 
-from ..operations import (
+from ..events.operations import (
     OperationActivity,
     OperationActivityQuery,
     OperationResultQuery,

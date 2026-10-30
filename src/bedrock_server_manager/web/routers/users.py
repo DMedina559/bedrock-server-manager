@@ -32,9 +32,8 @@ async def list_users_api(
     app_context: AppContext = Depends(get_app_context),
 ) -> List[UserSchema]:
     """Return the list of users as JSON."""
-    async with app_context.storage.transaction() as session:
-        users = await app_context.storage.user_repo.get_all_users(session)
-        return [UserSchema.model_validate(user, from_attributes=True) for user in users]
+    users = await app_context.user_service.list_users()
+    return [UserSchema.model_validate(user, from_attributes=True) for user in users]
 
 
 @router.post(

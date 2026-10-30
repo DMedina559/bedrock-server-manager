@@ -500,7 +500,7 @@ def unpack(
                         if extracted_output is not None and durable:
                             assert work is not None
                             with work.phase("permissions"):
-                                if os.name != "nt":
+                                if hasattr(os, "fchmod"):
                                     os.fchmod(
                                         extracted_output.fileno(),
                                         0o700 if expected_file.executable else 0o600,

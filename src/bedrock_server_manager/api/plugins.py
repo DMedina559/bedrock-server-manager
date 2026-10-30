@@ -10,7 +10,7 @@ from ..error import BSMError, UserInputError
 from ..events import trigger_event
 from ..logging import log_operation_error
 from ..plugins.api_bridge import api_method
-from ..plugins.api_contract import validate_contract
+from .contract import validate_contract
 from .models.plugins import (
     EventDispatchSummary,
     GetPluginSettingRequest,

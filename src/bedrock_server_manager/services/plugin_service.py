@@ -10,10 +10,10 @@ from typing import TYPE_CHECKING, Any, Dict, Optional, cast
 from pydantic import BaseModel, JsonValue, SecretStr, ValidationError
 from pydantic_core import PydanticUndefined, to_jsonable_python
 
-from ..server_validation import valid_server_names
 from ..state.changeset import ChangeSet
 from ..state.models import PluginInfoState
 from ..state.updates import UNSET, PluginUpdate, Unset
+from ..utils.server import valid_server_names
 
 if TYPE_CHECKING:
     from ..db.storage import Storage
@@ -151,7 +151,7 @@ class PluginService:
 
     def validate_custom(self, scope, before, after, server_name=None):
         from ..error import UserInputError
-        from ..state.validation import json_equal
+        from ..state.models import json_equal
 
         checked = copy.deepcopy(after)
         for name in self._models(scope):

@@ -12,10 +12,10 @@ from typing import TYPE_CHECKING, Any, Protocol, cast
 if TYPE_CHECKING:
     from .credentials import BackupCredentials
 
+from ..contracts import CleanupResult
 from ..error import BackupRestoreError
 from ..events.backup import BackupActivity
-from ..results import CleanupResult
-from ..utils.files import temporary_directory
+from ..utils.io import temporary_directory
 from ..utils.progress import report_stage
 from ..utils.threads import check_cancellation, copy_stream, run_in_thread
 from .archive import digest, safe_name
@@ -453,8 +453,8 @@ class ManagedBackups:
         keys = await run_in_thread(self.credentials.metadata)
         known = {item["key_id"] for item in keys["keys"]}
         used = {item.key_id for item in summaries if item.encrypted and item.key_id}
+        from ..scheduler.engine import status
         from .assurance import readiness
-        from .schedule import status
 
         assurance = await run_in_thread(readiness, self, summaries, value, known)
         return BackupHealth(

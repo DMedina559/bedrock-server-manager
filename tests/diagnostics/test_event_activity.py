@@ -11,7 +11,10 @@ from bedrock_server_manager.events import (
     EventFilter,
     EventOptions,
 )
-from bedrock_server_manager.operations import OperationActivityQuery, OperationService
+from bedrock_server_manager.events.operations import (
+    OperationActivityQuery,
+    OperationService,
+)
 
 SOURCE = "from bedrock_server_manager import PluginBase\nclass Probe(PluginBase):\n    version = '1.0'\n"
 
@@ -288,7 +291,7 @@ async def test_operation_provider_detail_limits_apply_to_global_activity_and_tra
     app_context,
 ):
     from bedrock_server_manager.diagnostics.models import DiagnosticOptions
-    from bedrock_server_manager.operations import OperationActivity
+    from bedrock_server_manager.events.operations import OperationActivity
 
     service = app_context.diagnostics
     service.options = DiagnosticOptions(event_record_limit=1)

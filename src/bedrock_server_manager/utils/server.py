@@ -1,12 +1,15 @@
 # bedrock_server_manager/utils/server.py
 """Server naming, discovery and persistent player-directory helpers."""
 
+from __future__ import annotations
+
 import logging
 import os
+import platform
 import re
-from typing import Any, Dict, List, Tuple
+from typing import TYPE_CHECKING, Any, Dict, List, Tuple
 
-from ..context import AppContext
+from ..contracts import ResourceFailure
 from ..error import (
     AppFileNotFoundError,
     ConfigurationError,
@@ -17,12 +20,30 @@ from ..error import (
 )
 from ..failures import classify_failure
 from ..logging import log_operation_error
-from ..results import ResourceFailure
 from .threads import run_in_thread
+
+if TYPE_CHECKING:
+    from ..context import AppContext
+    from ..state.app_state import AppState
 
 logger = logging.getLogger(__name__)
 
 # --- Server Stuff ---
+
+
+def valid_server_names(state: "AppState") -> list[str]:
+    """Shared file checks for server references; no process sampling."""
+    base = state.settings.paths.servers
+    executable = (
+        "bedrock_server.exe" if platform.system() == "Windows" else "bedrock_server"
+    )
+    return sorted(
+        name
+        for name in state.servers.servers
+        if re.fullmatch(r"[a-zA-Z0-9_-]+", name)
+        and os.path.isfile(os.path.join(base, name, executable))
+        and os.path.isfile(os.path.join(base, name, "server.properties"))
+    )
 
 
 def core_validate_server_name_format(server_name: str) -> None:

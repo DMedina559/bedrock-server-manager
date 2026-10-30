@@ -113,7 +113,7 @@ def create_cli_app():
 
             atexit.register(shutdown_cli_app, app_context)
 
-            if ctx.invoked_subcommand not in ["setup", "migrate"]:
+            if ctx.invoked_subcommand not in ["setup"]:
                 asyncio.run(app_context.load())
                 startup_checks(app_context)
 

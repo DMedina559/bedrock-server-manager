@@ -8,15 +8,11 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.future import select
 
 from ...error import UserInputError
-from ..database import Database
 from ..models import Player
 
 
 class PlayerRepository:
     """Handle database persistence for Minecraft players."""
-
-    def __init__(self, db: Database | None = None):
-        self.db = db
 
     async def get_all_players(self, session: AsyncSession) -> List[Dict[str, str]]:
         """Return all known players as a list of dicts with 'name' and 'xuid' keys."""

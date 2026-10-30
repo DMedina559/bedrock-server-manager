@@ -9,7 +9,7 @@ import pytest_asyncio
 import uvicorn
 from websockets.asyncio.client import connect
 
-from bedrock_server_manager.utils.auth import create_access_token
+from bedrock_server_manager.web.auth import create_access_token
 
 
 @pytest_asyncio.fixture

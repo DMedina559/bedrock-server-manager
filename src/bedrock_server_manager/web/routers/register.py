@@ -9,14 +9,12 @@ This module provides endpoints for:
 """
 
 import logging
-import secrets
-import time
 
 from fastapi import APIRouter, Depends, HTTPException, Request
 from fastapi.responses import JSONResponse
 
 from ...context import AppContext
-from ...utils.auth import get_password_hash_async
+from ..auth import get_password_hash_async
 from ..deps import get_admin_user, get_app_context
 from ..schemas import GenerateTokenPayload, UserLoginPayload
 from ..schemas import UserResponse as UserSchema
@@ -41,13 +39,7 @@ async def generate_token(
     """
     Generates a new registration token.
     """
-
-    token = secrets.token_urlsafe(32)
-    expires = int(time.time()) + 86400  # 24 hours
-    async with app_context.storage.transaction() as session:
-        await app_context.storage.user_repo.create_registration_token(
-            session, token=token, role=data.role, expires=expires
-        )
+    token = await app_context.user_service.create_registration_token(role=data.role)
 
     base_url = str(request.base_url)
     registration_link = f"{base_url}app/register/{token}"
@@ -74,20 +66,10 @@ async def validate_token(
     app_context: AppContext = Depends(get_app_context),
 ):
     """Check if a registration token is valid."""
-    async with app_context.storage.transaction() as session:
-        registration_token = await app_context.storage.user_repo.get_registration_token(
-            session, token
-        )
-        if (
-            not registration_token
-            or registration_token.expires is None
-            or registration_token.expires < int(time.time())
-        ):
-            raise HTTPException(status_code=404, detail="Invalid or expired token.")
+    if not await app_context.user_service.validate_registration_token(token):
+        raise HTTPException(status_code=404, detail="Invalid or expired token.")
 
-        return JSONResponse(
-            content={"status": "success", "message": "TokenResponse is valid."}
-        )
+    return JSONResponse(content={"status": "success", "message": "Token is valid."})
 
 
 @router.post(

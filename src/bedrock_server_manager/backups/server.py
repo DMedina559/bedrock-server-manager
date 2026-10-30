@@ -19,11 +19,11 @@ from uuid import uuid4
 from pydantic import SecretStr
 
 from ..config.const import get_installed_version
+from ..contracts import CleanupResult, CompletedItem, ComponentResults, SkippedItem
 from ..error import BackupRestoreError, ConfigurationError
+from ..events.operations import OperationName
 from ..logging import log_operation_error
-from ..operations import OperationName
-from ..results import CleanupResult, CompletedItem, ComponentResults, SkippedItem
-from ..utils.files import temporary_directory
+from ..utils.io import temporary_directory
 from ..utils.progress import report_stage
 from ..utils.threads import check_cancellation, run_in_thread
 from .archive import (
@@ -902,7 +902,7 @@ class UnifiedServerBackups(ManagedBackups):
 
     async def can_reuse_sequence_snapshot(self, *, mode=None, components=None) -> bool:
         """Require a complete capture covering every component currently present."""
-        from ..operations import OperationResultQuery
+        from ..events.operations import OperationResultQuery
 
         async with self.server.operation_lock:
             _, chosen = selection(self.server.settings, mode, components)

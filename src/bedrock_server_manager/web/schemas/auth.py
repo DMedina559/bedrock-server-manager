@@ -4,7 +4,7 @@ from pydantic import Field
 
 from ...api.models.common import APIRequest, APIResponse
 from ...contracts import Password
-from ...state.types import UserRole
+from ...state.models import UserRole
 
 
 class GenerateTokenPayload(APIRequest):

@@ -35,7 +35,6 @@ from ...error import (
     MissingArgumentError,
     PermissionsError,
     ServerProcessError,
-    ServerStopError,
     SystemError,
 )
 from ...logging import log_operation_error
@@ -146,32 +145,6 @@ async def get_bedrock_server_pid_file_path(server_name: str, config_dir: str) ->
     return os.path.join(server_config_path, pid_filename)
 
 
-async def get_bedrock_launcher_pid_file_path(server_name: str, config_dir: str) -> str:
-    """Return the detached launcher PID-file path."""
-    if not isinstance(server_name, str) or not server_name:
-        raise MissingArgumentError("Server name cannot be empty and must be a string.")
-    if not isinstance(config_dir, str) or not config_dir:
-        raise MissingArgumentError(
-            "Configuration directory cannot be empty and must be a string."
-        )
-
-    if not await aiofiles.ospath.isdir(config_dir):
-        try:
-            # aiofiles.os doesn't have makedirs, so we use to_thread
-            await run_in_thread(os.makedirs, config_dir, exist_ok=True)
-            logger.debug(
-                "Created configuration directory for launcher PID: %s", config_dir
-            )
-        except OSError as e:
-            raise AppFileNotFoundError(
-                config_dir,
-                f"Launcher PID: Base config directory '{config_dir}' could not be created: {e}",
-            ) from e
-
-    pid_filename = f"bedrock_{server_name}_launcher.pid"
-    return os.path.join(config_dir, pid_filename)
-
-
 async def read_pid_from_file(pid_file_path: str) -> Optional[int]:
     """Read an integer PID, or return ``None`` for absent, empty or unreadable files."""
     if not isinstance(pid_file_path, str) or not pid_file_path:
@@ -237,56 +210,6 @@ async def is_process_running(pid: int) -> bool:
     if not isinstance(pid, int):
         raise MissingArgumentError("PID must be an integer.")
     return await run_in_thread(psutil.pid_exists, pid)
-
-
-async def launch_detached_process(
-    command: List[str], launcher_pid_file_path: str
-) -> int:
-    """Launch a guarded detached child and record its PID.
-
-    Redirect standard streams to the null device; the child outlives the caller loop.
-    """
-    if not command or not command[0]:
-        raise MissingArgumentError("Command list and executable cannot be empty.")
-    if not isinstance(launcher_pid_file_path, str) or not launcher_pid_file_path:
-        raise MissingArgumentError("Launcher PID file path cannot be empty.")
-
-    logged_command = list(command)
-    for index, argument in enumerate(logged_command[:-1]):
-        if argument == "--db-url":
-            logged_command[index + 1] = "<redacted>"
-    logger.debug("Executing guarded detached command: %s", " ".join(logged_command))
-
-    guarded_proc = GuardedProcess(command)
-
-    creation_flags = 0
-    start_new_session = False
-    if platform.system() == "Windows":
-        creation_flags = getattr(subprocess, "CREATE_NO_WINDOW", 0x08000000)
-    else:
-        start_new_session = True
-
-    try:
-        # A detached child must outlive the event loop used to launch it.
-        # asyncio subprocess transports may kill their child when closed.
-        process = await run_in_thread(
-            guarded_proc.popen,
-            stdin=subprocess.DEVNULL,
-            stdout=subprocess.DEVNULL,
-            stderr=subprocess.DEVNULL,
-            creationflags=creation_flags,
-            start_new_session=start_new_session,
-            close_fds=True,
-        )
-    except FileNotFoundError:
-        raise AppFileNotFoundError(command[0], "Command executable") from None
-    except OSError as e:
-        raise SystemError(f"OS error starting detached process: {e}") from e
-
-    pid = process.pid
-    logger.debug("Successfully started guarded process with PID: %s", pid)
-    await write_pid_to_file(launcher_pid_file_path, pid)
-    return pid
 
 
 async def verify_process_identity(  # noqa: C901
@@ -479,61 +402,6 @@ async def get_verified_bedrock_process(
             error=e,
         )
         return None
-
-
-async def terminate_process_by_pid(  # noqa: C901
-    pid: int, terminate_timeout: int = 5, kill_timeout: int = 2
-):
-    """Terminate a process, then kill it if the first deadline expires.
-
-    Timeouts are seconds. Windows termination is forceful; POSIX termination uses
-    SIGTERM. Propagate failures to confirm process exit.
-    """
-    if not PSUTIL_AVAILABLE:
-        raise SystemError("psutil package is required to terminate processes.")
-    if not isinstance(pid, int):
-        raise MissingArgumentError("PID must be an integer.")
-    if not (isinstance(terminate_timeout, int) and terminate_timeout >= 0):
-        raise ServerStopError("terminate_timeout must be a non-negative integer.")
-    if not (isinstance(kill_timeout, int) and kill_timeout >= 0):
-        raise ServerStopError("kill_timeout must be a non-negative integer.")
-
-    try:
-
-        def _terminate() -> None:
-            process = psutil.Process(pid)
-            # 1. Attempt graceful termination first.
-            logger.debug("Attempting graceful termination (SIGTERM) for PID %s...", pid)
-            process.terminate()
-            try:
-                process.wait(timeout=terminate_timeout)
-                logger.debug("Process %s terminated gracefully.", pid)
-            except psutil.TimeoutExpired:
-                # 2. If graceful termination fails, resort to forceful killing.
-                logger.warning(
-                    "Process %s did not terminate gracefully within %ss. Attempting kill (SIGKILL)...",
-                    pid,
-                    terminate_timeout,
-                )
-                process.kill()
-                process.wait(timeout=kill_timeout)
-                logger.info("Process %s forcefully killed.", pid)
-
-        await run_in_thread(_terminate)
-    except psutil.NoSuchProcess:
-        # This is not an error; the process is already gone.
-        logger.debug(
-            "Process with PID %s disappeared or was already stopped during termination attempt.",
-            pid,
-        )
-    except psutil.AccessDenied:
-        raise PermissionsError(
-            f"Permission denied trying to terminate process with PID {pid}."
-        )
-    except Exception as e:
-        raise ServerStopError(
-            f"Unexpected error terminating process PID {pid}: {e}"
-        ) from e
 
 
 async def remove_pid_file_if_exists(pid_file_path: str) -> bool:

@@ -128,7 +128,7 @@ def create_event_capabilities(
             or len(name) > 160
         ):
             raise ValueError("Plugin operations must use the plugin namespace")
-        from ..operations import operation_source
+        from .operations import operation_source
 
         with (
             operation_source(event_owner),

@@ -2,7 +2,7 @@
 
 import os
 from pathlib import Path
-from unittest.mock import MagicMock, patch
+from unittest.mock import patch
 
 import psutil
 import pytest
@@ -10,15 +10,12 @@ import pytest
 from bedrock_server_manager.config import GUARD_VARIABLE
 from bedrock_server_manager.core.system.process import (
     GuardedProcess,
-    get_bedrock_launcher_pid_file_path,
     get_bedrock_server_pid_file_path,
     get_pid_file_path,
     get_verified_bedrock_process,
     is_process_running,
-    launch_detached_process,
     read_pid_from_file,
     remove_pid_file_if_exists,
-    terminate_process_by_pid,
     verify_process_identity,
     write_pid_to_file,
 )
@@ -27,7 +24,6 @@ from bedrock_server_manager.error import (
     MissingArgumentError,
     PermissionsError,
     ServerProcessError,
-    ServerStopError,
     SystemError,
 )
 
@@ -80,27 +76,6 @@ async def test_get_bedrock_server_pid_file_path_invalid(tmp_path: Path):
     with pytest.raises(AppFileNotFoundError):
         # Server subfolder doesn't exist
         await get_bedrock_server_pid_file_path("server", str(config_dir))
-
-
-async def test_get_bedrock_launcher_pid_file_path(tmp_path: Path):
-    """Test get_bedrock_launcher_pid_file_path creates dir and returns path."""
-    config_dir = tmp_path / "launcher_config"
-    server_name = "myserver"
-
-    expected = os.path.join(str(config_dir), f"bedrock_{server_name}_launcher.pid")
-    assert (
-        await get_bedrock_launcher_pid_file_path(server_name, str(config_dir))
-        == expected
-    )
-    assert config_dir.exists()
-
-
-async def test_get_bedrock_launcher_pid_file_path_invalid(tmp_path: Path):
-    """Test get_bedrock_launcher_pid_file_path invalid inputs."""
-    with pytest.raises(MissingArgumentError):
-        await get_bedrock_launcher_pid_file_path("", str(tmp_path))
-    with pytest.raises(MissingArgumentError):
-        await get_bedrock_launcher_pid_file_path("server", "")
 
 
 # --- PID File I/O Tests ---
@@ -181,43 +156,6 @@ async def test_guarded_process():
     assert guarded.command == cmd
     assert GUARD_VARIABLE in guarded.guard_env
     assert guarded.guard_env[GUARD_VARIABLE] == "1"
-
-
-async def test_launch_detached_process(tmp_path: Path, real_bedrock_server):
-    """Test launch_detached_process using the dummy executable."""
-    server = real_bedrock_server
-    exe_path = server.paths.bedrock_executable_path
-    cmd = [exe_path]
-    launcher_pid_file = tmp_path / "launcher.pid"
-
-    pid = await launch_detached_process(cmd, str(launcher_pid_file))
-
-    # Process should be running
-    assert await is_process_running(pid)
-
-    # The PID should be written to the file
-    assert launcher_pid_file.exists()
-    assert int(launcher_pid_file.read_text().strip()) == pid
-
-    # Cleanup
-    await terminate_process_by_pid(pid)
-
-
-async def test_launch_detached_process_invalid(tmp_path: Path):
-    """Test launch_detached_process with invalid arguments."""
-    with pytest.raises(MissingArgumentError):
-        await launch_detached_process([], str(tmp_path / "launcher.pid"))
-    with pytest.raises(MissingArgumentError):
-        await launch_detached_process(["cmd"], "")
-
-
-async def test_launch_detached_process_not_found(tmp_path: Path):
-    """Test launch_detached_process when executable is not found."""
-    cmd = ["nonexistent_executable"]
-    launcher_pid_file = tmp_path / "launcher.pid"
-
-    with pytest.raises(AppFileNotFoundError):
-        await launch_detached_process(cmd, str(launcher_pid_file))
 
 
 # --- Process Status & Verification Tests ---
@@ -367,144 +305,3 @@ async def test_get_verified_bedrock_process_invalid_args():
     assert await get_verified_bedrock_process("", "/server/dir", "/config") is None
     assert await get_verified_bedrock_process("server", "", "/config") is None
     assert await get_verified_bedrock_process("server", "/server/dir", "") is None
-
-
-# --- Process Termination Tests ---
-
-
-async def test_terminate_process_by_pid_graceful(real_bedrock_server):
-    server = real_bedrock_server
-    await server.start()
-    child = server.process._process
-    await terminate_process_by_pid(child.pid)
-    import asyncio
-
-    await asyncio.wait_for(child.wait(), 5)
-    assert child.returncode is not None
-    assert not await is_process_running(child.pid)
-
-
-@patch("bedrock_server_manager.core.system.process.PSUTIL_AVAILABLE", True)
-@patch("psutil.Process")
-async def test_terminate_process_by_pid_force_kill(mock_process_class):
-    """Test terminate_process_by_pid force kill after graceful timeout."""
-    mock_proc = MagicMock()
-    # First wait raises TimeoutExpired
-    mock_proc.wait.side_effect = [psutil.TimeoutExpired(10), None]
-    mock_process_class.return_value = mock_proc
-
-    await terminate_process_by_pid(1234)
-
-    mock_proc.terminate.assert_called_once()
-    mock_proc.kill.assert_called_once()
-    # Wait is called twice: once for terminate, once for kill
-    assert mock_proc.wait.call_count == 2
-
-
-@patch("bedrock_server_manager.core.system.process.PSUTIL_AVAILABLE", True)
-@patch("psutil.Process")
-async def test_terminate_process_by_pid_no_such_process(mock_process_class):
-    """Test terminate_process_by_pid when process already exited."""
-    mock_process_class.side_effect = psutil.NoSuchProcess(1234)
-
-    # Should not raise
-    await terminate_process_by_pid(1234)
-
-
-@patch("bedrock_server_manager.core.system.process.PSUTIL_AVAILABLE", True)
-@patch("psutil.Process")
-async def test_terminate_process_by_pid_access_denied(mock_process_class):
-    """Test terminate_process_by_pid when access is denied."""
-    mock_process_class.side_effect = psutil.AccessDenied(1234)
-
-    with pytest.raises(PermissionsError):
-        await terminate_process_by_pid(1234)
-
-
-@patch("bedrock_server_manager.core.system.process.PSUTIL_AVAILABLE", False)
-async def test_terminate_process_by_pid_no_psutil():
-    """Test terminate_process_by_pid when psutil is missing."""
-    with pytest.raises(SystemError):
-        await terminate_process_by_pid(1234)
-
-
-async def test_terminate_process_by_pid_invalid_args():
-    """Test terminate_process_by_pid with invalid args."""
-    with pytest.raises(MissingArgumentError):
-        await terminate_process_by_pid("1234")  # type: ignore
-    with pytest.raises(ServerStopError):
-        await terminate_process_by_pid(1234, terminate_timeout=-1)
-    with pytest.raises(ServerStopError):
-        await terminate_process_by_pid(1234, kill_timeout=-1)
-
-
-async def test_dummy_launch_and_verify(tmp_path: Path, real_bedrock_server):
-    """Test process lifecycle using the real dummy binary."""
-    # Use real_bedrock_server fixture to set up a valid dummy binary
-    server = real_bedrock_server
-    exe_path = server.paths.bedrock_executable_path
-    cmd = [exe_path]
-
-    launcher_pid_file = tmp_path / "launcher.pid"
-
-    # 1. Launch the process
-    pid = await launch_detached_process(cmd, str(launcher_pid_file))
-
-    assert launcher_pid_file.exists()
-
-    # 2. Verify process is running
-    assert await is_process_running(pid) is True
-
-    # 3. Verify process identity matches the dummy binary
-    # Note: cwd may default to current app path if not specified in the detached process Popen call
-    await verify_process_identity(
-        pid,
-        expected_executable_path=exe_path,
-    )
-
-    # 4. Terminate process gracefully
-    await terminate_process_by_pid(pid)
-
-    # 5. Verify process is no longer running
-    import asyncio
-
-    await asyncio.sleep(0.5)
-    assert await is_process_running(pid) is False
-
-
-async def test_detached_child_survives_launcher_event_loop(tmp_path):
-    import asyncio
-    import sys
-
-    from bedrock_server_manager.utils.threads import run_in_thread
-
-    request = tmp_path / "request"
-    acknowledgement = tmp_path / "acknowledgement"
-    child_script = tmp_path / "child.py"
-    child_script.write_text(
-        "import sys, time\n"
-        "from pathlib import Path\n"
-        "request, acknowledgement = map(Path, sys.argv[1:])\n"
-        "deadline = time.monotonic() + 10\n"
-        "while not request.exists() and time.monotonic() < deadline:\n"
-        "    time.sleep(0.01)\n"
-        "if request.exists():\n"
-        "    acknowledgement.write_text('child survived')\n"
-    )
-    command = [sys.executable, str(child_script), str(request), str(acknowledgement)]
-    pid_file = tmp_path / "launcher.pid"
-
-    def launch_on_temporary_loop():
-        return asyncio.run(launch_detached_process(command, str(pid_file)))
-
-    try:
-        pid = await run_in_thread(launch_on_temporary_loop)
-        assert int(pid_file.read_text()) == pid
-        # The launching loop has closed before the child receives this request.
-        request.touch()
-        async with asyncio.timeout(5):
-            while not acknowledgement.exists():
-                await asyncio.sleep(0.01)
-        assert acknowledgement.read_text() == "child survived"
-    finally:
-        request.touch()

@@ -7,11 +7,11 @@ from typing import Any, Callable
 from fastapi import APIRouter, WebSocket, WebSocketDisconnect, WebSocketException
 from pydantic import ValidationError
 
-from ...api.errors import error_response
 from ...context import AppContext
+from ...failures import error_response
 from ...logging import log_operation_error
-from ...utils import authenticate_websocket_token
 from ...utils.threads import run_in_thread
+from ..auth import authenticate_websocket_token
 from ..schemas.websocket import (
     AuthenticationFrame,
     ClientFrame,

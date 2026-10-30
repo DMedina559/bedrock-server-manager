@@ -8,16 +8,16 @@ from ..error import (
     UserInputError,
 )
 from ..events import trigger_event
+from ..events.operations import OperationName, track_operation
 from ..logging import log_operation_error
-from ..operations import OperationName, track_operation
 from ..plugins.api_bridge import api_method
-from ..plugins.runtime_capabilities import server_lifecycle_manager
 from .models.install import (
     InstallNewServerRequest,
     InstallNewServerResponse,
     UpdateServerRequest,
     UpdateServerResponse,
 )
+from .server import server_lifecycle_manager
 
 logger = logging.getLogger(__name__)
 

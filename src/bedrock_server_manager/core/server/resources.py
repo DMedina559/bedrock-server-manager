@@ -9,7 +9,7 @@ from .paths import ServerPaths
 
 if TYPE_CHECKING:
     from ...events.publisher import EventPublisher
-    from ...operations import OperationService
+    from ...events.operations import OperationService
     from ...config.settings import Settings
     from ...state.app_state import AppState
     from ...db.storage import Storage
@@ -46,7 +46,7 @@ class ServerResources:
         self._runtime_state = state.runtime if state is not None else RuntimeState()
         self.storage = storage
         self.events = events
-        from ...operations import OperationService
+        from ...events.operations import OperationService
 
         self.operations = operations if operations is not None else OperationService()
         self.logger.debug("Server resources for '%s' initialized", server_name)

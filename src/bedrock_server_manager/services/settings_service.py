@@ -3,6 +3,7 @@
 Service managing application setting mutations and read operations.
 """
 
+import logging
 from typing import TYPE_CHECKING, Any, Dict, Optional, cast
 
 from ..state.changeset import ChangeSet
@@ -11,6 +12,27 @@ if TYPE_CHECKING:
     from ..config.settings import Settings
     from ..db.storage import Storage
     from ..state.app_state import AppState
+
+
+logger = logging.getLogger(__name__)
+
+
+async def migrate_bootstrap_cors(storage: "Storage", value: Any) -> None:
+    """Import legacy CORS policy once, without replacing a database policy."""
+    from ..state.settings import SettingsState
+
+    async with storage.transaction() as session:
+        existing = await storage.settings_repo.get_all_settings(session)
+        web = existing.get("web", {})
+        if "web.cors_origins" in existing or (
+            isinstance(web, dict) and "cors_origins" in web
+        ):
+            return
+        origins = [value] if isinstance(value, str) else value
+        candidate = SettingsState.from_dict(existing, data_dir=storage.data_dir)
+        candidate.set("web.cors_origins", origins)
+        await storage.settings_repo.save_settings(session, candidate.to_dict())
+        logger.info("Imported legacy web.cors_origins into database settings")
 
 
 class SettingsService:

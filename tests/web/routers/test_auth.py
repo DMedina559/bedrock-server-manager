@@ -161,7 +161,7 @@ async def test_account_authentication_storage_outage_is_not_invalid_token(
     from httpx2 import ASGITransport, AsyncClient
 
     from bedrock_server_manager.error import StorageError
-    from bedrock_server_manager.utils.auth import create_access_token
+    from bedrock_server_manager.web.auth import create_access_token
 
     token = await create_access_token(app_context, {"sub": "uncached_account"})
 

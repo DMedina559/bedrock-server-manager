@@ -17,6 +17,7 @@ import aiofiles.os
 import aiofiles.ospath
 import aiohttp
 
+from ..contracts import CleanupResult
 from ..error import (
     AppFileNotFoundError,
     ConfigurationError,
@@ -29,13 +30,12 @@ from ..error import (
     UserInputError,
 )
 from ..failures import classify_failure
-from ..results import CleanupResult
+from ..utils.io import temporary_directory
 from ..utils.progress import report_stage
 from ..utils.threads import run_in_thread
 from .files import (
     extract_archive,
     file_transaction,
-    temporary_directory,
     validate_archive,
 )
 from .system import base as system_base

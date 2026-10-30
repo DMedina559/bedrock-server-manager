@@ -8,8 +8,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.future import select
 from sqlalchemy.orm.attributes import flag_modified
 
-from ...state.validation import json_equal
-from ..database import Database
+from ...state.models import json_equal
 from ..models import Setting
 from .plugin_settings import PluginSettingsRepository
 
@@ -17,8 +16,7 @@ from .plugin_settings import PluginSettingsRepository
 class SettingsRepository:
     """Handle database persistence for application settings."""
 
-    def __init__(self, db: Database | None = None):
-        self.db = db
+    def __init__(self):
         self.plugin_settings = PluginSettingsRepository()
 
     async def get_all_settings(self, session: AsyncSession) -> Dict[str, Any]:

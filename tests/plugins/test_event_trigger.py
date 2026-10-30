@@ -1,6 +1,6 @@
 import pytest
 
-from bedrock_server_manager.plugins.event_trigger import trigger_event
+from bedrock_server_manager.events import trigger_event
 
 
 @pytest.mark.parametrize(
@@ -94,7 +94,7 @@ async def test_delayed_plugin_callback_preserves_original_event_revision(
     import asyncio
     import json
 
-    from bedrock_server_manager.state_revision import revision_clock
+    from bedrock_server_manager.state.revision import revision_clock
 
     entered = asyncio.Event()
     release = asyncio.Event()

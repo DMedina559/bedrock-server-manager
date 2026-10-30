@@ -299,13 +299,6 @@ async def post_install_addon(
         server_name,
         identity,
     )
-    from ...utils.server import validate_server
-
-    if not await validate_server(server_name=server_name, app_context=app_context):
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND,
-            detail=f"Server '{server_name}' not found.",
-        )
 
     content_base_dir = os.path.join(app_context.settings.get("paths.content"), "addons")
     full_addon_file_path = os.path.normpath(

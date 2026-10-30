@@ -29,9 +29,8 @@ from ..error import BSMError, StorageError
 from ..logging import log_operation_error
 from ..state.app_state import AppState
 from ..state.changeset import ChangeSet
-from ..state.models import ServerConfigState
+from ..state.models import ServerConfigState, json_equal
 from ..state.settings import SettingsState
-from ..state.validation import json_equal
 from .repositories import (
     AuditLogRepository,
     PlayerRepository,
@@ -63,13 +62,13 @@ class Storage:
 
         self.scheduler_repo = SchedulerRepository(db, storage=self)
         self._scheduler_state: AppState | None = None
-        self.settings_repo = SettingsRepository(db)
-        self.server_repo = ServerRepository(db)
-        self.plugin_repo = PluginRepository(db)
-        self.user_repo = UserRepository(db)
-        self.ban_repo = ServerBanRepository(db)
-        self.player_repo = PlayerRepository(db)
-        self.audit_log_repo = AuditLogRepository(db)
+        self.settings_repo = SettingsRepository()
+        self.server_repo = ServerRepository()
+        self.plugin_repo = PluginRepository()
+        self.user_repo = UserRepository()
+        self.ban_repo = ServerBanRepository()
+        self.player_repo = PlayerRepository()
+        self.audit_log_repo = AuditLogRepository()
         self._listeners: List[Callable[[AppState, ChangeSet], Any]] = []
         self._flush_lock = asyncio.Lock()
         self.diagnostics: Diagnostics | None = None

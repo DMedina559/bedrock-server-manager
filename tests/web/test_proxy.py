@@ -168,7 +168,7 @@ async def test_websocket_authentication_behind_ingress(
 ):
     import json
 
-    from bedrock_server_manager.utils.auth import create_access_token
+    from bedrock_server_manager.web.auth import create_access_token
 
     token = await create_access_token(app_context, {"sub": test_user.username})
     async with websocket_client(
@@ -204,7 +204,7 @@ async def test_configured_proxy_network(app_context):
 async def test_registration_links_use_external_https_prefix(
     app_context, test_admin_user
 ):
-    from bedrock_server_manager.utils.auth import create_access_token
+    from bedrock_server_manager.web.auth import create_access_token
 
     token = await create_access_token(app_context, {"sub": test_admin_user.username})
     headers = {

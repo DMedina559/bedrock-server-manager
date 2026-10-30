@@ -9,15 +9,11 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.future import select
 
 from ...state.models import UserInfoState
-from ..database import Database
 from ..models import RegistrationToken, User
 
 
 class UserRepository:
     """Handle database persistence for user accounts and registration tokens."""
-
-    def __init__(self, db: Database | None = None):
-        self.db = db
 
     async def get_all_users(self, session: AsyncSession) -> List[UserInfoState]:
         """Return all users from the database as UserInfoState models."""

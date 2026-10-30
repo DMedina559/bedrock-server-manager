@@ -1,17 +1,19 @@
 """One lifecycle-owned sampler shared by HTTP and WebSocket consumers."""
 
+from __future__ import annotations
+
 import asyncio
 import logging
 import os
 import time
 from collections import deque
-from typing import TYPE_CHECKING, Any
+from typing import TYPE_CHECKING, Any, Callable
 
 import psutil
 
 from ..diagnostics.models import MetricsDiagnostics
 from ..logging import RepeatedFailureReporter
-from ..state_revision import revision_clock
+from ..state.revision import revision_clock
 from ..utils.threads import run_in_thread
 from .metrics_models import (
     MetricsSample,
@@ -21,6 +23,8 @@ from .metrics_models import (
 
 if TYPE_CHECKING:
     from ..context import AppContext
+    from ..core.bedrock_server import BedrockServer
+    from ..web.websocket_manager import ConnectionManager
 
 logger = logging.getLogger(__name__)
 
@@ -300,4 +304,92 @@ class MetricsService:
         task, self._task = self._task, None
         if task is not None:
             task.cancel()
+            await asyncio.gather(task, return_exceptions=True)
+
+
+class ResourceMonitor:
+    """
+    A background task that periodically gathers and broadcasts resource usage
+    for servers that have active WebSocket subscribers.
+    """
+
+    def __init__(
+        self,
+        connection_manager: ConnectionManager,
+        server_provider: Callable[[str], "BedrockServer"] | None = None,
+        interval_provider: Callable[[], float] | None = None,
+    ):
+        """Initialize the ResourceMonitor with explicit dependencies.
+
+        :param connection_manager: The WebSocket connection manager.
+        :param server_provider: Optional callable returning a BedrockServer instance by name.
+        """
+        self.connection_manager = connection_manager
+        self.server_provider = server_provider
+        self.interval_provider = interval_provider or (lambda: 3.0)
+        self._task: asyncio.Task | None = None
+        self._failures = RepeatedFailureReporter(logger)
+
+    async def _monitor_loop(self):
+        """
+        The main loop that continuously checks for subscriptions and broadcasts data.
+        """
+        while True:
+            try:
+                connection_manager = self.connection_manager
+                # Get a copy of topics to avoid issues with concurrent modifications
+                topics = list(connection_manager.subscriptions.keys())
+
+                for topic in topics:
+                    if topic.startswith("resource-monitor:"):
+                        # Check if anyone is actually subscribed to this topic
+                        if not connection_manager.subscriptions.get(topic):
+                            continue
+
+                        server_name = topic.split(":", 1)[1]
+                        if server_name and callable(self.server_provider):
+                            server = self.server_provider(server_name)
+                            if server:
+                                revision = revision_clock.capture()
+                                process_info = await server.get_process_info()
+                                message = {
+                                    "type": "resource_update",
+                                    "topic": topic,
+                                    "data": {
+                                        "status": "success",
+                                        "process_info": process_info,
+                                        **revision,
+                                    },
+                                }
+                                await connection_manager.broadcast_to_topic(
+                                    topic, message
+                                )
+                self._failures.recover("resource monitoring")
+            except Exception as e:
+                self._failures.report(
+                    "resource monitoring",
+                    "Resource updates unavailable (%s): %s; retrying.",
+                    e,
+                )
+
+            await asyncio.sleep(self.interval_provider())
+
+    def start(self):
+        """Start the background monitoring task."""
+        if self._task is None or self._task.done():
+            self._task = asyncio.create_task(self._monitor_loop())
+            logger.debug("Resource monitor background task started.")
+
+    def stop(self):
+        """Stop the background monitoring task."""
+        if self._task and not self._task.done():
+            self._task.cancel()
+            self._task = None
+            logger.debug("Resource monitor background task stopped.")
+
+    async def shutdown(self) -> None:
+        """Cancel and await the monitor before releasing its dependencies."""
+        task = self._task
+        self.stop()
+        if task is not None:
             await asyncio.gather(task, return_exceptions=True)

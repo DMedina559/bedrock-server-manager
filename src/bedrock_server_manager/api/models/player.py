@@ -4,8 +4,8 @@ from typing import Annotated
 
 from pydantic import Field
 
-from ...results import PlayerScanDetails as PlayerScanDetails
-from ...results import PlayerScanError as PlayerScanError
+from ...contracts import PlayerScanDetails as PlayerScanDetails
+from ...contracts import PlayerScanError as PlayerScanError
 from .common import (
     APIRequest,
     NonEmptyStr,

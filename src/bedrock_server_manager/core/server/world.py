@@ -25,12 +25,12 @@ from ...error import (
     MissingArgumentError,
 )
 from ...logging import log_operation_error
+from ...utils.io import temporary_directory
 from ...utils.threads import check_cancellation, copy_stream, run_in_thread
 from ..files import (
     atomic_world_archive,
     extract_archive,
     file_transaction,
-    temporary_directory,
 )
 from ..system import base as system_base
 

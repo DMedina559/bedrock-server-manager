@@ -34,9 +34,8 @@ async def test_stopping_stopped_server_is_idempotent(real_bedrock_server):
     assert await real_bedrock_server.stop() is None
 
 
-@pytest.mark.parametrize("probe_stage", ["status", "recovery"])
 async def test_stale_probe_cannot_replace_newly_started_child(
-    real_bedrock_server, monkeypatch, probe_stage
+    real_bedrock_server, monkeypatch
 ):
     from pathlib import Path
 
@@ -44,19 +43,9 @@ async def test_stale_probe_cannot_replace_newly_started_child(
 
     server = real_bedrock_server
     entered, release = asyncio.Event(), asyncio.Event()
-    original_status = module.system_base.is_server_running
     original_verify = module.system_process.get_verified_bedrock_process
     original_write_pid = module.system_process.write_pid_to_file
     probe_task = None
-
-    async def status(*args):
-        if asyncio.current_task() is probe_task:
-            if probe_stage == "status":
-                entered.set()
-                await release.wait()
-                return False
-            return True
-        return await original_status(*args)
 
     async def verify(*args):
         if asyncio.current_task() is probe_task:
@@ -71,7 +60,6 @@ async def test_stale_probe_cannot_replace_newly_started_child(
         await original_write_pid(path, pid)
 
     monkeypatch.setattr(module.system_process, "write_pid_to_file", write_pid)
-    monkeypatch.setattr(module.system_base, "is_server_running", status)
     monkeypatch.setattr(module.system_process, "get_verified_bedrock_process", verify)
     probe_task = asyncio.create_task(server.is_running())
     try:

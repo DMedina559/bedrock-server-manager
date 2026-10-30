@@ -6,9 +6,7 @@ import logging
 from ..context import AppContext
 from ..core.player import (
     discover_and_store_players,
-    get_known_players,
     parse_player_string,
-    save_player_data,
 )
 from ..error import BSMError, UserInputError
 from ..events import trigger_event
@@ -42,7 +40,7 @@ async def add_players_manually(
         players_data = parse_player_string(combined_input)
         unique = {player["xuid"]: player for player in players_data}
         saved_count = (
-            await save_player_data(storage, list(unique.values())) if unique else 0
+            int(await storage.save_players(list(unique.values()))) if unique else 0
         )
         return AddPlayersManuallyResponse.model_validate(
             {
@@ -71,7 +69,7 @@ async def get_all_known_players(
     if storage is None:
         raise BSMError("Storage is not initialized.")
     try:
-        players = await get_known_players(storage)
+        players = list(await storage.get_all_players())
         return GetAllKnownPlayersResponse.model_validate(
             {"status": "success", "players": players}
         )

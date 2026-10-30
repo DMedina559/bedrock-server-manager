@@ -11,9 +11,8 @@ from ..error import (
 from ..events import trigger_event
 from ..logging import log_operation_error
 from ..plugins.api_bridge import api_method
-from ..plugins.api_contract import validate_contract
-from ..plugins.runtime_capabilities import server_lifecycle_manager
 from ..utils import get_timestamp
+from .contract import validate_contract
 from .models.world import (
     ExportWorldRequest,
     ExportWorldResponse,
@@ -24,6 +23,7 @@ from .models.world import (
     ResetWorldRequest,
     ResetWorldResponse,
 )
+from .server import server_lifecycle_manager
 
 # bedrock_server_manager/api/world.py
 """Provides API functions for managing Bedrock server worlds.
