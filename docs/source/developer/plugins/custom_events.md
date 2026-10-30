@@ -406,8 +406,7 @@ already visible to that plugin. It has the same filters and lifecycle cleanup as
 events or expose another plugin's private payloads.
 
 ```python
-from bedrock_server_manager.events import EventActivityQuery
-from bedrock_server_manager.operations import OperationActivityQuery
+from bedrock_server_manager import EventActivityQuery, OperationActivityQuery
 
 self.api.events.observe_all(self.on_any_event)
 activity = self.api.events.activity(EventActivityQuery(server_name="example"))

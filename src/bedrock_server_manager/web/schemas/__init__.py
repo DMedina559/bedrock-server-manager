@@ -26,7 +26,7 @@ from .ban import (
     BanAddRequest,
     BanRemoveRequest,
 )
-from .base import ActionResponse, BaseApiResponse
+from .base import ActionResponse, BaseApiResponse, TaskAcceptedResponse
 from .plugin import (
     PluginPagesResponse,
     PluginStatusesResponse,
@@ -85,6 +85,7 @@ from .users import (
 __all__ = [
     "ActionResponse",
     "BaseApiResponse",
+    "TaskAcceptedResponse",
     "BanAddRequest",
     "BanRemoveRequest",
     "GenerateTokenPayload",

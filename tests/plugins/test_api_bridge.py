@@ -68,3 +68,55 @@ async def test_plugin_cannot_supply_runtime_dependencies(app_context):
         await api.settings.get_global_setting(
             {"key": "web.port"}, app_context=app_context
         )
+
+
+async def test_runtime_lifecycle_positional_options_match_protocol(
+    app_context, real_bedrock_server
+):
+    api = create_app_api("example", app_context)
+    async with api.runtime.server_lifecycle_manager(
+        real_bedrock_server.server_name, False, False
+    ):
+        pass
+    assert not await real_bedrock_server.is_running()
+    with pytest.raises(TypeError):
+        api.runtime.server_lifecycle_manager("server", False, app_context=app_context)
+
+
+@pytest.mark.parametrize("value", [None, False, 0, ""])
+async def test_plugin_settings_preserve_falsy_values(app_context, value):
+    import logging
+
+    from bedrock_server_manager.plugins.plugin_base import PluginBase
+
+    plugin = PluginBase(
+        "settings",
+        create_app_api("settings", app_context),
+        logging.getLogger("test.plugin"),
+    )
+    result = await plugin.set_plugin_setting("key", value)
+    assert result.status == "success"
+    assert await plugin.get_plugin_setting("key", default="fallback") == (
+        "fallback" if value is None else value
+    )
+    await app_context.storage.load_state(app_context.state)
+    assert await plugin.get_plugin_setting("key", default="fallback") == (
+        "fallback" if value is None else value
+    )
+
+
+async def test_plugin_task_bridge_runs_actual_server_api(
+    app_context, real_bedrock_server, wait_for_task
+):
+    api = create_app_api("autostart", app_context)
+    task_id = await api.runtime.run_task(
+        api.server.start,
+        request={"server_name": real_bedrock_server.server_name},
+        username="System (Autostart)",
+    )
+    snapshot = await wait_for_task(app_context, task_id)
+    assert snapshot.result["server_name"] == real_bedrock_server.server_name
+    assert snapshot.result["outcome"] == "started"
+    assert await real_bedrock_server.is_running()
+    assert app_context.task_manager._plugin_owners[task_id] == "autostart"
+    assert await app_context.task_manager.get_task(task_id, username="other") is None

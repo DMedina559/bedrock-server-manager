@@ -120,8 +120,7 @@ see [Plugin settings](settings.md).
 Read the current callback and operation without changing callback signatures:
 
 ```python
-from bedrock_server_manager import app_event
-from bedrock_server_manager.operations import OperationResultQuery
+from bedrock_server_manager import OperationResultQuery, app_event
 
 @app_event("before_server_start", priority=-10)
 async def inspect_start(self, server_name, **kwargs):

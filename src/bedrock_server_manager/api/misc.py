@@ -11,7 +11,7 @@ import logging
 from typing import Optional
 
 from ..context import AppContext
-from ..core import prune_old_downloads
+from ..core.downloader import prune_old_downloads
 from ..error import (
     BSMError,
     IncompleteOperationError,

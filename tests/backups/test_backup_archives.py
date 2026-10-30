@@ -472,3 +472,16 @@ async def test_capture_and_restore_flush_writable_file_handles(
     assert result.committed and result.safety_backup_id
     assert properties.read_bytes() == original
     assert len(flushed) >= 3
+
+
+@pytest.mark.parametrize("compression", ["fast", "balanced", "small"])
+async def test_compression_profiles_preserve_recovery(populated_server, compression):
+    server = populated_server
+    await server.settings.set("backups.compression", compression)
+    backup = await server.backups.create_snapshot(mode="world")
+    verified = await server.backups.verify_snapshot(backup.backup_id)
+    assert verified.status == "verified"
+    inspected = await server.backups.inspect_snapshot(backup.backup_id)
+    assert inspected.manifest.mode == "world"
+    assert "Compressing backup" in backup.stage_durations_ms
+    assert "Recording archive integrity" in backup.stage_durations_ms

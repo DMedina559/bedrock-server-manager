@@ -1,6 +1,10 @@
 import json
+import os
+import shutil
 import sqlite3
+import zipfile
 from contextlib import closing
+from pathlib import Path
 
 import pytest
 import pytest_asyncio
@@ -15,6 +19,10 @@ from bedrock_server_manager.state.app_state import AppState
 from bedrock_server_manager.utils.general import startup_checks
 from bedrock_server_manager.web.app import create_web_app
 from bedrock_server_manager.web.auth import create_access_token, get_password_hash
+
+_SERVER_TEMPLATE_DIR: Path | None = None
+_SERVER_TEMPLATE_VERSION: str = "1.20.0.01"
+_WORLD_TEMPLATE_DIR: Path | None = None
 
 
 @pytest.fixture(autouse=True)
@@ -66,8 +74,15 @@ async def migrated_database(tmp_path_factory):
     return path
 
 
+@pytest.fixture(scope="session")
+def schema_revision(migrated_database):
+    with closing(sqlite3.connect(migrated_database)) as conn:
+        row = conn.execute("SELECT version_num FROM alembic_version").fetchone()
+        return str(row[0]) if row else None
+
+
 @pytest_asyncio.fixture
-async def db(isolated_bcm_config, tmp_path, migrated_database):
+async def db(isolated_bcm_config, tmp_path, migrated_database, schema_revision):
     """Give each test its own migrated database, engine and event-loop resources."""
     path = tmp_path / "test_data" / "test.db"
     with closing(sqlite3.connect(migrated_database)) as source:
@@ -75,10 +90,9 @@ async def db(isolated_bcm_config, tmp_path, migrated_database):
             source.backup(destination)
     database = Database(f"sqlite+aiosqlite:///{path}")
     database.initialize()
+    database.schema_revision = schema_revision
+    database._tables_created = True
     try:
-        # Retain the production revision check for the independent database.
-        async with database.session_manager():
-            pass
         yield database
     finally:
         await database.shutdown()
@@ -124,29 +138,44 @@ async def app_context(db, isolated_bcm_config, tmp_path):
     await context.shutdown()
 
 
-@pytest_asyncio.fixture
-async def real_bedrock_server(app_context, tmp_path, dummy_server_zip):
-    """Install the bsm-test-utils binary through the production installation API."""
-    from bedrock_server_manager.api.install import install_new_server
-    from bedrock_server_manager.api.models import InstallNewServerRequest
+async def _ensure_server_template(tmp_path_factory, dummy_server_zip) -> Path:
+    from bedrock_server_manager.core.system.base import set_server_folder_permissions
 
+    global _SERVER_TEMPLATE_DIR
+    if _SERVER_TEMPLATE_DIR is None or not _SERVER_TEMPLATE_DIR.exists():
+        base = tmp_path_factory.mktemp("server-template")
+        archive = dummy_server_zip(target_dir=base, version=_SERVER_TEMPLATE_VERSION)
+        template_dir = base / "extracted"
+        template_dir.mkdir(parents=True, exist_ok=True)
+        with zipfile.ZipFile(archive, "r") as zf:
+            zf.extractall(template_dir)
+        await set_server_folder_permissions(str(template_dir))
+        _SERVER_TEMPLATE_DIR = template_dir
+    return _SERVER_TEMPLATE_DIR
+
+
+@pytest_asyncio.fixture
+async def real_bedrock_server(app_context, tmp_path_factory, dummy_server_zip):
+    """Install the bsm-test-utils binary using a session-cached extracted template."""
     server_name = "test_server"
-    archive = dummy_server_zip(target_dir=tmp_path)
-    await install_new_server(
-        InstallNewServerRequest(
-            server_name=server_name,
-            target_version="CUSTOM",
-            server_zip_path=str(archive),
-        ),
-        app_context=app_context,
+    template_dir = await _ensure_server_template(tmp_path_factory, dummy_server_zip)
+    server = app_context.prepare_server(server_name)
+    shutil.copytree(template_dir, server.paths.server_dir, dirs_exist_ok=True)
+    os.makedirs(server.paths.server_config_dir, exist_ok=True)
+    await app_context.server_service.register_or_update_server(
+        server_name,
+        installed_version=_SERVER_TEMPLATE_VERSION,
+        status="INSTALLED",
+        target_version="LATEST",
     )
-    server = app_context.get_server(server_name)
-    await server.set_target_version("LATEST")
     await app_context.bedrock_process_manager.add_server(server)
     try:
         yield server
     finally:
-        await server.stop()
+        if server.process._process is not None or os.path.exists(
+            server.get_pid_file_path()
+        ):
+            await server.stop()
 
 
 @pytest_asyncio.fixture
@@ -246,9 +275,17 @@ def password_hashes():
 
 
 @pytest_asyncio.fixture
-async def populated_server(real_bedrock_server, valid_mcworld_zip):
+async def populated_server(real_bedrock_server, tmp_path_factory, valid_mcworld_zip):
+    global _WORLD_TEMPLATE_DIR
+    if _WORLD_TEMPLATE_DIR is None or not _WORLD_TEMPLATE_DIR.exists():
+        world_template = tmp_path_factory.mktemp("world-template") / "world"
+        world_template.mkdir(parents=True, exist_ok=True)
+        with zipfile.ZipFile(valid_mcworld_zip, "r") as zf:
+            zf.extractall(world_template)
+        _WORLD_TEMPLATE_DIR = world_template
     world = await real_bedrock_server.get_world_name()
-    await real_bedrock_server.worlds.extract_mcworld(str(valid_mcworld_zip), world)
+    target_world = Path(real_bedrock_server.paths.server_dir) / "worlds" / world
+    shutil.copytree(_WORLD_TEMPLATE_DIR, target_world, dirs_exist_ok=True)
     return real_bedrock_server
 
 

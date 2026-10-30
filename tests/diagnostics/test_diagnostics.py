@@ -217,3 +217,41 @@ async def test_event_failure_history_preserves_correlation_without_payload(app_c
     assert history.records[0].error_type == "TimeoutError"
     assert "PRIVATE" not in history.model_dump_json()
     assert "secret" not in history.model_dump_json()
+
+
+@pytest.mark.asyncio
+async def test_transient_failure_has_finite_attempts_and_one_drop(db, monkeypatch):
+    store = DiagnosticHistoryStore(db, DiagnosticOptions())
+    service = Diagnostics(store, store.options)
+    calls = 0
+
+    async def fail(record):
+        nonlocal calls
+        calls += 1
+        raise TimeoutError
+
+    monkeypatch.setattr(store, "_write", fail)
+    store.start()
+    try:
+        service.record("storage", "bounded-retry", started=time.monotonic())
+        await asyncio.wait_for(store.queue.join(), 5)
+        assert calls == 3 and store.write_failures == 3
+        assert store.dropped == 1 and store.last_error_type == "TimeoutError"
+    finally:
+        await store.close()
+
+
+def test_retry_classification_distinguishes_locks_from_invalid_sql():
+    import sqlite3
+
+    from sqlalchemy.exc import OperationalError
+
+    from bedrock_server_manager.diagnostics import history as module
+
+    busy = sqlite3.OperationalError("busy")
+    busy.sqlite_errorcode = sqlite3.SQLITE_BUSY
+    assert module.retryable_write(OperationalError("query", {}, busy))
+    invalid = sqlite3.OperationalError("no such table")
+    invalid.sqlite_errorcode = sqlite3.SQLITE_ERROR
+    assert not module.retryable_write(OperationalError("query", {}, invalid))
+    assert not module.retryable_write(RuntimeError("invalid record"))

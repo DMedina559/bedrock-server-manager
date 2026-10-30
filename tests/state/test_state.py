@@ -167,3 +167,65 @@ def test_state_models_deep_copy_isolation():
     internal_cfg = server_state.get("survival")
     assert internal_cfg is not None
     assert internal_cfg.custom["motd"] == "Original"
+
+
+def test_revisions_are_unique_across_threads_and_epochs_change_per_instance():
+    from concurrent.futures import ThreadPoolExecutor
+
+    from bedrock_server_manager.state.revision import RevisionClock
+
+    clock = RevisionClock()
+    with ThreadPoolExecutor(max_workers=8) as executor:
+        revisions = list(executor.map(lambda _: clock.capture(), range(200)))
+    assert sorted(revision["revision"] for revision in revisions) == list(range(1, 201))
+    assert {revision["epoch"] for revision in revisions} == {clock.epoch}
+    assert RevisionClock().epoch != clock.epoch
+
+
+def test_state_revision_requires_complete_valid_metadata():
+    from pydantic import ValidationError
+
+    from bedrock_server_manager.api.models.common import StateRevision
+
+    assert StateRevision().epoch is None
+    assert StateRevision(epoch="instance", revision=1).revision == 1
+    for data in (
+        {"epoch": "instance"},
+        {"revision": 1},
+        {"epoch": " ", "revision": 1},
+        {"epoch": "instance", "revision": 2**53},
+    ):
+        with pytest.raises(ValidationError):
+            StateRevision(**data)
+
+
+async def test_changeset_apply_to_storage(db, storage):
+    from sqlalchemy import select
+
+    from bedrock_server_manager.db.models import Server
+    from bedrock_server_manager.state.changeset import ChangeSet
+
+    state = AppState()
+    await storage.load_state(state)
+
+    cfg = ServerConfigState(
+        server_name="changeset_server",
+        installed_version="1.20",
+        status="STOPPED",
+        autostart=True,
+    )
+    state.servers.set(cfg)
+
+    cs = ChangeSet()
+    cs.add_server("changeset_server")
+    assert not cs.is_empty()
+
+    await storage.apply_changeset(state, cs)
+
+    async with db.session_manager() as session:
+        res = await session.execute(
+            select(Server).filter_by(server_name="changeset_server")
+        )
+        rec = res.scalars().first()
+        assert rec is not None
+        assert rec.autostart is True

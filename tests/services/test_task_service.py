@@ -372,3 +372,28 @@ async def test_explicit_concurrency_limit_keeps_waiting_tasks_queued():
     await manager.shutdown()
     assert calls == ["first"]
     assert (await manager.get_task(second)).status == "cancelled"
+
+
+@pytest.mark.parametrize(
+    "status,result,error",
+    [
+        ("completed", None, "failed"),
+        ("failed", None, None),
+        ("running", 42, None),
+    ],
+)
+def test_task_contract_rejects_contradictory_states(status, result, error):
+    from pydantic import ValidationError
+
+    from bedrock_server_manager.api.models.tasks import TaskSnapshot
+    from bedrock_server_manager.contracts import FailureInfo
+
+    err_obj = (
+        FailureInfo(code="internal_error", message="Failed")
+        if error == "failed"
+        else None
+    )
+    with pytest.raises(ValidationError):
+        TaskSnapshot(
+            id="task", status=status, message="State", result=result, error=err_obj
+        )

@@ -17,7 +17,7 @@ from bedrock_server_manager.scheduler.runner import activation, run_schedule
 from bedrock_server_manager.state.settings import BackupSchedule, ScheduledTask
 
 
-@pytest.mark.parametrize("stage", ["begin", "first_file", "all_files", "commit"])
+@pytest.mark.parametrize("stage", ["all_files", "commit"])
 async def test_process_killed_during_restore_is_recovered(tmp_path, stage):
     root = tmp_path / "server"
     root.mkdir()

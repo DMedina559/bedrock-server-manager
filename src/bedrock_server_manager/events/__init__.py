@@ -14,6 +14,14 @@ from .models import (
     EventSubscriptionInfo,
     EventSubscriptions,
 )
+from .operations import (
+    OperationActivity,
+    OperationActivityQuery,
+    OperationName,
+    OperationResultQuery,
+    OperationSequence,
+    OperationSnapshot,
+)
 from .player import PlayerSnapshot
 from .publisher import EventPublisher
 from .registry import EventRegistry
@@ -40,4 +48,10 @@ __all__ = [
     "trigger_event",
     "StatusRequest",
     "StatusResult",
+    "OperationActivity",
+    "OperationActivityQuery",
+    "OperationName",
+    "OperationResultQuery",
+    "OperationSequence",
+    "OperationSnapshot",
 ]

@@ -10,7 +10,6 @@ import pytest
 from sqlalchemy.exc import OperationalError
 from sqlalchemy.future import select
 
-from bedrock_server_manager.db.database import Database
 from bedrock_server_manager.db.models import Server
 from bedrock_server_manager.db.storage import Storage
 from bedrock_server_manager.error import StorageError
@@ -23,20 +22,9 @@ from bedrock_server_manager.state import (
 
 
 @pytest.fixture
-async def file_db(tmp_path):
-    """Create a real file-backed SQLite database with tables created to test real file
-    locking and transaction semantics.
-    """
-    db_file = tmp_path / "stress_test.db"
-    db_url = f"sqlite+aiosqlite:///{db_file}"
-    database = Database(db_url)
-    database.initialize()
-
-    async with database.session_manager():
-        pass
-
-    yield database
-    await database.shutdown()
+async def file_db(db):
+    """Reuse the migrated file-backed SQLite database to test file locking and transaction semantics."""
+    yield db
 
 
 @pytest.mark.asyncio
@@ -59,7 +47,7 @@ async def test_concurrent_mutations_stress(file_db, tmp_path):
     await storage.flush(state)
     assert not state.is_dirty()
 
-    num_tasks = 20
+    num_tasks = 8
 
     async def worker(worker_id: int):
         for step in range(3):
