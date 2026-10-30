@@ -50,11 +50,7 @@ async def test_create_first_user_already_exists(
 ):
     """Test creating a user when one already exists."""
     # Ensure needs_setup is evaluated to False
-    _ = (
-        app_context.needs_setup
-        if hasattr(app_context, "needs_setup")
-        else app_context.needs_setup
-    )
+    assert await app_context.check_setup() is False
 
     response = await unauth_client.post(
         "/api/setup/create-first-user",

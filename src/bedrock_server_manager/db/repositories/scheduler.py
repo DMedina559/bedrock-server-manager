@@ -267,6 +267,26 @@ class SchedulerRepository:
 
     async def recover(self):
         """Record interrupted attempts once on application startup."""
+        state = self.storage._scheduler_state if self.storage is not None else None
+        if state is not None and state.scheduler.count == 0:
+            return
+        async with self.db.session_manager() as session:
+            has_running_run = (
+                await session.scalar(
+                    select(ScheduleRun.run_id)
+                    .where(ScheduleRun.status == "running")
+                    .limit(1)
+                )
+            ) is not None
+            if not has_running_run:
+                schedules = (await session.execute(select(Schedule))).scalars().all()
+                has_interrupted_schedule = any(
+                    row.state.get("status") == "running" or row.state.get("lease")
+                    for row in schedules
+                )
+                if not has_interrupted_schedule:
+                    return
+
         async with self._write() as session:
             rows = (
                 (

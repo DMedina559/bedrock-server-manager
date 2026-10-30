@@ -104,27 +104,90 @@ class Database:
         )
 
         if db_url.startswith("sqlite"):
+            import sqlite3
+            import weakref
+
+            wal_configured = False
 
             @event.listens_for(self.engine.sync_engine, "connect")
             def set_sqlite_pragma_async(dbapi_connection, connection_record):
+                nonlocal wal_configured
                 raw_conn = getattr(dbapi_connection, "_connection", None)
                 if raw_conn is not None and not getattr(
                     raw_conn, "_bsm_idempotent_stop", False
                 ):
+                    open_cursors: weakref.WeakSet[sqlite3.Cursor] = weakref.WeakSet()
+
+                    def _cleanup_conn() -> None:
+                        conn = getattr(raw_conn, "_conn", None)
+                        for cur in list(open_cursors):
+                            try:
+                                cur.close()
+                            except Exception:
+                                pass
+                        open_cursors.clear()
+                        if conn is not None:
+                            try:
+                                conn.rollback()
+                            except Exception:
+                                pass
+
+                    def _clean_close() -> None:
+                        conn = getattr(raw_conn, "_conn", None)
+                        _cleanup_conn()
+                        if conn is not None:
+                            conn.close()
+
                     orig_stop = raw_conn.stop
                     stop_future = None
 
                     def _idempotent_stop():
                         nonlocal stop_future
                         if stop_future is None:
+                            tx = getattr(raw_conn, "_tx", None)
+                            if tx is not None:
+                                try:
+                                    loop = asyncio.get_running_loop()
+                                    tx.put_nowait((loop.create_future(), _cleanup_conn))
+                                except Exception:
+                                    pass
                             stop_future = orig_stop()
                         return stop_future
 
                     raw_conn.stop = _idempotent_stop
+
+                    orig_execute = raw_conn._execute
+
+                    async def _interruptible_execute(fn, *args, **kwargs):
+                        conn = getattr(raw_conn, "_conn", None)
+                        is_close = conn is not None and fn == conn.close
+                        if is_close:
+                            fn = _clean_close
+                        else:
+                            bound_self = getattr(fn, "__self__", None)
+                            if isinstance(bound_self, sqlite3.Cursor):
+                                open_cursors.add(bound_self)
+                        try:
+                            res = await orig_execute(fn, *args, **kwargs)
+                            if isinstance(res, sqlite3.Cursor):
+                                open_cursors.add(res)
+                            return res
+                        except asyncio.CancelledError:
+                            conn = getattr(raw_conn, "_conn", None)
+                            if conn is not None and not is_close:
+                                try:
+                                    conn.interrupt()
+                                except Exception:
+                                    pass
+                            raise
+
+                    raw_conn._execute = _interruptible_execute
                     raw_conn._bsm_idempotent_stop = True
 
                 cursor = dbapi_connection.cursor()
-                cursor.execute("PRAGMA journal_mode=WAL")
+                if not wal_configured:
+                    cursor.execute("PRAGMA journal_mode=WAL")
+                    wal_configured = True
                 cursor.execute("PRAGMA synchronous=NORMAL")
                 cursor.close()
 
@@ -152,6 +215,11 @@ class Database:
         with sync_engine.begin() as connection:
             alembic_cfg.attributes["connection"] = connection
             command.upgrade(alembic_cfg, "head")
+        if sync_url.startswith("sqlite"):
+            with sync_engine.connect().execution_options(
+                isolation_level="AUTOCOMMIT"
+            ) as connection:
+                connection.exec_driver_sql("PRAGMA journal_mode=WAL")
         sync_engine.dispose()
 
     def _get_head_revision(self) -> str | None:

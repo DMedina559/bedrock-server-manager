@@ -746,7 +746,7 @@ class Scheduler:
         from ..services.lifecycle import LifecyclePhase
 
         try:
-            await self.repository.recover()
+            recovered = False
             while True:
                 if self.context.lifecycle_phase != LifecyclePhase.READY:
                     try:
@@ -755,6 +755,9 @@ class Scheduler:
                         pass
                     self._wake.clear()
                     continue
+                if not recovered:
+                    await self.repository.recover()
+                    recovered = True
                 self.last_tick_at = time.time()
                 self._last_tick_monotonic = time.monotonic()
                 self.last_error_type = None
