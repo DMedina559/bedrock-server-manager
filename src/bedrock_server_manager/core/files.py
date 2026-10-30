@@ -12,7 +12,6 @@ from pathlib import Path, PurePosixPath
 from typing import BinaryIO, Callable
 from zipfile import BadZipFile, ZipFile, ZipInfo
 
-from ..utils.files import temporary_directory  # noqa: F401 - compatibility re-export
 from ..utils.threads import check_cancellation, copy_stream, run_in_thread
 
 logger = logging.getLogger(__name__)

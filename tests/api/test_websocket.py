@@ -2,7 +2,7 @@ import asyncio
 import json
 
 from bedrock_server_manager.plugins.api_bridge import create_app_api
-from bedrock_server_manager.utils.auth import create_access_token
+from bedrock_server_manager.web.auth import create_access_token
 
 
 async def test_plugin_websocket_api_delivers_real_frames(

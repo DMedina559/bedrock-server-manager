@@ -43,7 +43,7 @@ class ServerProcess:
         )
         self.intentionally_stopped = True
         self._log_file_handle: BufferedWriter | None = None
-        self._resource_monitor = system_base.ResourceMonitor()
+        self._resource_monitor = system_base.ProcessResourceMonitor()
 
     _process: Optional[Union[asyncio.subprocess.Process, "psutil.Process"]]
     intentionally_stopped: bool
@@ -70,22 +70,13 @@ class ServerProcess:
         # Probes do not hold operation_lock: discard results from before a
         # concurrent start or another probe installed a different handle.
         observed_process = self._process
-        running = await system_base.is_server_running(
+        verified_process = await system_process.get_verified_bedrock_process(
             self.server.server_name,
             self.server.paths.server_dir,
             self.server.paths.app_config_dir,
         )
         if self._process is not observed_process:
             return await self.is_running()
-        verified_process = None
-        if running:
-            verified_process = await system_process.get_verified_bedrock_process(
-                self.server.server_name,
-                self.server.paths.server_dir,
-                self.server.paths.app_config_dir,
-            )
-            if self._process is not observed_process:
-                return await self.is_running()
         self._process = verified_process
         return self._publish_running(verified_process is not None)
 

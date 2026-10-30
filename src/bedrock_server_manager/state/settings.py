@@ -30,7 +30,7 @@ from ..backups.contents import (
 from ..diagnostics.models import DiagnosticOptions
 from ..error import ConfigurationError
 from ..events.models import EventOptions
-from .validation import json_equal
+from .models import json_equal
 
 logger = logging.getLogger(__name__)
 

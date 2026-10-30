@@ -4,7 +4,6 @@ from ..context import AppContext
 from ..error import BSMError, UserInputError
 from ..events import trigger_event
 from ..plugins.api_bridge import api_method
-from ..plugins.api_contract import validate_contract
 from .models.ban import (
     AddServerBanRequest,
     AddServerBanResponse,
@@ -49,7 +48,7 @@ async def add_server_ban(
     )
 
 
-@validate_contract
+@api_method("remove_server_ban")
 @trigger_event(
     before="before_remove_server_ban",
     after="after_remove_server_ban",

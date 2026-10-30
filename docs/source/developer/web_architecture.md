@@ -16,6 +16,6 @@ Middleware executes ingress first, followed by CORS, identity, setup, and shutdo
 
 Core system helpers manage operating-system services without importing the web runtime. The Windows web-service host belongs to `web`; the CLI composes that host when running under the Windows service dispatcher.
 
-Metrics observations live in `services.metrics_models`, and revision metadata lives in `state_revision`. API modules wrap or re-export these contracts so service code does not depend on HTTP/plugin API types.
+Metrics observations live in `services.metrics_models`, and revision metadata lives in `state.revision`. API modules wrap or re-export these contracts so service code does not depend on HTTP/plugin API types.
 
 Within `diagnostics`, `composition` wires application providers, `health` evaluates evidence, `activity` bounds event details and recent counters, `comparison` compares snapshots, `sampling` owns optional periodic health history, and `history` manages independent database persistence. `service` coordinates these components and supplies narrow callbacks to application services.

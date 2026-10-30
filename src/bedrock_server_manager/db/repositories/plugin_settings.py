@@ -6,7 +6,7 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm.attributes import flag_modified
 
-from ...state.validation import json_equal
+from ...state.models import json_equal
 from ..models import PluginSetting
 
 

@@ -23,9 +23,9 @@ from ...error import (
     UserInputError,
 )
 from ...logging import log_operation_error
-from ...utils.io import load_json, save_json
+from ...utils.io import load_json, save_json, temporary_directory
 from ...utils.threads import run_in_thread
-from ..files import extract_archive, file_transaction, temporary_directory
+from ..files import extract_archive, file_transaction
 from ..manifests import PackManifest
 
 if TYPE_CHECKING:

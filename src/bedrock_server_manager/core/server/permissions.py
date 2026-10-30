@@ -5,7 +5,6 @@ from typing import TYPE_CHECKING, Any, Dict, List, Optional
 
 import aiofiles.ospath
 
-from ...core.player import get_known_players
 from ...error import (
     AppFileNotFoundError,
     ConfigParseError,
@@ -97,15 +96,11 @@ class ServerPermissions:
                 modified = True
             if modified:
                 try:
-                    lock = self.server.get_file_lock(
-                        self.server.paths.permissions_json_path
+                    await save_json(
+                        permissions_list,
+                        self.server.paths.permissions_json_path,
+                        indent=4,
                     )
-                    async with lock:
-                        await save_json(
-                            permissions_list,
-                            self.server.paths.permissions_json_path,
-                            indent=4,
-                        )
                     self.logger.info(
                         "Successfully updated permissions for XUID '%s' for '%s'.",
                         xuid,
@@ -149,7 +144,7 @@ class ServerPermissions:
                 f"OSError reading permissions file '{self.server.paths.permissions_json_path}': {e}"
             ) from e
         try:
-            known_players = await get_known_players(storage)
+            known_players = list(await storage.get_all_players())
             player_map = {p["xuid"]: p["name"] for p in known_players}
         except Exception as e:
             log_operation_error(

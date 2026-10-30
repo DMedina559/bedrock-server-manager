@@ -35,7 +35,7 @@ from starlette.types import Lifespan
 
 if TYPE_CHECKING:
     from .api_bridge import AppAPI
-    from ..web.tasks import TaskManager
+    from ..services.task_service import TaskManager
     from ..web.websocket_manager import ConnectionManager
     from ..state.app_state import AppState
     from ..db.storage import Storage
@@ -418,6 +418,63 @@ class PluginManager:
             return
         await self.trigger_event(event, *args, **kwargs)
 
+    def _start_plugin_task_loops(self, plugin_key: str, instance: PluginBase) -> None:
+        """Create and register @task_loop tasks for a single plugin instance."""
+        for method_name, method in inspect.getmembers(
+            instance, predicate=inspect.ismethod
+        ):
+            interval_raw = getattr(method, "_task_loop_interval", None)
+            if interval_raw is not None:
+                interval = max(float(interval_raw), 0.1)
+
+                async def run_task_loop(
+                    m: Callable[..., Any] = method,
+                    intv: float = interval,
+                    p_name: str = plugin_key,
+                    m_name: str = method_name,
+                ) -> None:
+                    consecutive_failures = 0
+                    while True:
+                        try:
+                            sleep_time = (
+                                intv
+                                if consecutive_failures == 0
+                                else min(
+                                    intv * (2 ** min(consecutive_failures, 6)),
+                                    300.0,
+                                )
+                            )
+                            await asyncio.sleep(sleep_time)
+                            if inspect.iscoroutinefunction(m):
+                                await m()
+                            else:
+                                await run_in_thread(m)
+                            consecutive_failures = 0
+                        except asyncio.CancelledError:
+                            logger.debug(
+                                "Task loop %s.%s cancelled cleanly.",
+                                p_name,
+                                m_name,
+                            )
+                            break
+                        except Exception as e:
+                            consecutive_failures += 1
+                            log_operation_error(
+                                logger,
+                                "Error in task loop %s.%s (failure #%s): %s",
+                                p_name,
+                                m_name,
+                                consecutive_failures,
+                                e,
+                                error=e,
+                            )
+
+                task = asyncio.create_task(
+                    run_task_loop(),
+                    name=f"task_loop_{plugin_key}_{method_name}",
+                )
+                self.plugin_tasks.setdefault(plugin_key, []).append(task)
+
     async def start_plugin_tasks(self) -> None:
         """Start background tasks for all plugins that have methods decorated with
         @task_loop.
@@ -458,61 +515,7 @@ class PluginManager:
                 self.plugin_tasks[plugin_key] = []
 
                 try:
-                    for method_name, method in inspect.getmembers(
-                        plugin_instance, predicate=inspect.ismethod
-                    ):
-                        interval_raw = getattr(method, "_task_loop_interval", None)
-                        if interval_raw is not None:
-                            interval = max(float(interval_raw), 0.1)
-
-                            async def run_task_loop(
-                                m: Callable[..., Any] = method,
-                                intv: float = interval,
-                                p_name: str = plugin_key,
-                                m_name: str = method_name,
-                            ) -> None:
-                                consecutive_failures = 0
-                                while True:
-                                    try:
-                                        sleep_time = (
-                                            intv
-                                            if consecutive_failures == 0
-                                            else min(
-                                                intv
-                                                * (2 ** min(consecutive_failures, 6)),
-                                                300.0,
-                                            )
-                                        )
-                                        await asyncio.sleep(sleep_time)
-                                        if inspect.iscoroutinefunction(m):
-                                            await m()
-                                        else:
-                                            await run_in_thread(m)
-                                        consecutive_failures = 0
-                                    except asyncio.CancelledError:
-                                        logger.debug(
-                                            "Task loop %s.%s cancelled cleanly.",
-                                            p_name,
-                                            m_name,
-                                        )
-                                        break
-                                    except Exception as e:
-                                        consecutive_failures += 1
-                                        log_operation_error(
-                                            logger,
-                                            "Error in task loop %s.%s (failure #%s): %s",
-                                            p_name,
-                                            m_name,
-                                            consecutive_failures,
-                                            e,
-                                            error=e,
-                                        )
-
-                            task = asyncio.create_task(
-                                run_task_loop(),
-                                name=f"task_loop_{plugin_key}_{method_name}",
-                            )
-                            self.plugin_tasks.setdefault(plugin_key, []).append(task)
+                    self._start_plugin_task_loops(plugin_key, plugin_instance)
                 except Exception as e:
                     log_operation_error(
                         logger,
@@ -1329,60 +1332,7 @@ class PluginManager:
                                         [(route_path, resolved_dir, mount_name)],
                                     )
 
-                for method_name, method in inspect.getmembers(
-                    instance, predicate=inspect.ismethod
-                ):
-                    interval_raw = getattr(method, "_task_loop_interval", None)
-                    if interval_raw is not None:
-                        interval = max(float(interval_raw), 0.1)
-
-                        async def run_task_loop(
-                            m: Callable[..., Any] = method,
-                            intv: float = interval,
-                            p_name: str = plugin_name,
-                            m_name: str = method_name,
-                        ) -> None:
-                            consecutive_failures = 0
-                            while True:
-                                try:
-                                    sleep_time = (
-                                        intv
-                                        if consecutive_failures == 0
-                                        else min(
-                                            intv * (2 ** min(consecutive_failures, 6)),
-                                            300.0,
-                                        )
-                                    )
-                                    await asyncio.sleep(sleep_time)
-                                    if inspect.iscoroutinefunction(m):
-                                        await m()
-                                    else:
-                                        await run_in_thread(m)
-                                    consecutive_failures = 0
-                                except asyncio.CancelledError:
-                                    logger.debug(
-                                        "Task loop %s.%s cancelled cleanly.",
-                                        p_name,
-                                        m_name,
-                                    )
-                                    break
-                                except Exception as e:
-                                    consecutive_failures += 1
-                                    log_operation_error(
-                                        logger,
-                                        "Error in task loop %s.%s (failure #%s): %s",
-                                        p_name,
-                                        m_name,
-                                        consecutive_failures,
-                                        e,
-                                        error=e,
-                                    )
-
-                        task = asyncio.create_task(
-                            run_task_loop(),
-                            name=f"task_loop_{plugin_name}_{method_name}",
-                        )
-                        self.plugin_tasks.setdefault(plugin_name, []).append(task)
+                self._start_plugin_task_loops(plugin_name, instance)
 
                 self.plugins.append(instance)
                 for owner in self._event_owners(instance):

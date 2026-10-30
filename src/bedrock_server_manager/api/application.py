@@ -8,7 +8,7 @@ from ..context import AppContext
 from ..error import BSMError, FileError
 from ..logging import log_operation_error
 from ..plugins.api_bridge import api_method
-from ..state_revision import revision_clock
+from ..state.revision import revision_clock
 from ..utils import list_content_files
 from .models.application import (
     GetAllServersDataRequest,

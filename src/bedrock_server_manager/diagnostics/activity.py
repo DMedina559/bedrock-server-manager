@@ -5,7 +5,7 @@ from collections import Counter, deque
 from collections.abc import Callable
 
 from ..events.models import EventDiagnostics, EventSubscriptions
-from ..operations import OperationActivity
+from ..events.operations import OperationActivity
 from .models import RecentDiagnosticCounts, RecentDiagnosticWindow
 
 

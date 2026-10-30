@@ -8,7 +8,7 @@ from types import SimpleNamespace
 
 import psutil
 
-from bedrock_server_manager.api.models.metrics import GetApplicationMetricsResponse
+from bedrock_server_manager.api.models.system import GetApplicationMetricsResponse
 from bedrock_server_manager.services.metrics_service import MetricsService
 
 

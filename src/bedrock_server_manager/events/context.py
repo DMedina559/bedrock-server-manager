@@ -7,8 +7,8 @@ from typing import Any, Callable, Generic, Mapping, TypeVar
 
 from pydantic import BaseModel, ConfigDict
 
-from ..operations import OperationSequence, OperationSnapshot
 from .models import EventContext
+from .operations import OperationSequence, OperationSnapshot
 
 
 def freeze(value: Any) -> Any:

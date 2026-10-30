@@ -8,7 +8,6 @@ from httpx2 import AsyncClient
 
 from bedrock_server_manager.context import AppContext
 from bedrock_server_manager.db.models import User as UserModel
-from bedrock_server_manager.web.routers.audit_log import create_audit_log
 
 
 async def test_list_audit_logs_unauthorized(
@@ -31,15 +30,16 @@ async def test_list_audit_logs_success(
     admin_auth_client: AsyncClient, app_context: AppContext, test_admin_user: UserModel
 ):
     """Test getting audit logs successfully with admin permissions."""
-    # Create some dummy logs using the router's helper function
-
-    await create_audit_log(
-        app_context, int(test_admin_user.id), "TEST_ACTION_1", {"key": "value1"}
-    )
+    # Create some dummy logs using the audit log repository
+    async with app_context.storage.transaction() as session:
+        await app_context.storage.audit_log_repo.create_audit_log(
+            session, int(test_admin_user.id), "TEST_ACTION_1", {"key": "value1"}
+        )
     await asyncio.sleep(0.1)  # ensure timestamps are different
-    await create_audit_log(
-        app_context, int(test_admin_user.id), "TEST_ACTION_2", {"key": "value2"}
-    )
+    async with app_context.storage.transaction() as session:
+        await app_context.storage.audit_log_repo.create_audit_log(
+            session, int(test_admin_user.id), "TEST_ACTION_2", {"key": "value2"}
+        )
 
     response = await admin_auth_client.get("/audit-log/list")
     assert response.status_code == 200

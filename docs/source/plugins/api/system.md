@@ -8,7 +8,7 @@ For an updated list of available APIs, please download and run the [api_docs_gen
 
 ## `system.get_application_health`
 ```python
-await self.api.system.get_application_health(request: bedrock_server_manager.api.models.health.GetApplicationHealthRequest)
+await self.api.system.get_application_health(request: bedrock_server_manager.api.models.system.GetApplicationHealthRequest)
 ```
 - **Async (Requires await):** Yes
 
@@ -32,14 +32,14 @@ data = result.model_dump(mode="json")
 
 | Name | Type | Default |
 |------|------|---------|
-| `request` | `bedrock_server_manager.api.models.health.GetApplicationHealthRequest` | `REQUIRED` |
+| `request` | `bedrock_server_manager.api.models.system.GetApplicationHealthRequest` | `REQUIRED` |
 
 ---
 
 
 ## `system.get_application_metrics`
 ```python
-await self.api.system.get_application_metrics(request: bedrock_server_manager.api.models.metrics.GetApplicationMetricsRequest)
+await self.api.system.get_application_metrics(request: bedrock_server_manager.api.models.system.GetApplicationMetricsRequest)
 ```
 - **Async (Requires await):** Yes
 
@@ -63,7 +63,7 @@ data = result.model_dump(mode="json")
 
 | Name | Type | Default |
 |------|------|---------|
-| `request` | `bedrock_server_manager.api.models.metrics.GetApplicationMetricsRequest` | `REQUIRED` |
+| `request` | `bedrock_server_manager.api.models.system.GetApplicationMetricsRequest` | `REQUIRED` |
 
 ---
 

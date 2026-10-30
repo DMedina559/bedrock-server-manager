@@ -82,9 +82,9 @@ class DashboardPlugin(PluginBase):
 that subscription. Listeners and definitions are removed automatically on unload.
 A saved API from an unloaded plugin cannot register or emit after reload.
 Plugins and external callers may emit custom events; core before, after, and
-lifecycle events are reserved for the application. Legacy `send_event()` and
-`listen_for_event()` remain supported through the same bus. Both `send_event()` and `events.emit()` require a declaration owned by the
-emitting plugin. Undeclared emission is rejected in 4.0.
+lifecycle events are reserved for the application. `send_event()` and
+`listen_for_event()` remain supported through the same bus and require a declaration
+owned by the emitting plugin.
 
 For a private custom event, pass `public=False` to `events.define()`. Public
 events keep the WebSocket topic `event:<name>` and the existing `type`, `topic`,
@@ -210,49 +210,11 @@ contract replacement. Event envelopes require epoch/revision together and
 positive JavaScript-safe revisions; transport counts reuse the shared delivery
 invariant that every targeted recipient has an outcome.
 
-## Core dependency boundaries
-
-Application composition owns the bus. Core server handles receive an
-`EventPublisher` rather than AppContext; status changes run through
-`ServerConfiguration.set_status(status, events)`. Player observations use
-`publish_player_snapshot(events, PlayerSnapshot(...))` and return an `EventRecord`.
-The process monitor retains rejected snapshots for a later retry, while partial
-listener delivery is recorded without replaying handlers that already succeeded.
-The publisher supplies revision metadata, so core producers do not reach into a
-global revision clock.
-
-Non-API operation hooks can receive a keyword-only `events` bus explicitly.
-That dependency is excluded from event payloads. API operation hooks retain their
-AppContext adapter. Event-only HTTP handlers resolve a bus dependency, and plugin
-native event capabilities capture their original bus and generation for the
-entire runtime lifetime. A stale capability cannot follow AppContext to a new bus
-after shutdown/load.
-
-Importing `bedrock_server_manager.events` does not initialize API registration,
-plugins, or HTTP. Public root exports remain available through lazy imports;
-creating AppAPI explicitly registers built-in API adapters. The legacy unused
-`plugins.util.broadcast_event` transport helper has been removed; public events
-use the bus observer.
-
-Payload declarations reject reserved runtime fields (`app_context`, `current_user`,
-`event`, `_triggering_plugin`, and `cancellation_event`) before a publisher runs.
-Delivery aggregation requires one owner and combines only recipient counts.
-
-Synchronous listeners remain owned while their worker thread runs, including
-when dispatch times out. An optional `cancellation_event` parameter receives a
-threading event signaled on timeout/cancellation/shutdown; cooperative workers
-should check it and return promptly. Plugin unload drains worker completion within
-its lifecycle deadline. A deadline cannot forcibly terminate a worker thread.
-
 ## Opt-in typed hooks and observers
-
-Existing 4.0 `@app_event`, `events.listen`, `events.once`, `listen_for_event`, and
-`wait_for` callbacks keep their existing arguments and cancellation behavior.
-None of the interfaces below require migrating an existing plugin.
 
 Typed hooks receive one `PluginEvent[Payload]` argument. Supply a Pydantic model
 for the fields your plugin needs; request/result fields can use the existing API
-models. Payload validation errors follow the existing listener-failure policy.
+models. Payload validation errors follow the listener-failure policy.
 
 ```python
 from pydantic import BaseModel
@@ -406,8 +368,7 @@ already visible to that plugin. It has the same filters and lifecycle cleanup as
 events or expose another plugin's private payloads.
 
 ```python
-from bedrock_server_manager.events import EventActivityQuery
-from bedrock_server_manager.operations import OperationActivityQuery
+from bedrock_server_manager import EventActivityQuery, OperationActivityQuery
 
 self.api.events.observe_all(self.on_any_event)
 activity = self.api.events.activity(EventActivityQuery(server_name="example"))

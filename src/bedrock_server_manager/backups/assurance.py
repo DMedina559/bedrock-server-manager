@@ -173,6 +173,12 @@ def readiness(backups, summaries, value, known):
     if value.get("schedule", {}).get("status") in ("failed", "skipped"):
         reasons.append("A scheduled backup failed or was missed.")
     drill = value.get("drill")
+    if drill and drill.get("status") == "passed":
+        current = next(
+            (item for item in summaries if item.backup_id == drill.get("backup_id")),
+            None,
+        )
+        drill = current.drill if current is not None else None
     if drill and drill.get("status") in ("failed", "running"):
         reasons.append("The latest isolated recovery drill failed or did not finish.")
     alerts = [
@@ -207,14 +213,11 @@ async def recovery_drill(
             {"backup_id": identifier, "checked_at": started, "status": "running"},
         )
         try:
-            inspected = await backups.inspect_snapshot(identifier, recovery_key)
-            components = [
-                name
-                for name, state in inspected.manifest.components.items()
-                if state == "included"
-            ]
+            from ..utils.progress import report_stage
+
+            await report_stage("Preparing isolated recovery drill")
             plan = await backups.plan_restore(
-                identifier, components, recovery_key, dry_run=True
+                identifier, [], recovery_key, dry_run=True, _all_components=True
             )
             if not plan.sufficient_space:
                 raise BackupRestoreError(
@@ -226,6 +229,9 @@ async def recovery_drill(
                 "status": "passed",
                 "checked_files": plan.checked_files,
             }
+            path = await run_in_thread(backups.resolve_backup, identifier)
+            metadata = await run_in_thread(path.stat)
+            record["fingerprint"] = [metadata.st_size, metadata.st_mtime_ns]
         except Exception:
             record = {
                 "backup_id": identifier,

@@ -1,6 +1,5 @@
 # bedrock_server_manager/web/deps/__init__.py
 from .auth import (
-    CustomAuthBackend,
     cookie_scheme,
     get_admin_user,
     get_current_user,
@@ -18,7 +17,6 @@ __all__ = [
     "get_admin_user",
     "oauth2_scheme",
     "cookie_scheme",
-    "CustomAuthBackend",
     "validate_server_exists",
     "get_app_context",
 ]

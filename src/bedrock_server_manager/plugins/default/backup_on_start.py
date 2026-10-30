@@ -74,7 +74,7 @@ class AutoBackupOnStart(PluginBase):
         """
         Backs up selected contents before the server starts.
         """
-        from bedrock_server_manager.operations import OperationName
+        from bedrock_server_manager.events.operations import OperationName
 
         sequence = self.api.operations.sequence()
         if sequence and any(

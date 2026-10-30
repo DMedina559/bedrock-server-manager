@@ -161,9 +161,9 @@ await self.set_plugin_settings(
 
 Omitting scope continues to address plugin-local settings. Server scope requires an existing `server_name`; other scopes must omit it. A whole-namespace write is atomic, and field writes validate against the latest committed namespace so concurrent sibling changes are retained. Defaults are supplied on read without persisting them. Validators receive `server_names`, `server_name`, and `plugin_name` in their Pydantic context.
 
-Ordinary global/server setting writes and server-settings restores validate changed registered namespaces at the storage transaction boundary, before database commit and state publication. Unchanged namespaces are not rewritten as a side effect of unrelated updates. Stored values remain when a plugin is disabled or removed; discovery retains models for installed disabled plugins, and refreshes registrations when plugins reload. Plugins without the new declarations keep their existing behavior.
+Ordinary global/server setting writes and server-settings restores validate changed registered namespaces at the storage transaction boundary, before database commit and state publication. Stored values remain when a plugin is disabled or removed; discovery retains models for installed disabled plugins, and refreshes registrations when plugins reload.
 
-The existing `GET /api/plugins/{plugin_name}/settings` accepts `scope` and optional `server_name` query parameters. The existing PUT accepts the same fields with `settings` in its body. These administrative endpoints return the scope's model schema for the frontend editor. The plugin bridge injects caller identity into the existing singular get/set APIs; the plural `PluginBase` helpers use those APIs for whole-namespace operations.
+`GET /api/plugins/{plugin_name}/settings` and `PUT /api/plugins/{plugin_name}/settings` accept `scope` and optional `server_name` parameters and return the scope's model schema for the frontend editor.
 
 ## Scheduled task options and execution context
 

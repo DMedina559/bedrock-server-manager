@@ -23,7 +23,7 @@ class FileNamePayload(APIRequest):
     filename: NonEmptyStr
 
 
-class SettingItemResponse(APIRequest):
+class SettingItemPayload(APIRequest):
     """Request model for a single setting key-value pair."""
 
     key: NonEmptyStr = Field(
@@ -38,7 +38,7 @@ class SettingsResponse(BaseApiResponse):
     # status: str = Field(...) -> Inherited
     # message: Optional[str] = None -> Inherited
     settings: Optional[Dict[str, JsonValue]] = None
-    setting: Optional[SettingItemResponse] = None
+    setting: Optional[SettingItemPayload] = None
 
 
 class PruneDownloadsPayload(APIRequest):

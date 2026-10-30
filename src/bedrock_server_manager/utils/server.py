@@ -1,12 +1,15 @@
 # bedrock_server_manager/utils/server.py
 """Server naming, discovery and persistent player-directory helpers."""
 
+from __future__ import annotations
+
 import logging
 import os
+import platform
 import re
-from typing import Any, Dict, List, Tuple
+from typing import TYPE_CHECKING, Any, Dict, List, Tuple
 
-from ..context import AppContext
+from ..contracts import ResourceFailure
 from ..error import (
     AppFileNotFoundError,
     ConfigurationError,
@@ -17,11 +20,30 @@ from ..error import (
 )
 from ..failures import classify_failure
 from ..logging import log_operation_error
-from ..results import ResourceFailure
+from .threads import run_in_thread
+
+if TYPE_CHECKING:
+    from ..context import AppContext
+    from ..state.app_state import AppState
 
 logger = logging.getLogger(__name__)
 
 # --- Server Stuff ---
+
+
+def valid_server_names(state: "AppState") -> list[str]:
+    """Shared file checks for server references; no process sampling."""
+    base = state.settings.paths.servers
+    executable = (
+        "bedrock_server.exe" if platform.system() == "Windows" else "bedrock_server"
+    )
+    return sorted(
+        name
+        for name in state.servers.servers
+        if re.fullmatch(r"[a-zA-Z0-9_-]+", name)
+        and os.path.isfile(os.path.join(base, name, executable))
+        and os.path.isfile(os.path.join(base, name, "server.properties"))
+    )
 
 
 def core_validate_server_name_format(server_name: str) -> None:
@@ -68,14 +90,14 @@ async def get_servers_data(
     error_messages: List[ResourceFailure] = []
 
     base_dir = app_context.settings.get("paths.servers")
-    if not base_dir or not os.path.isdir(base_dir):
-        raise AppFileNotFoundError(str(base_dir), "Server base directory")
 
-    for server_name_candidate in os.listdir(base_dir):
-        potential_server_path = os.path.join(base_dir, server_name_candidate)
-        if not os.path.isdir(potential_server_path):
-            continue
+    def discover():
+        if not base_dir or not os.path.isdir(base_dir):
+            raise AppFileNotFoundError(str(base_dir), "Server base directory")
+        with os.scandir(base_dir) as entries:
+            return [entry.name for entry in entries if entry.is_dir()]
 
+    for server_name_candidate in await run_in_thread(discover):
         try:
             server = app_context.prepare_server(server_name_candidate)
 

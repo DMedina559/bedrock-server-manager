@@ -18,7 +18,7 @@ from ...backups.models import (
     RestoreRecoveryState,
     RestoreResult,
 )
-from ...results import CleanupResult, ComponentResults
+from ...contracts import CleanupResult, ComponentResults
 from .common import (
     ActionResponse,
     APIRequest,

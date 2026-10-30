@@ -81,13 +81,6 @@ async def post_world_install(
         server_name,
         identity,
     )
-    from ...utils.server import validate_server
-
-    if not await validate_server(server_name=server_name, app_context=app_context):
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND,
-            detail=f"Server '{server_name}' not found.",
-        )
 
     content_base_dir = os.path.join(app_context.settings.get("paths.content"), "worlds")
     full_world_file_path = os.path.normpath(
@@ -151,13 +144,6 @@ async def post_world_export(
     """
     identity = current_user.username
     logger.info("World export requested for '%s' by user '%s'.", server_name, identity)
-    from ...utils.server import validate_server
-
-    if not await validate_server(server_name=server_name, app_context=app_context):
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND,
-            detail=f"Server '{server_name}' not found.",
-        )
 
     task_id = await app_context.task_manager.run_task(
         world_api.export_world,
@@ -189,13 +175,6 @@ async def delete_world_reset(
     """
     identity = current_user.username
     logger.info("World reset requested for '%s' by user '%s'.", server_name, identity)
-    from ...utils.server import validate_server
-
-    if not await validate_server(server_name=server_name, app_context=app_context):
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND,
-            detail=f"Server '{server_name}' not found.",
-        )
 
     task_id = await app_context.task_manager.run_task(
         world_api.reset_world,

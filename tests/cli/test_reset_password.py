@@ -4,7 +4,7 @@ from sqlalchemy import select
 
 from bedrock_server_manager.cli.reset_password import reset_password_command
 from bedrock_server_manager.db.models import User
-from bedrock_server_manager.utils.auth import get_password_hash, verify_password
+from bedrock_server_manager.web.auth import get_password_hash, verify_password
 
 
 @pytest.fixture

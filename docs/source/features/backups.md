@@ -47,9 +47,8 @@ world component.
 
 In **Global Settings → Backups**, choose the default mode and components. Manual
 backups and schedules can use those defaults or override them. New defaults
-exclude server-level packs. Saved `include_server_packs` settings are converted
-to component selections when loaded; that flag and the `include_packs` request
-override are no longer accepted. Select the desired pack directories explicitly.
+exclude server-level packs; select the desired pack directories explicitly when
+needed.
 
 | Setting | Default | Purpose |
 |---|---|---|
@@ -381,7 +380,7 @@ mean creation failed. Changed archive bytes invalidate a previous verified statu
 | Action | What it checks | Live-server effects |
 |---|---|---|
 | **Verify** | Opens/decrypts the archive, checks inventory, file sizes and hashes, and validates supported world/configuration metadata | No live files changed and Minecraft is not stopped |
-| **Dry run** | Reviews a chosen restore selection, checks capacity, copies it into isolated staging on the destination filesystem, flushes it and checks hashes | No replacement or Minecraft startup; full-directory review requires Minecraft already stopped |
+| **Dry run** | Reviews a chosen restore selection, checks capacity, extracts into private staging on the destination filesystem, flushes it and reads it back to check hashes | No replacement or Minecraft startup; full-directory review requires Minecraft already stopped |
 | **Recovery drill** | Runs the dry-run restore checks for every included component and records a passed/failed result for readiness | No replacement or Minecraft startup; full-directory archives require Minecraft already stopped and compatible platform/version |
 
 All three can read substantial data and require temporary disk space. Verification
@@ -495,9 +494,7 @@ size, and concurrency limits. Preparation failures remain visible until repaired
 
 `scheduler.max_concurrent_servers` defaults to 4 (range 1–32).
 `scheduler.poll_interval_seconds` defaults to 60 (range 1–60). Both apply after a
-BSM restart. Schedule controls wake the loop immediately. Definitions and cursors
-use the existing scheduler tables; execution leases and cursor metadata are stored
-in their JSON state, so these additions require no new database migration.
+BSM restart. Schedule controls wake the loop immediately.
 
 
 ## Pre-start backup deadlines
@@ -513,55 +510,34 @@ startup is cancelled. Otherwise the timeout is logged and startup continues.
 Explicit cancellation of the start operation, plugin unload, or an enclosing
 operation deadline still cancels the operation; it is not treated as an optional backup failure.
 
-Offline captures calculate SHA-256 hashes while copying files into private
-staging storage. Inventory reuses those hashes when the staged file's size and
-modification time still match. Live world captures and newly generated files
-are hashed during inventory. These changes preserve the backup format and
-restore checks. Optional verification after creation remains disabled by default.
-
-## Compression and capture performance
+## Compression profiles
 
 Choose **Fast**, **Balanced**, or **Small** in Settings → Backups. Balanced is
 used by default. Fast uses gzip level 1, Balanced level 6, and Small level 9;
 all produce the same portable `.bsmbackup` format and retain integrity checks
 and optional encryption. Older backups remain readable.
 
-The archive writer uses bounded 1 MiB buffers. Compression builds a temporary
-payload before encryption and archive publication, so capture storage must also
-accommodate that compressed payload. Temporary payloads live in private staging
-storage and are removed on completion, failure, or cancellation. Copies remain
-sequential.
+## Safety limits
 
-On Windows, staged files inherit the private capture directory's ACL instead
-of rebuilding an ACL for each file. Other copy paths keep their explicit
-permission handling; POSIX file modes remain unchanged. The completed archive
-is flushed once before publication, and POSIX publication also flushes the
-containing directory.
+`backups.max_files` limits all payload entries, including the manifest and
+directories. `backups.max_expanded_bytes` bounds both the authenticated compressed
+payload and the manifest-plus-file contents; `backups.max_archive_bytes` bounds
+the final stored archive. Creation checks these limits before publication, with
+early checks where source sizes are known.
 
-Backup listing and health read complete, atomically published archives and
-catalog snapshots without taking the capture operation lock. A newly published
-archive can briefly appear without its final catalog metadata; it is not shown
-as verified until matching verification metadata exists. Temporary captures are
-not listed. Verify, delete, restore, and metadata mutations retain their locks.
+Capture and extraction check available staging space before writing large amounts
+of temporary data. Space can still change while an operation runs; write failures
+remain possible and do not authorize replacing live data or removing the previous
+recovery point.
 
-DEBUG logs and task updates distinguish compression, archive writing/encryption,
-content validation, publication, archive fingerprinting, destination copies, and
-retention. The capture-start log records the effective compression profile, and
-DEBUG payload logs record its gzip level. Payload timings separately report
-source-file open, read, and close wall time. The remaining `archive_other_ms`
-includes tar processing, gzip, output I/O, metadata, and finalization; it is not a
-measurement of gzip CPU time. Timings are aggregated without logging file names
-or contents and require no additional file reads.
+Retention requires unchanged integrity evidence and recorded requirements that
+fit the current reader limits before a capture can replace older recovery points.
+Invalid individual catalog records are isolated and protected from automatic
+deletion; their original values are preserved under `invalid_archives` when the
+catalog is next saved. A failure in retention after successful capture is reported
+as a maintenance warning on the created backup.
 
-
-Offline captures also append copied file contents to one private, capture-local
-staging file. Archive creation reads that file instead of reopening each copied
-file, reducing Windows file-open overhead. Copying remains sequential. The
-original staged tree remains available for validation, so this optimization
-requires additional temporary space approximately equal to the copied contents,
-on top of the staged tree and compressed payload. The staging file and its
-in-memory index are discarded after capture, including cancellation and failure.
-Live-world captures, generated settings, and files whose staged size or
-modification time changed use normal file reads. The `spooled_files` DEBUG metric
-shows how many archive entries used the single staging file. The backup format
-and restore behavior are unchanged.
+Passed recovery drills are bound to the tested archive's size and modification
+time. Changing the archive invalidates that passed result. Internal `.bsm-` paths
+are reserved case-insensitively, including in full-directory archives, to protect
+recovery storage.

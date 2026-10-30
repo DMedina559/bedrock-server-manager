@@ -21,19 +21,18 @@ if TYPE_CHECKING:
     from .db.storage import Storage
     from .diagnostics.service import Diagnostics
     from .events import EventBus
-    from .operations import OperationService
+    from .events.operations import OperationService
     from .plugins.api_bridge import AppAPI
     from .plugins.plugin_manager import PluginManager
-    from .services.metrics_service import MetricsService
+    from .services.metrics_service import MetricsService, ResourceMonitor
     from .services.plugin_service import PluginService
     from .services.server_service import ServerService
     from .services.settings_service import SettingsService
+    from .services.task_service import TaskManager
     from .services.user_service import UserService
     from .state.app_state import AppState
     from .web.log_streamer import LogStreamer
-    from .web.resource_monitor import ResourceMonitor
     from .web.runtime import WebRuntime
-    from .web.tasks import TaskManager
     from .web.websocket_manager import ConnectionManager
 
 
@@ -69,7 +68,6 @@ class AppContext:
         from .scheduler.service import Scheduler
 
         self.scheduler = Scheduler(self)
-        self._backup_maintenance = self.scheduler
         self._metrics_service: Optional["MetricsService"] = None
         self._resource_monitor: Optional["ResourceMonitor"] = None
         self._log_streamer: Optional["LogStreamer"] = None
@@ -156,7 +154,7 @@ class AppContext:
         self._user_service = None
         legacy_web = self.pre_app_config.get("web")
         if isinstance(legacy_web, dict) and "cors_origins" in legacy_web:
-            from .config.settings import migrate_bootstrap_cors
+            from .services.settings_service import migrate_bootstrap_cors
 
             await migrate_bootstrap_cors(self._storage, legacy_web["cors_origins"])
         await self._storage.load_state(self._state)
@@ -178,9 +176,9 @@ class AppContext:
         self._diagnostics = configure_diagnostics(self)
         self._storage.diagnostics = self._diagnostics
 
-        from .utils import get_utils
+        from .config.splash_text import get_splash_text
 
-        self.splash_txt = get_utils._get_splash_text()
+        self.splash_txt = get_splash_text()
 
     async def reload(self):
         """
@@ -662,7 +660,7 @@ class AppContext:
             options = (
                 self.settings.get("events", {}) if self._settings is not None else {}
             )
-            from .state_revision import revision_clock
+            from .state.revision import revision_clock
 
             self._events = EventBus(
                 EventOptions.model_validate(options),
@@ -714,7 +712,7 @@ class AppContext:
         Lazily loads and returns the TaskManager instance.
         """
         if self._task_manager is None:
-            from .web.tasks import TaskManager
+            from .services.task_service import TaskManager
 
             self._task_manager = TaskManager(
                 connection_manager=self.connection_manager,
@@ -758,7 +756,7 @@ class AppContext:
         Lazily loads and returns the ResourceMonitor instance.
         """
         if self._resource_monitor is None:
-            from .web.resource_monitor import ResourceMonitor
+            from .services.metrics_service import ResourceMonitor
 
             self._resource_monitor = ResourceMonitor(
                 connection_manager=self.connection_manager,
@@ -910,7 +908,7 @@ class AppContext:
 
     def get_valid_server_names(self) -> list[str]:
         """Registered installations with an executable and server.properties."""
-        from .server_validation import valid_server_names
+        from .utils.server import valid_server_names
 
         return valid_server_names(self.state)
 

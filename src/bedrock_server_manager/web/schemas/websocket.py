@@ -4,8 +4,8 @@ from typing import Literal
 
 from pydantic import BaseModel, JsonValue, ValidationError
 
+from ...api.contract import APIResponseValidationError
 from ...api.models.common import APIErrorResponse, APIRequest, APIResponse, NonEmptyStr
-from ...plugins.api_contract import APIResponseValidationError
 
 
 class AuthenticationFrame(APIRequest):

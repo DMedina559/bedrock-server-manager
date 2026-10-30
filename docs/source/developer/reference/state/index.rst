@@ -8,7 +8,8 @@ Internal contributor reference. Plugins should use supported capabilities.
 
    app_state
    changeset
+   maintenance
    models
+   revision
    settings
    updates
-   validation

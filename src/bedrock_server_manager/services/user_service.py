@@ -9,9 +9,9 @@ from typing import TYPE_CHECKING, Awaitable, Callable, Literal, Optional
 from pydantic import JsonValue
 from sqlalchemy.exc import IntegrityError
 
+from ..contracts import CommittedMutationResult
 from ..error import IncompleteOperationError, StorageError, UserInputError
 from ..failures import classify_failure
-from ..results import CommittedMutationResult
 from ..state.changeset import ChangeSet
 from ..state.models import UserInfoState
 from ..state.updates import UNSET, AccountPatch, Unset, UserUpdate
@@ -41,6 +41,66 @@ class UserService:
             res: UserInfoState = user.model_copy()
             return res
         return None
+
+    async def list_users(self) -> list[UserInfoState]:
+        """Return all users from persistent storage."""
+        async with self.storage.transaction() as session:
+            return await self.storage.user_repo.get_all_users(session)
+
+    async def change_password(
+        self, username: str, current_password: str, new_password: str
+    ) -> bool:
+        """Verify current password and update hashed password for a user."""
+        from ..web.auth import get_password_hash_async, verify_password_async
+
+        async with self.storage.transaction() as session:
+            db_user = await self.storage.user_repo.get_user_by_username(
+                session, username
+            )
+            if not db_user:
+                return False
+            if not await verify_password_async(
+                current_password, str(db_user.hashed_password)
+            ):
+                raise UserInputError("Incorrect current password.")
+            db_user.hashed_password = await get_password_hash_async(new_password)
+            return True
+
+    async def reset_password(self, username: str, new_password: str) -> bool:
+        """Reset hashed password for a user without verifying old password."""
+        from ..web.auth import get_password_hash_async
+
+        async with self.storage.transaction() as session:
+            hashed_pwd = await get_password_hash_async(new_password)
+            return await self.storage.user_repo.update_password(
+                session, username, hashed_pwd
+            )
+
+    async def create_registration_token(
+        self, role: str, ttl_seconds: int = 86400
+    ) -> str:
+        """Generate and persist a new registration token."""
+        import secrets
+
+        token = secrets.token_urlsafe(32)
+        expires = int(time.time()) + ttl_seconds
+        async with self.storage.transaction() as session:
+            await self.storage.user_repo.create_registration_token(
+                session, token=token, role=role, expires=expires
+            )
+        return token
+
+    async def validate_registration_token(self, token: str) -> bool:
+        """Return True if a registration token exists and has not expired."""
+        async with self.storage.transaction() as session:
+            registration_token = await self.storage.user_repo.get_registration_token(
+                session, token
+            )
+            return bool(
+                registration_token
+                and registration_token.expires is not None
+                and registration_token.expires >= int(time.time())
+            )
 
     async def register_or_update_user(
         self,

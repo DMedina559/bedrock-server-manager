@@ -17,3 +17,5 @@ Record stable codes, durations, correlation and instance IDs; keep payloads, cre
 Test provider isolation, timeout/drain behavior, replacement generations, stale readings, health evidence, redaction, pagination, retention and restart persistence. Comparison tests should cover instance changes and counter resets. Use `tests/diagnostics` and `tests/services/test_health.py`.
 
 See [diagnostics reference](reference/diagnostics/index.rst). Existing HTTP snapshots remain the diagnostics transport; no diagnostic WebSocket update protocol is implemented.
+
+History writes are retried up to three times with short asynchronous backoffs for transient deadlines, invalidated database connections, and SQLite busy/locked errors. Writes are idempotent by record ID; recovered transient attempts increment `write_failures` without incrementing `dropped`.

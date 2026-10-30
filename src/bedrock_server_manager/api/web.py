@@ -11,7 +11,7 @@ from ..core import service
 from ..core.system.base import can_manage_services
 from ..error import BSMError, DependencyUnavailableError
 from ..logging import log_operation_error
-from ..plugins.api_contract import validate_contract
+from .contract import validate_contract
 from .models.web import (
     CreateWebUiServiceRequest,
     CreateWebUiServiceResponse,

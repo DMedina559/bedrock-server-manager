@@ -10,7 +10,7 @@ from ..error import BSMError, UserInputError
 from ..events import trigger_event
 from ..logging import log_operation_error
 from ..plugins.api_bridge import api_method
-from ..plugins.api_contract import validate_contract
+from .contract import validate_contract
 from .models.settings import (
     GetAllGlobalSettingsRequest,
     GetAllGlobalSettingsResponse,
@@ -138,8 +138,6 @@ async def reload_global_settings(
     logger.debug("Received request to reload global settings and logging.")
     try:
         await app_context.reload()
-        settings = app_context.settings
-        await settings.reload()
         logger.info("Global settings successfully reloaded.")
         return ReloadGlobalSettingsResponse(
             message="Global settings have been reloaded."

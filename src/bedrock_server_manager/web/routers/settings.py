@@ -14,7 +14,7 @@ from bedrock_server_manager.api.models import (
 from ...api import settings as settings_api
 from ...context import AppContext
 from ..deps import get_admin_user, get_app_context
-from ..schemas import SettingItemResponse, SettingsResponse, UserResponse
+from ..schemas import SettingItemPayload, SettingsResponse, UserResponse
 
 logger = logging.getLogger(__name__)
 
@@ -51,7 +51,7 @@ async def get_all_settings(
     response_model=SettingsResponse,
 )
 async def post_set_setting(
-    payload: SettingItemResponse,
+    payload: SettingItemPayload,
     current_user: UserResponse = Depends(get_admin_user),
     app_context: AppContext = Depends(get_app_context),
 ) -> SettingsResponse:
@@ -73,7 +73,7 @@ async def post_set_setting(
     return SettingsResponse(
         status=result.status,
         message=result.message,
-        setting=SettingItemResponse(
+        setting=SettingItemPayload(
             key=payload.key, value=payload.value
         ),  # Return the set item - No change needed here as it already matches BaseApiResponse for status/message
     )

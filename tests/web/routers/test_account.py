@@ -66,7 +66,7 @@ async def test_post_change_password_success(
     assert response.status_code == 200
     assert response.json()["status"] == "success"
 
-    from bedrock_server_manager.utils.auth import verify_password
+    from bedrock_server_manager.web.auth import verify_password
 
     await db_session.refresh(test_user)
     assert verify_password("newpassword123", str(test_user.hashed_password))

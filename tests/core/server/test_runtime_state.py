@@ -46,10 +46,6 @@ async def test_running_probe_replaces_stale_process_identity(
     server.process._process = SimpleNamespace(pid=111, returncode=0)
     recovered = SimpleNamespace(pid=222)
     monkeypatch.setattr(
-        "bedrock_server_manager.core.server.process.system_base.is_server_running",
-        AsyncMock(return_value=True),
-    )
-    monkeypatch.setattr(
         "bedrock_server_manager.core.server.process.system_process.get_verified_bedrock_process",
         AsyncMock(return_value=recovered),
     )

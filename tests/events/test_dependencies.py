@@ -8,6 +8,7 @@ from dataclasses import dataclass
 import pytest
 from pydantic import BaseModel
 
+from bedrock_server_manager.contracts import DeliveryResult
 from bedrock_server_manager.events import (
     EventBus,
     EventDefinition,
@@ -17,7 +18,6 @@ from bedrock_server_manager.events import (
 )
 from bedrock_server_manager.events.models import EventDelivery
 from bedrock_server_manager.events.player import publish_player_snapshot
-from bedrock_server_manager.results import DeliveryResult
 
 
 class PublisherOnly:

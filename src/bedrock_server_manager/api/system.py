@@ -12,18 +12,17 @@ from ..error import (
 )
 from ..logging import RepeatedFailureReporter, log_operation_error
 from ..plugins.api_bridge import api_method
-from ..state_revision import revision_clock
-from .models.health import (
+from ..state.revision import revision_clock
+from .models.system import (
     GetApplicationHealthRequest,
     GetApplicationHealthResponse,
-    HealthCheck,
-)
-from .models.metrics import GetApplicationMetricsRequest, GetApplicationMetricsResponse
-from .models.system import (
+    GetApplicationMetricsRequest,
+    GetApplicationMetricsResponse,
     GetBedrockProcessInfoRequest,
     GetBedrockProcessInfoResponse,
     GetServerRunningStatusRequest,
     GetServerRunningStatusResponse,
+    HealthCheck,
 )
 
 logger = logging.getLogger(__name__)

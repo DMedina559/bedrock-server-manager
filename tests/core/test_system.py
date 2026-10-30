@@ -14,7 +14,7 @@ import psutil
 import pytest
 
 from bedrock_server_manager.core.system.base import (
-    ResourceMonitor,
+    ProcessResourceMonitor,
     can_manage_services,
     check_internet_connectivity,
     delete_path_robustly,
@@ -245,8 +245,8 @@ async def test_is_server_running_false():
 
 
 async def test_resource_monitor_real_process():
-    """Test ResourceMonitor with a real short-lived process."""
-    monitor = ResourceMonitor()
+    """Test ProcessResourceMonitor with a real short-lived process."""
+    monitor = ProcessResourceMonitor()
 
     # Start a sleep process
     process = subprocess.Popen([sys.executable, "-c", "import time; time.sleep(2)"])
@@ -277,22 +277,22 @@ async def test_resource_monitor_real_process():
 
 
 def test_resource_monitor_no_psutil():
-    """Test ResourceMonitor behaves when psutil is 'unavailable'."""
+    """Test ProcessResourceMonitor behaves when psutil is 'unavailable'."""
     with patch("bedrock_server_manager.core.system.base.PSUTIL_AVAILABLE", False):
-        monitor = ResourceMonitor()
+        monitor = ProcessResourceMonitor()
         assert monitor.get_stats(MagicMock()) is None
 
 
 def test_resource_monitor_invalid_process():
-    """Test ResourceMonitor handles invalid process object."""
-    monitor = ResourceMonitor()
+    """Test ProcessResourceMonitor handles invalid process object."""
+    monitor = ProcessResourceMonitor()
     with pytest.raises(TypeError):
         monitor.get_stats("not a process")  # type: ignore
 
 
 def test_resource_monitor_dead_process():
-    """Test ResourceMonitor handles process that has died."""
-    monitor = ResourceMonitor()
+    """Test ProcessResourceMonitor handles process that has died."""
+    monitor = ProcessResourceMonitor()
 
     # Passing a mock that has an exception during `oneshot()` will likely cause AttributeError
     # on context manager enter, so we instead mock `cpu_percent` to raise `NoSuchProcess`.

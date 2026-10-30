@@ -3,9 +3,8 @@ from typing import Optional
 
 from fastapi import Depends, HTTPException, Request, Security, status
 from fastapi.security import APIKeyCookie, OAuth2PasswordBearer
-from starlette.authentication import AuthCredentials, AuthenticationBackend, SimpleUser
 
-from ...utils import auth as auth_utils
+from .. import auth as auth_utils
 from ..schemas import UserResponse
 
 logger = logging.getLogger(__name__)
@@ -54,18 +53,6 @@ async def get_current_user(
             headers={"WWW-Authenticate": "Bearer"},
         )
     return user
-
-
-class CustomAuthBackend(AuthenticationBackend):
-    async def authenticate(self, conn):
-        if await conn.app.state.app_context.check_setup():
-            return AuthCredentials(["unauthenticated"]), SimpleUser("guest")
-
-        user = await get_current_user_optional(conn)
-        if user is None:
-            return
-
-        return AuthCredentials(["authenticated"]), SimpleUser(user.username)
 
 
 async def get_admin_user(current_user: UserResponse = Security(get_current_user)):

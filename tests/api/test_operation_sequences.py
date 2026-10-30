@@ -11,7 +11,10 @@ from bedrock_server_manager.api.install import update_server
 from bedrock_server_manager.api.server import start_server, stop_server
 from bedrock_server_manager.error import APICancelledError
 from bedrock_server_manager.events import EventOptions
-from bedrock_server_manager.operations import OperationResultQuery, OperationService
+from bedrock_server_manager.events.operations import (
+    OperationResultQuery,
+    OperationService,
+)
 
 
 async def load_default(plugin_factory, name):
@@ -166,7 +169,7 @@ async def test_ineligible_backup_does_not_suppress_start_backup(
                     path.write_text(contents)
             else:
 
-                def fail_copy(*args):
+                def fail_copy(*args, **kwargs):
                     raise OSError("Injected filesystem failure")
 
                 with monkeypatch.context() as fault:
@@ -188,7 +191,7 @@ async def test_failed_backup_and_listener_failure_have_distinct_outcomes(
     server = populated_server
     plugin = await load_default(plugin_factory, "backup_on_start")
 
-    def fail_world(*args):
+    def fail_world(*args, **kwargs):
         raise OSError("Injected world read failure")
 
     with service.scope("example"):

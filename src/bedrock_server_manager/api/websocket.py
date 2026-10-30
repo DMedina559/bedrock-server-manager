@@ -7,10 +7,10 @@ import logging
 from typing import Literal
 
 from ..context import AppContext
+from ..contracts import DeliveryResult
 from ..error import IncompleteOperationError
 from ..logging import log_operation_error
 from ..plugins.api_bridge import api_method
-from ..results import DeliveryResult
 from .models.websocket import (
     BroadcastRequest,
     BroadcastResponse,

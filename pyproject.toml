@@ -130,7 +130,6 @@ filterwarnings = [
     "error::pytest.PytestUnraisableExceptionWarning",
     "error::pytest.PytestUnhandledThreadExceptionWarning",
 ]
-addopts = "--cov=bedrock_server_manager --cov-report=term --cov-report=html --cov-report=xml"
 
 [tool.coverage.run]
 source = ["src/bedrock_server_manager"]

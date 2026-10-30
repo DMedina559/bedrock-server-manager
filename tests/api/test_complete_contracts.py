@@ -9,20 +9,24 @@ import pytest
 from pydantic import ValidationError
 
 from bedrock_server_manager import api
+from bedrock_server_manager.api.contract import get_contract
 from bedrock_server_manager.api.models import APIRequest, APIResponse
 from bedrock_server_manager.api.models.settings import SetGlobalSettingRequest
 from bedrock_server_manager.api.models.web import CreateWebUiServiceRequest
 from bedrock_server_manager.plugins.api_bridge import create_app_api
-from bedrock_server_manager.plugins.api_contract import get_contract
 
 
 def operations():
     for info in pkgutil.iter_modules(api.__path__):
-        if info.ispkg or info.name == "errors":
+        if info.ispkg or info.name in {"errors", "contract"}:
             continue
         module = importlib.import_module(f"{api.__name__}.{info.name}")
         for name, operation in inspect.getmembers(module, inspect.isfunction):
-            if name.startswith("_") or operation.__module__ != module.__name__:
+            if (
+                name.startswith("_")
+                or name == "server_lifecycle_manager"
+                or operation.__module__ != module.__name__
+            ):
                 continue
             yield f"{info.name}.{name}", operation
 
@@ -119,8 +123,8 @@ def test_json_contracts_reject_non_finite_numbers(value, nested):
 
 
 @pytest.mark.parametrize("base", [APIRequest, APIResponse])
-def test_contract_defaults_are_validated(base):
-    class InvalidDefault(base):
+def test_contract_defaults_are_validated(base: type) -> None:
+    class InvalidDefault(base):  # type: ignore[valid-type, misc]
         count: int = "1"  # type: ignore[assignment]
 
     with pytest.raises(ValidationError):
@@ -249,7 +253,7 @@ def test_server_summary_rejects_inconsistent_players(count):
 
 @pytest.mark.parametrize("counts", [(0, 1, 0), (1, 1, 2)])
 def test_player_scan_rejects_inconsistent_counts(counts):
-    from bedrock_server_manager.results import PlayerScanDetails
+    from bedrock_server_manager.contracts import PlayerScanDetails
 
     with pytest.raises(ValidationError):
         PlayerScanDetails(

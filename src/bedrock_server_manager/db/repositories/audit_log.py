@@ -9,7 +9,6 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.future import select
 
 from ...state.models import PersistentRecord
-from ..database import Database
 from ..models import AuditLog
 
 
@@ -21,9 +20,6 @@ class AuditEntry(PersistentRecord):
 
 class AuditLogRepository:
     """Handle database persistence for audit log records."""
-
-    def __init__(self, db: Database | None = None):
-        self.db = db
 
     async def create_audit_log(
         self,

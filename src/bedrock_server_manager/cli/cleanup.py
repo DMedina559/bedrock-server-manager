@@ -10,9 +10,9 @@ from typing import Optional
 import click
 
 from ..context import AppContext
+from ..contracts import CleanupResult
 from ..error import FileOperationError
 from ..failures import classify_failure
-from ..results import CleanupResult
 
 logger = logging.getLogger(__name__)
 

@@ -123,6 +123,8 @@ from bedrock_server_manager.api.models import (
     ReloadSinglePluginResponse,
     RemoveFromAllowlistRequest,
     RemoveFromAllowlistResponse,
+    RemoveServerBanRequest,
+    RemoveServerBanResponse,
     ReorderAddonsRequest,
     ReorderAddonsResponse,
     RestartServerRequest,
@@ -336,6 +338,10 @@ class BanAPI(Protocol):
     async def get_server_bans(
         self, request: GetServerBansRequest | Mapping[str, object]
     ) -> GetServerBansResponse: ...
+
+    async def remove_server_ban(
+        self, request: RemoveServerBanRequest | Mapping[str, object]
+    ) -> RemoveServerBanResponse: ...
 
 
 class DiagnosticsAPI(Protocol):
@@ -664,7 +670,11 @@ API_METHODS: dict[str, dict[str, str]] = {
         "restore_server_snapshot": "restore_server_snapshot",
         "restore_world": "restore_world",
     },
-    "ban": {"add_server_ban": "add_server_ban", "get_server_bans": "get_server_bans"},
+    "ban": {
+        "add_server_ban": "add_server_ban",
+        "get_server_bans": "get_server_bans",
+        "remove_server_ban": "remove_server_ban",
+    },
     "diagnostics": {
         "compare_diagnostic_snapshots": "compare_diagnostic_snapshots",
         "get_application_diagnostics": "get_application_diagnostics",

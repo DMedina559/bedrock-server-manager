@@ -23,6 +23,7 @@ from bedrock_server_manager.api.server import (
     get_server_setting,
     restart_server,
     send_command,
+    server_lifecycle_manager,
     set_server_custom_value,
     set_server_setting,
     set_server_status,
@@ -31,7 +32,6 @@ from bedrock_server_manager.api.server import (
     update_server_player_stats,
 )
 from bedrock_server_manager.error import BlockedCommandError, ServerRunningError
-from bedrock_server_manager.plugins.runtime_capabilities import server_lifecycle_manager
 
 
 async def test_server_lifecycle_api_controls_real_process(

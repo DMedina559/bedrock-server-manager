@@ -17,9 +17,12 @@ def app_event(
 
     .. rubric:: Example
 
-    @app_event("on_load")
-    def on_data_updated(self, **kwargs):
-        pass"""
+    .. code-block:: python
+
+        @app_event("on_load")
+        def on_data_updated(self, **kwargs):
+            pass
+    """
 
     def decorator(func: Callable) -> Callable:
         setattr(func, "_app_event_name", event_name)

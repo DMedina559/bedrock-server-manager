@@ -6,7 +6,7 @@ import threading
 
 import pytest
 
-from bedrock_server_manager.utils.files import temporary_directory
+from bedrock_server_manager.utils.io import temporary_directory
 from bedrock_server_manager.utils.threads import (
     copy_stream,
     run_in_thread,
@@ -45,7 +45,7 @@ async def test_cancellation_keeps_worker_owned_until_cleanup_finishes():
 
 
 async def test_staging_cleanup_runs_outside_event_loop(tmp_path, monkeypatch):
-    from bedrock_server_manager.utils import files
+    from bedrock_server_manager.utils import io as files
 
     loop = asyncio.get_running_loop()
     entered = asyncio.Event()
@@ -95,7 +95,7 @@ def test_copy_checks_cancellation_before_writing_next_chunk():
 
 @pytest.mark.parametrize("helper", ["verify", "hash"])
 async def test_password_work_is_bounded_and_does_not_block_loop(monkeypatch, helper):
-    from bedrock_server_manager.utils import auth
+    from bedrock_server_manager.web import auth
 
     loop = asyncio.get_running_loop()
     entered = asyncio.Event()

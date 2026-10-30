@@ -21,8 +21,8 @@ from .server.world import ServerWorlds
 if TYPE_CHECKING:
     from ..config.settings import Settings
     from ..db.storage import Storage
+    from ..events.operations import OperationService
     from ..events.publisher import EventPublisher
-    from ..operations import OperationService
     from ..state.app_state import AppState
 
 

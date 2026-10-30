@@ -12,7 +12,7 @@ from fastapi import APIRouter, Depends, HTTPException, Request, status
 from fastapi.responses import JSONResponse
 
 from ...context import AppContext
-from ...utils.auth import (
+from ..auth import (
     create_access_token,
     get_password_hash_async,
 )

@@ -58,32 +58,6 @@ class ServerLifecycleNotificationsPlugin(PluginBase):
             "Plugin loaded. Will manage server lifecycle notifications and delays."
         )
 
-    async def _is_server_running(self, server_name: str) -> bool:
-        """Check if a server is currently running via the API."""
-        try:
-            response = await self.api.system.get_server_running_status(
-                request={"server_name": server_name}
-            )
-            if response and response.status == "success":
-                return bool(response.is_running)
-            self.logger.warning(
-                "Could not determine running status for '%s'.",
-                server_name,
-            )
-        except AttributeError:
-            self.logger.error(
-                "API is missing 'get_server_running_status'. Cannot check server status."
-            )
-        except Exception as e:
-            log_operation_error(
-                self.logger,
-                "Error checking server status for '%s': %s",
-                server_name,
-                e,
-                error=e,
-            )
-        return False
-
     async def _send_ingame_message(
         self, server_name: str, message: str, context: str
     ) -> None:

@@ -77,57 +77,52 @@ async def record_outcome(backups, identifier, components, result=None, error=Non
 
 
 async def recovery_report(backups):
-    async with backups.server.operation_lock:
-        summaries = await backups.list_snapshots()
-        health = await backups.backup_health()
-        value = await run_in_thread(backups.catalog.load)
-        archives = [
-            RecoveryReportArchive(
-                archive_reference=reference(item.backup_id),
-                encrypted=item.encrypted,
-                key_available=not item.encrypted
-                or item.key_id not in health.missing_key_ids,
-                verification_status=(
-                    "failed" if item.error else item.verification.status
-                ),
-                verified_at=timestamp(item.verification.verified_at),
-                copies_completed=sum(
-                    copy.status == "completed" for copy in item.copies.values()
-                ),
-                copies_failed=sum(
-                    copy.status == "failed" for copy in item.copies.values()
-                ),
-            )
-            for item in summaries[:100]
-        ]
-        drill = value.get("drill")
-        return RecoveryReport(
-            generated_at=now(),
-            readiness=health.readiness,
-            archive_count=health.count,
-            archives_omitted=max(0, len(summaries) - len(archives)),
-            missing_key_count=len(health.missing_key_ids),
-            destination_failures=health.destination_failures,
-            recovery_pending=RestoreJournal(backups.server).path.exists(),
-            archives=archives,
-            last_review=(
-                RecoveryReportReview.model_validate(value["last_review"])
-                if value.get("last_review")
-                else None
+    summaries = await backups.list_snapshots()
+    health = await backups.backup_health()
+    value = await run_in_thread(backups.catalog.load)
+    archives = [
+        RecoveryReportArchive(
+            archive_reference=reference(item.backup_id),
+            encrypted=item.encrypted,
+            key_available=not item.encrypted
+            or item.key_id not in health.missing_key_ids,
+            verification_status=("failed" if item.error else item.verification.status),
+            verified_at=timestamp(item.verification.verified_at),
+            copies_completed=sum(
+                copy.status == "completed" for copy in item.copies.values()
             ),
-            last_restore=(
-                RecoveryReportOutcome.model_validate(value["last_restore"])
-                if value.get("last_restore")
-                else None
-            ),
-            last_drill=(
-                RecoveryReportDrill(
-                    archive_reference=reference(drill["backup_id"]),
-                    status=drill["status"],
-                    checked_at=timestamp(drill.get("checked_at")),
-                    checked_files=drill.get("checked_files", 0),
-                )
-                if drill
-                else None
-            ),
+            copies_failed=sum(copy.status == "failed" for copy in item.copies.values()),
         )
+        for item in summaries[:100]
+    ]
+    drill = health.drill
+    return RecoveryReport(
+        generated_at=now(),
+        readiness=health.readiness,
+        archive_count=health.count,
+        archives_omitted=max(0, len(summaries) - len(archives)),
+        missing_key_count=len(health.missing_key_ids),
+        destination_failures=health.destination_failures,
+        recovery_pending=RestoreJournal(backups.server).path.exists(),
+        archives=archives,
+        last_review=(
+            RecoveryReportReview.model_validate(value["last_review"])
+            if value.get("last_review")
+            else None
+        ),
+        last_restore=(
+            RecoveryReportOutcome.model_validate(value["last_restore"])
+            if value.get("last_restore")
+            else None
+        ),
+        last_drill=(
+            RecoveryReportDrill(
+                archive_reference=reference(drill["backup_id"]),
+                status=drill["status"],
+                checked_at=timestamp(drill.get("checked_at")),
+                checked_files=drill.get("checked_files", 0),
+            )
+            if drill
+            else None
+        ),
+    )

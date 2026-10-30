@@ -5,7 +5,7 @@ from typing import Literal
 from pydantic import Field
 
 from ..contracts import DataContract
-from ..state_revision import StateRevision
+from ..state.revision import StateRevision
 
 
 class ServerMetrics(DataContract):

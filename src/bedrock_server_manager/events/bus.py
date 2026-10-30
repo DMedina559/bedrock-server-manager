@@ -17,7 +17,6 @@ from uuid import uuid4
 
 from pydantic import BaseModel
 
-from ..operations import OperationService
 from .context import EventNotification, EventPayload, PluginEvent, freeze
 from .control import CancellableEvent
 from .models import (
@@ -35,6 +34,7 @@ from .models import (
     ListenerFailure,
     ListenerRecord,
 )
+from .operations import OperationService
 from .registry import EventRegistry, builtin_events
 from .serialization import PRIVATE_FIELDS, sanitize
 

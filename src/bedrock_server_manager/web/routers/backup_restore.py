@@ -3,10 +3,7 @@
 
 import logging
 import os
-import tempfile
-from pathlib import Path
-from typing import Any, Callable, Literal
-from uuid import uuid4
+from typing import Any, Callable
 
 import aiofiles.ospath
 from fastapi import (
@@ -20,7 +17,6 @@ from fastapi import (
     status,
 )
 from fastapi.responses import Response, StreamingResponse
-from pydantic import Field, SecretStr, model_validator
 
 from bedrock_server_manager.api.models import (
     APIRequest,
@@ -33,7 +29,6 @@ from bedrock_server_manager.api.models import (
     RestoreConfigFileRequest,
     RestoreWorldRequest,
 )
-from bedrock_server_manager.backups.models import validate_selection_options
 
 from ...api import backup_restore as backup_restore_api
 from ...api.models.backup_restore import (
@@ -50,13 +45,9 @@ from ...api.models.backup_restore import (
     RestoreRecoveryResponse,
     RestoreSnapshotRequest,
 )
-from ...backups.archive import MAX_BYTES, write_archive
-from ...backups.contents import BackupComponents
-from ...backups.credentials import BackupCredentials, private_directory
-from ...backups.models import Component, ConfigComponent
-from ...backups.recovery import sync_tree
+from ...backups import transfer as backup_transfer
+from ...backups.models import ConfigComponent
 from ...context import AppContext
-from ...utils.threads import run_in_thread
 from ..deps import (
     get_admin_user,
     get_app_context,
@@ -66,7 +57,14 @@ from ..deps import (
 from ..deps.server import validate_server_registered
 from ..schemas import (
     BackupActionPayload,
+    DestinationCleanupPayload,
     RestoreActionPayload,
+    SnapshotCopyPayload,
+    SnapshotCreatePayload,
+    SnapshotInspectPayload,
+    SnapshotManagePayload,
+    SnapshotPlanPayload,
+    SnapshotRestorePayload,
     UserResponse,
 )
 from ..schemas.base import BackupFilesResponse, TaskAcceptedResponse
@@ -359,28 +357,6 @@ async def post_restore_action(  # noqa: C901
 # Portable archive endpoints. Existing category endpoints are legacy adapters.
 
 
-class SnapshotCreatePayload(APIRequest):
-    encrypted: bool | None = None
-    mode: Literal["world", "selected", "full"] | None = None
-    components: BackupComponents | None = None
-
-    _validate_selection = model_validator(mode="after")(validate_selection_options)
-
-
-class SnapshotInspectPayload(APIRequest):
-    recovery_key: SecretStr | None = None
-
-
-class SnapshotPlanPayload(SnapshotInspectPayload):
-    components: list[Component]
-
-
-class SnapshotRestorePayload(SnapshotPlanPayload):
-    token: str
-    restart: bool = True
-    stop_running: bool = True
-
-
 def _request(payload, model, server_name, **extra):
     values = payload.model_dump()
     if hasattr(payload, "recovery_key"):
@@ -521,26 +497,15 @@ async def download_snapshot(
     app_context: AppContext = Depends(get_app_context),
 ) -> StreamingResponse:
     """Download the stored archive unchanged, preserving encryption."""
-    backups = app_context.get_server(server_name, require_installation=False).backups
-    await backups.server.operation_lock.acquire()
     try:
-        path = backups.resolve_backup(backup_id)
-        stream = await run_in_thread(path.open, "rb")
-        size = os.fstat(stream.fileno()).st_size
-        backups.server.operation_lock.release()
-    except BaseException:
-        backups.server.operation_lock.release()
-        raise
-
-    async def chunks():
-        try:
-            while chunk := await run_in_thread(stream.read, 1024 * 1024):
-                yield chunk
-        finally:
-            stream.close()
+        path, size, stream = await backup_transfer.open_snapshot_download(
+            app_context, server_name, backup_id
+        )
+    except FileNotFoundError as error:
+        raise HTTPException(404, "Backup no longer exists.") from error
 
     return StreamingResponse(
-        chunks(),
+        stream,
         media_type="application/octet-stream",
         headers={
             "Content-Disposition": f'attachment; filename="{path.name}"',
@@ -563,45 +528,12 @@ async def import_snapshot(
     app_context: AppContext = Depends(get_app_context),
 ) -> ListSnapshotsResponse:
     """Validate an uploaded archive before publishing it under a fresh local ID."""
-    backups = app_context.get_server(server_name, require_installation=False).backups
     try:
-        async with backups.server.operation_lock:
-            root = await run_in_thread(private_directory, Path(backups._directory()))
-            with tempfile.TemporaryDirectory(
-                prefix=".bsm-import-", dir=root
-            ) as directory:
-                staging = Path(directory)
-                archive = staging / "upload"
-                size = 0
-                with archive.open("wb") as output:
-                    while chunk := await file.read(1024 * 1024):
-                        size += len(chunk)
-                        if size > app_context.settings.get(
-                            "backups.max_archive_bytes", MAX_BYTES
-                        ):
-                            raise HTTPException(413, "Backup exceeds upload limit.")
-                        await run_in_thread(output.write, chunk)
-                password = await run_in_thread(backups._password, archive, recovery_key)
-                contents = await run_in_thread(private_directory, staging / "contents")
-                manifest = await run_in_thread(
-                    backups.unpack_snapshot, archive, contents, password
-                )
-                filename = (
-                    manifest.created_at.strftime("%Y%m%dT%H%M%SZ")
-                    + "_"
-                    + uuid4().hex
-                    + ".bsmbackup"
-                )
-                await run_in_thread(
-                    backups._validate_recovery_contents, contents, manifest
-                )
-                await run_in_thread(sync_tree, archive)
-                await run_in_thread(os.replace, archive, root / filename)
-                await run_in_thread(backups._record_verified, root / filename, manifest)
-                await run_in_thread(backups.catalog.update, filename, origin="imported")
-            return ListSnapshotsResponse(backups=await backups.list_snapshots())
-    finally:
-        await file.close()
+        return await backup_transfer.import_snapshot_upload(
+            app_context, server_name, file, recovery_key
+        )
+    except backup_transfer.BackupUploadTooLargeError as error:
+        raise HTTPException(413, str(error)) from error
 
 
 @router.post(
@@ -626,42 +558,14 @@ async def export_snapshot(
     app_context: AppContext = Depends(get_app_context),
 ) -> StreamingResponse:
     """Explicitly export an unencrypted archive; temporary files remain private."""
-    backups = app_context.get_server(server_name, require_installation=False).backups
-    temporary = tempfile.TemporaryDirectory(prefix="bsm-export-")
-    try:
-        async with backups.server.operation_lock:
-            staging = Path(temporary.name)
-            path = backups.resolve_backup(backup_id)
-            password = await run_in_thread(
-                backups._password,
-                path,
-                (
-                    payload.recovery_key.get_secret_value()
-                    if payload.recovery_key
-                    else None
-                ),
-            )
-            contents = await run_in_thread(private_directory, staging / "contents")
-            manifest = await run_in_thread(
-                backups.unpack_snapshot, path, contents, password
-            )
-            exported = staging / "plain.bsmbackup"
-            await run_in_thread(write_archive, contents, exported, manifest, None, None)
-        stream = exported.open("rb")
-    except BaseException:
-        temporary.cleanup()
-        raise
-
-    async def chunks():
-        try:
-            while chunk := await run_in_thread(stream.read, 1024 * 1024):
-                yield chunk
-        finally:
-            stream.close()
-            await run_in_thread(temporary.cleanup)
-
+    stream = await backup_transfer.export_decrypted_snapshot(
+        app_context,
+        server_name,
+        backup_id,
+        payload.recovery_key.get_secret_value() if payload.recovery_key else None,
+    )
     return StreamingResponse(
-        chunks(),
+        stream,
         media_type="application/octet-stream",
         headers={
             "Content-Disposition": 'attachment; filename="decrypted.bsmbackup"',
@@ -676,7 +580,7 @@ async def list_keys(
     app_context: AppContext = Depends(get_app_context),
 ) -> dict[str, Any]:
     """List key identifiers without exposing recovery credentials."""
-    return await run_in_thread(BackupCredentials(app_context.config_dir).metadata)
+    return await backup_transfer.list_backup_keys(app_context)
 
 
 @router.post("/api/backups/keys", operation_id="rotate_backup_key")
@@ -685,8 +589,7 @@ async def rotate_key(
     app_context: AppContext = Depends(get_app_context),
 ) -> dict[str, str]:
     """Generate a new active key and retain all previous keys."""
-    key = await run_in_thread(BackupCredentials(app_context.config_dir).rotate)
-    return {"key_id": key.key_id, "created_at": key.created_at}
+    return await backup_transfer.rotate_backup_key(app_context)
 
 
 @router.get(
@@ -701,9 +604,7 @@ async def emergency_kit(
     app_context: AppContext = Depends(get_app_context),
 ) -> Response:
     """Export one recovery credential through a dedicated administrative route."""
-    kit = await run_in_thread(
-        BackupCredentials(app_context.config_dir).emergency_kit, key_id
-    )
+    kit = await backup_transfer.get_backup_emergency_kit(app_context, key_id)
     return Response(
         kit,
         media_type="text/plain",
@@ -766,13 +667,6 @@ async def backup_health(
     )
 
 
-class SnapshotManagePayload(SnapshotInspectPayload):
-    action: Literal["verify", "pin", "unpin", "copy", "test_key", "annotate", "drill"]
-    destination: str | None = None
-    label: str | None = Field(default=None, max_length=120)
-    notes: str | None = Field(default=None, max_length=2000)
-
-
 @router.post(
     "/api/server/{server_name}/backups/{backup_id}/manage",
     operation_id="manage_server_snapshot",
@@ -793,13 +687,6 @@ async def manage_snapshot(
         backup_restore_api.manage_server_snapshot,
         _request(payload, ManageSnapshotRequest, server_name, backup_id=backup_id),
     )
-
-
-class SnapshotCopyPayload(SnapshotInspectPayload):
-    target_server: str
-    target_version: str = "LATEST"
-    server_port: int = Field(ge=1, le=65535)
-    server_portv6: int = Field(ge=1, le=65535)
 
 
 @router.post(
@@ -844,10 +731,6 @@ async def dry_run_restore(
         backup_restore_api.dry_run_server_restore,
         _request(payload, PlanSnapshotRestoreRequest, server_name, backup_id=backup_id),
     )
-
-
-class DestinationCleanupPayload(APIRequest):
-    token: str | None = None
 
 
 @router.post(

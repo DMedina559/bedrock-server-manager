@@ -7,8 +7,8 @@ from typing import TYPE_CHECKING, Awaitable, Callable, Dict, Optional
 
 from pydantic import JsonValue
 
+from ..contracts import BanMutation
 from ..error import ConfigParseError
-from ..results import BanMutation
 from ..state.changeset import ChangeSet
 from ..state.models import BanItem, ServerConfigState
 from ..state.updates import ServerUpdate

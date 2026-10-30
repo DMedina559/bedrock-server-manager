@@ -10,7 +10,7 @@ import shutil
 import stat
 import threading
 import time
-from contextlib import AsyncExitStack
+from contextlib import AsyncExitStack, ExitStack
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from typing import TYPE_CHECKING, Awaitable, Callable, Literal
@@ -19,15 +19,16 @@ from uuid import uuid4
 from pydantic import SecretStr
 
 from ..config.const import get_installed_version
+from ..contracts import CleanupResult, CompletedItem, ComponentResults, SkippedItem
 from ..error import BackupRestoreError, ConfigurationError
+from ..events.operations import OperationName
 from ..logging import log_operation_error
-from ..operations import OperationName
-from ..results import CleanupResult, CompletedItem, ComponentResults, SkippedItem
-from ..utils.files import temporary_directory
+from ..utils.io import temporary_directory
 from ..utils.progress import report_stage
-from ..utils.threads import check_cancellation, copy_stream, run_in_thread
+from ..utils.threads import check_cancellation, run_in_thread
 from .archive import (
     build_payload,
+    check_manifest_limits,
     digest,
     header,
     publish_archive,
@@ -58,9 +59,10 @@ from .models import (
     RestoreResult,
     ServerSettingsExport,
 )
-from .recovery import RestoreJournal, apply_settings, settings_export, sync_tree
+from .recovery import RestoreJournal, apply_settings, settings_export
 from .selection import selection, server_entries
 from .spool import CaptureSpool
+from .work import FileWork, backup_worker, tree_paths
 
 if TYPE_CHECKING:
     from ..core.bedrock_server import BedrockServer
@@ -73,6 +75,11 @@ def is_link(source: Path) -> bool:
     )
 
 
+def _close_copy_stream(stream, work, phase):
+    with work.phase(phase):
+        stream.close()
+
+
 def copy_source(
     source: Path,
     target: Path,
@@ -81,25 +88,63 @@ def copy_source(
     hashes: dict[Path, tuple[int, int, str]] | None = None,
     inherited_private: bool = False,
     spool: CaptureSpool | None = None,
+    stage_callback=None,
+) -> None:
+    """Sequential portable copy with aggregate timing and bounded progress."""
+    work = FileWork("Copying backup files", stage_callback)
+    status = "failed"
+    try:
+        work.progress(force=True)
+        _copy_source(
+            source,
+            target,
+            cancellation_event,
+            hashes=hashes,
+            inherited_private=inherited_private,
+            spool=spool,
+            work=work,
+        )
+        work.progress(force=True)
+        status = "completed"
+    finally:
+        work.finish(status)
+
+
+def _copy_source(
+    source: Path,
+    target: Path,
+    cancellation_event: threading.Event | None = None,
+    *,
+    hashes: dict[Path, tuple[int, int, str]] | None = None,
+    inherited_private: bool = False,
+    spool: CaptureSpool | None = None,
+    work: FileWork,
 ) -> None:
     """Copy only portable regular files and directories, never following links."""
     check_cancellation(cancellation_event)
     safe_name(source.name)
-    if is_link(source):
+    with work.phase("metadata"):
+        linked = is_link(source)
+        directory = source.is_dir()
+        regular = source.is_file()
+    if linked:
         raise BackupRestoreError("Backup sources must not contain symbolic links.")
-    if source.is_dir():
-        target.mkdir(parents=True, exist_ok=True)
+    if directory:
+        with work.phase("metadata"):
+            target.mkdir(parents=True, exist_ok=True)
         for child in source.iterdir():
-            copy_source(
+            _copy_source(
                 child,
                 target / child.name,
                 cancellation_event,
                 hashes=hashes,
                 inherited_private=inherited_private,
                 spool=spool,
+                work=work,
             )
-    elif source.is_file():
-        target.parent.mkdir(parents=True, exist_ok=True)
+    elif regular:
+        with work.phase("metadata"):
+            target.parent.mkdir(parents=True, exist_ok=True)
         hasher = hashlib.sha256() if hashes is not None else None
         spool_stream = spool.stream if spool is not None else None
         offset = spool_stream.tell() if spool_stream is not None else 0
@@ -110,19 +155,35 @@ def copy_source(
             if spool_stream is not None:
                 spool_stream.write(chunk)
 
-        with source.open("rb") as stream, target.open("wb") as output:
-            copy_stream(
-                stream,
-                output,
-                cancellation_event,
-                on_chunk=(
-                    captured if hasher is not None or spool_stream is not None else None
-                ),
-            )
-        if not (inherited_private and os.name == "nt"):
-            protect(target)
-        if os.name != "nt" and source.stat().st_mode & stat.S_IXUSR:
-            target.chmod(0o700)
+        with ExitStack() as resources:
+            with work.phase("source_open"):
+                stream = source.open("rb")
+            resources.callback(_close_copy_stream, stream, work, "source_close")
+            with work.phase("target_open"):
+                output = target.open("wb")
+            resources.callback(_close_copy_stream, output, work, "target_close")
+            while True:
+                check_cancellation(cancellation_event)
+                with work.phase("read"):
+                    chunk = stream.read(1024 * 1024)
+                if not chunk:
+                    break
+                check_cancellation(cancellation_event)
+                with work.phase("write"):
+                    output.write(chunk)
+                if hasher is not None or spool_stream is not None:
+                    with work.phase("hash_spool"):
+                        captured(chunk)
+                work.bytes += len(chunk)
+                work.progress()
+            with work.phase("permissions"):
+                if not (inherited_private and os.name == "nt"):
+                    protect(target)
+                if os.name != "nt" and source.stat().st_mode & stat.S_IXUSR:
+                    target.chmod(0o700)
+
+        work.files += 1
+        work.progress()
         if spool is not None:
             metadata = target.stat()
             spool.entries[target] = (metadata.st_size, metadata.st_mtime_ns, offset)
@@ -150,7 +211,7 @@ def inventory(
         if state != "included":
             continue
         root = staging / PREFIXES[component]
-        paths = [root, *sorted(root.rglob("*"))] if root.is_dir() else [root]
+        paths = sorted(tree_paths(root, cancellation_event))
         for path in paths:
             check_cancellation(cancellation_event)
             name = safe_name(path.relative_to(staging).as_posix())
@@ -175,6 +236,47 @@ def inventory(
                     )
                 )
     return files, directories
+
+
+def verify_staging(
+    root, manifest, components, cancellation_event=None, stage_callback=None
+):
+    """Read back staged files with bounded progress and aggregate I/O timings."""
+    work = FileWork("Checking staged restore checksums", stage_callback)
+    status = "failed"
+    try:
+        work.progress(force=True)
+        for item in manifest.files:
+            check_cancellation(cancellation_event)
+            if item.component not in components:
+                continue
+            checksum = hashlib.sha256()
+            with work.phase("open"):
+                stream = (root / item.path).open("rb")
+            try:
+                while True:
+                    check_cancellation(cancellation_event)
+                    with work.phase("read"):
+                        chunk = stream.read(1024 * 1024)
+                    if not chunk:
+                        break
+                    check_cancellation(cancellation_event)
+                    with work.phase("hash"):
+                        checksum.update(chunk)
+                    work.bytes += len(chunk)
+                    work.progress()
+            finally:
+                with work.phase("close"):
+                    stream.close()
+            if checksum.hexdigest() != item.sha256:
+                raise BackupRestoreError("Staged restore checksum validation failed.")
+            work.files += 1
+            work.progress()
+        work.progress(force=True)
+        status = "completed"
+        return work.files
+    finally:
+        work.finish(status)
 
 
 class UnifiedServerBackups(ManagedBackups):
@@ -220,6 +322,11 @@ class UnifiedServerBackups(ManagedBackups):
         destination: Path,
         password: str | None = None,
         cancellation_event: threading.Event | None = None,
+        *,
+        materialize: bool = True,
+        stage_callback=None,
+        read_stats=None,
+        durable: bool = False,
     ) -> BackupManifest:
         if path.stat().st_size > self.server.settings.get(
             "backups.max_archive_bytes", 1024**4
@@ -232,6 +339,10 @@ class UnifiedServerBackups(ManagedBackups):
             max_bytes=self.server.settings.get("backups.max_expanded_bytes", 1024**4),
             max_files=self.server.settings.get("backups.max_files", 1_000_000),
             cancellation_event=cancellation_event,
+            materialize=materialize,
+            stage_callback=stage_callback,
+            read_stats=read_stats,
+            durable=durable,
         )
 
     def resolve_backup(self, identifier: str) -> Path:
@@ -485,6 +596,10 @@ class UnifiedServerBackups(ManagedBackups):
                         safe_name(world)
                         if Path(world).name != world:
                             raise BackupRestoreError("Invalid active world name.")
+                        from .space import capture_preflight
+
+                        await self._stage(progress, "Checking backup staging space")
+                        await run_in_thread(capture_preflight, self, chosen, world)
                         running = await self.server.is_running()
                         await self._stage(progress, "Capturing server files")
                         source_world = (
@@ -607,6 +722,12 @@ class UnifiedServerBackups(ManagedBackups):
                         files=files,
                         directories=directories,
                     )
+                    await run_in_thread(
+                        check_manifest_limits,
+                        manifest,
+                        self.server.settings.get("backups.max_expanded_bytes", 1024**4),
+                        self.server.settings.get("backups.max_files", 1_000_000),
+                    )
                     temporary = Path(directory) / "snapshot"
                     password = record.secret.get_secret_value() if record else None
                     await self._stage(progress, "Compressing backup")
@@ -637,6 +758,15 @@ class UnifiedServerBackups(ManagedBackups):
                         record.key_id if record else None,
                         prepared_payload=packed_payload,
                     )
+                    if temporary.stat().st_size > self.server.settings.get(
+                        "backups.max_archive_bytes", 1024**4
+                    ) or packed_payload.stat().st_size > self.server.settings.get(
+                        "backups.max_expanded_bytes", 1024**4
+                    ):
+                        raise BackupRestoreError(
+                            "Backup archive exceeds configured recovery limits."
+                        )
+                    payload_bytes = packed_payload.stat().st_size
                     verify_created = self.server.settings.get(
                         "backups.verify_after_create", False
                     )
@@ -665,6 +795,7 @@ class UnifiedServerBackups(ManagedBackups):
                     destination,
                     manifest,
                     verified=verify_created,
+                    payload_bytes=payload_bytes,
                 )
                 if not structure_valid:
                     await run_in_thread(
@@ -718,7 +849,17 @@ class UnifiedServerBackups(ManagedBackups):
                 )
                 await self._notify_backup(filename, "capture", "completed")
                 await self._stage(progress, "Applying backup retention")
-                retention = await self.prune_snapshots()
+                try:
+                    retention = await self.prune_snapshots()
+                except Exception as error:
+                    log_operation_error(
+                        self.logger, "Backup created but retention failed", error=error
+                    )
+                    from ..failures import classify_failure
+
+                    retention = CleanupResult(
+                        failures={filename: classify_failure(error).error}
+                    )
                 if retention.failures:
                     self.logger.warning(
                         "Backup created; retention could not remove %s archives.",
@@ -748,19 +889,20 @@ class UnifiedServerBackups(ManagedBackups):
                 )
 
     @staticmethod
-    def _check_tree(source: Path) -> None:
+    def _check_tree(source: Path, cancellation_event=None) -> None:
+        check_cancellation(cancellation_event)
         if is_link(source):
             raise BackupRestoreError("Backup sources must not contain symbolic links.")
         safe_name(source.name)
         if source.is_dir():
             for child in source.iterdir():
-                UnifiedServerBackups._check_tree(child)
+                UnifiedServerBackups._check_tree(child, cancellation_event)
         elif not source.is_file():
             raise BackupRestoreError("Backup sources must be regular files.")
 
     async def can_reuse_sequence_snapshot(self, *, mode=None, components=None) -> bool:
         """Require a complete capture covering every component currently present."""
-        from ..operations import OperationResultQuery
+        from ..events.operations import OperationResultQuery
 
         async with self.server.operation_lock:
             _, chosen = selection(self.server.settings, mode, components)
@@ -864,8 +1006,12 @@ class UnifiedServerBackups(ManagedBackups):
             async with temporary_directory(
                 prefix=".bsm-inspect-", parent=path.parent
             ) as directory:
-                manifest = await run_in_thread(
-                    self.unpack_snapshot, path, Path(directory), password
+                manifest = await backup_worker(
+                    self.unpack_snapshot,
+                    path,
+                    Path(directory),
+                    password,
+                    materialize=False,
                 )
             info = await run_in_thread(header, path)
             return BackupSummary(
@@ -902,6 +1048,17 @@ class UnifiedServerBackups(ManagedBackups):
                 metadata_stat.st_mtime_ns,
             ]:
                 metadata.pop("verification", None)
+            drill = metadata.get("drill")
+            if (
+                drill
+                and drill.get("status") == "passed"
+                and drill.get("fingerprint")
+                != [
+                    metadata_stat.st_size,
+                    metadata_stat.st_mtime_ns,
+                ]
+            ):
+                metadata.pop("drill", None)
             try:
                 info = await run_in_thread(header, path)
                 result.append(
@@ -922,6 +1079,7 @@ class UnifiedServerBackups(ManagedBackups):
                         origin=metadata.get("origin", "captured"),
                         encrypted=info.encrypted,
                         key_id=info.key_id,
+                        error=metadata.get("metadata_error"),
                     )
                 )
             except BackupRestoreError:
@@ -1115,17 +1273,15 @@ class UnifiedServerBackups(ManagedBackups):
             return Path(self.server.paths.server_dir).resolve()
         return self._safe_target(name)
 
-    def _comparison_paths(self, component, target):
+    def _comparison_paths(self, component, target, cancellation_event=None):
         if component == "server_directory":
             paths = []
             for entry in server_entries(target):
-                self._check_tree(entry)
-                paths.extend(
-                    [entry, *sorted(entry.rglob("*"))] if entry.is_dir() else [entry]
-                )
+                self._check_tree(entry, cancellation_event)
+                paths.extend(sorted(tree_paths(entry, cancellation_event)))
             return paths
-        self._check_tree(target) if target.exists() else None
-        return [target, *sorted(target.rglob("*"))] if target.is_dir() else [target]
+        self._check_tree(target, cancellation_event) if target.exists() else None
+        return sorted(tree_paths(target, cancellation_event))
 
     def _safe_target(self, name: str) -> Path:
         safe_name(name)
@@ -1139,27 +1295,44 @@ class UnifiedServerBackups(ManagedBackups):
             raise BackupRestoreError("Restore destination contains a symbolic link.")
         return target
 
-    def _plan_token(self, path: Path, targets: dict[Component, str]) -> tuple[str, int]:
+    def _plan_token(
+        self,
+        path: Path,
+        targets: dict[Component, str],
+        cancellation_event=None,
+        *,
+        hashes=None,
+    ) -> tuple[str, int]:
+        check_cancellation(cancellation_event)
         state = {
-            "archive": digest(path),
+            "archive": digest(path, cancellation_event),
             "targets": targets,
             "installed_version": self.server.configuration.snapshot().installed_version,
             "settings": settings_export(self.server).model_dump(mode="json"),
         }
+
+        def checksum(source):
+            value = digest(source, cancellation_event)
+            if hashes is not None:
+                metadata = source.stat()
+                hashes[source] = (metadata.st_size, metadata.st_mtime_ns, value)
+            return value
+
         fingerprints = {}
         recovery_size = 0
         for component, name in targets.items():
+            check_cancellation(cancellation_event)
             if component == "bsm_settings":
                 continue
             target = self._component_target(component, name)
-            paths = self._comparison_paths(component, target)
+            paths = self._comparison_paths(component, target, cancellation_event)
             recovery_size += sum(p.stat().st_size for p in paths if p.is_file())
             # World contents naturally change while running; bind its destination identity instead.
             fingerprints[component] = (
                 [
                     (
                         str(p.relative_to(target.parent)),
-                        digest(p),
+                        checksum(p),
                         p.stat().st_mode & 0o100,
                     )
                     for p in paths
@@ -1181,6 +1354,7 @@ class UnifiedServerBackups(ManagedBackups):
         recovery_key: str | None = None,
         *,
         dry_run: bool = False,
+        _all_components: bool = False,
     ) -> RestorePlan:
         async with self.server.operation_lock:
             RestoreJournal(self.server).ensure_clear()
@@ -1188,48 +1362,54 @@ class UnifiedServerBackups(ManagedBackups):
                 raise BackupRestoreError(
                     "Stop the server before reviewing a full-directory restore."
                 )
-            path = self.resolve_backup(identifier)
+            path = await run_in_thread(self.resolve_backup, identifier)
             password = await run_in_thread(self._password, path, recovery_key)
+            from .space import existing_parent, restore_capacity
+
+            target_root = Path(self.server.paths.server_dir)
+            if dry_run:
+                await report_stage("Testing isolated restore extraction")
             async with temporary_directory(
-                prefix=".bsm-plan-", parent=path.parent
+                prefix=".bsm-dry-run-" if dry_run else ".bsm-plan-",
+                parent=existing_parent(target_root) if dry_run else path.parent,
             ) as directory:
                 staging = Path(directory)
-                manifest = await run_in_thread(
-                    self.unpack_snapshot, path, staging, password
+                manifest = await backup_worker(
+                    self.unpack_snapshot, path, staging, password, durable=dry_run
                 )
+                if _all_components:
+                    components = [
+                        name
+                        for name, state in manifest.components.items()
+                        if state == "included"
+                    ]
+                if "server_directory" in components and await self.server.is_running():
+                    raise BackupRestoreError(
+                        "Stop the server before reviewing a full-directory restore."
+                    )
                 targets, warnings = await run_in_thread(
                     self._destinations, staging, manifest, components
                 )
-                token, old_bytes = await run_in_thread(self._plan_token, path, targets)
-                from .space import existing_parent, restore_capacity
-
+                await report_stage("Checking restore destinations")
+                current_hashes: dict[Path, tuple[int, int, str]] = {}
+                token, old_bytes = await backup_worker(
+                    self._plan_token, path, targets, hashes=current_hashes
+                )
                 volumes = await run_in_thread(restore_capacity, self, manifest, targets)
                 checked = 0
                 if dry_run and all(volume.sufficient for volume in volumes):
-                    # Exercise replacement copies on the destination filesystem in isolation.
-                    target_root = Path(self.server.paths.server_dir)
-                    async with temporary_directory(
-                        prefix=".bsm-dry-run-", parent=existing_parent(target_root)
-                    ) as probe:
-                        for component in components:
-                            await run_in_thread(
-                                copy_source,
-                                staging / PREFIXES[component],
-                                Path(probe) / PREFIXES[component],
-                            )
-                        await run_in_thread(sync_tree, Path(probe))
-                        for item in manifest.files:
-                            if item.component in components:
-                                if (
-                                    await run_in_thread(digest, Path(probe) / item.path)
-                                    != item.sha256
-                                ):
-                                    raise BackupRestoreError(
-                                        "Dry-run replacement checksum validation failed."
-                                    )
-                                checked += 1
-                changes, counts, settings = await run_in_thread(
-                    self.restore_comparison, staging, targets
+                    # Materialize once on the destination filesystem, then read it back.
+                    await report_stage("Checking staged restore checksums")
+                    checked = await backup_worker(
+                        verify_staging, staging, manifest, components
+                    )
+                await report_stage("Comparing restore contents")
+                changes, counts, settings = await backup_worker(
+                    self.restore_comparison,
+                    staging,
+                    targets,
+                    manifest=manifest,
+                    hashes=current_hashes,
                 )
                 plan = RestorePlan(
                     backup_id=identifier,
@@ -1311,13 +1491,13 @@ class UnifiedServerBackups(ManagedBackups):
                 prefix=".bsm-restore-stage-", parent=root
             ) as directory:
                 staging = Path(directory)
-                manifest = await run_in_thread(
-                    self.unpack_snapshot, path, staging, password
+                manifest = await backup_worker(
+                    self.unpack_snapshot, path, staging, password, durable=True
                 )
                 targets, _ = await run_in_thread(
                     self._destinations, staging, manifest, components
                 )
-                current, old_bytes = await run_in_thread(
+                current, old_bytes = await backup_worker(
                     self._plan_token, path, targets
                 )
                 if current != token:
@@ -1333,7 +1513,6 @@ class UnifiedServerBackups(ManagedBackups):
                     raise BackupRestoreError(
                         "Insufficient space on the server or backup volume for staging and a safety archive."
                     )
-                await run_in_thread(sync_tree, staging)
                 was_running = await self.server.is_running()
                 await self._stage(progress, "Preparing restore recovery")
                 if was_running:

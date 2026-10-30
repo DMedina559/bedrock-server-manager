@@ -6,8 +6,8 @@ import time
 from typing import TYPE_CHECKING
 
 from .. import __version__
-from ..operations import OperationActivityQuery
-from ..state_revision import revision_clock
+from ..events.operations import OperationActivityQuery
+from ..state.revision import revision_clock
 from .history import DiagnosticHistoryStore
 from .models import (
     BackupsDiagnostics,

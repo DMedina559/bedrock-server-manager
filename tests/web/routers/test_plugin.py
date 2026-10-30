@@ -276,7 +276,7 @@ async def test_backup_components_share_valid_schema_and_save_from_plugin_form(
         DEFAULT_COMPONENTS,
     )
     from bedrock_server_manager.state.settings import BackupSettings
-    from bedrock_server_manager.web.routers.backup_restore import SnapshotCreatePayload
+    from bedrock_server_manager.web.schemas.backup import SnapshotCreatePayload
 
     await plugin_factory(
         "backup_on_start",

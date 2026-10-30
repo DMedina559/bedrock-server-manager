@@ -1,17 +1,38 @@
 # src/bedrock_server_manager/state/models.py
 """
-Typed domain state models for ServerState, PluginState, UserState, and RuntimeState.
+Typed domain state models for ServerState, PluginState, UserState, SchedulerState, and RuntimeState.
 """
 
 import asyncio
+import json
 import time
+from copy import deepcopy
 from dataclasses import dataclass, field
-from typing import Dict, List, Optional, Self, cast
+from typing import (
+    Any,
+    ClassVar,
+    Dict,
+    Generic,
+    List,
+    Literal,
+    Optional,
+    Self,
+    TypeVar,
+    cast,
+)
 
 from pydantic import BaseModel, ConfigDict, Field, JsonValue, model_validator
 
 from .maintenance import MaintenanceGuard
-from .types import UserRole
+
+UserRole = Literal["admin", "moderator", "user"]
+
+
+def json_equal(left: object, right: object) -> bool:
+    """Compare validated JSON snapshots without Python's bool/int equality alias."""
+    return json.dumps(left, sort_keys=True, allow_nan=False) == json.dumps(
+        right, sort_keys=True, allow_nan=False
+    )
 
 
 class PersistentRecord(BaseModel):
@@ -26,6 +47,93 @@ class PersistentRecord(BaseModel):
     )
 
 
+T = TypeVar("T", bound=PersistentRecord)
+
+
+@dataclass
+class EntityStateMap(Generic[T]):
+    _model_type: ClassVar[type[PersistentRecord]]
+    _key_field: ClassVar[str]
+
+    _items: Dict[str, T] = field(default_factory=dict)
+    _dirty: bool = field(default=False, init=False, repr=False)
+    _dirty_since: float | None = field(default=None, init=False, repr=False)
+    _dirty_keys: set[str] = field(init=False, repr=False, default_factory=set)
+    _locks: Dict[str, asyncio.Lock] = field(
+        init=False, repr=False, default_factory=dict
+    )
+
+    @property
+    def count(self) -> int:
+        return len(self._items)
+
+    def _snapshots(self) -> Dict[str, T]:
+        return {
+            name: value.model_copy(deep=True) for name, value in self._items.items()
+        }
+
+    def replace_loaded(self, values: Dict[str, T]) -> None:
+        model_cls = cast(type[T], self._model_type)
+        self._items = {
+            name: model_cls.model_validate(value).model_copy(deep=True)
+            for name, value in values.items()
+        }
+
+    def remove(self, name: str) -> None:
+        self._items.pop(name, None)
+        self.remove_dirty(name)
+
+    def get_lock(self, name: str) -> asyncio.Lock:
+        if name not in self._locks:
+            self._locks[name] = asyncio.Lock()
+        return self._locks[name]
+
+    def mark_dirty(self, name: Optional[str] = None) -> None:
+        if not self._dirty:
+            self._dirty_since = time.monotonic()
+        self._dirty = True
+        if name:
+            self._dirty_keys.add(name)
+
+    def remove_dirty(self, name: str) -> None:
+        self._dirty_keys.discard(name)
+        if not self._dirty_keys:
+            self._dirty = False
+            self._dirty_since = None
+
+    def clear_dirty(self) -> None:
+        self._dirty = False
+        self._dirty_since = None
+        self._dirty_keys.clear()
+
+    @property
+    def dirty_age_seconds(self) -> float | None:
+        return (
+            max(0, time.monotonic() - self._dirty_since)
+            if self._dirty_since is not None
+            else None
+        )
+
+    @property
+    def is_dirty(self) -> bool:
+        return self._dirty
+
+    @property
+    def dirty_keys(self) -> set[str]:
+        return set(self._dirty_keys)
+
+    def get(self, name: str) -> Optional[T]:
+        item = self._items.get(name)
+        return item.model_copy(deep=True) if item is not None else None
+
+    def set(self, item: T) -> None:
+        model_cls = cast(type[T], self._model_type)
+        validated = model_cls.model_validate(item).model_copy(deep=True)
+        key = str(getattr(validated, self._key_field))
+        self._items[key] = validated
+        self.mark_dirty(key)
+
+
 class ServerConfigState(PersistentRecord):
     server_name: str
     installed_version: str = "UNKNOWN"
@@ -37,91 +145,27 @@ class ServerConfigState(PersistentRecord):
 
 
 @dataclass
-class ServerState:
-    _servers: Dict[str, ServerConfigState] = field(default_factory=dict)
-    _dirty: bool = field(default=False, init=False, repr=False)
-    _dirty_since: float | None = field(default=None, init=False, repr=False)
-    _dirty_servers: set[str] = field(init=False, repr=False, default_factory=set)
-    _locks: Dict[str, asyncio.Lock] = field(
-        init=False, repr=False, default_factory=dict
-    )
-
-    @property
-    def count(self) -> int:
-        return len(self._servers)
-
-    @property
-    def servers(self) -> Dict[str, ServerConfigState]:
-        """Read-only snapshots; use set() and remove() to mutate live state."""
-        return {
-            name: value.model_copy(deep=True) for name, value in self._servers.items()
-        }
-
-    def replace_loaded(self, values: Dict[str, ServerConfigState]) -> None:
-        self._servers = {
-            name: ServerConfigState.model_validate(value).model_copy(deep=True)
-            for name, value in values.items()
-        }
-
-    def remove(self, name: str) -> None:
-        self._servers.pop(name, None)
-        self.remove_dirty_server(name)
-
+class ServerState(EntityStateMap[ServerConfigState]):
+    _model_type: ClassVar[type[PersistentRecord]] = ServerConfigState
+    _key_field: ClassVar[str] = "server_name"
     _maintenance: Dict[str, MaintenanceGuard] = field(
         default_factory=dict, init=False, repr=False
     )
 
-    def maintenance(self, server_name: str) -> MaintenanceGuard:
-        return self._maintenance.setdefault(server_name, MaintenanceGuard())
-
-    def get_lock(self, server_name: str) -> asyncio.Lock:
-        if server_name not in self._locks:
-            self._locks[server_name] = asyncio.Lock()
-        return self._locks[server_name]
-
-    def mark_dirty(self, server_name: Optional[str] = None) -> None:
-        if not self._dirty:
-            self._dirty_since = time.monotonic()
-        self._dirty = True
-        if server_name:
-            self._dirty_servers.add(server_name)
-
-    def remove_dirty_server(self, server_name: str) -> None:
-        self._dirty_servers.discard(server_name)
-        if not self._dirty_servers:
-            self._dirty = False
-            self._dirty_since = None
-
-    def clear_dirty(self) -> None:
-        self._dirty = False
-        self._dirty_since = None
-        self._dirty_servers.clear()
-
     @property
-    def dirty_age_seconds(self) -> float | None:
-        return (
-            max(0, time.monotonic() - self._dirty_since)
-            if self._dirty_since is not None
-            else None
-        )
-
-    @property
-    def is_dirty(self) -> bool:
-        return self._dirty
+    def servers(self) -> Dict[str, ServerConfigState]:
+        """Read-only snapshots; use set() and remove() to mutate live state."""
+        return self._snapshots()
 
     @property
     def dirty_servers(self) -> set[str]:
-        return set(self._dirty_servers)
+        return self.dirty_keys
 
-    def get(self, server_name: str) -> Optional[ServerConfigState]:
-        cfg = self._servers.get(server_name)
-        return cfg.model_copy(deep=True) if cfg is not None else None
+    def remove_dirty_server(self, server_name: str) -> None:
+        self.remove_dirty(server_name)
 
-    def set(self, config: ServerConfigState) -> None:
-        self._servers[config.server_name] = ServerConfigState.model_validate(
-            config
-        ).model_copy(deep=True)
-        self.mark_dirty(config.server_name)
+    def maintenance(self, server_name: str) -> MaintenanceGuard:
+        return self._maintenance.setdefault(server_name, MaintenanceGuard())
 
 
 class PluginInfoState(PersistentRecord):
@@ -133,84 +177,21 @@ class PluginInfoState(PersistentRecord):
 
 
 @dataclass
-class PluginState:
-    _plugins: Dict[str, PluginInfoState] = field(default_factory=dict)
-    _dirty: bool = field(default=False, init=False, repr=False)
-    _dirty_since: float | None = field(default=None, init=False, repr=False)
-    _dirty_plugins: set[str] = field(init=False, repr=False, default_factory=set)
-    _locks: Dict[str, asyncio.Lock] = field(
-        init=False, repr=False, default_factory=dict
-    )
-
-    @property
-    def count(self) -> int:
-        return len(self._plugins)
+class PluginState(EntityStateMap[PluginInfoState]):
+    _model_type: ClassVar[type[PersistentRecord]] = PluginInfoState
+    _key_field: ClassVar[str] = "plugin_name"
 
     @property
     def plugins(self) -> Dict[str, PluginInfoState]:
         """Read-only snapshots; use set() and remove() to mutate live state."""
-        return {
-            name: value.model_copy(deep=True) for name, value in self._plugins.items()
-        }
-
-    def replace_loaded(self, values: Dict[str, PluginInfoState]) -> None:
-        self._plugins = {
-            name: PluginInfoState.model_validate(value).model_copy(deep=True)
-            for name, value in values.items()
-        }
-
-    def remove(self, name: str) -> None:
-        self._plugins.pop(name, None)
-        self.remove_dirty_plugin(name)
-
-    def get_lock(self, plugin_name: str) -> asyncio.Lock:
-        if plugin_name not in self._locks:
-            self._locks[plugin_name] = asyncio.Lock()
-        return self._locks[plugin_name]
-
-    def mark_dirty(self, plugin_name: Optional[str] = None) -> None:
-        if not self._dirty:
-            self._dirty_since = time.monotonic()
-        self._dirty = True
-        if plugin_name:
-            self._dirty_plugins.add(plugin_name)
-
-    def remove_dirty_plugin(self, plugin_name: str) -> None:
-        self._dirty_plugins.discard(plugin_name)
-        if not self._dirty_plugins:
-            self._dirty = False
-            self._dirty_since = None
-
-    def clear_dirty(self) -> None:
-        self._dirty = False
-        self._dirty_since = None
-        self._dirty_plugins.clear()
-
-    @property
-    def dirty_age_seconds(self) -> float | None:
-        return (
-            max(0, time.monotonic() - self._dirty_since)
-            if self._dirty_since is not None
-            else None
-        )
-
-    @property
-    def is_dirty(self) -> bool:
-        return self._dirty
+        return self._snapshots()
 
     @property
     def dirty_plugins(self) -> set[str]:
-        return set(self._dirty_plugins)
+        return self.dirty_keys
 
-    def get(self, plugin_name: str) -> Optional[PluginInfoState]:
-        p_info = self._plugins.get(plugin_name)
-        return p_info.model_copy(deep=True) if p_info is not None else None
-
-    def set(self, plugin: PluginInfoState) -> None:
-        self._plugins[plugin.plugin_name] = PluginInfoState.model_validate(
-            plugin
-        ).model_copy(deep=True)
-        self.mark_dirty(plugin.plugin_name)
+    def remove_dirty_plugin(self, plugin_name: str) -> None:
+        self.remove_dirty(plugin_name)
 
 
 class UserInfoState(PersistentRecord):
@@ -224,84 +205,54 @@ class UserInfoState(PersistentRecord):
 
 
 @dataclass
-class UserState:
-    _users: Dict[str, UserInfoState] = field(default_factory=dict)
-    _dirty: bool = field(default=False, init=False, repr=False)
-    _dirty_since: float | None = field(default=None, init=False, repr=False)
-    _dirty_users: set[str] = field(init=False, repr=False, default_factory=set)
-    _locks: Dict[str, asyncio.Lock] = field(
-        init=False, repr=False, default_factory=dict
-    )
-
-    @property
-    def count(self) -> int:
-        return len(self._users)
+class UserState(EntityStateMap[UserInfoState]):
+    _model_type: ClassVar[type[PersistentRecord]] = UserInfoState
+    _key_field: ClassVar[str] = "username"
 
     @property
     def users(self) -> Dict[str, UserInfoState]:
         """Read-only snapshots; use set() and remove() to mutate live state."""
-        return {
-            name: value.model_copy(deep=True) for name, value in self._users.items()
-        }
-
-    def replace_loaded(self, values: Dict[str, UserInfoState]) -> None:
-        self._users = {
-            name: UserInfoState.model_validate(value).model_copy(deep=True)
-            for name, value in values.items()
-        }
-
-    def remove(self, name: str) -> None:
-        self._users.pop(name, None)
-        self.remove_dirty_user(name)
-
-    def get_lock(self, username: str) -> asyncio.Lock:
-        if username not in self._locks:
-            self._locks[username] = asyncio.Lock()
-        return self._locks[username]
-
-    def mark_dirty(self, username: Optional[str] = None) -> None:
-        if not self._dirty:
-            self._dirty_since = time.monotonic()
-        self._dirty = True
-        if username:
-            self._dirty_users.add(username)
-
-    def remove_dirty_user(self, username: str) -> None:
-        self._dirty_users.discard(username)
-        if not self._dirty_users:
-            self._dirty = False
-            self._dirty_since = None
-
-    def clear_dirty(self) -> None:
-        self._dirty = False
-        self._dirty_since = None
-        self._dirty_users.clear()
-
-    @property
-    def dirty_age_seconds(self) -> float | None:
-        return (
-            max(0, time.monotonic() - self._dirty_since)
-            if self._dirty_since is not None
-            else None
-        )
-
-    @property
-    def is_dirty(self) -> bool:
-        return self._dirty
+        return self._snapshots()
 
     @property
     def dirty_users(self) -> set[str]:
-        return set(self._dirty_users)
+        return self.dirty_keys
 
-    def get(self, username: str) -> Optional[UserInfoState]:
-        u_info = self._users.get(username)
-        return u_info.model_copy(deep=True) if u_info is not None else None
+    def remove_dirty_user(self, username: str) -> None:
+        self.remove_dirty(username)
 
-    def set(self, user: UserInfoState) -> None:
-        self._users[user.username] = UserInfoState.model_validate(user).model_copy(
-            deep=True
+
+@dataclass
+class SchedulerState:
+    """Committed scheduler read model; all writes go through Storage transactions."""
+
+    _records: dict[str, tuple[dict[str, Any], dict[str, Any], str | None]] = field(
+        default_factory=dict, repr=False
+    )
+
+    @property
+    def count(self) -> int:
+        return len(self._records)
+
+    @property
+    def records(self):
+        return deepcopy(self._records)
+
+    def replace_loaded(self, rows) -> None:
+        self._records = {
+            name: deepcopy((configuration, state, legacy))
+            for name, configuration, state, legacy in rows
+        }
+
+    def update_loaded(self, names, rows):
+        for name in names:
+            self._records.pop(name, None)
+        self._records.update(
+            {
+                name: deepcopy((config, state, legacy))
+                for name, config, state, legacy in rows
+            }
         )
-        self.mark_dirty(user.username)
 
 
 class BanItem(PersistentRecord):

@@ -12,8 +12,8 @@ from typing import Any
 from uuid import uuid4
 
 from ..events.models import EventActivityQuery, EventDiagnostics, EventSubscriptions
+from ..events.operations import OperationActivity, OperationActivityQuery
 from ..logging import RepeatedFailureReporter
-from ..operations import OperationActivity, OperationActivityQuery
 from .activity import (
     RecentOutcomes,
     bound_event_activity,

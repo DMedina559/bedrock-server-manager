@@ -25,7 +25,7 @@ try:
 
     PSUTIL_AVAILABLE = True
     """bool: ``True`` if the `psutil` library was successfully imported, ``False`` otherwise.
-    This flag is checked by components like :class:`.ResourceMonitor` to determine
+    This flag is checked by components like :class:`.ProcessResourceMonitor` to determine
     if process resource monitoring capabilities are available.
     """
 except ImportError:
@@ -348,14 +348,14 @@ async def delete_path_robustly(path_to_delete: str, item_description: str) -> bo
 
 
 # --- RESOURCE MONITOR ---
-class ResourceMonitor:
+class ProcessResourceMonitor:
     """Collect process CPU, memory and uptime observations."""
 
-    _instance: Optional["ResourceMonitor"] = None
+    _instance: Optional["ProcessResourceMonitor"] = None
     _lock = threading.Lock()
 
-    def __new__(cls, *args: Any, **kwargs: Any) -> "ResourceMonitor":
-        """Ensure that only one instance of ResourceMonitor is created (Singleton
+    def __new__(cls, *args: Any, **kwargs: Any) -> "ProcessResourceMonitor":
+        """Ensure that only one instance of ProcessResourceMonitor is created (Singleton
         pattern).
         """
         if cls._instance is None:

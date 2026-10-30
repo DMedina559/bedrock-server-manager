@@ -37,8 +37,6 @@ See [bundled plugins](../features/default_plugins.md) for built-in behavior and 
 The repository's `plugins/ping_plugin.py` and `pong_plugin.py` demonstrate typed,
 owned custom events. Enable ping before pong. The event-sender example exposes
 only its own declared message event and requires administrator authentication.
-Recursive and server-restarting diagnostic plugins were removed; automated event
-and lifecycle tests cover those behaviors without deploying them to a live host.
 
 
 ## Settings scopes

@@ -4,7 +4,7 @@ from typing import Annotated
 
 from pydantic import Field
 
-from ...results import CleanupResult
+from ...contracts import CleanupResult
 from .common import ActionResponse, APIRequest, NonEmptyStr
 
 

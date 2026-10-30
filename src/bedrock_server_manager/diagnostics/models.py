@@ -7,7 +7,7 @@ from uuid import uuid4
 from pydantic import BaseModel, ConfigDict, Field, model_validator
 
 from ..events.models import EventDiagnostics, EventOptions, EventSubscriptions
-from ..operations import OperationActivity
+from ..events.operations import OperationActivity
 
 
 class DiagnosticModel(BaseModel):

@@ -3,13 +3,16 @@
 import json
 import os
 import shutil
+import threading
 from pathlib import Path
 from typing import TYPE_CHECKING
 
 from ..error import BackupRestoreError
+from ..utils.threads import check_cancellation
 from .archive import safe_name
 from .credentials import atomic_json, private_directory
 from .models import PACK_COMPONENTS, ServerSettingsExport
+from .work import FileWork, tree_paths
 
 if TYPE_CHECKING:
     from ..core.bedrock_server import BedrockServer
@@ -22,22 +25,59 @@ def remove(path: Path) -> None:
         shutil.rmtree(path)
 
 
-def sync_tree(path: Path) -> None:
-    """Flush replacement content before the recovery journal can commit it."""
-    paths = [path, *path.rglob("*")] if path.is_dir() else [path]
-    for item in paths:
-        if item.is_file():
-            # Windows cannot flush a read-only file handle. Do not truncate content.
-            with item.open("r+b") as stream:
-                os.fsync(stream.fileno())
-    if os.name != "nt":
-        for item in reversed(paths):
-            if item.is_dir():
-                descriptor = os.open(item, os.O_RDONLY)
+def sync_tree(
+    path: Path,
+    cancellation_event: threading.Event | None = None,
+    *,
+    stage_callback=None,
+    include_files: bool = True,
+) -> None:
+    """Flush replacement files, or only directories after durable writes."""
+    work = FileWork(
+        "Flushing restore files" if include_files else "Flushing restore directories",
+        stage_callback,
+    )
+    status = "failed"
+    try:
+        work.progress(force=True)
+        with work.phase("metadata"):
+            paths = list(tree_paths(path, cancellation_event))
+        for item in paths if include_files else ():
+            check_cancellation(cancellation_event)
+            with work.phase("metadata"):
+                metadata = item.stat()
+                regular = item.is_file()
+            if regular:
+                with work.phase("open"):
+                    stream = item.open("r+b")
                 try:
-                    os.fsync(descriptor)
+                    with work.phase("fsync"):
+                        os.fsync(stream.fileno())
                 finally:
-                    os.close(descriptor)
+                    with work.phase("close"):
+                        stream.close()
+                work.files += 1
+                work.bytes += metadata.st_size
+            work.progress()
+        if os.name != "nt":
+            for item in reversed(paths):
+                check_cancellation(cancellation_event)
+                with work.phase("metadata"):
+                    directory = item.is_dir()
+                if directory:
+                    with work.phase("directory_open"):
+                        descriptor = os.open(item, os.O_RDONLY)
+                    try:
+                        with work.phase("directory_fsync"):
+                            os.fsync(descriptor)
+                    finally:
+                        with work.phase("directory_close"):
+                            os.close(descriptor)
+                work.progress()
+        work.progress(force=True)
+        status = "completed"
+    finally:
+        work.finish(status)
 
 
 async def apply_settings(
@@ -153,7 +193,7 @@ class RestoreJournal:
                 and not (
                     state.get("full_directory") is True
                     and len(Path(name).parts) == 1
-                    and not name.startswith(".bsm-")
+                    and not name.casefold().startswith(".bsm-")
                 )
             ):
                 raise BackupRestoreError("Invalid recovery destination.")
@@ -253,5 +293,13 @@ class RestoreJournal:
                 os.replace(restored, target)
             elif not entry["existed"]:
                 remove(target)
+            if os.name != "nt":
+                # Persist both sides of a rollback rename before its completion marker.
+                for folder in (target.parent, self.path):
+                    descriptor = os.open(folder, os.O_RDONLY)
+                    try:
+                        os.fsync(descriptor)
+                    finally:
+                        os.close(descriptor)
             entry["rolled_back"] = True
             atomic_json(self.record, state)
