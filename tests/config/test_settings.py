@@ -33,6 +33,7 @@ async def test_settings_load_populates_defaults(app_context, db, isolated_bcm_co
 
     # Check that settings were populated from default_config
     assert "web" in settings._settings
+    assert settings.get("web.cors_origins") == ()
     assert "port" in settings._settings["web"]
 
     # Verify they were saved to the DB

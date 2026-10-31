@@ -22,7 +22,8 @@ Application settings include retention limits and monitoring intervals.
 
 Paths select server, backup, content and download locations. Changing a path does not move existing files. Plan and back up a storage move, stop affected activity, move data deliberately, and verify permissions under the service account.
 
-Web settings include `web.cors_origins`, a list of allowed browser origins such
+Web settings include `web.cors_origins`, which defaults to an empty list until
+you configure allowed browser origins. This is a list of origins such
 as `["https://dashboard.example.com"]`. Origins must omit URL paths, credentials,
 queries, and fragments. An empty list disables cross-origin access; `["*"]`
 allows every origin. Same-origin access does not require a CORS entry. Changes
