@@ -1,6 +1,7 @@
 """An explicit bearer-only Swagger session, isolated from browser cookies."""
 
 import json
+from pathlib import Path
 
 from fastapi import FastAPI, Request
 from fastapi.openapi.docs import get_swagger_ui_html
@@ -8,6 +9,15 @@ from fastapi.responses import HTMLResponse
 
 
 def configure_swagger(app: FastAPI) -> None:
+    assets = Path(__file__).with_name("assets")
+    presentation = (
+        "<style>"
+        + (assets / "swagger-access.css").read_text(encoding="utf-8")
+        + "</style><script>"
+        + (assets / "swagger-access.js").read_text(encoding="utf-8")
+        + "</script>"
+    )
+
     @app.get("/docs", include_in_schema=False)
     async def swagger(request: Request) -> HTMLResponse:
         prefix = request.scope.get("root_path", "").rstrip("/")
@@ -20,6 +30,7 @@ def configure_swagger(app: FastAPI) -> None:
                 **(app.swagger_ui_parameters or {}),
                 "persistAuthorization": False,
                 "withCredentials": False,
+                "showExtensions": True,
             },
         )
         # FastAPI serializes parameters as JSON. Inject an actual JS function,
@@ -30,10 +41,12 @@ const swaggerFetch = window.fetch.bind(window);
 window.fetch = (input, init = {}) => swaggerFetch(input, {...init, credentials: 'omit'});
 </script>"""
         body = bytes(response.body).decode()
-        body = body.replace("<script src=", transport + "\n<script src=", 1)
+        body = body.replace(
+            "<script src=", presentation + transport + "\n<script src=", 1
+        )
         body = body.replace(
             "const ui = SwaggerUIBundle({",
-            'const ui = SwaggerUIBundle({\nrequestInterceptor: request => { request.credentials = "omit"; return request; },',
+            'const ui = SwaggerUIBundle({\nplugins: [SwaggerAccessPlugin],\nrequestInterceptor: request => { request.credentials = "omit"; return request; },',
         )
         # Resolve relative OAuth token URLs against the trusted ingress prefix,
         # rather than /docs or a deep page URL.

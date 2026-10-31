@@ -152,6 +152,9 @@ async def test_swagger_transport_and_ingress(unauth_client):
     assert "credentials: 'omit'" in response.text
     assert 'request.credentials = "omit"' in response.text
     assert '"persistAuthorization": false' in response.text
+    assert "plugins: [SwaggerAccessPlugin]" in response.text
+    assert "Raw access metadata" in response.text
+    assert "bsm-doc-access" in response.text
 
 
 # Static role baseline captured before route migration. Contextual restrictions
