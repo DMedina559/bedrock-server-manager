@@ -4,8 +4,8 @@ import asyncio
 import datetime
 import logging
 import secrets
-from datetime import timezone
-from typing import TYPE_CHECKING, Any, Optional
+from dataclasses import dataclass
+from typing import TYPE_CHECKING, Optional
 from uuid import uuid4
 from weakref import WeakValueDictionary
 
@@ -18,8 +18,8 @@ from pydantic import TypeAdapter
 
 from ..config import Settings
 from ..contracts import Password
-from ..state.models import UserInfoState
 from ..utils.threads import run_in_thread
+from .authorization import Authorization
 from .schemas import UserResponse
 
 if TYPE_CHECKING:
@@ -52,6 +52,22 @@ async def get_jwt_secret_key(settings: Settings) -> str:
     return str(jwt_secret_key)
 
 
+def token_lifetime(settings, *, remember_me=True) -> datetime.timedelta:
+    """Pure lifetime policy shared by login, renewal and direct token creation.
+
+    Persisted session limits remain authoritative when the token is issued.
+    """
+    if not remember_me:
+        return datetime.timedelta(hours=24)
+    try:
+        weeks = float(settings.get("web.token_expires_weeks", 4.0))
+        if not 0 < weeks <= 5200:
+            raise ValueError("Invalid token lifetime")
+        return datetime.timedelta(weeks=weeks)
+    except (TypeError, ValueError, OverflowError):
+        return datetime.timedelta(weeks=4)
+
+
 # --- Token Creation ---
 async def create_access_token(
     app_context: AppContext,
@@ -80,17 +96,9 @@ async def create_access_token(
 
     JWT_SECRET_KEY = await get_jwt_secret_key(settings)
 
-    if expires_delta:
-        expire = datetime.datetime.now(datetime.timezone.utc) + expires_delta
-    else:
-        try:
-            jwt_expires_weeks = float(settings.get("web.token_expires_weeks", 4.0))
-        except (ValueError, TypeError):
-            jwt_expires_weeks = 4.0
-        access_token_expire_minutes = jwt_expires_weeks * 7 * 24 * 60
-        expire = datetime.datetime.now(datetime.timezone.utc) + datetime.timedelta(
-            minutes=access_token_expire_minutes
-        )
+    expire = datetime.datetime.now(datetime.timezone.utc) + (
+        expires_delta if expires_delta is not None else token_lifetime(settings)
+    )
     owner_id = to_encode.get("aid")
     if owner_id:
         identifier = to_encode.get("sid")
@@ -125,140 +133,74 @@ async def create_access_token(
 # --- Token Verification and User Retrieval ---
 
 
-async def _get_and_update_user_from_db(
-    app_context: AppContext, session, username: str
-) -> Optional[UserResponse]:
-    """Helper function to fetch user via UserRepository, update last_seen, and return UserResponse."""
-    user: Any = await app_context.storage.user_repo.get_user_by_username(
-        session, username
-    )
-    if not user or not user.is_active:
+@dataclass(frozen=True)
+class AuthenticatedSession:
+    """Server-created identity and authorization for one authentication operation."""
+
+    user: UserResponse
+    authorization: Authorization
+
+
+async def resolve_session_token(
+    app_context: AppContext, token: str
+) -> Optional[AuthenticatedSession]:
+    """Resolve a JWT against persisted identity, session and current grants once.
+
+    The result belongs to this request/handshake; it is never cached across requests.
+    """
+    try:
+        secret = await get_jwt_secret_key(app_context.settings)
+        payload = jwt.decode(token, secret, algorithms=[ALGORITHM])
+        username = payload.get("sub")
+        owner_id = payload.get("aid")
+        if not isinstance(username, str) or not isinstance(owner_id, str):
+            return None
+        async with app_context.storage.transaction() as session:
+            owner = await app_context.storage.user_repo.get_user_by_username(
+                session, username
+            )
+            if owner is None or not owner.is_active or owner.access_id != owner_id:
+                return None
+            user = UserResponse.model_validate(
+                {
+                    "id": owner.id,
+                    "username": owner.username,
+                    "identity_type": "jwt",
+                    "role": owner.role,
+                    "is_active": owner.is_active,
+                    "theme": owner.theme,
+                }
+            )
+        validated = await app_context.session_service.validate(
+            payload.get("sid"), owner_id
+        )
+        if validated is None:
+            return None
+        authorization = await app_context.access_service._snapshot(
+            user, session_id=validated.id, validated_session=validated
+        )
+        return (
+            AuthenticatedSession(user, authorization)
+            if authorization is not None
+            else None
+        )
+    except JWTError:
         return None
+    except Exception as error:
+        from ..error import DependencyUnavailableError
 
-    now = datetime.datetime.now(timezone.utc)
-
-    # SQLite often returns naive datetime objects.
-    # Make sure we compare aware-to-aware datetimes.
-    last_seen_dt = user.last_seen
-    if last_seen_dt is not None and last_seen_dt.tzinfo is None:
-        last_seen_dt = last_seen_dt.replace(tzinfo=timezone.utc)
-
-    # Only update the database if last_seen is missing or older than 5 minutes
-    if last_seen_dt is None or (now - last_seen_dt) > datetime.timedelta(minutes=5):
-        user.last_seen = now
-
-    return UserResponse.model_validate(
-        {
-            "id": int(user.id),
-            "username": str(user.username),
-            "identity_type": "jwt",
-            "role": user.role,
-            "is_active": bool(user.is_active),
-            "theme": str(user.theme),
-        }
-    )
+        if isinstance(error, DependencyUnavailableError):
+            raise
+        raise DependencyUnavailableError(
+            "Authentication infrastructure is unavailable."
+        ) from error
 
 
 async def _get_user_from_token(
     app_context: AppContext, token: str
 ) -> Optional[UserResponse]:
-    """Helper function to decode a JWT and retrieve the associated user."""
-    try:
-        settings = app_context.settings
-        JWT_SECRET_KEY = await get_jwt_secret_key(settings)
-        payload = jwt.decode(token, JWT_SECRET_KEY, algorithms=[ALGORITHM])
-        username: Optional[str] = payload.get("sub")
-        if payload.get("aid") is not None and username:
-            async with app_context.storage.transaction() as session:
-                owner = await app_context.storage.user_repo.get_user_by_username(
-                    session, username
-                )
-                if owner is None or owner.access_id != payload["aid"]:
-                    return None
-        if (
-            not payload.get("aid")
-            or await app_context.session_service.validate(
-                payload.get("sid"), payload.get("aid")
-            )
-            is None
-        ):
-            return None
-        if username is None:
-            return None
-
-        # 1. Check in-memory AppState first (fast, non-blocking, avoids DB lock contention)
-        u_info = app_context.state.users.get(username)
-        if u_info is not None:
-            if not u_info.is_active:
-                return None
-            return UserResponse(
-                id=u_info.id or 0,
-                username=u_info.username,
-                identity_type="jwt",
-                role=u_info.role,
-                is_active=u_info.is_active,
-                theme=u_info.theme,
-            )
-
-        # 2. Fall back to database query if user not found in AppState
-        try:
-            async with app_context.storage.write_lock:
-                async with app_context.state.users.get_lock(username):
-                    # A committed account mutation may have populated the cache
-                    # while this lookup was waiting for the shared write lock.
-                    cached = app_context.state.users.get(username)
-                    if cached is not None:
-                        if not cached.is_active:
-                            return None
-                        return UserResponse.model_validate(
-                            {
-                                "id": cached.id or 0,
-                                "username": cached.username,
-                                "identity_type": "jwt",
-                                "role": cached.role,
-                                "is_active": cached.is_active,
-                                "theme": cached.theme,
-                            }
-                        )
-                    async with app_context.storage.transaction() as session:
-                        user_resp = await _get_and_update_user_from_db(
-                            app_context, session, username
-                        )
-                        if user_resp is None:
-                            return None
-                        user = await app_context.storage.user_repo.get_user_by_username(
-                            session, username
-                        )
-                        u_state = UserInfoState.model_validate(
-                            user, from_attributes=True
-                        )
-                    # Preserve the complete profile and publish after last_seen commits.
-                    app_context.state.users.set(u_state)
-                    app_context.state.users.remove_dirty_user(username)
-                    return user_resp
-        except Exception as db_err:
-            logger.warning(
-                "Failed DB fallback lookup for user '%s': %s",
-                username,
-                db_err,
-                exc_info=True,
-            )
-            from ..error import DependencyUnavailableError
-
-            raise DependencyUnavailableError(
-                "Authentication storage is unavailable."
-            ) from db_err
-
-    except JWTError:
-        return None
-    except Exception as e:
-        from ..error import DependencyUnavailableError
-
-        if isinstance(e, DependencyUnavailableError):
-            raise
-        raise DependencyUnavailableError(
-            "Authentication infrastructure is unavailable."
-        ) from e
+    identity = await resolve_session_token(app_context, token)
+    return identity.user if identity is not None else None
 
 
 async def authenticate_websocket_token(

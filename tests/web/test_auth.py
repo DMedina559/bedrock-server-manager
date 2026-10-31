@@ -175,7 +175,7 @@ async def test_authenticate_user_not_found(app_context, db):
     assert result is None
 
 
-async def test_token_cache_fill_preserves_full_profile(app_context):
+async def test_token_resolution_does_not_publish_a_partial_cached_profile(app_context):
     async with app_context.storage.transaction() as session:
         user = await app_context.storage.user_repo.create_user(
             session, "profile", "hash", "user"
@@ -184,8 +184,12 @@ async def test_token_cache_fill_preserves_full_profile(app_context):
         user.email = "user@example.com"
     token = await create_access_token(data={"sub": "profile"}, app_context=app_context)
     assert await _get_user_from_token(app_context, token) is not None
-    cached = app_context.state.users.get("profile")
-    assert cached.full_name == "Full Name" and cached.email == "user@example.com"
+    assert app_context.state.users.get("profile") is None
+    async with app_context.storage.transaction() as session:
+        profile = await app_context.storage.user_repo.get_user_by_username(
+            session, "profile"
+        )
+        assert profile.full_name == "Full Name" and profile.email == "user@example.com"
 
 
 async def test_token_cache_fill_cannot_overwrite_concurrent_disable(

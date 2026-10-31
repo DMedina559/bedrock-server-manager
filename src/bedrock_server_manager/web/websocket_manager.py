@@ -176,6 +176,14 @@ class ConnectionManager:
         if self.user_provider is None:
             return True
         user = self.user_provider(client.user.username)
+        # Database-backed resolvers already reject missing/disabled identities.
+        # A cache miss must not revoke a valid freshly resolved connection.
+        if (
+            user is None
+            and client.authorization is not None
+            and self.authorization_resolver is not None
+        ):
+            return True
         if (
             user is None
             or not user.is_active
@@ -188,11 +196,19 @@ class ConnectionManager:
         return True
 
     async def can_access_topic(self, client_id: str, topic: str) -> bool:
+        return await self.authorize_frame(client_id, topic)
+
+    async def authorize_frame(self, client_id: str, topic: str | None) -> bool:
+        """Refresh once per received frame, including unsubscribe/invalid frames.
+
+        Outbound delivery independently refreshes under the send lock.
+        """
         if not await self.refresh_authorization(client_id):
             return False
         client = self.active_connections.get(client_id)
         return client is not None and (
-            client.authorization is None
+            topic is None
+            or client.authorization is None
             or self.topic_authorizer is None
             or await self.topic_authorizer(client.authorization, topic)
         )

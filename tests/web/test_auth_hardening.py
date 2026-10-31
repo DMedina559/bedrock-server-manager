@@ -261,6 +261,8 @@ async def test_throttle_cleanup_survives_configured_window_changes(
         session.add(AuthThrottle(key="old-window", window=now - 90000, attempts=1))
     await app_context.settings.set("security.auth_window_seconds", 60)
     await app_context.session_service.throttle("window-test", "window-peer")
+    # Retention is owned by application maintenance rather than login traffic.
+    await app_context.session_service.cleanup()
     async with app_context.storage.transaction() as session:
         rows = (await session.scalars(select(AuthThrottle))).all()
         assert not any(row.key == "old-window" for row in rows)

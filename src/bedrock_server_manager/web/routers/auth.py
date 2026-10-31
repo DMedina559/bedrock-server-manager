@@ -14,6 +14,7 @@ from ..access_metadata import describe_access
 from ..auth import (
     authenticate_user,
     create_access_token,
+    token_lifetime,
 )
 from ..authorization import assigned_session
 from ..cookies import clear_session_cookie, set_session_cookie
@@ -92,15 +93,7 @@ async def api_login_for_access_token(
             headers={"WWW-Authenticate": "Bearer"},
         )
     settings = app_context.settings
-    if remember_me:
-        try:
-            jwt_expires_weeks = float(settings.get("web.token_expires_weeks", 4.0))
-        except (ValueError, TypeError):
-            jwt_expires_weeks = 4.0
-        access_token_expire_minutes = jwt_expires_weeks * 7 * 24 * 60
-        expires_delta = datetime.timedelta(minutes=access_token_expire_minutes)
-    else:
-        expires_delta = datetime.timedelta(hours=24)
+    expires_delta = token_lifetime(settings, remember_me=remember_me)
 
     access_token = await create_access_token(
         data={"sub": authenticated_username, "authv": auth_revision},
@@ -175,15 +168,7 @@ async def reauth(
         remember_me = False
 
     settings = app_context.settings
-    if remember_me:
-        try:
-            jwt_expires_weeks = float(settings.get("web.token_expires_weeks", 4.0))
-        except (ValueError, TypeError):
-            jwt_expires_weeks = 4.0
-        access_token_expire_minutes = jwt_expires_weeks * 7 * 24 * 60
-        expires_delta = datetime.timedelta(minutes=access_token_expire_minutes)
-    else:
-        expires_delta = datetime.timedelta(hours=24)
+    expires_delta = token_lifetime(settings, remember_me=remember_me)
 
     access_token = await create_access_token(
         data={

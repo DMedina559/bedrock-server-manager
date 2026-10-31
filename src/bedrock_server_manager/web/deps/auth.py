@@ -8,7 +8,6 @@ from fastapi.security import (
     OAuth2PasswordBearer,
     SecurityScopes,
 )
-from jose import jwt
 
 from .. import auth as auth_utils
 from ..access_policy import CORE_DESCRIPTIONS, policy_for
@@ -79,15 +78,11 @@ async def get_current_user_optional(
             return None
         user, authorization = result
     else:
-        user = await auth_utils._get_user_from_token(app_context, token)
-        request.state.invalid_session = user is None
-        session_id = jwt.get_unverified_claims(token).get("sid") if user else None
-        request.state.session_id = session_id
-        authorization = (
-            await app_context.access_service.snapshot(user, session_id=session_id)
-            if user
-            else None
-        )
+        identity = await auth_utils.resolve_session_token(app_context, token)
+        request.state.invalid_session = identity is None
+        user = identity.user if identity else None
+        authorization = identity.authorization if identity else None
+        request.state.session_id = authorization.session_id if authorization else None
     request.state.authorization = authorization
     return user if authorization is not None else None
 

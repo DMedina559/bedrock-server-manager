@@ -262,3 +262,99 @@ submission URLs, including ingress-prefixed paths. Configure reverse-proxy acces
 logs separately: BSM cannot redact logs written by another service. When serving
 the frontend separately, apply equivalent cache/referrer rules on registration
 page responses at that frontend host; backend headers do not configure it.
+
+## Authentication maintenance and request ownership
+
+JWT authentication resolves a persisted account, validates its login family and
+builds current grants once for that request or WebSocket handshake. The internal
+`AuthenticatedSession` carries the resulting identity and authorization; it is
+not a cross-request cache. Self-service security endpoints reuse the actor's
+owner ID from the request context, while administrator operations still look up
+the target account. The permission dependency owns the recent-authentication
+check for access mutations. Token creation and rotation retain their separate
+recent-authentication checks.
+
+Every subsequent protected request and WebSocket frame checks committed state.
+A role change closes the old socket identity. Outgoing WebSocket delivery still
+refreshes authorization independently under the send lock and filters the
+payload again. An already executing request is not retroactively cancelled.
+Password verification remains outside database transactions; session issuance
+still checks account activity and the authentication revision after verification.
+
+Login and renewal share the pure lifetime policy: 24 hours without remember-me,
+otherwise `web.token_expires_weeks` (four weeks if malformed). Persisted session
+maximum and idle limits remain authoritative; renewing never extends a family's
+absolute deadline. Invalid/non-finite legacy settings cannot overflow a token.
+
+Application startup owns an `authentication-retention` task in HTTP and other
+runtime modes. It runs immediately, daily after success and five minutes after
+an observable failure. Each transaction deletes at most 250 rows and yields
+between full batches. It removes throttle windows older than one day, security
+activity older than 90 days and login families whose absolute expiry is over
+90 days old. It never deletes integration credentials, including non-expiring
+credentials. General audit-log retention is independent. Login, session creation
+and activity reads no longer perform retention deletes. Shutdown cancels and
+awaits maintenance before closing the database. SQLite deployments still use the
+existing supported process model; this task adds no cross-worker locking promise.
+
+### Reproducible workload measurements
+
+Run `BSM_AUTH_BENCHMARK=1 python -m pytest -s tests/web/test_auth_workload.py` with
+the same interpreter, hardware and empty SQLite fixture before and after a change.
+The opt-in test records statement, write and transaction counts, elapsed time and
+owned write-lock wait time, without recording SQL parameters or credentials.
+It covers successful/failed login, an enrolled MFA challenge, JWT and integration
+requests, WebSocket receive/reply and delivery, and eight concurrent JWT requests.
+Write-lock waits cover the application's owned lock, not database-driver waits;
+concurrent wall time includes driver contention. Production database contention
+and p95 latency require representative deployment measurements.
+
+An illustrative local run against the registration-hardening parent gave:
+
+| Workload | Statements before → after | Transactions before → after | Writes before → after |
+| --- | --- | --- | --- |
+| Successful login | 28 → 22 | 16 → 14 | 13 → 8 |
+| Failed login | 18 → 13 | 10 → 8 | 8 → 4 |
+| MFA challenge | 13 → 9 | 8 → 7 | 6 → 2 |
+| JWT request | 5 → 4 | 4 → 3 | 0 → 0 |
+| Integration request | 6 → 6 | 2 → 2 | 1 → 1 |
+| WebSocket subscribe and reply | 12 → 9 | 8 → 6 | 0 → 0 |
+| WebSocket delivery | 6 → 6 | 4 → 4 | 0 → 0 |
+| Eight concurrent JWT requests | 40 → 32 | 32 → 24 | 0 → 0 |
+
+These are workload-specific observations, not a fixed query budget or a latency
+claim. Fail-closed authorization, revocation and factor replay protection take
+priority over reducing any count.
+
+## Trusted clients and browser response policy
+
+Ingress checks the immediate peer against `web.forwarded_allow_ips` before
+Uvicorn resolves forwarding headers. Authentication budgets use that resulting
+ASGI client address, never a separately parsed `X-Forwarded-For`. Equivalent IPv6
+forms and IPv4-mapped IPv6 addresses share a canonical budget. By default,
+`security.auth_ipv6_prefix=128` keeps distinct IPv6 clients separate. Operators
+may choose a shorter prefix (48–128) to group addresses, accounting for shared
+networks; account budgets continue to apply across all addresses. Untrusted
+forwarding headers cannot select the ingress path or a different client budget.
+
+Backend responses set `X-Content-Type-Options: nosniff` and default to
+`Referrer-Policy: strict-origin-when-cross-origin`. Invitation routes retain the
+stricter `no-referrer` and `no-store` policy. `web.permissions_policy` defaults to
+`camera=(), microphone=(), geolocation=()`; clipboard and public-key credential
+features are not disabled. Operators hosting plugins that need those features
+can change or unset this policy.
+
+No frame restriction is imposed by default, preserving cross-origin Home
+Assistant embedding. Configure `web.frame_ancestors` with explicit CSP sources,
+for example `'self' https://home.example`, to restrict embedding. Setting it to
+`'self'` alone prevents a separately hosted Home Assistant from embedding BSM.
+No unconditional `X-Frame-Options` header is added.
+
+`web.csp_report_only` optionally sends `Content-Security-Policy-Report-Only`.
+Start with reporting, then inspect login, clipboard copy, Swagger's CDN assets,
+plugin pages, theme assets, remote-instance HTTP calls and WebSocket connections
+under standalone and ingress URLs. Add a suitable reporting endpoint only where
+the deployment provides one. This option does not enforce a source policy.
+A frontend hosted separately must configure equivalent headers at its own host;
+backend headers do not cover standalone HTML. Do not enforce a blanket CSP
+without testing the deployment's origins, extensions and embedded integrations.

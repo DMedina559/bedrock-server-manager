@@ -5,6 +5,7 @@ from fastapi import APIRouter, Depends, HTTPException, Request, Security
 from ...context import AppContext
 from ...db.models import LoginSession, User
 from ..access_policy import Permission
+from ..authorization import current_authorization
 from ..deps import get_app_context
 from ..deps.auth import require_permissions
 from ..schemas import BaseApiResponse, UserResponse
@@ -23,6 +24,14 @@ from ..schemas.security import (
 from .access import no_store
 
 router = APIRouter(tags=["Account Security"], dependencies=[Depends(no_store)])
+
+
+def self_owner(user):
+    """Reuse only the authenticated actor's request-owned identity."""
+    authorization = current_authorization.get()
+    if authorization is None or authorization.user_id != user.id:
+        raise HTTPException(401, "Account authorization unavailable")
+    return authorization.owner_id
 
 
 async def owner(context, user_id):
@@ -52,7 +61,7 @@ async def sessions(
     context: AppContext = Depends(get_app_context),
 ):
     return await context.session_service.list_sessions(
-        await owner(context, user.id), request.state.session_id
+        self_owner(user), request.state.session_id
     )
 
 
@@ -69,7 +78,7 @@ async def rename(
     ),
     context: AppContext = Depends(get_app_context),
 ):
-    identity = await owner(context, user.id)
+    identity = self_owner(user)
     async with context.storage.transaction() as session:
         record = await session.get(LoginSession, session_id)
         if record is None or record.owner_id != identity:
@@ -93,9 +102,7 @@ async def revoke(
 ):
     if session_id != getattr(request.state, "session_id", None):
         await recent(request, user, context)
-    await context.session_service.revoke(
-        await owner(context, user.id), identifier=session_id
-    )
+    await context.session_service.revoke(self_owner(user), identifier=session_id)
     return BaseApiResponse(status="success", message="Session signed out")
 
 
@@ -114,7 +121,7 @@ async def revoke_many(
 ):
     await recent(request, user, context)
     await context.session_service.revoke(
-        await owner(context, user.id),
+        self_owner(user),
         except_id=request.state.session_id if payload.mode == "others" else None,
     )
     return BaseApiResponse(status="success", message="Sessions signed out")
@@ -136,7 +143,7 @@ async def status(
         request.state.session_id, touch=False
     )
     return SecurityStatus(
-        **await context.session_service.status(await owner(context, user.id)),
+        **await context.session_service.status(self_owner(user)),
         session_id=request.state.session_id,
         required=user.role == "admin"
         and context.settings.get("security.require_admin_mfa", False),
@@ -180,7 +187,7 @@ async def activity(
     ),
     context: AppContext = Depends(get_app_context),
 ):
-    return await context.session_service.activity(await owner(context, user.id))
+    return await context.session_service.activity(self_owner(user))
 
 
 @router.post(
@@ -196,9 +203,7 @@ async def enroll(
     context: AppContext = Depends(get_app_context),
 ):
     await recent(request, user, context)
-    return await context.session_service.enrollment(
-        await owner(context, user.id), user.username
-    )
+    return await context.session_service.enrollment(self_owner(user), user.username)
 
 
 @router.post(
@@ -218,7 +223,7 @@ async def confirm(
     await context.session_service.throttle(
         user.username, request.client.host if request.client else "", "mfa"
     )
-    identity = await owner(context, user.id)
+    identity = self_owner(user)
     result = await context.session_service.confirm_enrollment(
         identity, payload.code, keep_session_id=request.state.session_id
     )
@@ -239,7 +244,7 @@ async def recovery(
 ):
     await recent(request, user, context)
     return await context.session_service.change_factor(
-        await owner(context, user.id), keep_session_id=request.state.session_id
+        self_owner(user), keep_session_id=request.state.session_id
     )
 
 
@@ -263,7 +268,7 @@ async def disable(
             "Administrator MFA is required; enroll a replacement factor or use local recovery",
         )
     await recent(request, user, context)
-    identity = await owner(context, user.id)
+    identity = self_owner(user)
     await context.session_service.change_factor(
         identity, disable=True, keep_session_id=request.state.session_id
     )
@@ -283,7 +288,7 @@ async def revoke_credentials(
     context: AppContext = Depends(get_app_context),
 ):
     await recent(request, user, context)
-    await context.session_service.revoke_credentials(await owner(context, user.id))
+    await context.session_service.revoke_credentials(self_owner(user))
     return BaseApiResponse(status="success", message="Integration credentials revoked")
 
 

@@ -189,9 +189,6 @@ async def set_server_access(
     ),
     context: AppContext = Depends(get_app_context),
 ):
-    await context.session_service.require_recent(
-        user, getattr(request.state, "session_id", None)
-    )
     return await context.access_service.set_server_access(user, user_id, payload)
 
 

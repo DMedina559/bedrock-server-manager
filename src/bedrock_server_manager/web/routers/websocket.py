@@ -5,14 +5,13 @@ import logging
 from typing import Any, Callable
 
 from fastapi import APIRouter, WebSocket, WebSocketDisconnect, WebSocketException
-from jose import jwt
 from pydantic import ValidationError
 
 from ...context import AppContext
 from ...failures import error_response
 from ...logging import log_operation_error
 from ...utils.threads import run_in_thread
-from ..auth import authenticate_websocket_token
+from ..auth import resolve_session_token
 from ..origin import browser_origin
 from ..schemas.websocket import (
     AuthenticationFrame,
@@ -112,10 +111,10 @@ async def websocket_endpoint(  # noqa: C901
                 )
             user, authorization = identity
         else:
-            user = await authenticate_websocket_token(app_context, token)
-            authorization = await app_context.access_service.snapshot(
-                user, session_id=jwt.get_unverified_claims(token).get("sid")
-            )
+            identity = await resolve_session_token(app_context, token)
+            if identity is None:
+                raise WebSocketException(code=1008, reason="Invalid session credential")
+            user, authorization = identity.user, identity.authorization
         if authorization is not None and authorization.mfa_enrollment_required:
             raise WebSocketException(
                 code=1008, reason="Administrator MFA enrollment required"
@@ -161,12 +160,11 @@ async def websocket_endpoint(  # noqa: C901
     try:
         while True:
             data = await websocket.receive_json()
-            if not await connection_manager.refresh_authorization(client_id):
-                break
-            user = connection_manager.active_connections[client_id].user
             try:
                 frame = ClientFrame.model_validate(data)
             except ValidationError as error:
+                if not await connection_manager.authorize_frame(client_id, None):
+                    break
                 reply = SocketReply(
                     status="error",
                     message="Action and topic are required and must be valid.",
@@ -177,10 +175,11 @@ async def websocket_endpoint(  # noqa: C901
                 )
                 continue
             topic = frame.topic
-            if (
-                frame.action != "unsubscribe"
-                and not await connection_manager.can_access_topic(client_id, topic)
+            if not await connection_manager.authorize_frame(
+                client_id, None if frame.action == "unsubscribe" else topic
             ):
+                if client_id not in connection_manager.active_connections:
+                    break
                 reply = SocketReply(
                     status="error",
                     type="response",
@@ -192,6 +191,10 @@ async def websocket_endpoint(  # noqa: C901
                     reply.model_dump(mode="json", exclude_unset=True), client_id
                 )
                 continue
+            client = connection_manager.active_connections.get(client_id)
+            if client is None:
+                break
+            user = client.user
             if frame.action in {"subscribe", "unsubscribe"}:
                 if frame.action == "subscribe":
                     await connection_manager.subscribe(client_id, topic)

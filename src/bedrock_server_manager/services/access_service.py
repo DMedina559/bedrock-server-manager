@@ -17,6 +17,7 @@ from ..db.models import (
     AccountSecurity,
     AccountServerAccess,
     IntegrationToken,
+    LoginSession,
     Server,
     ServerAccessGrant,
     User,
@@ -84,6 +85,18 @@ class AccessService:
         token_id: str | None = None,
         session_id: str | None = None,
     ) -> Authorization | None:
+        return await self._snapshot(user, token_id, session_id)
+
+    async def _snapshot(
+        self,
+        user: UserResponse,
+        token_id: str | None = None,
+        session_id: str | None = None,
+        *,
+        validated_session: LoginSession | None = None,
+    ) -> Authorization | None:
+        # Only JWT authentication supplies a server-loaded session. Public refreshes
+        # always load it again; the result cannot outlive its request/handshake.
         async with self.context.storage.transaction() as session:
             row = (
                 await session.execute(
@@ -103,16 +116,25 @@ class AccessService:
                 record is None
                 or not record.is_active
                 or record.username != user.username
+                or record.role != user.role
             ):
                 return None
-            if (
-                session_id is not None
-                and await self.context.session_service.validate(
-                    session_id, record.access_id, touch=False
-                )
-                is None
-            ):
-                return None
+            if session_id is not None:
+                login = validated_session
+                if login is None:
+                    login = await self.context.session_service.validate(
+                        session_id, record.access_id, touch=False
+                    )
+                if (
+                    login is None
+                    or login.id != session_id
+                    or login.owner_id != record.access_id
+                    or login.revoked_at is not None
+                    or login.expires_at <= int(time.time())
+                    or login.last_seen_at + self.context.session_service.idle_seconds()
+                    <= int(time.time())
+                ):
+                    return None
             factor = await session.get(AccountSecurity, record.access_id)
             mfa_required = bool(
                 token_id is None

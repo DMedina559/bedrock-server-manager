@@ -6,6 +6,7 @@ from urllib.parse import urlsplit
 import bsm_frontend
 import pytest
 from httpx2 import ASGITransport, AsyncClient
+from pydantic import ValidationError
 
 from bedrock_server_manager.web.app import create_web_app
 
@@ -279,3 +280,41 @@ async def test_cors_setting_available_through_admin_api(admin_auth_client):
     assert settings.json()["settings"]["web"]["cors_origins"] == [
         "https://dashboard.example"
     ]
+
+
+async def test_security_headers_allow_ingress_and_optional_report_policy(
+    unauth_client, app_context
+):
+    response = await unauth_client.get("/docs")
+    assert response.headers["X-Content-Type-Options"] == "nosniff"
+    assert response.headers["Referrer-Policy"] == "strict-origin-when-cross-origin"
+    assert "Content-Security-Policy" not in response.headers
+    assert "X-Frame-Options" not in response.headers
+    assert (
+        response.headers["Permissions-Policy"]
+        == "camera=(), microphone=(), geolocation=()"
+    )
+    assert "clipboard" not in response.headers["Permissions-Policy"]
+    await app_context.settings.set("web.frame_ancestors", "'self' https://home.example")
+    await app_context.settings.set(
+        "web.csp_report_only", "default-src 'self'; connect-src 'self' wss: https:"
+    )
+    response = await unauth_client.get(
+        "/app/login", headers={"X-Ingress-Path": "/api/hassio_ingress/test"}
+    )
+    assert response.status_code == 200
+    assert (
+        response.headers["Content-Security-Policy"]
+        == "frame-ancestors 'self' https://home.example"
+    )
+    assert response.headers["Content-Security-Policy-Report-Only"].startswith(
+        "default-src"
+    )
+
+
+@pytest.mark.parametrize(
+    "field", ["web.frame_ancestors", "web.csp_report_only", "web.permissions_policy"]
+)
+async def test_security_policy_headers_reject_control_characters(app_context, field):
+    with pytest.raises(ValidationError):
+        await app_context.settings.set(field, "'self'\r\nX-Injected: yes")

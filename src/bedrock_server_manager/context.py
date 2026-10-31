@@ -265,6 +265,7 @@ class AppContext:
                     )
 
         steps = (
+            ("authentication retention", lambda: self.session_service.start()),
             ("backup recovery", recover_backups),
             ("plugins", lambda: self.plugin_manager.load_plugins()),
             ("servers", lambda: self.bedrock_process_manager.start()),
@@ -390,6 +391,7 @@ class AppContext:
             self._task_manager.begin_shutdown()
         # Observers release process and websocket dependencies before teardown.
         for name, component in (
+            ("authentication retention", self._session_service),
             ("scheduler", self.scheduler),
             ("metrics", self._metrics_service),
             ("resources", self._resource_monitor),

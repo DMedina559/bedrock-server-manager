@@ -26,6 +26,26 @@ async def registration_privacy(request: Request, call_next):
     return response
 
 
+async def security_headers(request: Request, call_next):
+    """Compatible defaults; deployment-specific CSP starts in report-only mode."""
+    response = await call_next(request)
+    response.headers.setdefault("X-Content-Type-Options", "nosniff")
+    response.headers.setdefault("Referrer-Policy", "strict-origin-when-cross-origin")
+    settings = request.app.state.app_context.settings
+    features = settings.get("web.permissions_policy")
+    if features:
+        response.headers.setdefault("Permissions-Policy", features)
+    frames = settings.get("web.frame_ancestors")
+    report = settings.get("web.csp_report_only")
+    if frames:
+        response.headers.setdefault(
+            "Content-Security-Policy", f"frame-ancestors {frames}"
+        )
+    if report:
+        response.headers.setdefault("Content-Security-Policy-Report-Only", report)
+    return response
+
+
 def configure_middleware(
     app: FastAPI, origins: Any, trusted_proxies: str = "127.0.0.1"
 ) -> None:
@@ -53,6 +73,7 @@ def configure_middleware(
     app.middleware("http")(add_user_to_request)
 
     app.middleware("http")(registration_privacy)
+    app.middleware("http")(security_headers)
 
     app.add_middleware(BackupUploadLimit)
 

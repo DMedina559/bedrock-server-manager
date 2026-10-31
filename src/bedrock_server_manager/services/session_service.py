@@ -7,6 +7,7 @@ import base64
 import hashlib
 import hmac
 import io
+import ipaddress
 import logging
 import os
 import secrets
@@ -36,6 +37,7 @@ from ..utils.threads import run_in_thread
 class SessionService:
     def __init__(self, context):
         self.context = context
+        self._maintenance_task = None
 
     def idle_seconds(self):
         return max(
@@ -109,15 +111,27 @@ class SessionService:
             )
         )
 
+    def peer_key(self, peer):
+        """Canonicalize the already trusted ASGI client, never raw forwarding headers."""
+        try:
+            address = ipaddress.ip_address(peer)
+        except ValueError:
+            return peer
+        if isinstance(address, ipaddress.IPv6Address):
+            if address.ipv4_mapped is not None:
+                return str(address.ipv4_mapped)
+            prefix = self.context.settings.get("security.auth_ipv6_prefix", 128)
+            return str(ipaddress.ip_network((address, prefix), strict=False))
+        return str(address)
+
     async def throttle(self, username="", peer="", operation="login"):
-        await self.cleanup()
         # Consume IP first: arbitrary usernames cannot create unbounded rows per peer.
         window_seconds = int(
             self.context.settings.get("security.auth_window_seconds", 300)
         )
         checks = [
             (
-                f"peer:{peer}",
+                f"peer:{self.peer_key(peer)}",
                 int(self.context.settings.get("security.auth_peer_attempts", 60)),
             )
         ]
@@ -137,11 +151,6 @@ class SessionService:
             for retry in range(2):
                 try:
                     async with self.context.storage.transaction() as session:
-                        await session.execute(
-                            delete(AuthThrottle).where(
-                                AuthThrottle.window < now - 86400
-                            )
-                        )
                         result = await session.execute(
                             update(AuthThrottle)
                             .where(AuthThrottle.key == key)
@@ -180,18 +189,63 @@ class SessionService:
         async with self.context.storage.transaction() as session:
             await session.execute(delete(AuthThrottle).where(AuthThrottle.key == key))
 
-    async def cleanup(self):
-        """Bound retained metadata during normal authentication, not only UI reads."""
-        now = int(time.time())
-        async with self.context.storage.transaction() as session:
-            await session.execute(
-                delete(AuthSecurityEvent).where(
-                    AuthSecurityEvent.timestamp < now - 90 * 86400
+    async def start(self):
+        """Own retention independently of traffic and of the HTTP lifespan."""
+        if self._maintenance_task is None or self._maintenance_task.done():
+            self._maintenance_task = asyncio.create_task(
+                self._maintain(), name="authentication-retention"
+            )
+
+    async def shutdown(self):
+        task = self._maintenance_task
+        if task is not None:
+            task.cancel()
+            try:
+                await task
+            except asyncio.CancelledError:
+                pass
+            self._maintenance_task = None
+
+    async def _maintain(self):
+        while True:
+            delay = 86400
+            try:
+                await self.cleanup()
+            except Exception:
+                logging.getLogger(__name__).exception(
+                    "Authentication retention failed; retrying in five minutes"
                 )
-            )
-            await session.execute(
-                delete(LoginSession).where(LoginSession.expires_at < now - 90 * 86400)
-            )
+                delay = 300
+            await asyncio.sleep(delay)
+
+    async def cleanup(self):
+        """Delete expired metadata in bounded transactions, yielding between batches."""
+        now = int(time.time())
+        for model, key, predicate in (
+            (AuthThrottle, AuthThrottle.key, AuthThrottle.window < now - 86400),
+            (
+                AuthSecurityEvent,
+                AuthSecurityEvent.id,
+                AuthSecurityEvent.timestamp < now - 90 * 86400,
+            ),
+            (LoginSession, LoginSession.id, LoginSession.expires_at < now - 90 * 86400),
+        ):
+            while True:
+                async with self.context.storage.transaction() as session:
+                    ids = list(
+                        (
+                            await session.scalars(
+                                select(key).where(predicate).order_by(key).limit(250)
+                            )
+                        ).all()
+                    )
+                    if ids:
+                        await session.execute(
+                            delete(model).where(key.in_(ids), predicate)
+                        )
+                if len(ids) < 250:
+                    break
+                await asyncio.sleep(0)
 
     @staticmethod
     async def advance_auth_revision(session, owner_id, keep_session_id=None):
@@ -229,9 +283,6 @@ class SessionService:
                 )
             ):
                 raise HTTPException(401, "Account credentials changed; sign in again")
-            await session.execute(
-                delete(LoginSession).where(LoginSession.expires_at < now - 90 * 86400)
-            )
             count = await session.scalar(
                 select(func.count())
                 .select_from(LoginSession)
@@ -515,11 +566,6 @@ class SessionService:
 
     async def activity(self, owner_id):
         async with self.context.storage.transaction() as session:
-            await session.execute(
-                delete(AuthSecurityEvent).where(
-                    AuthSecurityEvent.timestamp < int(time.time()) - 90 * 86400
-                )
-            )
             rows = (
                 await session.scalars(
                     select(AuthSecurityEvent)

@@ -99,6 +99,12 @@ class SecuritySettings(SettingsRecord):
     auth_account_attempts: int = Field(default=10, ge=3, le=100)
     auth_peer_attempts: int = Field(default=60, ge=10, le=10000)
     auth_window_seconds: int = Field(default=300, ge=30, le=3600)
+    auth_ipv6_prefix: int = Field(
+        default=128,
+        ge=48,
+        le=128,
+        description="IPv6 prefix for authentication peer budgets; 128 keeps each address separate.",
+    )
     session_idle_hours: int = Field(default=24, ge=1, le=672)
     session_max_days: int = Field(default=28, ge=1, le=90)
 
@@ -111,6 +117,27 @@ class WebSettings(SettingsRecord):
     port: int = Field(default=11325, ge=1, le=65535)
     token_expires_weeks: int = Field(default=4, gt=0)
     jwt_secret_key: Optional[str] = None
+    frame_ancestors: Optional[str] = Field(
+        default=None,
+        description="Optional CSP frame-ancestors sources. Leave unset for cross-origin Home Assistant embedding.",
+    )
+    permissions_policy: Optional[str] = Field(
+        default="camera=(), microphone=(), geolocation=()",
+        description="Browser feature policy; clipboard and future passkey features remain available unless explicitly restricted.",
+    )
+    csp_report_only: Optional[str] = Field(
+        default=None,
+        description="Optional Content-Security-Policy-Report-Only header; test integrations before enforcement.",
+    )
+
+    @field_validator("frame_ancestors", "csp_report_only", "permissions_policy")
+    @classmethod
+    def validate_policy_header(cls, value):
+        if value is not None and (
+            any(ord(c) < 32 or ord(c) == 127 for c in value) or len(value) > 8192
+        ):
+            raise ValueError("Invalid security policy header")
+        return value
 
     @field_validator("cors_origins", mode="before")
     @classmethod
