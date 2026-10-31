@@ -162,3 +162,33 @@ def test_access_migration_preserves_accounts_servers_and_identity(tmp_path):
             == "existing-server"
         )
     engine.dispose()
+
+
+async def test_sqlite_close_then_repeated_stop_does_not_leak_future_errors():
+    """aiosqlite clears its connection before invoking the patched stop hook."""
+    import asyncio
+    import gc
+
+    database = Database("sqlite+aiosqlite:///:memory:")
+    database.initialize()
+    loop = asyncio.get_running_loop()
+    previous_handler = loop.get_exception_handler()
+    errors = []
+    loop.set_exception_handler(lambda _loop, context: errors.append(context))
+    try:
+        async with database.engine.connect() as connection:
+            adapted = await connection.get_raw_connection()
+            raw = adapted.driver_connection
+            await connection.execute(text("SELECT 1"))
+        await raw.close()
+        stopped = raw.stop()
+        assert raw.stop() is stopped
+        if stopped is not None:
+            await stopped
+        await database.shutdown()
+        gc.collect()
+        await asyncio.sleep(0)
+        assert errors == []
+    finally:
+        await database.shutdown()
+        loop.set_exception_handler(previous_handler)
