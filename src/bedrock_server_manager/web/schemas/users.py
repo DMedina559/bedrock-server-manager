@@ -1,5 +1,7 @@
 from typing import Optional
 
+from pydantic import Field
+
 from ...api.models.common import APIRequest, APIResponse
 from ...contracts import Password
 from ...state.models import UserRole
@@ -14,6 +16,12 @@ class UserResponse(APIResponse):
     role: UserRole
     is_active: bool
     theme: str = "default"
+
+
+class CurrentAccountResponse(UserResponse):
+    """Current account with sorted role-derived HTTP capabilities."""
+
+    permissions: list[str] = Field(default_factory=list)
 
 
 class UpdateUserRolePayload(APIRequest):

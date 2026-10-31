@@ -2,14 +2,17 @@ import logging
 from typing import Optional
 
 from fastapi import Depends, HTTPException, Request, Security, status
-from fastapi.security import APIKeyCookie, OAuth2PasswordBearer
+from fastapi.security import APIKeyCookie, OAuth2PasswordBearer, SecurityScopes
 
 from .. import auth as auth_utils
+from ..access_policy import CORE_DESCRIPTIONS, policy_for
 from ..schemas import UserResponse
 
 logger = logging.getLogger(__name__)
 
-oauth2_scheme = OAuth2PasswordBearer(tokenUrl="auth/token", auto_error=False)
+oauth2_scheme = OAuth2PasswordBearer(
+    tokenUrl="auth/token", scopes=dict(CORE_DESCRIPTIONS), auto_error=False
+)
 cookie_scheme = APIKeyCookie(name="access_token_cookie", auto_error=False)
 
 
@@ -33,7 +36,22 @@ async def get_current_user_optional(
     if hasattr(token_cookie, "dependency"):
         token_cookie = request.cookies.get("access_token_cookie")
 
-    token = token_bearer or token_cookie
+    # An explicit Authorization header always selects bearer authentication.
+    # Invalid credentials must never select a different cookie identity.
+    token: Optional[str]
+    explicit = request.headers.get("Authorization")
+    if explicit is not None:
+        parts = explicit.split()
+        if len(parts) != 2 or parts[0].lower() != "bearer":
+            request.state.credential_source = "bearer"
+            return None
+        token = parts[1]
+        request.state.credential_source = "bearer"
+    else:
+        token = token_bearer or token_cookie
+        request.state.credential_source = (
+            "bearer" if token_bearer else "cookie" if token_cookie else None
+        )
 
     if not token:
         return None
@@ -77,3 +95,29 @@ async def get_moderator_user(current_user: UserResponse = Security(get_current_u
             detail="You do not have permission to access this resource.",
         )
     return current_user
+
+
+async def require_permissions(
+    request: Request,
+    security_scopes: SecurityScopes,
+    user: UserResponse = Depends(get_current_user),
+) -> UserResponse:
+    """Require all declared scopes against the account's current role."""
+    required = set(security_scopes.scopes)
+    policy = policy_for(request)
+    # Fail closed even for admin when a plugin has been unloaded.
+    if not required <= policy.descriptions.keys() or not required <= policy.resolve(
+        user.role
+    ):
+        headers = None
+        if getattr(request.state, "credential_source", None) == "bearer":
+            scopes = " ".join(sorted(required))
+            headers = {
+                "WWW-Authenticate": f'Bearer error="insufficient_scope", scope="{scopes}"'
+            }
+        raise HTTPException(
+            status_code=403,
+            detail="You do not have permission to access this resource.",
+            headers=headers,
+        )
+    return user

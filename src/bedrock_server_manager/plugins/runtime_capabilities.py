@@ -155,3 +155,17 @@ def register_scheduled_task(
         requires_server_lock=requires_server_lock,
         with_context=with_context,
     )
+
+
+def register_http_permission(
+    permission: str,
+    description: str,
+    roles: list[str],
+    *,
+    app_context: AppContext,
+    plugin_name: str,
+) -> None:
+    """Register a namespaced HTTP capability with explicit role grants."""
+    app_context.plugin_manager.access_policy.register(
+        plugin_name, permission, description, roles
+    )

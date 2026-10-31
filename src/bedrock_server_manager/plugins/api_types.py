@@ -583,6 +583,10 @@ class WorldAPI(Protocol):
 
 
 class RuntimeAPI(Protocol):
+    def register_http_permission(
+        self, permission: str, description: str, roles: list[str]
+    ) -> None: ...
+
     def register_scheduled_task(
         self,
         name: str,
