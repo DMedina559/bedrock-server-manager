@@ -53,6 +53,8 @@ async def get_account_api(
         policy_revision=authorization.revision,
         server_access="assigned" if authorization.resource_restricted else "all",
         credential_id=authorization.token_id,
+        credential_name=authorization.credential_name,
+        credential_expires_at=authorization.credential_expires_at,
         session_id=authorization.session_id,
         mfa_enrollment_required=authorization.mfa_enrollment_required,
         server_permissions={

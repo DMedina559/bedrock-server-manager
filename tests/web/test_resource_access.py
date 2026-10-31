@@ -463,3 +463,24 @@ async def test_nonexpiring_tokens_remain_revocable_and_rotation_preserves_no_dea
         )
     ).status_code == 200
     assert await app_context.access_service.authenticate(replacement["token"]) is None
+
+
+@pytest.mark.parametrize("expiry", [None, 3])
+async def test_integration_token_can_inspect_its_own_safe_identity_metadata(
+    admin_auth_client, expiry
+):
+    issued = await issue(
+        admin_auth_client, permissions=["account:read"], expires_in_days=expiry
+    )
+    headers = {"Authorization": f"Bearer {issued['token']}"}
+    response = await admin_auth_client.get("/api/account", headers=headers)
+    assert response.status_code == 200, response.text
+    account = response.json()
+    assert account["credential_id"] == issued["credential"]["id"]
+    assert account["credential_name"] == "Monitoring"
+    assert account["credential_expires_at"] == issued["credential"]["expires_at"]
+    assert account["permissions"] == ["account:read"]
+    assert issued["token"] not in response.text
+    assert (
+        await admin_auth_client.get("/api/account/tokens", headers=headers)
+    ).status_code == 403

@@ -124,6 +124,7 @@ class AccessService:
             if mfa_required:
                 permission_set &= frozenset({"account:read", "sessions:manage"})
             token_servers = None
+            token = None
             if token_id is not None:
                 token = await session.get(IntegrationToken, token_id)
                 if (
@@ -176,6 +177,8 @@ class AccessService:
                 servers=servers,
                 grants=grants,
                 token_id=token_id,
+                credential_name=token.name if token else None,
+                credential_expires_at=token.expires_at if token else None,
                 session_id=session_id,
                 mfa_enrollment_required=mfa_required,
                 token_servers=token_servers,

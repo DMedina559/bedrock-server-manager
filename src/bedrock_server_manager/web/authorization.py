@@ -59,6 +59,8 @@ class Authorization:
     servers: dict[str, str]
     grants: dict[str, frozenset[str]] | None
     token_id: str | None = None
+    credential_name: str | None = None
+    credential_expires_at: int | None = None
     token_servers: frozenset[str] | None = None
     revision: str = ""
     session_id: str | None = None
