@@ -65,6 +65,66 @@ async def test_integration_token_can_read_bans_but_not_manage(
         )
         assert add_resp.status_code == 403
 
+        # Token without bans:manage is rejected on DELETE /remove
+        del_resp = await token_client.request(
+            "DELETE",
+            base + "/remove",
+            json={"xuid": "99999"},
+        )
+        assert del_resp.status_code == 403
+
+
+async def test_server_scoped_token_bans_isolation(
+    admin_auth_client, real_bedrock_server, app_context
+):
+    server_id = await app_context.access_service.server_identity(
+        real_bedrock_server.server_name
+    )
+    assert server_id is not None
+
+    issue_resp = await admin_auth_client.post(
+        "/api/account/tokens",
+        json={
+            "name": "Scoped Ban Reader",
+            "permissions": ["servers:read", "bans:read"],
+            "server_ids": [server_id],
+        },
+    )
+    assert issue_resp.status_code == 201
+    token = issue_resp.json()["token"]
+
+    async with AsyncClient(
+        transport=admin_auth_client._transport,
+        base_url="http://testserver",
+        headers={"Authorization": f"Bearer {token}"},
+    ) as token_client:
+        # Permitted server reads successfully
+        res = await token_client.get(
+            f"/api/server/{real_bedrock_server.server_name}/bans/get"
+        )
+        assert res.status_code == 200
+
+        # Adding a ban is forbidden
+        add_res = await token_client.post(
+            f"/api/server/{real_bedrock_server.server_name}/bans/add",
+            json={"player_name": "BadPlayer", "xuid": "99999", "reason": "Testing"},
+        )
+        assert add_res.status_code == 403
+
+        # Removing a ban is forbidden
+        del_res = await token_client.request(
+            "DELETE",
+            f"/api/server/{real_bedrock_server.server_name}/bans/remove",
+            json={"xuid": "99999"},
+        )
+        assert del_res.status_code == 403
+
+        # Addressing another server is denied without disclosing its ban list
+        cross_res = await token_client.get(
+            "/api/server/other_inaccessible_server/bans/get"
+        )
+        assert cross_res.status_code == 403
+
 
 async def test_invalid_ban_does_not_write_database(
     admin_auth_client, real_bedrock_server

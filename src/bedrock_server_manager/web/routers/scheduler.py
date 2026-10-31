@@ -36,6 +36,12 @@ async def list_schedules(
     ),
     context: AppContext = Depends(get_app_context),
 ) -> ListSchedulesResponse:
+    """List scheduled tasks.
+
+    Requires unrestricted resource access and the ``scheduler:read`` capability.
+    Principals restricted to specific servers cannot query or inspect schedules,
+    even when filtering by an assigned server name.
+    """
     response.headers["Cache-Control"] = "no-store"
     return await api.list_schedules(
         ListSchedulesRequest(server_name=server_name), app_context=context

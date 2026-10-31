@@ -8,6 +8,7 @@ from fastapi import Security
 from sqlalchemy import delete, select
 
 from bedrock_server_manager.db.models import IntegrationToken, Server, User
+from bedrock_server_manager.state.updates import AccountPatch
 from bedrock_server_manager.web.access_policy import Permission
 from bedrock_server_manager.web.deps.auth import get_admin_user, require_permissions
 from bedrock_server_manager.web.schemas import UserResponse
@@ -458,11 +459,20 @@ async def test_nonexpiring_tokens_remain_revocable_and_rotation_preserves_no_dea
     assert replacement["credential"]["expires_at"] is None
     audit_resp = await admin_auth_client.get("/audit-log/list")
     assert audit_resp.status_code == 200
-    assert any(
-        log["action"] == "rotate_integration_token"
-        and log["details"].get("token_id") == replacement["credential"]["id"]
+    rotation_events = [
+        log
         for log in audit_resp.json()
-    )
+        if log["action"] == "rotate_integration_token"
+        and log["details"].get("token_id") == replacement["credential"]["id"]
+    ]
+    assert len(rotation_events) == 1
+    event = rotation_events[0]
+    assert event["details"].get("previous_id") == identifier
+    assert event["details"].get("name") == "Monitoring"
+    # Ensure neither token secrets nor digests are leaked in audit records
+    assert issued["token"] not in str(event)
+    assert replacement["token"] not in str(event)
+    assert "digest" not in event["details"]
     assert await app_context.access_service.authenticate(issued["token"]) is None
     assert (
         await admin_auth_client.delete(
@@ -491,3 +501,114 @@ async def test_integration_token_can_inspect_its_own_safe_identity_metadata(
     assert (
         await admin_auth_client.get("/api/account/tokens", headers=headers)
     ).status_code == 403
+
+
+async def test_scheduler_permissions_and_resource_boundaries(
+    admin_auth_client, access_servers
+):
+    # 1. Unrestricted token with scheduler:read lists schedules successfully
+    read_only = await issue(
+        admin_auth_client,
+        name="Scheduler Reader",
+        permissions=["account:read", "scheduler:read"],
+    )
+    headers = {"Authorization": f"Bearer {read_only['token']}"}
+    res = await admin_auth_client.get("/api/scheduler/schedules", headers=headers)
+    assert res.status_code == 200, res.text
+
+    # 2. Scheduler read-only token is denied on all mutation operations
+    save_res = await admin_auth_client.put(
+        "/api/scheduler/schedules/sched-test",
+        headers=headers,
+        json={
+            "task_type": "backup",
+            "schedule": "0 0 * * *",
+            "enabled": True,
+            "target": "all",
+            "retention": 3,
+        },
+    )
+    assert save_res.status_code == 403
+
+    del_res = await admin_auth_client.delete(
+        "/api/scheduler/schedules/sched-test", headers=headers
+    )
+    assert del_res.status_code == 403
+
+    ctrl_res = await admin_auth_client.post(
+        "/api/scheduler/schedules/sched-test/action",
+        headers=headers,
+        json={"action": "run_now"},
+    )
+    assert ctrl_res.status_code == 403
+
+    # 3. Token lacking scheduler:read cannot list schedules
+    no_scheduler = await issue(
+        admin_auth_client,
+        name="No Scheduler",
+        permissions=["account:read", "servers:read"],
+    )
+    no_sched_headers = {"Authorization": f"Bearer {no_scheduler['token']}"}
+    denied = await admin_auth_client.get(
+        "/api/scheduler/schedules", headers=no_sched_headers
+    )
+    assert denied.status_code == 403
+
+    # 4. Server-restricted token cannot access global scheduler endpoint
+    server_restricted = await issue(
+        admin_auth_client,
+        name="Restricted Scheduler",
+        permissions=["account:read", "scheduler:read", "servers:read"],
+        server_ids=[access_servers["alpha"]],
+    )
+    restricted_headers = {"Authorization": f"Bearer {server_restricted['token']}"}
+    # Denied without query parameter
+    assert (
+        await admin_auth_client.get(
+            "/api/scheduler/schedules", headers=restricted_headers
+        )
+    ).status_code == 403
+    # Denied with server_name query parameter (query param does not bypass resource boundaries)
+    assert (
+        await admin_auth_client.get(
+            "/api/scheduler/schedules?server_name=alpha", headers=restricted_headers
+        )
+    ).status_code == 403
+
+
+async def test_token_owner_reduced_role_invalidates_delegated_capability(
+    admin_auth_client, app_context, test_admin_user, db_session, password_hashes
+):
+    # Create a second admin so demoting test_admin_user does not fail the last-admin guard
+    second_admin = User(
+        username="admin2_guard",
+        hashed_password=password_hashes["admin"],
+        role="admin",
+        is_active=True,
+    )
+    db_session.add(second_admin)
+    await db_session.commit()
+
+    # Issue unrestricted token with scheduler:read
+    issued = await issue(
+        admin_auth_client,
+        name="Admin Scheduler Token",
+        permissions=["account:read", "scheduler:read"],
+    )
+    headers = {"Authorization": f"Bearer {issued['token']}"}
+
+    # Verify token initially succeeds
+    res1 = await admin_auth_client.get("/api/scheduler/schedules", headers=headers)
+    assert res1.status_code == 200
+
+    # Reduce owner's role to moderator (moderators lack scheduler:read)
+    await app_context.user_service.update_account(
+        action="role",
+        user_id=test_admin_user.id,
+        values=AccountPatch(role="moderator"),
+        actor_id=test_admin_user.id,
+    )
+
+    # Subsequent request using the previously issued token loses the capability
+    res2 = await admin_auth_client.get("/api/scheduler/schedules", headers=headers)
+    assert res2.status_code == 403

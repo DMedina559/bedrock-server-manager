@@ -21,9 +21,6 @@ from ..schemas.ban import BanAddRequest, BanRemoveRequest
 
 router = APIRouter(
     prefix="/api/server/{server_name}/bans",
-    dependencies=[
-        Depends(validate_server_exists),
-    ],
     tags=["Server Access"],
 )
 
@@ -32,8 +29,8 @@ router = APIRouter(
     "/get", operation_id="get_server_bans", response_model=GetServerBansResponse
 )
 async def get_server_bans(
-    server_name: str = Depends(validate_server_exists),
     user: UserResponse = Security(require_permissions, scopes=[Permission.BANS_READ]),
+    server_name: str = Depends(validate_server_exists),
     app_context: AppContext = Depends(get_app_context),
 ) -> GetServerBansResponse:
     """Get all bans for a specific server."""
@@ -47,8 +44,8 @@ async def get_server_bans(
 @router.post("/add", operation_id="add_server_ban", response_model=AddServerBanResponse)
 async def post_add_server_ban(
     payload: BanAddRequest,
-    server_name: str = Depends(validate_server_exists),
     user: UserResponse = Security(require_permissions, scopes=[Permission.BANS_MANAGE]),
+    server_name: str = Depends(validate_server_exists),
     app_context: AppContext = Depends(get_app_context),
 ) -> AddServerBanResponse:
     """Add a player to the server ban list."""
@@ -69,8 +66,8 @@ async def post_add_server_ban(
 )
 async def delete_remove_server_ban(
     payload: BanRemoveRequest,
-    server_name: str = Depends(validate_server_exists),
     user: UserResponse = Security(require_permissions, scopes=[Permission.BANS_MANAGE]),
+    server_name: str = Depends(validate_server_exists),
     app_context: AppContext = Depends(get_app_context),
 ) -> RemoveServerBanResponse:
     """Remove a player from the server ban list."""
