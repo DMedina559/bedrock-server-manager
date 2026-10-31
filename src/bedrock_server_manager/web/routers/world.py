@@ -66,10 +66,10 @@ async def get_worlds_list(
 )
 async def post_world_install(
     payload: FileNamePayload,
-    server_name: str = Depends(validate_server_exists),
     current_user: UserResponse = Security(
         require_permissions, scopes=[Permission.CONTENT_MANAGE]
     ),
+    server_name: str = Depends(validate_server_exists),
     app_context: AppContext = Depends(get_app_context),
 ) -> TaskAcceptedResponse:
     """
@@ -137,10 +137,10 @@ async def post_world_install(
     status_code=status.HTTP_202_ACCEPTED,
 )
 async def post_world_export(
-    server_name: str = Depends(validate_server_exists),
     current_user: UserResponse = Security(
         require_permissions, scopes=[Permission.CONTENT_MANAGE]
     ),
+    server_name: str = Depends(validate_server_exists),
     app_context: AppContext = Depends(get_app_context),
 ) -> TaskAcceptedResponse:
     """
@@ -170,10 +170,10 @@ async def post_world_export(
     status_code=status.HTTP_202_ACCEPTED,
 )
 async def delete_world_reset(
-    server_name: str = Depends(validate_server_exists),
     current_user: UserResponse = Security(
         require_permissions, scopes=[Permission.CONTENT_MANAGE]
     ),
+    server_name: str = Depends(validate_server_exists),
     app_context: AppContext = Depends(get_app_context),
 ) -> TaskAcceptedResponse:
     """

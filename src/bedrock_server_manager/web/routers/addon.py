@@ -72,10 +72,10 @@ async def get_addons(
     response_model=AddonListResponse,
 )
 async def get_server_addons(
-    server_name: str = Depends(validate_server_exists),
     current_user: UserResponse = Security(
         require_permissions, scopes=[Permission.CONTENT_MANAGE]
     ),
+    server_name: str = Depends(validate_server_exists),
     app_context: AppContext = Depends(get_app_context),
 ) -> AddonListResponse:
     """Return a list of addons installed on a server's active world."""
@@ -98,10 +98,10 @@ async def get_server_addons(
 )
 async def post_enable_addon(
     payload: AddonActionPayload,
-    server_name: str = Depends(validate_server_exists),
     current_user: UserResponse = Security(
         require_permissions, scopes=[Permission.CONTENT_MANAGE]
     ),
+    server_name: str = Depends(validate_server_exists),
     app_context: AppContext = Depends(get_app_context),
 ) -> TaskAcceptedResponse:
     """
@@ -136,10 +136,10 @@ async def post_enable_addon(
 )
 async def post_disable_addon(
     payload: AddonActionPayload,
-    server_name: str = Depends(validate_server_exists),
     current_user: UserResponse = Security(
         require_permissions, scopes=[Permission.CONTENT_MANAGE]
     ),
+    server_name: str = Depends(validate_server_exists),
     app_context: AppContext = Depends(get_app_context),
 ) -> TaskAcceptedResponse:
     """
@@ -174,10 +174,10 @@ async def post_disable_addon(
 )
 async def post_update_subpack(
     payload: AddonSubpackPayload,
-    server_name: str = Depends(validate_server_exists),
     current_user: UserResponse = Security(
         require_permissions, scopes=[Permission.CONTENT_MANAGE]
     ),
+    server_name: str = Depends(validate_server_exists),
     app_context: AppContext = Depends(get_app_context),
 ) -> TaskAcceptedResponse:
     """
@@ -216,10 +216,10 @@ async def post_update_subpack(
 )
 async def delete_uninstall_addon(
     payload: AddonActionPayload,
-    server_name: str = Depends(validate_server_exists),
     current_user: UserResponse = Security(
         require_permissions, scopes=[Permission.CONTENT_MANAGE]
     ),
+    server_name: str = Depends(validate_server_exists),
     app_context: AppContext = Depends(get_app_context),
 ) -> TaskAcceptedResponse:
     """
@@ -256,10 +256,10 @@ async def delete_uninstall_addon(
 )
 async def post_reorder_addons(
     payload: AddonReorderPayload,
-    server_name: str = Depends(validate_server_exists),
     current_user: UserResponse = Security(
         require_permissions, scopes=[Permission.CONTENT_MANAGE]
     ),
+    server_name: str = Depends(validate_server_exists),
     app_context: AppContext = Depends(get_app_context),
 ) -> TaskAcceptedResponse:
     """
@@ -296,10 +296,10 @@ async def post_reorder_addons(
 )
 async def post_install_addon(
     payload: FileNamePayload,
-    server_name: str = Depends(validate_server_exists),
     current_user: UserResponse = Security(
         require_permissions, scopes=[Permission.CONTENT_MANAGE]
     ),
+    server_name: str = Depends(validate_server_exists),
     app_context: AppContext = Depends(get_app_context),
 ) -> TaskAcceptedResponse:
     """

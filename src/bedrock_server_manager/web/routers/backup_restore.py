@@ -87,10 +87,10 @@ LEGACY_COMPONENTS: dict[str, ConfigComponent] = {
     status_code=status.HTTP_202_ACCEPTED,
 )
 async def put_prune_backups(
-    server_name: str = Depends(validate_server_registered),
     current_user: UserResponse = Security(
         require_permissions, scopes=[Permission.BACKUPS_MANAGE]
     ),
+    server_name: str = Depends(validate_server_registered),
     app_context: AppContext = Depends(get_app_context),
 ) -> TaskAcceptedResponse:
     """
@@ -123,10 +123,10 @@ async def put_prune_backups(
 )
 async def get_list_server_backups(
     backup_type: str,
-    server_name: str = Depends(validate_server_registered),
     current_user: UserResponse = Security(
         require_permissions, scopes=[Permission.BACKUPS_READ]
     ),
+    server_name: str = Depends(validate_server_registered),
     app_context: AppContext = Depends(get_app_context),
 ) -> BackupFilesResponse:
     """
@@ -184,11 +184,11 @@ async def get_list_server_backups(
     status_code=status.HTTP_202_ACCEPTED,
 )
 async def post_backup_action(
-    server_name: str = Depends(validate_server_exists),
     payload: BackupActionPayload = Body(...),
     current_user: UserResponse = Security(
         require_permissions, scopes=[Permission.BACKUPS_CREATE]
     ),
+    server_name: str = Depends(validate_server_exists),
     app_context: AppContext = Depends(get_app_context),
 ) -> TaskAcceptedResponse:
     """Initiates a background task to perform a backup action for a specific server.
@@ -255,10 +255,10 @@ async def post_backup_action(
 )
 async def post_restore_action(  # noqa: C901
     payload: RestoreActionPayload,
-    server_name: str = Depends(validate_server_registered),
     current_user: UserResponse = Security(
         require_permissions, scopes=[Permission.BACKUPS_RESTORE]
     ),
+    server_name: str = Depends(validate_server_registered),
     app_context: AppContext = Depends(get_app_context),
 ) -> TaskAcceptedResponse:
     """Initiates a background task to perform a restore action for a specific server.
@@ -387,10 +387,10 @@ async def _accepted(context, user, function, request) -> TaskAcceptedResponse:
     response_model=ListSnapshotsResponse,
 )
 async def get_snapshots(
-    server_name: str = Depends(validate_server_registered),
     current_user: UserResponse = Security(
         require_permissions, scopes=[Permission.BACKUPS_READ]
     ),
+    server_name: str = Depends(validate_server_registered),
     app_context: AppContext = Depends(get_app_context),
 ) -> ListSnapshotsResponse:
     """List completed portable server backup archives."""
@@ -407,10 +407,10 @@ async def get_snapshots(
 )
 async def post_snapshot(
     payload: SnapshotCreatePayload,
-    server_name: str = Depends(validate_server_exists),
     current_user: UserResponse = Security(
         require_permissions, scopes=[Permission.BACKUPS_CREATE]
     ),
+    server_name: str = Depends(validate_server_exists),
     app_context: AppContext = Depends(get_app_context),
 ) -> TaskAcceptedResponse:
     """Capture one server backup using the configured encryption default."""
@@ -431,10 +431,10 @@ async def post_snapshot(
 async def post_inspect(
     backup_id: str,
     payload: SnapshotInspectPayload,
-    server_name: str = Depends(validate_server_registered),
     current_user: UserResponse = Security(
         require_permissions, scopes=[Permission.BACKUPS_READ]
     ),
+    server_name: str = Depends(validate_server_registered),
     app_context: AppContext = Depends(get_app_context),
 ) -> TaskAcceptedResponse:
     """Authenticate an archive before displaying its private component inventory."""
@@ -455,10 +455,10 @@ async def post_inspect(
 async def post_plan(
     backup_id: str,
     payload: SnapshotPlanPayload,
-    server_name: str = Depends(validate_server_registered),
     current_user: UserResponse = Security(
         require_permissions, scopes=[Permission.BACKUPS_RESTORE]
     ),
+    server_name: str = Depends(validate_server_registered),
     app_context: AppContext = Depends(get_app_context),
 ) -> TaskAcceptedResponse:
     """Prepare a reviewed selection without stopping the Minecraft server."""
@@ -479,10 +479,10 @@ async def post_plan(
 async def post_snapshot_restore(
     backup_id: str,
     payload: SnapshotRestorePayload,
-    server_name: str = Depends(validate_server_registered),
     current_user: UserResponse = Security(
         require_permissions, scopes=[Permission.BACKUPS_RESTORE]
     ),
+    server_name: str = Depends(validate_server_registered),
     app_context: AppContext = Depends(get_app_context),
 ) -> TaskAcceptedResponse:
     """Restore explicitly selected components using a current review token."""
@@ -510,10 +510,10 @@ async def post_snapshot_restore(
 )
 async def download_snapshot(
     backup_id: str,
-    server_name: str = Depends(validate_server_registered),
     current_user: UserResponse = Security(
         require_permissions, scopes=[Permission.BACKUPS_READ]
     ),
+    server_name: str = Depends(validate_server_registered),
     app_context: AppContext = Depends(get_app_context),
 ) -> StreamingResponse:
     """Download the stored archive unchanged, preserving encryption."""
@@ -543,10 +543,10 @@ async def download_snapshot(
 async def import_snapshot(
     file: UploadFile = File(..., json_schema_extra={"format": "binary"}),
     recovery_key: str | None = Form(None),
-    server_name: str = Depends(validate_server_registered),
     current_user: UserResponse = Security(
         require_permissions, scopes=[Permission.BACKUPS_MANAGE]
     ),
+    server_name: str = Depends(validate_server_registered),
     app_context: AppContext = Depends(get_app_context),
 ) -> ListSnapshotsResponse:
     """Validate an uploaded archive before publishing it under a fresh local ID."""
@@ -575,10 +575,10 @@ async def import_snapshot(
 async def export_snapshot(
     backup_id: str,
     payload: SnapshotInspectPayload,
-    server_name: str = Depends(validate_server_registered),
     current_user: UserResponse = Security(
         require_permissions, scopes=[Permission.BACKUPS_EXPORT]
     ),
+    server_name: str = Depends(validate_server_registered),
     app_context: AppContext = Depends(get_app_context),
 ) -> StreamingResponse:
     """Explicitly export an unencrypted archive; temporary files remain private."""
@@ -651,10 +651,10 @@ async def emergency_kit(
     response_model=RestoreRecoveryResponse,
 )
 async def get_recovery(
-    server_name: str = Depends(validate_server_registered),
     current_user: UserResponse = Security(
         require_permissions, scopes=[Permission.BACKUPS_READ]
     ),
+    server_name: str = Depends(validate_server_registered),
     app_context: AppContext = Depends(get_app_context),
 ) -> RestoreRecoveryResponse:
     """Inspect whether a restore journal needs attention."""
@@ -670,10 +670,10 @@ async def get_recovery(
     status_code=202,
 )
 async def retry_recovery(
-    server_name: str = Depends(validate_server_registered),
     current_user: UserResponse = Security(
         require_permissions, scopes=[Permission.BACKUPS_RESTORE]
     ),
+    server_name: str = Depends(validate_server_registered),
     app_context: AppContext = Depends(get_app_context),
 ) -> TaskAcceptedResponse:
     """Retry journal recovery; stop a running server before rolling back data."""
@@ -691,10 +691,10 @@ async def retry_recovery(
     response_model=BackupHealthResponse,
 )
 async def backup_health(
-    server_name: str = Depends(validate_server_registered),
     current_user: UserResponse = Security(
         require_permissions, scopes=[Permission.BACKUPS_READ]
     ),
+    server_name: str = Depends(validate_server_registered),
     app_context: AppContext = Depends(get_app_context),
 ) -> BackupHealthResponse:
     """Read backup verification, storage and key health."""
@@ -712,10 +712,10 @@ async def backup_health(
 async def manage_snapshot(
     backup_id: str,
     payload: SnapshotManagePayload,
-    server_name: str = Depends(validate_server_registered),
     current_user: UserResponse = Security(
         require_permissions, scopes=[Permission.BACKUPS_MANAGE]
     ),
+    server_name: str = Depends(validate_server_registered),
     app_context: AppContext = Depends(get_app_context),
 ) -> TaskAcceptedResponse:
     """Verify, pin, retry a destination copy, or test an emergency recovery key."""
@@ -736,10 +736,10 @@ async def manage_snapshot(
 async def prepare_backup_copy(
     backup_id: str,
     payload: SnapshotCopyPayload,
-    server_name: str = Depends(validate_server_registered),
     current_user: UserResponse = Security(
         require_permissions, scopes=[Permission.BACKUPS_DESTINATIONS]
     ),
+    server_name: str = Depends(validate_server_registered),
     app_context: AppContext = Depends(get_app_context),
 ) -> TaskAcceptedResponse:
     """Prepare a stopped new server; review its component restore separately."""
@@ -760,10 +760,10 @@ async def prepare_backup_copy(
 async def dry_run_restore(
     backup_id: str,
     payload: SnapshotPlanPayload,
-    server_name: str = Depends(validate_server_registered),
     current_user: UserResponse = Security(
         require_permissions, scopes=[Permission.BACKUPS_RESTORE]
     ),
+    server_name: str = Depends(validate_server_registered),
     app_context: AppContext = Depends(get_app_context),
 ) -> TaskAcceptedResponse:
     """Validate an isolated restore without stopping or modifying the server."""
@@ -784,10 +784,10 @@ async def dry_run_restore(
 async def cleanup_destination(
     destination: str,
     payload: DestinationCleanupPayload,
-    server_name: str = Depends(validate_server_registered),
     current_user: UserResponse = Security(
         require_permissions, scopes=[Permission.BACKUPS_DESTINATIONS]
     ),
+    server_name: str = Depends(validate_server_registered),
     app_context: AppContext = Depends(get_app_context),
 ) -> TaskAcceptedResponse:
     """Preview external cleanup; a reviewed token explicitly authorizes deletion."""
@@ -807,10 +807,10 @@ async def cleanup_destination(
     response_model=RecoveryReportResponse,
 )
 async def download_recovery_report(
-    server_name: str = Depends(validate_server_registered),
     current_user: UserResponse = Security(
         require_permissions, scopes=[Permission.BACKUPS_READ]
     ),
+    server_name: str = Depends(validate_server_registered),
     app_context: AppContext = Depends(get_app_context),
 ) -> Response:
     """Download a redacted JSON recovery report."""

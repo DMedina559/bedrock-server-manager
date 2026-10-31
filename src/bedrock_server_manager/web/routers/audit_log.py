@@ -3,9 +3,9 @@ FastAPI router for viewing audit logs.
 """
 
 import logging
-from typing import List
+from typing import Annotated, List
 
-from fastapi import APIRouter, Depends, Security
+from fastapi import APIRouter, Depends, Query, Security
 
 from ...context import AppContext
 from ..access_policy import Permission
@@ -28,11 +28,15 @@ async def list_audit_logs_api(
     current_user: UserResponse = Security(
         require_permissions, scopes=[Permission.AUDIT_READ]
     ),
+    limit: Annotated[int, Query(ge=1, le=500)] = 100,
+    offset: Annotated[int, Query(ge=0)] = 0,
     app_context: AppContext = Depends(get_app_context),
 ) -> List[AuditLogResponse]:
-    """Return audit logs as JSON."""
+    """Return bounded audit logs as JSON ordered deterministically by timestamp descending."""
     async with app_context.storage.transaction() as session:
-        logs = await app_context.storage.audit_log_repo.get_all_logs(session)
+        logs = await app_context.storage.audit_log_repo.get_all_logs(
+            session, limit=limit, offset=offset
+        )
         return [
             AuditLogResponse.model_validate(log, from_attributes=True) for log in logs
         ]

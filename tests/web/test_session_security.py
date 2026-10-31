@@ -4,6 +4,7 @@ import time
 
 import pyotp
 import pytest
+from fastapi import Request
 from jose import jwt
 from sqlalchemy import select
 
@@ -363,3 +364,54 @@ async def test_missing_mfa_key_cannot_be_replaced_by_another_enrollment(
         "/api/account/security/mfa/enroll", headers=headers
     )
     assert response.status_code == 503
+
+
+async def test_invalid_session_cookie_cleanup_selective(auth_client, app_context):
+    auth_client.cookies.clear()
+    login_resp = await auth_client.post(
+        "/auth/token",
+        data={"username": "testuser", "password": "testpassword"},
+        headers={"X-BSM-Auth-Mode": "cookie", "Origin": "http://testserver"},
+    )
+    assert login_resp.status_code == 200
+
+    async with app_context.storage.transaction() as session:
+        sessions = (await session.scalars(select(LoginSession))).all()
+        for s in sessions:
+            s.revoked_at = int(time.time())
+
+    # Cookie request on revoked session receives 401 and Set-Cookie clearing the cookie
+    cookie_resp = await auth_client.get("/api/account")
+    assert cookie_resp.status_code == 401
+    assert cookie_resp.headers.get("X-BSM-Session-Invalid") == "1"
+    set_cookie = cookie_resp.headers.get("set-cookie", "")
+    assert "access_token_cookie=" in set_cookie
+    assert "max-age=0" in set_cookie.lower() or "expires=" in set_cookie.lower()
+
+    # Bearer request with invalid token does NOT emit Set-Cookie
+    auth_client.cookies.clear()
+    bearer_resp = await auth_client.get(
+        "/api/account", headers={"Authorization": "Bearer invalid.jwt.token"}
+    )
+    assert bearer_resp.status_code == 401
+    assert "set-cookie" not in bearer_resp.headers
+
+
+async def test_theme_bypass_exact_boundaries(unauth_client, test_app):
+    @test_app.get("/themes/custom.css")
+    async def theme_file(request: Request):
+        return {"current_user": request.state.current_user}
+
+    @test_app.get("/themes_invalid")
+    async def invalid_boundary(request: Request):
+        return {"resolved": getattr(request.state, "authentication_resolved", False)}
+
+    # /themes/custom.css matches exact directory boundary and bypasses lookup
+    res_valid = await unauth_client.get("/themes/custom.css")
+    assert res_valid.status_code == 200
+    assert res_valid.json()["current_user"] is None
+
+    # /themes_invalid does not match directory boundary and resolves auth
+    res_invalid = await unauth_client.get("/themes_invalid")
+    assert res_invalid.status_code == 200
+    assert res_invalid.json()["resolved"] is True

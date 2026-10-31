@@ -59,10 +59,10 @@ router = APIRouter()
     response_model=ServerSchemaResponse,
 )
 async def get_server_summary(
-    server_name: str = Depends(validate_server_exists),
     current_user: UserResponse = Security(
         require_permissions, scopes=[Permission.SERVERS_INSPECT]
     ),
+    server_name: str = Depends(validate_server_exists),
     app_context: AppContext = Depends(get_app_context),
 ) -> ServerSchemaResponse:
     """Return the basic summary information for a specific server instance."""
@@ -88,10 +88,10 @@ async def get_server_summary(
     status_code=status.HTTP_200_OK,
 )
 async def post_start_server(
-    server_name: str = Depends(validate_server_exists),
     current_user: UserResponse = Security(
         require_permissions, scopes=[Permission.SERVERS_CONTROL]
     ),
+    server_name: str = Depends(validate_server_exists),
     app_context: AppContext = Depends(get_app_context),
 ) -> StartServerResponse:
     """Await server start and return its completed operation result."""
@@ -114,10 +114,10 @@ async def post_start_server(
     status_code=status.HTTP_200_OK,
 )
 async def post_stop_server(
-    server_name: str = Depends(validate_server_registered),
     current_user: UserResponse = Security(
         require_permissions, scopes=[Permission.SERVERS_CONTROL]
     ),
+    server_name: str = Depends(validate_server_registered),
     app_context: AppContext = Depends(get_app_context),
 ) -> StopServerResponse:
     """Await server stop and return its completed operation result."""
@@ -138,10 +138,10 @@ async def post_stop_server(
     status_code=status.HTTP_200_OK,
 )
 async def post_restart_server(
-    server_name: str = Depends(validate_server_exists),
     current_user: UserResponse = Security(
         require_permissions, scopes=[Permission.SERVERS_CONTROL]
     ),
+    server_name: str = Depends(validate_server_exists),
     app_context: AppContext = Depends(get_app_context),
 ) -> RestartServerResponse:
     """Await server restart and return its completed operation result."""
@@ -164,10 +164,10 @@ async def post_restart_server(
 )
 async def post_send_command(
     payload: CommandPayload,
-    server_name: str = Depends(validate_server_exists),
     current_user: UserResponse = Security(
         require_permissions, scopes=[Permission.SERVERS_CONTROL]
     ),
+    server_name: str = Depends(validate_server_exists),
     app_context: AppContext = Depends(get_app_context),
 ) -> SendCommandResponse:
     """
@@ -203,10 +203,10 @@ async def post_send_command(
     status_code=status.HTTP_202_ACCEPTED,
 )
 async def post_update_server(
-    server_name: str = Depends(validate_server_exists),
     current_user: UserResponse = Security(
         require_permissions, scopes=[Permission.SERVERS_MANAGE]
     ),
+    server_name: str = Depends(validate_server_exists),
     app_context: AppContext = Depends(get_app_context),
 ) -> TaskAcceptedResponse:
     """
@@ -239,10 +239,10 @@ async def post_update_server(
     status_code=status.HTTP_202_ACCEPTED,
 )
 async def delete_server(
-    server_name: str = Depends(validate_server_registered),
     current_user: UserResponse = Security(
         require_permissions, scopes=[Permission.SERVERS_MANAGE]
     ),
+    server_name: str = Depends(validate_server_registered),
     app_context: AppContext = Depends(get_app_context),
 ) -> TaskAcceptedResponse:
     """
@@ -276,10 +276,10 @@ async def delete_server(
     response_model=ServerRunningStatusResponse,
 )
 async def get_server_running_status(
-    server_name: str = Depends(validate_server_exists),
     current_user: UserResponse = Security(
         require_permissions, scopes=[Permission.SERVERS_READ]
     ),
+    server_name: str = Depends(validate_server_exists),
     app_context: AppContext = Depends(get_app_context),
 ) -> ServerRunningStatusResponse:
     """Check if a specific server's process is currently running."""
@@ -340,10 +340,10 @@ async def get_validate_server(
     response_model=ServerProcessInfoResponse,
 )
 async def get_server_process_info(
-    server_name: str = Depends(validate_server_exists),
     current_user: UserResponse = Security(
         require_permissions, scopes=[Permission.SERVERS_READ]
     ),
+    server_name: str = Depends(validate_server_exists),
     app_context: AppContext = Depends(get_app_context),
 ) -> ServerProcessInfoResponse:
     """Return resource usage information for a running server process."""

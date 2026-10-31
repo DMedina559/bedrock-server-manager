@@ -321,7 +321,6 @@ async def admin_revoke(
     ),
     context: AppContext = Depends(get_app_context),
 ):
-    await recent(request, user, context)
     await context.session_service.revoke(
         await owner(context, user_id),
         identifier=session_id,
@@ -346,7 +345,6 @@ async def admin_reset_mfa(
     ),
     context: AppContext = Depends(get_app_context),
 ):
-    await recent(request, user, context)
     if user_id == user.id:
         raise HTTPException(
             403, "Use your account security settings to disable your own second factor"
@@ -375,7 +373,6 @@ async def admin_revoke_all(
     ),
     context: AppContext = Depends(get_app_context),
 ):
-    await recent(request, user, context)
     await context.session_service.revoke(
         await owner(context, user_id), reason="admin_sessions_revoked"
     )

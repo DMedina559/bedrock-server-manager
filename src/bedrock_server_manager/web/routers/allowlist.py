@@ -34,10 +34,10 @@ router = APIRouter(tags=["Server Access"])
 )
 async def post_allowlist(
     payload: AllowlistAddPayload,
-    server_name: str = Depends(validate_server_exists),
     current_user: UserResponse = Security(
         require_permissions, scopes=[Permission.ALLOWLIST_MANAGE]
     ),
+    server_name: str = Depends(validate_server_exists),
     app_context: AppContext = Depends(get_app_context),
 ) -> AddToAllowlistResponse:
     identity = current_user.username
@@ -66,10 +66,10 @@ async def post_allowlist(
     response_model=AllowlistGetResponse,
 )
 async def get_allowlist(
-    server_name: str = Depends(validate_server_exists),
     current_user: UserResponse = Security(
         require_permissions, scopes=[Permission.ALLOWLIST_READ]
     ),
+    server_name: str = Depends(validate_server_exists),
     app_context: AppContext = Depends(get_app_context),
 ) -> AllowlistGetResponse:
     result = await allowlist_api.get_allowlist(
@@ -87,10 +87,10 @@ async def get_allowlist(
 )
 async def delete_allowlist(
     payload: AllowlistRemovePayload,
-    server_name: str = Depends(validate_server_exists),
     current_user: UserResponse = Security(
         require_permissions, scopes=[Permission.ALLOWLIST_MANAGE]
     ),
+    server_name: str = Depends(validate_server_exists),
     app_context: AppContext = Depends(get_app_context),
 ) -> RemoveFromAllowlistResponse:
     result = await allowlist_api.remove_from_allowlist(

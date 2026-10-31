@@ -78,20 +78,24 @@ class UserService:
             )
             if not db_user:
                 return False
-            if not await verify_password_async(
-                current_password, str(db_user.hashed_password)
-            ):
-                raise UserInputError("Incorrect current password.")
-            hashed_pwd = await get_password_hash_async(new_password)
-            from sqlalchemy import update
+            user_id = db_user.id
+            expected_revision = db_user.auth_revision
+            existing_hash = str(db_user.hashed_password)
+            access_id = db_user.access_id
 
-            from ..db.models import LoginSession, User
+        if not await verify_password_async(current_password, existing_hash):
+            raise UserInputError("Incorrect current password.")
+        hashed_pwd = await get_password_hash_async(new_password)
 
+        from sqlalchemy import update
+
+        from ..db.models import LoginSession, User
+        from .session_service import SessionService
+
+        async with self.storage.transaction() as session:
             changed = await session.execute(
                 update(User)
-                .where(
-                    User.id == db_user.id, User.auth_revision == db_user.auth_revision
-                )
+                .where(User.id == user_id, User.auth_revision == expected_revision)
                 .values(
                     hashed_password=hashed_pwd, auth_revision=User.auth_revision + 1
                 )
@@ -99,47 +103,53 @@ class UserService:
             if getattr(changed, "rowcount", None) != 1:
                 raise UserInputError("Account credentials changed; try again")
             query = update(LoginSession).where(
-                LoginSession.owner_id == db_user.access_id,
+                LoginSession.owner_id == access_id,
                 LoginSession.revoked_at.is_(None),
             )
             if keep_session_id:
                 query = query.where(LoginSession.id != keep_session_id)
             await session.execute(query.values(revoked_at=int(time.time())))
-            from .session_service import SessionService
+            SessionService.add_event(session, access_id, "password_changed")
 
-            SessionService.add_event(session, db_user.access_id, "password_changed")
         if self.credentials_changed:
-            await self.credentials_changed(db_user.access_id)
+            await self.credentials_changed(access_id)
         if self.security_event:
-            await self.security_event(db_user.access_id, "password_changed")
+            await self.security_event(access_id, "password_changed")
         return True
 
     async def reset_password(self, username: str, new_password: str) -> bool:
         """Reset hashed password for a user without verifying old password."""
-        from sqlalchemy import update
-
-        from ..db.models import LoginSession, User
+        try:
+            new_password = (
+                TypeAdapter(NewPassword)
+                .validate_python(new_password)
+                .get_secret_value()
+            )
+        except ValidationError:
+            raise UserInputError(
+                "Use a less common passphrase of at least 15 characters (up to 1024 UTF-8 bytes)."
+            ) from None
         from ..web.auth import get_password_hash_async
-        from .session_service import SessionService
 
         async with self.storage.transaction() as session:
             user = await self.storage.user_repo.get_user_by_username(session, username)
             if user is None:
                 return False
-            try:
-                new_password = (
-                    TypeAdapter(NewPassword)
-                    .validate_python(new_password)
-                    .get_secret_value()
-                )
-            except ValidationError:
-                raise UserInputError(
-                    "Use a less common passphrase of at least 15 characters (up to 1024 UTF-8 bytes)."
-                ) from None
-            hashed_pwd = await get_password_hash_async(new_password)
+            user_id = user.id
+            expected_revision = user.auth_revision
+            access_id = user.access_id
+
+        hashed_pwd = await get_password_hash_async(new_password)
+
+        from sqlalchemy import update
+
+        from ..db.models import LoginSession, User
+        from .session_service import SessionService
+
+        async with self.storage.transaction() as session:
             changed = await session.execute(
                 update(User)
-                .where(User.id == user.id, User.auth_revision == user.auth_revision)
+                .where(User.id == user_id, User.auth_revision == expected_revision)
                 .values(
                     hashed_password=hashed_pwd, auth_revision=User.auth_revision + 1
                 )
@@ -149,16 +159,17 @@ class UserService:
             await session.execute(
                 update(LoginSession)
                 .where(
-                    LoginSession.owner_id == user.access_id,
+                    LoginSession.owner_id == access_id,
                     LoginSession.revoked_at.is_(None),
                 )
                 .values(revoked_at=int(time.time()))
             )
-            SessionService.add_event(session, user.access_id, "password_reset")
+            SessionService.add_event(session, access_id, "password_reset")
+
         if self.credentials_changed:
-            await self.credentials_changed(user.access_id)
+            await self.credentials_changed(access_id)
         if self.security_event:
-            await self.security_event(user.access_id, "password_reset")
+            await self.security_event(access_id, "password_reset")
         return True
 
     async def create_registration_token(

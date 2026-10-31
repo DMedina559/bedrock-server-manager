@@ -118,3 +118,24 @@ async def test_delete_task_retains_server_identity(
     assert task.result["server_name"] == name
     assert task.result["status"] == "success"
     assert name not in app_context._servers
+
+
+@pytest.mark.parametrize("target_type", ["real_server", "nonexistent_server"])
+async def test_server_existence_oracle_prevention(
+    unauth_client, auth_client, real_bedrock_server, target_type
+):
+    target = (
+        real_bedrock_server.server_name
+        if target_type == "real_server"
+        else "definitely_nonexistent_server"
+    )
+    # Unauthenticated requests receive 401 regardless of whether server exists
+    unauth_summary = await unauth_client.get(f"/api/server/{target}/summary")
+    assert unauth_summary.status_code == 401
+
+    unauth_start = await unauth_client.post(f"/api/server/{target}/start")
+    assert unauth_start.status_code == 401
+
+    # Unauthorized requests (standard user lacks servers:control) receive 403 regardless of server existence
+    user_start = await auth_client.post(f"/api/server/{target}/start")
+    assert user_start.status_code == 403

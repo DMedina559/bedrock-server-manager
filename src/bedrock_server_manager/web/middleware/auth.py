@@ -18,12 +18,26 @@ async def add_user_to_request(request: Request, call_next):
     path = route_path(request.scope)
 
     # 1. Bypass database lookup for static files to prevent SQLite locking
-    if (
-        path.startswith(
-            ("/static", "/assets", "/image", "/app/static", "/app/assets", "/app/image")
+    if path.startswith(
+        (
+            "/static/",
+            "/assets/",
+            "/image/",
+            "/themes/",
+            "/app/static/",
+            "/app/assets/",
+            "/app/image/",
         )
-        or path == "/favicon.ico"
-    ):
+    ) or path in {
+        "/favicon.ico",
+        "/static",
+        "/assets",
+        "/image",
+        "/themes",
+        "/app/static",
+        "/app/assets",
+        "/app/image",
+    }:
         request.state.current_user = None
         return await call_next(request)
 
@@ -62,10 +76,9 @@ async def add_user_to_request(request: Request, call_next):
             return JSONResponse(
                 {"detail": "Origin is not allowed for this mutation"}, status_code=403
             )
-        if (
-            csrf
-            and cookie_mutation
-            and not hmac.compare_digest(request.headers.get("x-csrf-token", ""), csrf)
+        if cookie_mutation and (
+            not csrf
+            or not hmac.compare_digest(request.headers.get("x-csrf-token", ""), csrf)
         ):
             return JSONResponse(
                 {"detail": "CSRF verification required"}, status_code=403
@@ -111,6 +124,10 @@ async def add_user_to_request(request: Request, call_next):
             and response.status_code == 401
         ):
             response.headers["X-BSM-Session-Invalid"] = "1"
+            if getattr(request.state, "credential_source", None) == "cookie":
+                from ..cookies import clear_session_cookie
+
+                clear_session_cookie(response, request)
         if csrf:
             response.headers["X-BSM-CSRF-Token"] = csrf
             response.headers["Cache-Control"] = "no-store"

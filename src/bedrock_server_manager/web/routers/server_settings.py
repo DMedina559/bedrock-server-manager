@@ -29,10 +29,10 @@ router = APIRouter(tags=["Server Settings"])
     response_model=ServerSettingsResponse,
 )
 async def get_server_settings(
-    server_name: str = Depends(validate_server_exists),
     current_user: UserResponse = Security(
         require_permissions, scopes=[Permission.SERVERS_READ]
     ),
+    server_name: str = Depends(validate_server_exists),
     app_context: AppContext = Depends(get_app_context),
 ) -> ServerSettingsResponse:
     """Return all settings for a specific server."""
@@ -57,10 +57,10 @@ async def get_server_settings(
 )
 async def post_set_server_setting(
     payload: ServerSettingItemPayload,
-    server_name: str = Depends(validate_server_exists),
     current_user: UserResponse = Security(
         require_permissions, scopes=[Permission.SERVERS_CONFIGURE]
     ),
+    server_name: str = Depends(validate_server_exists),
     app_context: AppContext = Depends(get_app_context),
 ) -> ServerSettingsResponse:
     """Set a specific setting for a server."""

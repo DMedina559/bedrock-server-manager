@@ -33,10 +33,10 @@ router = APIRouter(tags=["Server Properties"])
 )
 async def post_properties_set(
     payload: PropertiesPayload,
-    server_name: str = Depends(validate_server_exists),
     current_user: UserResponse = Security(
         require_permissions, scopes=[Permission.SERVERS_PROPERTIES]
     ),
+    server_name: str = Depends(validate_server_exists),
     app_context: AppContext = Depends(get_app_context),
 ) -> SetPropertiesResponse:
     properties_data = payload.properties
@@ -59,10 +59,10 @@ async def post_properties_set(
     response_model=PropertiesGetResponse,
 )
 async def get_properties(
-    server_name: str = Depends(validate_server_exists),
     current_user: UserResponse = Security(
         require_permissions, scopes=[Permission.SERVERS_PROPERTIES]
     ),
+    server_name: str = Depends(validate_server_exists),
     app_context: AppContext = Depends(get_app_context),
 ) -> PropertiesGetResponse:
     result = await properties_api.get_properties(
@@ -78,10 +78,10 @@ async def get_properties(
     response_model=GetRawPropertiesResponse,
 )
 async def get_raw_properties(
-    server_name: str = Depends(validate_server_exists),
     current_user: UserResponse = Security(
         require_permissions, scopes=[Permission.SERVERS_PROPERTIES]
     ),
+    server_name: str = Depends(validate_server_exists),
     app_context: AppContext = Depends(get_app_context),
 ) -> GetRawPropertiesResponse:
     """Return the raw document using the same access policy as structured properties."""

@@ -34,9 +34,14 @@ class AuditLogRepository:
         session.add(log)
         return log
 
-    async def get_all_logs(self, session: AsyncSession) -> List[AuditLog]:
-        """Return all audit logs ordered by timestamp descending."""
-        result = await session.execute(
-            select(AuditLog).order_by(AuditLog.timestamp.desc())
-        )
+    async def get_all_logs(
+        self, session: AsyncSession, limit: int | None = None, offset: int = 0
+    ) -> List[AuditLog]:
+        """Return audit logs ordered deterministically by timestamp and id descending."""
+        query = select(AuditLog).order_by(AuditLog.timestamp.desc(), AuditLog.id.desc())
+        if offset > 0:
+            query = query.offset(offset)
+        if limit is not None:
+            query = query.limit(limit)
+        result = await session.execute(query)
         return list(result.scalars().all())

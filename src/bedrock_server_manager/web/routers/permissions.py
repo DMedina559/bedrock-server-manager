@@ -37,10 +37,10 @@ router = APIRouter(tags=["Server Access"])
 )
 async def post_permissions_set(
     payload: PermissionsSetPayload,
-    server_name: str = Depends(validate_server_exists),
     current_user: UserResponse = Security(
         require_permissions, scopes=[Permission.PERMISSIONS_MANAGE]
     ),
+    server_name: str = Depends(validate_server_exists),
     app_context: AppContext = Depends(get_app_context),
 ) -> PermissionsUpdateResponse | JSONResponse:
     permission_entries = payload.permissions
@@ -128,10 +128,10 @@ async def post_permissions_set(
     response_model=PermissionsGetResponse,
 )
 async def get_permissions(
-    server_name: str = Depends(validate_server_exists),
     current_user: UserResponse = Security(
         require_permissions, scopes=[Permission.PERMISSIONS_READ]
     ),
+    server_name: str = Depends(validate_server_exists),
     app_context: AppContext = Depends(get_app_context),
 ) -> PermissionsGetResponse:
     result = await permissions_api.get_permissions(
