@@ -75,14 +75,34 @@ async def test_reset_password_mismatch_confirmation(runner, app_context):
 
 
 async def test_local_mfa_reset_revokes_logins_without_changing_password(
-    runner, app_context, auth_client
+    runner, app_context
 ):
+    import time
+
     from bedrock_server_manager.cli.reset_password import reset_mfa_command
     from bedrock_server_manager.db.models import AccountSecurity, LoginSession
 
+    # The local CLI owns its runtime; do not share a running HTTP lifespan and
+    # its loop-bound background database tasks with the synchronous CLI runner.
+    original_hash = get_password_hash("existing secure passphrase")
+    now = int(time.time())
     async with app_context.storage.transaction() as session:
-        user = await session.scalar(select(User).where(User.username == "testuser"))
-        original_hash = user.hashed_password
+        user = User(username="testuser", hashed_password=original_hash, role="admin")
+        session.add(user)
+        await session.flush()
+        session.add(
+            LoginSession(
+                id="a" * 32,
+                owner_id=user.access_id,
+                name="existing login",
+                user_agent="",
+                ip_address="",
+                created_at=now,
+                last_seen_at=now,
+                expires_at=now + 3600,
+                verified_at=now,
+            )
+        )
         session.add(
             AccountSecurity(
                 owner_id=user.access_id,
@@ -101,14 +121,13 @@ async def test_local_mfa_reset_revokes_logins_without_changing_password(
         user = await session.scalar(select(User).where(User.username == "testuser"))
         assert user.hashed_password == original_hash
         assert (await session.get(AccountSecurity, user.access_id)).totp_secret is None
-        assert all(
-            row.revoked_at is not None
-            for row in (
-                await session.scalars(
-                    select(LoginSession).where(LoginSession.owner_id == user.access_id)
-                )
-            ).all()
-        )
+        rows = (
+            await session.scalars(
+                select(LoginSession).where(LoginSession.owner_id == user.access_id)
+            )
+        ).all()
+        assert len(rows) == 1
+        assert rows[0].revoked_at is not None
 
 
 async def test_local_mfa_reset_requires_confirmation(runner, app_context):
