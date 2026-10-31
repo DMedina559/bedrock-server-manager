@@ -13,7 +13,7 @@ class CreateIntegrationToken(APIRequest):
     name: str = Field(min_length=1, max_length=100, pattern=r".*\S.*")
     permissions: list[str] = Field(min_length=1, max_length=256)
     server_ids: list[ResourceID] | None = Field(default=None, max_length=1000)
-    expires_in_days: int = Field(default=30, ge=1, le=365)
+    expires_in_days: int | None = Field(default=30, ge=1, le=365)
 
 
 class IntegrationTokenInfo(APIResponse):
@@ -22,7 +22,7 @@ class IntegrationTokenInfo(APIResponse):
     permissions: list[str]
     server_ids: list[ResourceID] | None = None
     created_at: int
-    expires_at: int
+    expires_at: int | None
     last_used_at: int | None = None
     revoked_at: int | None = None
 

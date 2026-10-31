@@ -314,7 +314,7 @@ class IntegrationToken(Base):
     permissions: Mapped[list[str]] = mapped_column(JSON, nullable=False)
     server_ids: Mapped[list[str] | None] = mapped_column(JSON, nullable=True)
     created_at: Mapped[int] = mapped_column(Integer, nullable=False)
-    expires_at: Mapped[int] = mapped_column(Integer, nullable=False)
+    expires_at: Mapped[int | None] = mapped_column(Integer, nullable=True)
     last_used_at: Mapped[int | None] = mapped_column(Integer, nullable=True)
     revoked_at: Mapped[int | None] = mapped_column(Integer, nullable=True)
 

@@ -64,6 +64,18 @@ async def api_login_for_access_token(
     authenticated_username = await authenticate_user(
         app_context, form_data.username, form_data.password
     )
+    if (
+        authenticated_username
+        and owner is not None
+        and owner.is_active
+        and not otp
+        and (await app_context.session_service.status(owner_id))["enabled"]
+    ):
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Authenticator or recovery code required",
+            headers={"WWW-Authenticate": "Bearer", "X-BSM-MFA": "required"},
+        )
     if authenticated_username and (
         owner is None
         or not owner.is_active

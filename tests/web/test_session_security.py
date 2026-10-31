@@ -153,7 +153,13 @@ async def test_mfa_enrollment_encryption_replay_recovery_and_revocation(
     assert confirmed.status_code == 200, confirmed.text
     recovery = confirmed.json()["recovery_codes"][0]
     assert (await auth_client.get("/api/account", headers=before)).status_code == 401
-    assert (await login(auth_client)).status_code == 401
+    challenge = await login(auth_client)
+    assert challenge.status_code == 401
+    assert challenge.headers["X-BSM-MFA"] == "required"
+    assert "access_token" not in challenge.json()
+    wrong_password = await login(auth_client, password="incorrect-password")
+    assert wrong_password.status_code == 401
+    assert "X-BSM-MFA" not in wrong_password.headers
     # Enrollment consumes its time step; a captured code cannot be replayed.
     assert (await login(auth_client, otp=code)).status_code == 401
     assert (await login(auth_client, otp=recovery)).status_code == 200

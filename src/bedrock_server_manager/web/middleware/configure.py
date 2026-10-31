@@ -55,6 +55,7 @@ def configure_middleware(
             "X-BSM-CSRF-Token",
             "X-BSM-Session-Invalid",
             "X-BSM-Recent-Auth",
+            "X-BSM-MFA",
         ],
     }
 

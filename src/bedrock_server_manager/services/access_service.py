@@ -10,7 +10,7 @@ import time
 from uuid import uuid4
 
 from fastapi import HTTPException
-from sqlalchemy import delete, select, update
+from sqlalchemy import delete, or_, select, update
 
 from ..db.models import (
     AccessRevision,
@@ -120,7 +120,10 @@ class AccessService:
                     token is None
                     or token.owner_id != record.access_id
                     or token.revoked_at is not None
-                    or token.expires_at <= int(time.time())
+                    or (
+                        token.expires_at is not None
+                        and token.expires_at <= int(time.time())
+                    )
                 ):
                     return None
                 permission_set &= frozenset(token.permissions) - NON_DELEGATABLE
@@ -200,7 +203,7 @@ class AccessService:
                 not hmac.compare_digest(expected, supplied)
                 or token is None
                 or token.revoked_at is not None
-                or token.expires_at <= now
+                or (token.expires_at is not None and token.expires_at <= now)
             ):
                 return None
             record = await session.scalar(
@@ -266,7 +269,10 @@ class AccessService:
                         select(IntegrationToken.id).where(
                             IntegrationToken.owner_id == user.access_id,
                             IntegrationToken.revoked_at.is_(None),
-                            IntegrationToken.expires_at > now,
+                            or_(
+                                IntegrationToken.expires_at.is_(None),
+                                IntegrationToken.expires_at > now,
+                            ),
                         )
                     )
                 ).all()
@@ -287,7 +293,11 @@ class AccessService:
                     else sorted(set(payload.server_ids))
                 ),
                 created_at=now,
-                expires_at=now + payload.expires_in_days * 86400,
+                expires_at=(
+                    None
+                    if payload.expires_in_days is None
+                    else now + payload.expires_in_days * 86400
+                ),
             )
             session.add(token)
             self.context.session_service.add_event(
@@ -318,7 +328,7 @@ class AccessService:
                 old is None
                 or old.owner_id != owner.access_id
                 or old.revoked_at is not None
-                or old.expires_at <= now
+                or (old.expires_at is not None and old.expires_at <= now)
             ):
                 raise HTTPException(404, "Active credential not found")
             permissions = sorted(

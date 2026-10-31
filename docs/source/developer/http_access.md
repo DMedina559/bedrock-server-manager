@@ -183,3 +183,18 @@ Integration credentials can be rotated with
 secret and returns its replacement once, preserving the original absolute expiry
 and permission/resource ceilings. Bulk integration revocation is an explicit,
 separate action from signing out logins.
+
+Integration credential creation accepts `expires_in_days: null` for **Never
+expire**; omitting it still defaults to 30 days. Metadata returns
+`expires_at: null`. Such credentials remain subject to revocation, account
+activation, current role/server access, and the active-credential limit. Rotation
+preserves the lack of an expiration deadline. Downgrading to a release without
+this capability expires non-expiring credentials at the downgrade time.
+Interactive login-session deadlines are unchanged.
+
+The login screen asks for username/password first. Only after those credentials
+are verified does an MFA-enabled account receive a 401 with
+`X-BSM-MFA: required`; this response issues no session or token. The client then
+asks for an authenticator or recovery code and resubmits the credentials with
+`otp`. Incorrect passwords never expose whether the account has MFA. API clients
+may still supply all three values in a single request.

@@ -192,3 +192,49 @@ async def test_sqlite_close_then_repeated_stop_does_not_leak_future_errors():
     finally:
         await database.shutdown()
         loop.set_exception_handler(previous_handler)
+
+
+def test_nonexpiring_token_migration_preserves_deadlines_and_downgrades_safely(
+    tmp_path,
+):
+    import time
+    from pathlib import Path
+
+    from alembic import command
+    from alembic.config import Config
+    from sqlalchemy import create_engine
+
+    import bedrock_server_manager.db.database as database_module
+
+    config = Config(str(Path(database_module.__file__).parent / "alembic.ini"))
+    config.set_main_option("skip_logging_config", "true")
+    engine = create_engine(f"sqlite:///{tmp_path / 'token-expiry.db'}")
+    with engine.begin() as connection:
+        config.attributes["connection"] = connection
+        command.upgrade(config, "h94d823f50b1")
+        insert = text(
+            "INSERT INTO integration_tokens (id, owner_id, name, digest, permissions, created_at, expires_at) VALUES (:id, 'owner', 'test', 'hash', '[]', 1, :expiry)"
+        )
+        connection.execute(insert, {"id": "dated", "expiry": 2000000000})
+        command.upgrade(config, "head")
+        connection.execute(insert, {"id": "forever", "expiry": None})
+        assert (
+            connection.execute(
+                text("SELECT expires_at FROM integration_tokens WHERE id='dated'")
+            ).scalar_one()
+            == 2000000000
+        )
+        before = int(time.time())
+        command.downgrade(config, "h94d823f50b1")
+        deadline = connection.execute(
+            text("SELECT expires_at FROM integration_tokens WHERE id='forever'")
+        ).scalar_one()
+        assert before <= deadline <= int(time.time())
+        assert (
+            connection.execute(
+                text("SELECT expires_at FROM integration_tokens WHERE id='dated'")
+            ).scalar_one()
+            == 2000000000
+        )
+        command.upgrade(config, "head")
+    engine.dispose()

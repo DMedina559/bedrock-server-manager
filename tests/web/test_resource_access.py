@@ -402,3 +402,64 @@ async def test_task_results_follow_current_server_grants(
         await admin_auth_client.put(path, json={"mode": "assigned", "grants": []})
     ).status_code == 200
     assert (await auth_client.get(f"/api/tasks/status/{task_id}")).status_code == 404
+
+
+async def test_nonexpiring_tokens_remain_revocable_and_rotation_preserves_no_deadline(
+    admin_auth_client, app_context, monkeypatch
+):
+    from types import SimpleNamespace
+
+    import bedrock_server_manager.services.access_service as access_module
+
+    issued = await issue(admin_auth_client, expires_in_days=None)
+    identifier = issued["credential"]["id"]
+    assert issued["credential"]["expires_at"] is None
+    async with app_context.storage.transaction() as session:
+        original = await session.get(IntegrationToken, identifier)
+        assert original.expires_at is None
+        for index in range(99):
+            session.add(
+                IntegrationToken(
+                    id=f"{index:032x}",
+                    owner_id=original.owner_id,
+                    name="unused",
+                    digest=f"{index:064x}",
+                    permissions=["account:read"],
+                    server_ids=None,
+                    created_at=1,
+                    expires_at=None,
+                )
+            )
+    limited = await admin_auth_client.post(
+        "/api/account/tokens",
+        json={
+            "name": "over limit",
+            "permissions": ["account:read"],
+            "expires_in_days": None,
+        },
+    )
+    assert limited.status_code == 409
+    with monkeypatch.context() as future:
+        future.setattr(
+            access_module,
+            "time",
+            SimpleNamespace(time=lambda: time.time() + 400 * 86400),
+        )
+        assert (
+            await app_context.access_service.authenticate(issued["token"]) is not None
+        )
+        account = await admin_auth_client.get(
+            "/api/account", headers={"Authorization": f"Bearer {issued['token']}"}
+        )
+        assert account.status_code == 200
+    rotated = await admin_auth_client.post(f"/api/account/tokens/{identifier}/rotate")
+    assert rotated.status_code == 200, rotated.text
+    replacement = rotated.json()
+    assert replacement["credential"]["expires_at"] is None
+    assert await app_context.access_service.authenticate(issued["token"]) is None
+    assert (
+        await admin_auth_client.delete(
+            f"/api/account/tokens/{replacement['credential']['id']}"
+        )
+    ).status_code == 200
+    assert await app_context.access_service.authenticate(replacement["token"]) is None
