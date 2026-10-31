@@ -29,7 +29,7 @@ _CREDENTIAL = re.compile(
 _BEARER = re.compile(r"(?i)\bBearer\s+[^\s,;\'\"]+")
 _URL_CREDENTIAL = re.compile(r"(https?://)[^/\s:@]+:[^/\s@]+@", re.IGNORECASE)
 _REGISTRATION_LINK = re.compile(
-    r"((?:/app/register|/api/register/validate)/)[^/\s?'\"#]+"
+    r"((?:/app/register|/api/register(?:/validate)?)/)[^/\s?'\"#]+"
 )
 
 

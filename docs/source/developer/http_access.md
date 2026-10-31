@@ -228,3 +228,37 @@ Owned security changes produce safe, account-scoped notices for connected
 interactive clients and the private `on_account_security` core event. Notices
 contain an event ID, owner ID, action, and timestamp, never credentials or factor
 secrets. Delivery is advisory; the security activity log remains authoritative.
+
+### Registration invitation storage and concurrency
+
+Registration invitations are stored as SHA-256 digests. Existing invitation URLs
+remain valid after the digest migration, retain their role and deadline, and can
+be redeemed only once. Registration and validation requests share the configured
+peer authentication budget. A throttled registration returns 429 before password
+hashing or invitation consumption; invalid/expired invitations are also rejected
+before hashing. Account creation revalidates the invitation within its transaction.
+
+On PostgreSQL/MySQL, invitation consumption requests a row lock with
+`SELECT FOR UPDATE`. SQLite ignores that clause. The supported SQLite application
+process serializes account creation with `Storage.write_lock`, including the
+invitation recheck, account insert and invitation deletion in one transaction.
+That in-process lock is not a cross-worker/distributed lock: do not run independent
+BSM application workers against the same SQLite database. A same-process
+concurrency test explicitly coordinates both requests past preliminary validation
+and proves that only one account is created.
+
+The follow-up registration-index migration repairs databases that already applied
+the digest migration and aligns the unique digest index with ORM-created schemas.
+Downgrading only this index migration preserves invitations. Downgrading past
+`j16f045b72d3` cannot reconstruct raw invitation secrets: existing invitations become
+unusable and must be reissued. Re-upgrading removes the unusable null-token rows;
+it does not restore old links. Take a database backup before schema changes, and
+protect older backups because they may still contain plaintext invitations.
+
+Invitation page/API responses use `Cache-Control: no-store` and
+`Referrer-Policy: no-referrer`, including registration throttling responses. BSM's
+application log formatter redacts invitation secrets from page, validation and
+submission URLs, including ingress-prefixed paths. Configure reverse-proxy access
+logs separately: BSM cannot redact logs written by another service. When serving
+the frontend separately, apply equivalent cache/referrer rules on registration
+page responses at that frontend host; backend headers do not configure it.

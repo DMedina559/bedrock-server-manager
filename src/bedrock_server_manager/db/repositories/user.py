@@ -92,7 +92,12 @@ class UserRepository:
     async def get_registration_token_for_update(
         self, session: AsyncSession, token: str
     ) -> Optional[RegistrationToken]:
-        """Return a RegistrationToken record locked for update during consumption."""
+        """Lock the invitation row on databases supporting SELECT FOR UPDATE.
+
+        SQLite ignores row locks; create_account also holds Storage.write_lock
+        through validation, account creation and invitation deletion. That lock
+        coordinates writers in one application process, not multiple workers.
+        """
         digest = self.digest_token(token)
         result = await session.execute(
             select(RegistrationToken)

@@ -5,11 +5,16 @@ Integration tests for the register router endpoints, digest storage, and hardeni
 import asyncio
 import hashlib
 import time
+from pathlib import Path
 from unittest.mock import AsyncMock, patch
 
+import pytest
+from alembic import command
+from alembic.config import Config
 from httpx2 import AsyncClient
-from sqlalchemy import select
+from sqlalchemy import select, text
 
+import bedrock_server_manager.db.database as database_module
 from bedrock_server_manager.db.models import RegistrationToken, User
 
 
@@ -184,7 +189,7 @@ async def test_pre_hash_invitation_validation_skips_expensive_hashing(
 
 
 async def test_concurrent_invitation_redemption_allows_only_one_user(
-    unauth_client: AsyncClient, app_context
+    unauth_client: AsyncClient, app_context, monkeypatch
 ):
     """Deterministic concurrency test: two submissions for the same token yield at most one user."""
     token_str = "race_invite_token_777"
@@ -196,7 +201,19 @@ async def test_concurrent_invitation_redemption_allows_only_one_user(
         db.add(token)
         await db.commit()
 
-    # Concurrently attempt redemption with different usernames
+    # Force both requests to observe a valid invitation before either may consume it.
+    barrier = asyncio.Barrier(2)
+    original = app_context.user_service.validate_registration_token
+
+    async def validated_together(candidate):
+        valid = await original(candidate)
+        assert valid
+        await asyncio.wait_for(barrier.wait(), timeout=10)
+        return valid
+
+    monkeypatch.setattr(
+        app_context.user_service, "validate_registration_token", validated_together
+    )
     responses = await asyncio.gather(
         unauth_client.post(
             f"/api/register/{token_str}",
@@ -206,10 +223,9 @@ async def test_concurrent_invitation_redemption_allows_only_one_user(
             f"/api/register/{token_str}",
             json={"username": "concurrent_b", "password": "long valid passphrase 123"},
         ),
-        return_exceptions=True,
     )
 
-    statuses = [r.status_code for r in responses if hasattr(r, "status_code")]
+    statuses = [r.status_code for r in responses]
     # Exactly one succeeded (200) and one failed (404)
     assert statuses.count(200) == 1
     assert statuses.count(404) == 1
@@ -252,3 +268,117 @@ async def test_registration_peer_throttling(unauth_client: AsyncClient, app_cont
         assert "Retry-After" in throttled_res.headers
     finally:
         await app_context.settings.set("security.auth_peer_attempts", 60)
+
+
+async def test_migrated_legacy_invitation_registers_once(
+    unauth_client: AsyncClient, app_context
+):
+    raw_token = "legacy-invitation-before-digests"
+    deadline = int(time.time()) + 3600
+    config = Config(str(Path(database_module.__file__).parent / "alembic.ini"))
+    config.set_main_option("skip_logging_config", "true")
+
+    def migrate_legacy(connection):
+        config.attributes["connection"] = connection
+        command.downgrade(config, "i05e934a61c2")
+        connection.execute(
+            text(
+                "INSERT INTO registration_tokens (token, role, expires) VALUES (:token, :role, :expires)"
+            ),
+            {"token": raw_token, "role": "moderator", "expires": deadline},
+        )
+        command.upgrade(config, "head")
+
+    async with app_context.db.engine.begin() as connection:
+        await connection.run_sync(migrate_legacy)
+    async with app_context.db.session_manager() as session:
+        record = await app_context.storage.user_repo.get_registration_token(
+            session, raw_token
+        )
+        assert record.role == "moderator"
+        assert record.expires == deadline
+
+    assert (
+        await unauth_client.get(f"/api/register/validate/{raw_token}")
+    ).status_code == 200
+    response = await unauth_client.post(
+        f"/api/register/{raw_token}",
+        json={
+            "username": "legacy_invitee",
+            "password": "migrated invitation passphrase",
+        },
+    )
+    assert response.status_code == 200, response.text
+    async with app_context.db.session_manager() as session:
+        user = await session.scalar(
+            select(User).where(User.username == "legacy_invitee")
+        )
+        assert user.role == "moderator"
+        assert (
+            await app_context.storage.user_repo.get_registration_token(
+                session, raw_token
+            )
+            is None
+        )
+    assert (
+        await unauth_client.get(f"/api/register/validate/{raw_token}")
+    ).status_code == 404
+    assert (
+        await unauth_client.post(
+            f"/api/register/{raw_token}",
+            json={
+                "username": "legacy_second",
+                "password": "another invitation passphrase",
+            },
+        )
+    ).status_code == 404
+
+
+async def test_throttled_registration_post_never_hashes_or_consumes_invitation(
+    unauth_client: AsyncClient, app_context, monkeypatch
+):
+    # Avoid a fixed-window boundary between the two requests.
+    monkeypatch.setattr(
+        "bedrock_server_manager.services.session_service.time.time", lambda: 2000000000
+    )
+    await app_context.settings.set("security.auth_peer_attempts", 10)
+    token = await app_context.user_service.create_registration_token("user")
+    for _ in range(10):
+        assert (
+            await unauth_client.get(f"/api/register/validate/{token}")
+        ).status_code == 200
+    with patch(
+        "bedrock_server_manager.web.routers.register.get_password_hash_async",
+        new_callable=AsyncMock,
+    ) as hasher:
+        response = await unauth_client.post(
+            f"/api/register/{token}",
+            json={
+                "username": "throttled_invitee",
+                "password": "valid registration passphrase",
+            },
+        )
+        assert response.status_code == 429
+        assert response.headers["Cache-Control"] == "no-store"
+        assert response.headers["Referrer-Policy"] == "no-referrer"
+        assert "Retry-After" in response.headers
+        hasher.assert_not_awaited()
+    assert await app_context.user_service.validate_registration_token(token)
+    async with app_context.db.session_manager() as session:
+        assert (
+            await session.scalar(
+                select(User).where(User.username == "throttled_invitee")
+            )
+            is None
+        )
+
+
+@pytest.mark.parametrize(
+    "path", ["/api/register/validate/private-invite", "/app/register/private-invite"]
+)
+async def test_invitation_responses_are_not_cached_or_forwarded_as_referrers(
+    unauth_client, path
+):
+    response = await unauth_client.get(path)
+    assert response.headers["Cache-Control"] == "no-store"
+    assert response.headers["Referrer-Policy"] == "no-referrer"

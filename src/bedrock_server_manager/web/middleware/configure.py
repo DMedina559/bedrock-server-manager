@@ -3,18 +3,27 @@
 import logging
 from typing import Any
 
-from fastapi import FastAPI
+from fastapi import FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
 
 from ...state.settings import DEFAULT_CORS_ORIGINS
 from .auth import add_user_to_request
 from .backup_upload import BackupUploadLimit
-from .ingress import IngressMiddleware
+from .ingress import IngressMiddleware, route_path
 from .lifecycle import reject_new_mutations
 from .setup import setup_check_middleware
 
 logger = logging.getLogger(__name__)
 DEFAULT_ORIGINS = list(DEFAULT_CORS_ORIGINS)
+
+
+async def registration_privacy(request: Request, call_next):
+    """Keep invitation URLs and secret-bearing responses out of caches/referrers."""
+    response = await call_next(request)
+    if route_path(request.scope).startswith(("/api/register/", "/app/register/")):
+        response.headers["Cache-Control"] = "no-store"
+        response.headers["Referrer-Policy"] = "no-referrer"
+    return response
 
 
 def configure_middleware(
@@ -42,6 +51,8 @@ def configure_middleware(
 
     app.middleware("http")(setup_check_middleware)
     app.middleware("http")(add_user_to_request)
+
+    app.middleware("http")(registration_privacy)
 
     app.add_middleware(BackupUploadLimit)
 

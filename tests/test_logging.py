@@ -195,6 +195,12 @@ def test_error_output_keeps_diagnostics_in_file(
         ("Authorization: Bearer private-bearer", "private-bearer"),
         ("access_token='private-token'", "private-token"),
         ("GET /app/register/private-link-token", "private-link-token"),
+        ("GET /api/register/validate/private-invite", "private-invite"),
+        ("POST /api/register/private-post-invite", "private-post-invite"),
+        (
+            "POST /ingress/test/api/register/private-prefixed-invite",
+            "private-prefixed-invite",
+        ),
     ],
 )
 def test_formatter_redacts_credentials_without_changing_record(message, secret):

@@ -292,6 +292,34 @@ def test_registration_token_digest_migration_upgrades_plaintext_and_downgrades_s
         ]
         assert "token_digest" in columns
         assert "token" not in columns
+        indexes = inspect(connection).get_indexes("registration_tokens")
+        digest_indexes = [
+            item for item in indexes if item["column_names"] == ["token_digest"]
+        ]
+        assert len(digest_indexes) == 1
+        assert digest_indexes[0]["unique"]
+        assert not any(
+            item["column_names"] == ["token_digest"]
+            for item in inspect(connection).get_unique_constraints(
+                "registration_tokens"
+            )
+        )
+
+        # Index-only downgrade/upgrade preserves a migrated invitation.
+        command.downgrade(config, "j16f045b72d3")
+        assert (
+            connection.execute(
+                text("SELECT token_digest FROM registration_tokens WHERE id=1")
+            ).scalar_one()
+            == expected_digest
+        )
+        command.upgrade(config, "head")
+        assert (
+            connection.execute(
+                text("SELECT token_digest FROM registration_tokens WHERE id=1")
+            ).scalar_one()
+            == expected_digest
+        )
 
         # 4. Downgrade back to i05e934a61c2 and verify columns
         command.downgrade(config, "i05e934a61c2")
@@ -302,6 +330,20 @@ def test_registration_token_digest_migration_upgrades_plaintext_and_downgrades_s
         assert "token" in columns_downgraded
         assert "token_digest" not in columns_downgraded
 
-        # 5. Upgrade back to head
+        # Downgrade cannot recover one-way secrets: invitations are invalidated.
+        assert (
+            connection.execute(
+                text("SELECT token FROM registration_tokens WHERE id=1")
+            ).scalar_one()
+            is None
+        )
+
+        # 5. Upgrade back to head removes those unusable legacy rows.
         command.upgrade(config, "head")
+        assert (
+            connection.execute(
+                text("SELECT COUNT(*) FROM registration_tokens")
+            ).scalar_one()
+            == 0
+        )
     engine.dispose()
