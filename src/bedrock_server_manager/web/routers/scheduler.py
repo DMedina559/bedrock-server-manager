@@ -17,11 +17,11 @@ from ...state.settings import ScheduledTask
 from ..access_policy import Permission
 from ..deps import get_app_context
 from ..deps.auth import require_permissions
+from ..schemas import UserResponse
 
 router = APIRouter(
     prefix="/api/scheduler",
     tags=["Scheduler"],
-    dependencies=[Security(require_permissions, scopes=[Permission.SCHEDULER_MANAGE])],
 )
 
 
@@ -31,6 +31,9 @@ router = APIRouter(
 async def list_schedules(
     response: Response,
     server_name: str | None = None,
+    user: UserResponse = Security(
+        require_permissions, scopes=[Permission.SCHEDULER_READ]
+    ),
     context: AppContext = Depends(get_app_context),
 ) -> ListSchedulesResponse:
     response.headers["Cache-Control"] = "no-store"
@@ -47,6 +50,9 @@ async def list_schedules(
 async def save_schedule(
     schedule_id: str,
     configuration: ScheduledTask,
+    user: UserResponse = Security(
+        require_permissions, scopes=[Permission.SCHEDULER_MANAGE]
+    ),
     context: AppContext = Depends(get_app_context),
 ) -> SuccessResponse:
     return await api.save_schedule(
@@ -61,7 +67,11 @@ async def save_schedule(
     response_model=SuccessResponse,
 )
 async def delete_schedule(
-    schedule_id: str, context: AppContext = Depends(get_app_context)
+    schedule_id: str,
+    user: UserResponse = Security(
+        require_permissions, scopes=[Permission.SCHEDULER_MANAGE]
+    ),
+    context: AppContext = Depends(get_app_context),
 ) -> SuccessResponse:
     return await api.delete_schedule(
         DeleteScheduleRequest(schedule_id=schedule_id), app_context=context
@@ -76,6 +86,9 @@ async def delete_schedule(
 async def control_schedule(
     schedule_id: str,
     payload: ControlSchedulePayload,
+    user: UserResponse = Security(
+        require_permissions, scopes=[Permission.SCHEDULER_MANAGE]
+    ),
     context: AppContext = Depends(get_app_context),
 ) -> SuccessResponse:
     return await api.control_schedule(

@@ -383,6 +383,12 @@ class AccessService:
                 "integration_credential_rotated",
                 {"credential_id": new_id, "previous_id": identifier},
             )
+            await self.context.storage.audit_log_repo.create_audit_log(
+                session,
+                actor.id,
+                "rotate_integration_token",
+                {"token_id": new_id, "previous_id": identifier, "name": old.name},
+            )
             await session.flush()
             info = self.token_info(replacement)
         await self.notify(actor.username, kind="credentials_changed")

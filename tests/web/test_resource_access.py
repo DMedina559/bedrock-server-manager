@@ -456,6 +456,13 @@ async def test_nonexpiring_tokens_remain_revocable_and_rotation_preserves_no_dea
     assert rotated.status_code == 200, rotated.text
     replacement = rotated.json()
     assert replacement["credential"]["expires_at"] is None
+    audit_resp = await admin_auth_client.get("/audit-log/list")
+    assert audit_resp.status_code == 200
+    assert any(
+        log["action"] == "rotate_integration_token"
+        and log["details"].get("token_id") == replacement["credential"]["id"]
+        for log in audit_resp.json()
+    )
     assert await app_context.access_service.authenticate(issued["token"]) is None
     assert (
         await admin_auth_client.delete(
