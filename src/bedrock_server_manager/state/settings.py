@@ -90,6 +90,19 @@ class MonitoringSettings(SettingsRecord):
 DEFAULT_CORS_ORIGINS: tuple[str, ...] = ()
 
 
+class SecuritySettings(SettingsRecord):
+    require_admin_mfa: bool = Field(
+        default=False,
+        title="Require MFA for administrators",
+        description="Unenrolled administrator logins can only enroll MFA; integration credentials are independent.",
+    )
+    auth_account_attempts: int = Field(default=10, ge=3, le=100)
+    auth_peer_attempts: int = Field(default=60, ge=10, le=10000)
+    auth_window_seconds: int = Field(default=300, ge=30, le=3600)
+    session_idle_hours: int = Field(default=24, ge=1, le=672)
+    session_max_days: int = Field(default=28, ge=1, le=90)
+
+
 class WebSettings(SettingsRecord):
     cors_origins: tuple[str, ...] = DEFAULT_CORS_ORIGINS
     outbound_queue_limit: int = Field(default=64, ge=1, le=10000)
@@ -236,6 +249,7 @@ class SettingsState(BaseModel):
     backups: BackupSettings = Field(default_factory=BackupSettings)
     monitoring: MonitoringSettings = Field(default_factory=MonitoringSettings)
     web: WebSettings = Field(default_factory=WebSettings)
+    security: SecuritySettings = Field(default_factory=SecuritySettings)
     lifecycle: LifecycleSettings = Field(default_factory=LifecycleSettings)
     diagnostics: DiagnosticOptions = Field(default_factory=DiagnosticOptions)
     events: EventOptions = Field(default_factory=EventOptions)
@@ -416,6 +430,7 @@ class SettingsState(BaseModel):
             "backups": self.backups.model_dump(),
             "monitoring": self.monitoring.model_dump(),
             "web": self.web.model_dump(mode="json", exclude_none=True),
+            "security": self.security.model_dump(),
             "lifecycle": self.lifecycle.model_dump(),
             "diagnostics": self.diagnostics.model_dump(),
             "custom": copy.deepcopy(self.custom),

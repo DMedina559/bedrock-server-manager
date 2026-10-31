@@ -1,22 +1,21 @@
-# bedrock_server_manager/web/routers/server_settings.py
 """
 FastAPI router for managing server-specific settings.
 """
 
 import logging
 
-from fastapi import APIRouter, Depends
+from fastapi import APIRouter, Depends, Security
 
 from ...api import server as server_api
 from ...api.models import GetAllServerSettingsRequest, SetServerSettingRequest
 from ...context import AppContext
-from ..deps import (
-    get_admin_user,
-    get_app_context,
-    get_current_user,
-    validate_server_exists,
-)
+from ..access_policy import Permission
+from ..deps import get_app_context, validate_server_exists
+from ..deps.auth import require_permissions
 from ..schemas import ServerSettingItemPayload, ServerSettingsResponse, UserResponse
+
+# bedrock_server_manager/web/routers/server_settings.py
+
 
 logger = logging.getLogger(__name__)
 
@@ -31,7 +30,9 @@ router = APIRouter(tags=["Server Settings"])
 )
 async def get_server_settings(
     server_name: str = Depends(validate_server_exists),
-    current_user: UserResponse = Depends(get_current_user),
+    current_user: UserResponse = Security(
+        require_permissions, scopes=[Permission.SERVERS_READ]
+    ),
     app_context: AppContext = Depends(get_app_context),
 ) -> ServerSettingsResponse:
     """Return all settings for a specific server."""
@@ -57,7 +58,9 @@ async def get_server_settings(
 async def post_set_server_setting(
     payload: ServerSettingItemPayload,
     server_name: str = Depends(validate_server_exists),
-    current_user: UserResponse = Depends(get_admin_user),
+    current_user: UserResponse = Security(
+        require_permissions, scopes=[Permission.SERVERS_CONFIGURE]
+    ),
     app_context: AppContext = Depends(get_app_context),
 ) -> ServerSettingsResponse:
     """Set a specific setting for a server."""

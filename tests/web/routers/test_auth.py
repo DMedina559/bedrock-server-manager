@@ -20,7 +20,7 @@ async def test_api_login_success(
     data = response.json()
     assert "access_token" in data
     assert data["token_type"] == "bearer"
-    assert "access_token_cookie" in response.cookies
+    assert "access_token_cookie" not in response.cookies
 
 
 async def test_api_login_remember_me(
@@ -37,7 +37,7 @@ async def test_api_login_remember_me(
     )
 
     assert response.status_code == 200
-    assert "access_token_cookie" in response.cookies
+    assert "access_token_cookie" not in response.cookies
 
 
 async def test_api_login_failure_wrong_password(
@@ -134,7 +134,7 @@ async def test_api_login_secure_cookie(
     response = await unauth_client.post(
         "/auth/token",
         data={"username": "testuser", "password": "testpassword"},
-        headers={"X-Forwarded-Proto": "https"},
+        headers={"X-Forwarded-Proto": "https", "X-BSM-Auth-Mode": "cookie"},
     )
 
     assert response.status_code == 200
@@ -147,7 +147,9 @@ async def test_api_login_insecure_cookie(
 ):
     """Test successful login returns an insecure cookie if not https."""
     response = await unauth_client.post(
-        "/auth/token", data={"username": "testuser", "password": "testpassword"}
+        "/auth/token",
+        data={"username": "testuser", "password": "testpassword"},
+        headers={"X-BSM-Auth-Mode": "cookie"},
     )
 
     assert response.status_code == 200
@@ -156,14 +158,14 @@ async def test_api_login_insecure_cookie(
 
 
 async def test_account_authentication_storage_outage_is_not_invalid_token(
-    running_app, app_context, monkeypatch
+    running_app, app_context, monkeypatch, test_user
 ):
     from httpx2 import ASGITransport, AsyncClient
 
     from bedrock_server_manager.error import StorageError
     from bedrock_server_manager.web.auth import create_access_token
 
-    token = await create_access_token(app_context, {"sub": "uncached_account"})
+    token = await create_access_token(app_context, {"sub": test_user.username})
 
     def unavailable():
         raise StorageError("private database diagnostic")

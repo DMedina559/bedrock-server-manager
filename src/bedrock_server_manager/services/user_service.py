@@ -6,10 +6,10 @@ Service managing user domain state mutations and user account operations.
 import time
 from typing import TYPE_CHECKING, Awaitable, Callable, Literal, Optional
 
-from pydantic import JsonValue
+from pydantic import JsonValue, TypeAdapter, ValidationError
 from sqlalchemy.exc import IntegrityError
 
-from ..contracts import CommittedMutationResult
+from ..contracts import CommittedMutationResult, NewPassword
 from ..error import IncompleteOperationError, StorageError, UserInputError
 from ..failures import classify_failure
 from ..state.changeset import ChangeSet
@@ -29,10 +29,14 @@ class UserService:
         state: "AppState",
         storage: "Storage",
         revoke_connections: Callable[[str], Awaitable[None]] | None = None,
+        credentials_changed: Callable[[str], Awaitable[None]] | None = None,
+        security_event: Callable[[str, str], Awaitable[None]] | None = None,
     ):
         self.state = state
         self.storage = storage
         self.revoke_connections = revoke_connections
+        self.credentials_changed = credentials_changed
+        self.security_event = security_event
 
     def get_user_state(self, username: str) -> Optional[UserInfoState]:
         """Return a user state snapshot."""
@@ -48,9 +52,24 @@ class UserService:
             return await self.storage.user_repo.get_all_users(session)
 
     async def change_password(
-        self, username: str, current_password: str, new_password: str
+        self,
+        username: str,
+        current_password: str,
+        new_password: str,
+        *,
+        keep_session_id: str | None = None,
     ) -> bool:
         """Verify current password and update hashed password for a user."""
+        try:
+            new_password = (
+                TypeAdapter(NewPassword)
+                .validate_python(new_password)
+                .get_secret_value()
+            )
+        except ValidationError:
+            raise UserInputError(
+                "Use a less common passphrase of at least 15 characters (up to 1024 UTF-8 bytes)."
+            ) from None
         from ..web.auth import get_password_hash_async, verify_password_async
 
         async with self.storage.transaction() as session:
@@ -63,18 +82,84 @@ class UserService:
                 current_password, str(db_user.hashed_password)
             ):
                 raise UserInputError("Incorrect current password.")
-            db_user.hashed_password = await get_password_hash_async(new_password)
-            return True
+            hashed_pwd = await get_password_hash_async(new_password)
+            from sqlalchemy import update
+
+            from ..db.models import LoginSession, User
+
+            changed = await session.execute(
+                update(User)
+                .where(
+                    User.id == db_user.id, User.auth_revision == db_user.auth_revision
+                )
+                .values(
+                    hashed_password=hashed_pwd, auth_revision=User.auth_revision + 1
+                )
+            )
+            if getattr(changed, "rowcount", None) != 1:
+                raise UserInputError("Account credentials changed; try again")
+            query = update(LoginSession).where(
+                LoginSession.owner_id == db_user.access_id,
+                LoginSession.revoked_at.is_(None),
+            )
+            if keep_session_id:
+                query = query.where(LoginSession.id != keep_session_id)
+            await session.execute(query.values(revoked_at=int(time.time())))
+            from .session_service import SessionService
+
+            SessionService.add_event(session, db_user.access_id, "password_changed")
+        if self.credentials_changed:
+            await self.credentials_changed(db_user.access_id)
+        if self.security_event:
+            await self.security_event(db_user.access_id, "password_changed")
+        return True
 
     async def reset_password(self, username: str, new_password: str) -> bool:
         """Reset hashed password for a user without verifying old password."""
+        from sqlalchemy import update
+
+        from ..db.models import LoginSession, User
         from ..web.auth import get_password_hash_async
+        from .session_service import SessionService
 
         async with self.storage.transaction() as session:
+            user = await self.storage.user_repo.get_user_by_username(session, username)
+            if user is None:
+                return False
+            try:
+                new_password = (
+                    TypeAdapter(NewPassword)
+                    .validate_python(new_password)
+                    .get_secret_value()
+                )
+            except ValidationError:
+                raise UserInputError(
+                    "Use a less common passphrase of at least 15 characters (up to 1024 UTF-8 bytes)."
+                ) from None
             hashed_pwd = await get_password_hash_async(new_password)
-            return await self.storage.user_repo.update_password(
-                session, username, hashed_pwd
+            changed = await session.execute(
+                update(User)
+                .where(User.id == user.id, User.auth_revision == user.auth_revision)
+                .values(
+                    hashed_password=hashed_pwd, auth_revision=User.auth_revision + 1
+                )
             )
+            if getattr(changed, "rowcount", None) != 1:
+                raise UserInputError("Account credentials changed; try again")
+            await session.execute(
+                update(LoginSession)
+                .where(
+                    LoginSession.owner_id == user.access_id,
+                    LoginSession.revoked_at.is_(None),
+                )
+                .values(revoked_at=int(time.time()))
+            )
+            SessionService.add_event(session, user.access_id, "password_reset")
+        if self.credentials_changed:
+            await self.credentials_changed(user.access_id)
+        if self.security_event:
+            await self.security_event(user.access_id, "password_reset")
+        return True
 
     async def create_registration_token(
         self, role: str, ttl_seconds: int = 86400
@@ -237,6 +322,32 @@ class UserService:
                         details.update(original_role=user.role, new_role=patch["role"])
                     for field, value in patch.items():
                         setattr(user, field, value)
+                    if action in {"disable", "enable", "role"}:
+                        from sqlalchemy import update as sql_update
+
+                        from ..db.models import LoginSession
+
+                        user.auth_revision += 1
+                        await session.execute(
+                            sql_update(LoginSession)
+                            .where(
+                                LoginSession.owner_id == user.access_id,
+                                LoginSession.revoked_at.is_(None),
+                            )
+                            .values(revoked_at=int(time.time()), verified_at=0)
+                        )
+                    if action in {"disable", "enable", "role"}:
+                        from .session_service import SessionService
+
+                        SessionService.add_event(
+                            session,
+                            user.access_id,
+                            {
+                                "disable": "account_disabled",
+                                "enable": "account_enabled",
+                                "role": "role_changed",
+                            }[action],
+                        )
                     record = UserInfoState.model_validate(user, from_attributes=True)
                     if actor_id is not None:
                         await self.storage.audit_log_repo.create_audit_log(
@@ -265,6 +376,15 @@ class UserService:
                     self.state.users.set(record)
                     if not dirty:
                         self.state.users.remove_dirty_user(name)
+        if action in {"disable", "enable", "role"} and self.security_event:
+            await self.security_event(
+                user.access_id,
+                {
+                    "disable": "account_disabled",
+                    "enable": "account_enabled",
+                    "role": "role_changed",
+                }[action],
+            )
         if (
             action in {"delete", "disable", "role"}
             and self.revoke_connections is not None

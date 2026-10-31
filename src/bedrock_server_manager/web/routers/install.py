@@ -2,7 +2,7 @@ import logging
 import os
 
 import aiofiles.ospath
-from fastapi import APIRouter, Depends, HTTPException, status
+from fastapi import APIRouter, Depends, HTTPException, Security, status
 
 from bedrock_server_manager.api.models import (
     DeleteServerDataRequest,
@@ -16,7 +16,9 @@ from ...api import server as server_api
 from ...context import AppContext
 from ...core.system import find_files
 from ...error import BSMError
-from ..deps import get_admin_user, get_app_context, get_moderator_user
+from ..access_policy import Permission
+from ..deps import get_app_context
+from ..deps.auth import require_permissions
 from ..schemas import (
     CustomZipsResponse,
     InstallationAcceptedResponse,
@@ -40,7 +42,9 @@ router = APIRouter()
     response_model=CustomZipsResponse,
 )
 async def get_custom_zips(
-    current_user: UserResponse = Depends(get_moderator_user),
+    current_user: UserResponse = Security(
+        require_permissions, scopes=[Permission.CONTENT_READ]
+    ),
     app_context: AppContext = Depends(get_app_context),
 ) -> CustomZipsResponse:
     download_dir = app_context.settings.get("paths.downloads")
@@ -62,7 +66,9 @@ async def get_custom_zips(
 )
 async def put_prune_downloads(
     payload: PruneDownloadsPayload,
-    current_user: UserResponse = Depends(get_admin_user),
+    current_user: UserResponse = Security(
+        require_permissions, scopes=[Permission.CONTENT_MANAGE]
+    ),
     app_context: AppContext = Depends(get_app_context),
 ) -> PruneDownloadsResponse:
     """
@@ -125,7 +131,9 @@ async def put_prune_downloads(
 )
 async def post_install_server(  # noqa: C901
     payload: InstallServerPayload,
-    current_user: UserResponse = Depends(get_admin_user),
+    current_user: UserResponse = Security(
+        require_permissions, scopes=[Permission.SERVERS_MANAGE]
+    ),
     app_context: AppContext = Depends(get_app_context),
 ) -> InstallServerResponse:
     identity = current_user.username

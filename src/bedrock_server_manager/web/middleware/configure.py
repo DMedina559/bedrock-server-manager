@@ -50,6 +50,14 @@ def configure_middleware(
         "allow_credentials": True,
         "allow_methods": ["*"],
         "allow_headers": ["*"],
+        "expose_headers": [
+            "X-BSM-Policy-Revision",
+            "X-BSM-CSRF-Token",
+            "X-BSM-Session-Invalid",
+            "X-BSM-Recent-Auth",
+            "X-BSM-MFA",
+            "X-BSM-MFA-Enrollment",
+        ],
     }
 
     if allow_all_origins:

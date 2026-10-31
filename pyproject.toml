@@ -25,6 +25,8 @@ classifiers = [
 ]
 
 dependencies = [
+    "pyotp>=2.9,<3",
+    "qrcode>=8,<9",
     "pydantic >=2.9,<3",
     "securetar >=2026.10.0,<2027",
     "tzdata >=2025.1",
@@ -46,6 +48,7 @@ dependencies = [
     "aiofiles >=25.1.0,<25.2",
     "httpx2 >=2.5.0,<2.17",
     "aiosqlite >=0.22.0,<0.23",
+    "argon2-cffi >=23.1,<26",
 
 ]
 
@@ -107,6 +110,8 @@ include = ["bedrock_server_manager*"]
 [tool.setuptools.package-data]
 "bedrock_server_manager" = [
     "db/alembic.ini",
+    "web/assets/*.js",
+    "web/assets/*.css",
     "db/migrations/**",
     "plugins/default/**"
 ]

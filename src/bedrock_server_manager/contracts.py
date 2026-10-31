@@ -21,13 +21,46 @@ ServerName = Annotated[
 
 
 def validate_password_size(value: SecretStr) -> SecretStr:
-    if len(value.get_secret_value().encode("utf-8")) > 72:
-        raise ValueError("Password must be at most 72 UTF-8 bytes.")
+    if len(value.get_secret_value().encode("utf-8")) > 1024:
+        raise ValueError("Password must be at most 1024 UTF-8 bytes.")
     return value
 
 
 Password = Annotated[
     SecretStr, Field(min_length=1), AfterValidator(validate_password_size)
+]
+
+
+COMMON_PASSWORDS = frozenset(
+    {
+        "passwordpassword",
+        "password123456789",
+        "123456789012345",
+        "12345678901234567890",
+        "qwertyuiopasdfgh",
+        "letmeinletmeinletmein",
+        "bedrockservermanager",
+        "minecraftminecraft",
+        "changemechangeme",
+    }
+)
+
+
+def validate_new_password(value: SecretStr) -> SecretStr:
+    text = value.get_secret_value()
+    if len(text) < 15:
+        raise ValueError(
+            "Use at least 15 characters; a memorable passphrase works well."
+        )
+    if text.casefold() in COMMON_PASSWORDS or len(set(text)) < 4:
+        raise ValueError("Choose a less common password or passphrase.")
+    return validate_password_size(value)
+
+
+NewPassword = Annotated[
+    SecretStr,
+    Field(min_length=15, max_length=1024),
+    AfterValidator(validate_new_password),
 ]
 
 

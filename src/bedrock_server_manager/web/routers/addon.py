@@ -7,7 +7,7 @@ import os
 
 import aiofiles.ospath
 import bsm_frontend
-from fastapi import APIRouter, Depends, HTTPException, Query, status
+from fastapi import APIRouter, Depends, HTTPException, Query, Security, status
 from fastapi.responses import FileResponse
 
 from bedrock_server_manager.api.models import (
@@ -25,12 +25,10 @@ from bedrock_server_manager.api.models import (
 from ...api import addon as addon_api
 from ...context import AppContext
 from ...error import AppFileNotFoundError
-from ..deps import (
-    get_admin_user,
-    get_app_context,
-    get_moderator_user,
-    validate_server_exists,
-)
+from ..access_metadata import describe_access
+from ..access_policy import Permission
+from ..deps import get_app_context, validate_server_exists
+from ..deps.auth import require_permissions
 from ..schemas.addon import (
     AddonActionPayload,
     AddonListResponse,
@@ -52,7 +50,9 @@ STATIC_DIR = bsm_frontend.get_static_dir()
     response_model=ListAvailableAddonsResponse,
 )
 async def get_addons(
-    current_user: UserResponse = Depends(get_moderator_user),
+    current_user: UserResponse = Security(
+        require_permissions, scopes=[Permission.CONTENT_READ]
+    ),
     app_context: AppContext = Depends(get_app_context),
 ) -> ListAvailableAddonsResponse:
     """Return a list of available .mcaddon or .mcpack template files."""
@@ -73,7 +73,9 @@ async def get_addons(
 )
 async def get_server_addons(
     server_name: str = Depends(validate_server_exists),
-    current_user: UserResponse = Depends(get_admin_user),
+    current_user: UserResponse = Security(
+        require_permissions, scopes=[Permission.CONTENT_MANAGE]
+    ),
     app_context: AppContext = Depends(get_app_context),
 ) -> AddonListResponse:
     """Return a list of addons installed on a server's active world."""
@@ -97,7 +99,9 @@ async def get_server_addons(
 async def post_enable_addon(
     payload: AddonActionPayload,
     server_name: str = Depends(validate_server_exists),
-    current_user: UserResponse = Depends(get_admin_user),
+    current_user: UserResponse = Security(
+        require_permissions, scopes=[Permission.CONTENT_MANAGE]
+    ),
     app_context: AppContext = Depends(get_app_context),
 ) -> TaskAcceptedResponse:
     """
@@ -133,7 +137,9 @@ async def post_enable_addon(
 async def post_disable_addon(
     payload: AddonActionPayload,
     server_name: str = Depends(validate_server_exists),
-    current_user: UserResponse = Depends(get_admin_user),
+    current_user: UserResponse = Security(
+        require_permissions, scopes=[Permission.CONTENT_MANAGE]
+    ),
     app_context: AppContext = Depends(get_app_context),
 ) -> TaskAcceptedResponse:
     """
@@ -169,7 +175,9 @@ async def post_disable_addon(
 async def post_update_subpack(
     payload: AddonSubpackPayload,
     server_name: str = Depends(validate_server_exists),
-    current_user: UserResponse = Depends(get_admin_user),
+    current_user: UserResponse = Security(
+        require_permissions, scopes=[Permission.CONTENT_MANAGE]
+    ),
     app_context: AppContext = Depends(get_app_context),
 ) -> TaskAcceptedResponse:
     """
@@ -209,7 +217,9 @@ async def post_update_subpack(
 async def delete_uninstall_addon(
     payload: AddonActionPayload,
     server_name: str = Depends(validate_server_exists),
-    current_user: UserResponse = Depends(get_admin_user),
+    current_user: UserResponse = Security(
+        require_permissions, scopes=[Permission.CONTENT_MANAGE]
+    ),
     app_context: AppContext = Depends(get_app_context),
 ) -> TaskAcceptedResponse:
     """
@@ -247,7 +257,9 @@ async def delete_uninstall_addon(
 async def post_reorder_addons(
     payload: AddonReorderPayload,
     server_name: str = Depends(validate_server_exists),
-    current_user: UserResponse = Depends(get_admin_user),
+    current_user: UserResponse = Security(
+        require_permissions, scopes=[Permission.CONTENT_MANAGE]
+    ),
     app_context: AppContext = Depends(get_app_context),
 ) -> TaskAcceptedResponse:
     """
@@ -285,7 +297,9 @@ async def post_reorder_addons(
 async def post_install_addon(
     payload: FileNamePayload,
     server_name: str = Depends(validate_server_exists),
-    current_user: UserResponse = Depends(get_admin_user),
+    current_user: UserResponse = Security(
+        require_permissions, scopes=[Permission.CONTENT_MANAGE]
+    ),
     app_context: AppContext = Depends(get_app_context),
 ) -> TaskAcceptedResponse:
     """
@@ -350,6 +364,7 @@ async def post_install_addon(
     "/api/server/{server_name}/addon/icon",
     operation_id="get_server_addon_icon",
 )
+@describe_access("public", authentication="none", additional_checks=[])
 async def get_server_addon_icon(
     server_name: str = Depends(validate_server_exists),
     pack_type: str = Query(...),

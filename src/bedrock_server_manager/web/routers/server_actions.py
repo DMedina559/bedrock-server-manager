@@ -1,9 +1,8 @@
-# bedrock_server_manager/web/routers/server_actions.py
 """FastAPI router for server lifecycle actions and command execution."""
 
 import logging
 
-from fastapi import APIRouter, Depends, HTTPException, status
+from fastapi import APIRouter, Depends, HTTPException, Security, status
 
 from bedrock_server_manager.api.models import (
     DeleteServerDataRequest,
@@ -29,13 +28,10 @@ from ...api.models import (
     StopServerResponse,
 )
 from ...context import AppContext
-from ..deps import (
-    get_admin_user,
-    get_app_context,
-    get_current_user,
-    get_moderator_user,
-    validate_server_exists,
-)
+from ..access_policy import Permission
+from ..authorization import current_authorization, server_collection
+from ..deps import get_app_context, validate_server_exists
+from ..deps.auth import require_permissions
 from ..deps.server import validate_server_registered
 from ..schemas import (
     BaseApiResponse,
@@ -47,6 +43,9 @@ from ..schemas import (
     UserResponse,
 )
 from ..schemas.base import TaskAcceptedResponse
+
+# bedrock_server_manager/web/routers/server_actions.py
+
 
 logger = logging.getLogger(__name__)
 
@@ -61,7 +60,9 @@ router = APIRouter()
 )
 async def get_server_summary(
     server_name: str = Depends(validate_server_exists),
-    current_user: UserResponse = Depends(get_moderator_user),
+    current_user: UserResponse = Security(
+        require_permissions, scopes=[Permission.SERVERS_INSPECT]
+    ),
     app_context: AppContext = Depends(get_app_context),
 ) -> ServerSchemaResponse:
     """Return the basic summary information for a specific server instance."""
@@ -88,7 +89,9 @@ async def get_server_summary(
 )
 async def post_start_server(
     server_name: str = Depends(validate_server_exists),
-    current_user: UserResponse = Depends(get_moderator_user),
+    current_user: UserResponse = Security(
+        require_permissions, scopes=[Permission.SERVERS_CONTROL]
+    ),
     app_context: AppContext = Depends(get_app_context),
 ) -> StartServerResponse:
     """Await server start and return its completed operation result."""
@@ -112,7 +115,9 @@ async def post_start_server(
 )
 async def post_stop_server(
     server_name: str = Depends(validate_server_registered),
-    current_user: UserResponse = Depends(get_moderator_user),
+    current_user: UserResponse = Security(
+        require_permissions, scopes=[Permission.SERVERS_CONTROL]
+    ),
     app_context: AppContext = Depends(get_app_context),
 ) -> StopServerResponse:
     """Await server stop and return its completed operation result."""
@@ -134,7 +139,9 @@ async def post_stop_server(
 )
 async def post_restart_server(
     server_name: str = Depends(validate_server_exists),
-    current_user: UserResponse = Depends(get_moderator_user),
+    current_user: UserResponse = Security(
+        require_permissions, scopes=[Permission.SERVERS_CONTROL]
+    ),
     app_context: AppContext = Depends(get_app_context),
 ) -> RestartServerResponse:
     """Await server restart and return its completed operation result."""
@@ -158,7 +165,9 @@ async def post_restart_server(
 async def post_send_command(
     payload: CommandPayload,
     server_name: str = Depends(validate_server_exists),
-    current_user: UserResponse = Depends(get_moderator_user),
+    current_user: UserResponse = Security(
+        require_permissions, scopes=[Permission.SERVERS_CONTROL]
+    ),
     app_context: AppContext = Depends(get_app_context),
 ) -> SendCommandResponse:
     """
@@ -195,7 +204,9 @@ async def post_send_command(
 )
 async def post_update_server(
     server_name: str = Depends(validate_server_exists),
-    current_user: UserResponse = Depends(get_admin_user),
+    current_user: UserResponse = Security(
+        require_permissions, scopes=[Permission.SERVERS_MANAGE]
+    ),
     app_context: AppContext = Depends(get_app_context),
 ) -> TaskAcceptedResponse:
     """
@@ -229,7 +240,9 @@ async def post_update_server(
 )
 async def delete_server(
     server_name: str = Depends(validate_server_registered),
-    current_user: UserResponse = Depends(get_admin_user),
+    current_user: UserResponse = Security(
+        require_permissions, scopes=[Permission.SERVERS_MANAGE]
+    ),
     app_context: AppContext = Depends(get_app_context),
 ) -> TaskAcceptedResponse:
     """
@@ -264,7 +277,9 @@ async def delete_server(
 )
 async def get_server_running_status(
     server_name: str = Depends(validate_server_exists),
-    current_user: UserResponse = Depends(get_current_user),
+    current_user: UserResponse = Security(
+        require_permissions, scopes=[Permission.SERVERS_READ]
+    ),
     app_context: AppContext = Depends(get_app_context),
 ) -> ServerRunningStatusResponse:
     """Check if a specific server's process is currently running."""
@@ -295,7 +310,9 @@ async def get_server_running_status(
 )
 async def get_validate_server(
     server_name: str,
-    current_user: UserResponse = Depends(get_current_user),
+    current_user: UserResponse = Security(
+        require_permissions, scopes=[Permission.SERVERS_READ]
+    ),
     app_context: AppContext = Depends(get_app_context),
 ) -> BaseApiResponse:
     """
@@ -324,7 +341,9 @@ async def get_validate_server(
 )
 async def get_server_process_info(
     server_name: str = Depends(validate_server_exists),
-    current_user: UserResponse = Depends(get_current_user),
+    current_user: UserResponse = Security(
+        require_permissions, scopes=[Permission.SERVERS_READ]
+    ),
     app_context: AppContext = Depends(get_app_context),
 ) -> ServerProcessInfoResponse:
     """Return resource usage information for a running server process."""
@@ -350,8 +369,11 @@ async def get_server_process_info(
     tags=["Server Management"],
     response_model=ServersListResponse,
 )
+@server_collection
 async def get_servers_list(
-    current_user: UserResponse = Depends(get_current_user),
+    current_user: UserResponse = Security(
+        require_permissions, scopes=[Permission.SERVERS_READ]
+    ),
     app_context: AppContext = Depends(get_app_context),
 ) -> ServersListResponse:
     """Return a list of all detected server instances with their status and version."""
@@ -360,11 +382,22 @@ async def get_servers_list(
     result = await app_api.get_all_servers_data(
         request=GetAllServersDataRequest(), app_context=app_context
     )
+    authorization = current_authorization.get()
     return ServersListResponse(
         status=result.status,
-        errors=result.errors,
+        errors=[
+            error
+            for error in result.errors
+            if authorization is None
+            or authorization.allows("servers:read", error.resource)
+        ],
         message=result.message,
-        servers=result.servers,
+        servers=[
+            server
+            for server in result.servers
+            if authorization is None
+            or authorization.allows("servers:read", server.name)
+        ],
         epoch=result.epoch,
         revision=result.revision,
     )

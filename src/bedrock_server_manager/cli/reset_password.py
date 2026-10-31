@@ -26,4 +26,39 @@ def reset_password_command(ctx, username: str):
             fg="green",
         )
 
-    run_async(_reset())
+    try:
+        run_async(_reset())
+    except Exception as error:
+        from ..error import UserInputError
+
+        if isinstance(error, UserInputError):
+            raise click.ClickException(str(error)) from None
+        raise
+
+
+@click.command(
+    "reset-mfa",
+    help="Locally reset an account's MFA and revoke all its login sessions.",
+)
+@click.argument("username")
+@click.confirmation_option(prompt="Reset MFA and sign out all logins for this account?")
+@click.pass_context
+def reset_mfa_command(ctx, username: str):
+    """Recovery requires access to the manager's local configuration/database."""
+    app_context = ctx.obj["app_context"]
+
+    async def reset():
+        async with app_context.storage.transaction() as session:
+            user = await app_context.storage.user_repo.get_user_by_username(
+                session, username
+            )
+            if user is None:
+                raise click.ClickException("Account not found.")
+            identifier, user_id = user.access_id, user.id
+        await app_context.session_service.change_factor(identifier, disable=True)
+        await app_context.session_service.event(user_id, "local_mfa_reset")
+        click.echo(
+            "MFA reset. All login sessions were signed out; integration credentials are unchanged."
+        )
+
+    run_async(reset())

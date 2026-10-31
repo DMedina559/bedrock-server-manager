@@ -427,3 +427,19 @@ def test_log_timestamps_identify_utc():
     record.created = 0
     formatter = bsm_logging.ApplicationFormatter("%(asctime)s %(message)s")
     assert formatter.format(record) == "1970-01-01T00:00:00.000+00:00 example"
+
+
+def test_factor_material_is_redacted_from_text_logs():
+    record = logging.LogRecord(
+        "security",
+        logging.INFO,
+        __file__,
+        1,
+        'otp=123456 recovery_codes=["private-code-one", "private-code-two"] provisioning_uri="otpauth://private"',
+        (),
+        None,
+    )
+    rendered = bsm_logging.ApplicationFormatter("%(message)s").format(record)
+    assert "123456" not in rendered
+    assert "private-code" not in rendered
+    assert "otpauth://private" not in rendered

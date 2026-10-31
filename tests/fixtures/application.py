@@ -245,6 +245,8 @@ async def auth_client(running_app, app_context, test_user):
         follow_redirects=True,
         cookies={"access_token_cookie": token},
     ) as client:
+        account = await client.get("/api/account")
+        client.headers["X-CSRF-Token"] = account.headers["X-BSM-CSRF-Token"]
         yield client
 
 
@@ -257,6 +259,8 @@ async def admin_auth_client(running_app, app_context, test_admin_user):
         follow_redirects=True,
         cookies={"access_token_cookie": token},
     ) as client:
+        account = await client.get("/api/account")
+        client.headers["X-CSRF-Token"] = account.headers["X-BSM-CSRF-Token"]
         yield client
 
 

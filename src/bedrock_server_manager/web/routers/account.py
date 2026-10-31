@@ -1,4 +1,3 @@
-# bedrock_server_manager/web/routers/account_router.py
 """
 FastAPI router for user account management.
 
@@ -9,12 +8,14 @@ This module provides endpoints for:
 - Changing passwords.
 """
 
-from fastapi import APIRouter, Depends, HTTPException, status
+from fastapi import APIRouter, Depends, HTTPException, Request, Security, status
 from fastapi.responses import JSONResponse
 
 from ...context import AppContext
 from ...state.updates import AccountPatch
-from ..deps import get_app_context, get_current_user
+from ..access_policy import Permission, policy_for
+from ..deps import get_app_context
+from ..deps.auth import require_permissions
 from ..schemas import (
     BaseApiResponse,
     ChangePasswordPayload,
@@ -22,16 +23,50 @@ from ..schemas import (
     ThemeUpdatePayload,
     UserResponse,
 )
+from ..schemas.users import CurrentAccountResponse
+
+# bedrock_server_manager/web/routers/account_router.py
+
 
 router = APIRouter(tags=["Account Management"])
 
 
-@router.get("/api/account", operation_id="get_account", response_model=UserResponse)
+@router.get(
+    "/api/account", operation_id="get_account", response_model=CurrentAccountResponse
+)
 async def get_account_api(
-    user: UserResponse = Depends(get_current_user),
-) -> UserResponse:
-    """Return the current user's account details."""
-    return user
+    request: Request,
+    user: UserResponse = Security(
+        require_permissions, scopes=[Permission.ACCOUNT_READ]
+    ),
+) -> CurrentAccountResponse:
+    """Return the current user's account details and role-derived permissions."""
+    authorization = getattr(request.state, "authorization", None)
+    if authorization is None:
+        return CurrentAccountResponse(
+            **user.model_dump(),
+            permissions=sorted(policy_for(request).resolve(user.role)),
+        )
+    return CurrentAccountResponse(
+        **user.model_dump(),
+        permissions=sorted(authorization.permissions),
+        policy_revision=authorization.revision,
+        server_access="assigned" if authorization.resource_restricted else "all",
+        credential_id=authorization.token_id,
+        credential_name=authorization.credential_name,
+        credential_expires_at=authorization.credential_expires_at,
+        session_id=authorization.session_id,
+        mfa_enrollment_required=authorization.mfa_enrollment_required,
+        server_permissions={
+            identity: sorted(
+                permission
+                for permission in authorization.permissions
+                if authorization.allows(permission, name)
+            )
+            for name, identity in authorization.servers.items()
+            if authorization.allows("servers:read", name)
+        },
+    )
 
 
 @router.post(
@@ -41,7 +76,9 @@ async def get_account_api(
 )
 async def post_update_theme(
     theme_update: ThemeUpdatePayload,
-    user: UserResponse = Depends(get_current_user),
+    user: UserResponse = Security(
+        require_permissions, scopes=[Permission.ACCOUNT_MANAGE]
+    ),
     app_context: AppContext = Depends(get_app_context),
 ) -> BaseApiResponse | JSONResponse:
     """
@@ -65,7 +102,9 @@ async def post_update_theme(
 )
 async def post_update_profile(
     profile_update: ProfileUpdatePayload,
-    user: UserResponse = Depends(get_current_user),
+    user: UserResponse = Security(
+        require_permissions, scopes=[Permission.ACCOUNT_MANAGE]
+    ),
     app_context: AppContext = Depends(get_app_context),
 ) -> BaseApiResponse | JSONResponse:
     """
@@ -89,17 +128,24 @@ async def post_update_profile(
     response_model=BaseApiResponse,
 )
 async def post_change_password(
+    request: Request,
     data: ChangePasswordPayload,
-    user: UserResponse = Depends(get_current_user),
+    user: UserResponse = Security(
+        require_permissions, scopes=[Permission.ACCOUNT_MANAGE]
+    ),
     app_context: AppContext = Depends(get_app_context),
 ) -> BaseApiResponse:
     """
     Changes the current user's password.
     """
+    await app_context.session_service.require_recent(
+        user, getattr(request.state, "session_id", None)
+    )
     updated = await app_context.user_service.change_password(
         user.username,
         data.current_password.get_secret_value(),
         data.new_password.get_secret_value(),
+        keep_session_id=getattr(request.state, "session_id", None),
     )
     if not updated:
         raise HTTPException(
@@ -108,3 +154,23 @@ async def post_change_password(
         )
 
     return BaseApiResponse(status="success", message="Password updated successfully")
+
+
+@router.get(
+    "/api/account/permissions",
+    operation_id="get_account_permissions",
+    response_model=list[str],
+)
+async def get_account_permissions(
+    request: Request,
+    user: UserResponse = Security(
+        require_permissions, scopes=[Permission.ACCOUNT_READ]
+    ),
+) -> list[str]:
+    """Return current role-derived capabilities, not resource-specific guarantees."""
+    authorization = getattr(request.state, "authorization", None)
+    return sorted(
+        authorization.permissions
+        if authorization is not None
+        else policy_for(request).resolve(user.role)
+    )

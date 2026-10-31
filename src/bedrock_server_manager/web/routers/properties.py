@@ -1,6 +1,6 @@
 import logging
 
-from fastapi import APIRouter, Depends, HTTPException, status
+from fastapi import APIRouter, Depends, HTTPException, Security, status
 
 from bedrock_server_manager.api.models import (
     GetPropertiesRequest,
@@ -12,7 +12,9 @@ from bedrock_server_manager.api.models import (
 
 from ...api import properties as properties_api
 from ...context import AppContext
-from ..deps import get_app_context, get_moderator_user, validate_server_exists
+from ..access_policy import Permission
+from ..deps import get_app_context, validate_server_exists
+from ..deps.auth import require_permissions
 from ..schemas import (
     PropertiesGetResponse,
     PropertiesPayload,
@@ -32,7 +34,9 @@ router = APIRouter(tags=["Server Properties"])
 async def post_properties_set(
     payload: PropertiesPayload,
     server_name: str = Depends(validate_server_exists),
-    current_user: UserResponse = Depends(get_moderator_user),
+    current_user: UserResponse = Security(
+        require_permissions, scopes=[Permission.SERVERS_PROPERTIES]
+    ),
     app_context: AppContext = Depends(get_app_context),
 ) -> SetPropertiesResponse:
     properties_data = payload.properties
@@ -56,7 +60,9 @@ async def post_properties_set(
 )
 async def get_properties(
     server_name: str = Depends(validate_server_exists),
-    current_user: UserResponse = Depends(get_moderator_user),
+    current_user: UserResponse = Security(
+        require_permissions, scopes=[Permission.SERVERS_PROPERTIES]
+    ),
     app_context: AppContext = Depends(get_app_context),
 ) -> PropertiesGetResponse:
     result = await properties_api.get_properties(
@@ -73,7 +79,9 @@ async def get_properties(
 )
 async def get_raw_properties(
     server_name: str = Depends(validate_server_exists),
-    current_user: UserResponse = Depends(get_moderator_user),
+    current_user: UserResponse = Security(
+        require_permissions, scopes=[Permission.SERVERS_PROPERTIES]
+    ),
     app_context: AppContext = Depends(get_app_context),
 ) -> GetRawPropertiesResponse:
     """Return the raw document using the same access policy as structured properties."""

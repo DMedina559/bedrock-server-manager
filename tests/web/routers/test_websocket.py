@@ -1,6 +1,7 @@
 import asyncio
 import json
 import threading
+from contextlib import asynccontextmanager
 
 import pytest
 from websockets.exceptions import ConnectionClosed
@@ -8,11 +9,14 @@ from websockets.exceptions import ConnectionClosed
 from bedrock_server_manager.web.auth import create_access_token
 
 
-async def authenticate(socket, context, user):
+@asynccontextmanager
+async def authenticated_socket(websocket_client, context, user):
     token = await create_access_token(context, {"sub": user.username})
-    await socket.send(json.dumps({"action": "authenticate", "token": token}))
-    response = json.loads(await socket.recv())
-    assert response["status"] == "success"
+    async with websocket_client() as socket:
+        await socket.send(json.dumps({"action": "authenticate", "token": token}))
+        response = json.loads(await socket.recv())
+        assert response["status"] == "success"
+        yield socket
 
 
 async def test_websocket_missing_auth_action(websocket_client):
@@ -33,8 +37,7 @@ async def test_websocket_auth_timeout(websocket_client):
 async def test_websocket_auth_success_and_messaging(
     websocket_client, app_context, test_user
 ):
-    async with websocket_client() as socket:
-        await authenticate(socket, app_context, test_user)
+    async with authenticated_socket(websocket_client, app_context, test_user) as socket:
         for action in ("subscribe", "unsubscribe"):
             await socket.send(json.dumps({"action": action, "topic": "test_topic"}))
             response = json.loads(await socket.recv())
@@ -68,8 +71,7 @@ async def test_websocket_providers_report_results_and_safe_failures(
     manager = app_context.connection_manager
     manager.register_data_provider("sample", sample_provider)
     manager.register_data_provider("failing", error_provider)
-    async with websocket_client() as socket:
-        await authenticate(socket, app_context, test_user)
+    async with authenticated_socket(websocket_client, app_context, test_user) as socket:
         for topic in ("unknown_topic", "sample", "failing"):
             await socket.send(
                 json.dumps(
@@ -97,8 +99,7 @@ async def test_invalid_provider_data_keeps_connection_usable(
         return {"value": float("nan")}
 
     app_context.connection_manager.register_data_provider("invalid", invalid)
-    async with websocket_client() as socket:
-        await authenticate(socket, app_context, test_user)
+    async with authenticated_socket(websocket_client, app_context, test_user) as socket:
         await socket.send(
             json.dumps(
                 {"action": "request", "topic": "invalid", "request_id": "same-id"}
@@ -120,8 +121,7 @@ async def test_sync_provider_runs_off_the_application_loop(
         return threading.get_ident()
 
     app_context.connection_manager.register_data_provider("thread", provider)
-    async with websocket_client() as socket:
-        await authenticate(socket, app_context, test_user)
+    async with authenticated_socket(websocket_client, app_context, test_user) as socket:
         await socket.send(
             json.dumps({"action": "request", "topic": "thread", "request_id": "thread"})
         )
@@ -144,8 +144,7 @@ async def test_task_subscription_replays_completed_owner_snapshot(
         app_context=app_context,
     )
     completed = await wait_for_task(app_context, task_id)
-    async with websocket_client() as socket:
-        await authenticate(socket, app_context, test_user)
+    async with authenticated_socket(websocket_client, app_context, test_user) as socket:
         await socket.send(
             json.dumps({"action": "subscribe", "topic": f"task:{task_id}"})
         )
@@ -164,12 +163,11 @@ async def test_task_subscription_does_not_replay_another_users_snapshot(
 ):
     task_id = await app_context.task_manager.run_task(lambda: "private", "other")
     await wait_for_task(app_context, task_id)
-    async with websocket_client() as socket:
-        await authenticate(socket, app_context, test_user)
+    async with authenticated_socket(websocket_client, app_context, test_user) as socket:
         await socket.send(
             json.dumps({"action": "subscribe", "topic": f"task:{task_id}"})
         )
-        assert json.loads(await socket.recv())["status"] == "success"
+        assert json.loads(await socket.recv())["status"] == "error"
         await socket.send(json.dumps({"action": "subscribe", "topic": "next"}))
         async with asyncio.timeout(5):
             assert "next" in json.loads(await socket.recv())["message"]

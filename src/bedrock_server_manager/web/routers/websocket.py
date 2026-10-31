@@ -5,6 +5,7 @@ import logging
 from typing import Any, Callable
 
 from fastapi import APIRouter, WebSocket, WebSocketDisconnect, WebSocketException
+from jose import jwt
 from pydantic import ValidationError
 
 from ...context import AppContext
@@ -12,6 +13,7 @@ from ...failures import error_response
 from ...logging import log_operation_error
 from ...utils.threads import run_in_thread
 from ..auth import authenticate_websocket_token
+from ..origin import browser_origin
 from ..schemas.websocket import (
     AuthenticationFrame,
     ClientFrame,
@@ -82,6 +84,12 @@ async def websocket_endpoint(  # noqa: C901
 
         token = auth_frame.token
         if not token:
+            origin = websocket.headers.get("origin")
+            if origin != browser_origin(websocket):
+                raise WebSocketException(
+                    code=1008,
+                    reason="Cookie socket requires same-origin authentication",
+                )
             token = websocket.cookies.get("access_token_cookie")
 
         if not token:
@@ -91,7 +99,31 @@ async def websocket_endpoint(  # noqa: C901
             await websocket.close(code=1008, reason="Missing token")
             return
 
-        user = await authenticate_websocket_token(app_context, token)
+        if token.startswith("bsm_it_"):
+            if not auth_frame.token:
+                raise WebSocketException(
+                    code=1008,
+                    reason="Integration credentials require explicit authentication",
+                )
+            identity = await app_context.access_service.authenticate(token)
+            if identity is None:
+                raise WebSocketException(
+                    code=1008, reason="Invalid integration credential"
+                )
+            user, authorization = identity
+        else:
+            user = await authenticate_websocket_token(app_context, token)
+            authorization = await app_context.access_service.snapshot(
+                user, session_id=jwt.get_unverified_claims(token).get("sid")
+            )
+        if authorization is not None and authorization.mfa_enrollment_required:
+            raise WebSocketException(
+                code=1008, reason="Administrator MFA enrollment required"
+            )
+        if authorization is None:
+            raise WebSocketException(
+                code=1008, reason="Account authorization unavailable"
+            )
 
     except WebSocketDisconnect:
         logger.debug("WebSocket auth failed: Client disconnected during authentication")
@@ -113,7 +145,9 @@ async def websocket_endpoint(  # noqa: C901
         return
 
     connection_manager = app_context.connection_manager
-    client_id = await connection_manager.connect(websocket, user)
+    client_id = await connection_manager.connect(
+        websocket, user, authorization=authorization
+    )
 
     # Send authentication success response
     await connection_manager.send_to_client(
@@ -143,6 +177,21 @@ async def websocket_endpoint(  # noqa: C901
                 )
                 continue
             topic = frame.topic
+            if (
+                frame.action != "unsubscribe"
+                and not await connection_manager.can_access_topic(client_id, topic)
+            ):
+                reply = SocketReply(
+                    status="error",
+                    type="response",
+                    topic=topic,
+                    request_id=frame.request_id,
+                    message="Topic access denied",
+                )
+                await connection_manager.send_to_client(
+                    reply.model_dump(mode="json", exclude_unset=True), client_id
+                )
+                continue
             if frame.action in {"subscribe", "unsubscribe"}:
                 if frame.action == "subscribe":
                     await connection_manager.subscribe(client_id, topic)

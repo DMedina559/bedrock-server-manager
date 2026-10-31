@@ -7,6 +7,7 @@ registration tokens, players, and audit logs.
 """
 
 from datetime import datetime, timezone
+from uuid import uuid4
 
 from pydantic import JsonValue
 from sqlalchemy import (
@@ -28,6 +29,14 @@ class User(Base):
     """Represent a user in the system."""
 
     __tablename__ = "users"
+
+    auth_revision: Mapped[int] = mapped_column(
+        Integer, nullable=False, default=0, server_default="0"
+    )
+
+    access_id: Mapped[str] = mapped_column(
+        String(32), unique=True, nullable=False, default=lambda: uuid4().hex
+    )
 
     id: Mapped[int] = mapped_column(
         Integer, nullable=False, primary_key=True, index=True
@@ -85,6 +94,10 @@ class Server(Base):
     """Represent a registered Bedrock server."""
 
     __tablename__ = "servers"
+
+    access_id: Mapped[str] = mapped_column(
+        String(32), unique=True, nullable=False, default=lambda: uuid4().hex
+    )
 
     id: Mapped[int] = mapped_column(
         Integer, nullable=False, primary_key=True, index=True
@@ -263,3 +276,93 @@ class ScheduleRun(Base):
     finished_at: Mapped[str | None] = mapped_column(String(40), nullable=True)
     correlation_id: Mapped[str | None] = mapped_column(String(160), nullable=True)
     error: Mapped[str | None] = mapped_column(String(300), nullable=True)
+
+
+class AccessRevision(Base):
+    """Monotonic revision for committed authorization mutations."""
+
+    __tablename__ = "access_revision"
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    revision: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
+
+
+class AccountServerAccess(Base):
+    """Absent accounts keep existing unrestricted role access."""
+
+    __tablename__ = "account_server_access"
+    owner_id: Mapped[str] = mapped_column(String(32), primary_key=True)
+    assigned_only: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False)
+
+
+class ServerAccessGrant(Base):
+    """Grants refer to immutable identities, never reusable names or row IDs."""
+
+    __tablename__ = "server_access_grants"
+    owner_id: Mapped[str] = mapped_column(String(32), primary_key=True)
+    server_id: Mapped[str] = mapped_column(String(32), primary_key=True)
+    permissions: Mapped[list[str]] = mapped_column(JSON, nullable=False)
+
+
+class IntegrationToken(Base):
+    """Only a digest is stored. Opaque credentials are shown once on creation."""
+
+    __tablename__ = "integration_tokens"
+    id: Mapped[str] = mapped_column(String(32), primary_key=True)
+    owner_id: Mapped[str] = mapped_column(String(32), nullable=False, index=True)
+    name: Mapped[str] = mapped_column(String(100), nullable=False)
+    digest: Mapped[str] = mapped_column(String(64), nullable=False)
+    permissions: Mapped[list[str]] = mapped_column(JSON, nullable=False)
+    server_ids: Mapped[list[str] | None] = mapped_column(JSON, nullable=True)
+    created_at: Mapped[int] = mapped_column(Integer, nullable=False)
+    expires_at: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    last_used_at: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    revoked_at: Mapped[int | None] = mapped_column(Integer, nullable=True)
+
+
+class LoginSession(Base):
+    """Revocable login family; JWT renewal never extends its absolute expiry."""
+
+    __tablename__ = "login_sessions"
+    id: Mapped[str] = mapped_column(String(32), primary_key=True)
+    owner_id: Mapped[str] = mapped_column(String(32), nullable=False, index=True)
+    name: Mapped[str] = mapped_column(String(100), nullable=False)
+    user_agent: Mapped[str] = mapped_column(String(512), nullable=False)
+    ip_address: Mapped[str] = mapped_column(String(64), nullable=False)
+    created_at: Mapped[int] = mapped_column(Integer, nullable=False)
+    last_seen_at: Mapped[int] = mapped_column(Integer, nullable=False)
+    expires_at: Mapped[int] = mapped_column(Integer, nullable=False)
+    verified_at: Mapped[int] = mapped_column(Integer, nullable=False)
+    revoked_at: Mapped[int | None] = mapped_column(Integer, nullable=True)
+
+
+class AccountSecurity(Base):
+    """Encrypted TOTP material and one-use recovery digests, never raw codes."""
+
+    __tablename__ = "account_security"
+    owner_id: Mapped[str] = mapped_column(String(32), primary_key=True)
+    totp_secret: Mapped[str | None] = mapped_column(Text, nullable=True)
+    pending_secret: Mapped[str | None] = mapped_column(Text, nullable=True)
+    pending_until: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    last_counter: Mapped[int] = mapped_column(Integer, nullable=False, default=-1)
+    recovery_hashes: Mapped[list[str]] = mapped_column(
+        JSON, nullable=False, default=list
+    )
+    version: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
+
+
+class AuthThrottle(Base):
+    """Persistent fixed-window budgets shared across workers and restarts."""
+
+    __tablename__ = "auth_throttle"
+    key: Mapped[str] = mapped_column(String(64), primary_key=True)
+    window: Mapped[int] = mapped_column(Integer, nullable=False)
+    attempts: Mapped[int] = mapped_column(Integer, nullable=False)
+
+
+class AuthSecurityEvent(Base):
+    __tablename__ = "auth_security_events"
+    id: Mapped[str] = mapped_column(String(32), primary_key=True)
+    owner_id: Mapped[str] = mapped_column(String(32), nullable=False, index=True)
+    action: Mapped[str] = mapped_column(String(64), nullable=False)
+    timestamp: Mapped[int] = mapped_column(Integer, nullable=False)
+    details: Mapped[dict] = mapped_column(JSON, nullable=False)

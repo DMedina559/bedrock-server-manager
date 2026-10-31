@@ -24,7 +24,7 @@ async def test_reset_password_success(runner, app_context, db_session):
     result = runner.invoke(
         reset_password_command,
         ["target_user"],
-        input="new_pw\nnew_pw\n",
+        input="new secure passphrase\nnew secure passphrase\n",
         obj={"app_context": app_context},
     )
 
@@ -37,7 +37,7 @@ async def test_reset_password_success(runner, app_context, db_session):
     db_session.expire_all()
     res = await db_session.execute(select(User).filter(User.username == "target_user"))
     updated_user = res.scalars().first()
-    assert verify_password("new_pw", updated_user.hashed_password)
+    assert verify_password("new secure passphrase", updated_user.hashed_password)
 
 
 async def test_reset_password_user_not_found(runner, app_context):
@@ -45,7 +45,7 @@ async def test_reset_password_user_not_found(runner, app_context):
     result = runner.invoke(
         reset_password_command,
         ["non_existent_user"],
-        input="new_pw\nnew_pw\n",
+        input="new secure passphrase\nnew secure passphrase\n",
         obj={"app_context": app_context},
     )
 
@@ -65,10 +65,75 @@ async def test_reset_password_mismatch_confirmation(runner, app_context):
     result = runner.invoke(
         reset_password_command,
         ["target_user"],
-        input="new_pw\nwrong_pw\n",
+        input="new secure passphrase\nwrong_pw\n",
         obj={"app_context": app_context},
     )
 
     # click prompt will fail and abort with an error on mismatch
     assert result.exit_code == 1  # aborted
     assert "Error: The two entered values do not match" in result.output
+
+
+async def test_local_mfa_reset_revokes_logins_without_changing_password(
+    runner, app_context
+):
+    import time
+
+    from bedrock_server_manager.cli.reset_password import reset_mfa_command
+    from bedrock_server_manager.db.models import AccountSecurity, LoginSession
+
+    # The local CLI owns its runtime; do not share a running HTTP lifespan and
+    # its loop-bound background database tasks with the synchronous CLI runner.
+    original_hash = get_password_hash("existing secure passphrase")
+    now = int(time.time())
+    async with app_context.storage.transaction() as session:
+        user = User(username="testuser", hashed_password=original_hash, role="admin")
+        session.add(user)
+        await session.flush()
+        session.add(
+            LoginSession(
+                id="a" * 32,
+                owner_id=user.access_id,
+                name="existing login",
+                user_agent="",
+                ip_address="",
+                created_at=now,
+                last_seen_at=now,
+                expires_at=now + 3600,
+                verified_at=now,
+            )
+        )
+        session.add(
+            AccountSecurity(
+                owner_id=user.access_id,
+                totp_secret="encrypted-factor",
+                recovery_hashes=[],
+                last_counter=-1,
+                version=0,
+            )
+        )
+    result = runner.invoke(
+        reset_mfa_command, ["testuser", "--yes"], obj={"app_context": app_context}
+    )
+    assert result.exit_code == 0, result.output
+    assert "All login sessions were signed out" in result.output
+    async with app_context.storage.transaction() as session:
+        user = await session.scalar(select(User).where(User.username == "testuser"))
+        assert user.hashed_password == original_hash
+        assert (await session.get(AccountSecurity, user.access_id)).totp_secret is None
+        rows = (
+            await session.scalars(
+                select(LoginSession).where(LoginSession.owner_id == user.access_id)
+            )
+        ).all()
+        assert len(rows) == 1
+        assert rows[0].revoked_at is not None
+
+
+async def test_local_mfa_reset_requires_confirmation(runner, app_context):
+    from bedrock_server_manager.cli.reset_password import reset_mfa_command
+
+    result = runner.invoke(
+        reset_mfa_command, ["testuser"], input="n\n", obj={"app_context": app_context}
+    )
+    assert result.exit_code != 0

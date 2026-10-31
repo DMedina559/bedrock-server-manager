@@ -317,3 +317,14 @@ async def test_cors_validation_is_atomic_and_serializes_as_json(app_context):
     assert app_context.settings.get("web.cors_origins") == (
         "https://dashboard.example",
     )
+
+
+async def test_security_settings_persist_and_reload(app_context):
+    await app_context.settings.set("security.require_admin_mfa", True)
+    await app_context.settings.set("security.session_idle_hours", 3)
+    await app_context.settings.set("security.auth_peer_attempts", 120)
+    assert app_context.settings.get("security.require_admin_mfa") is True
+    await app_context.settings.load()
+    assert app_context.settings.get("security.require_admin_mfa") is True
+    assert app_context.settings.get("security.session_idle_hours") == 3
+    assert app_context.settings.get("security.auth_peer_attempts") == 120

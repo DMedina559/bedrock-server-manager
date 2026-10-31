@@ -36,13 +36,13 @@ async def test_create_first_user_success(unauth_client: AsyncClient, app_context
 
     response = await unauth_client.post(
         "/api/setup/create-first-user",
-        json={"username": "admin", "password": "securepassword"},
+        json={"username": "admin", "password": "secure setup passphrase"},
     )
     assert response.status_code == 200
     data = response.json()
     assert data["status"] == "success"
     assert "access_token" in data
-    assert "access_token_cookie" in response.cookies
+    assert "access_token_cookie" not in response.cookies
 
 
 async def test_create_first_user_already_exists(
@@ -54,7 +54,7 @@ async def test_create_first_user_already_exists(
 
     response = await unauth_client.post(
         "/api/setup/create-first-user",
-        json={"username": "admin2", "password": "securepassword"},
+        json={"username": "admin2", "password": "secure setup passphrase"},
     )
     assert response.status_code == 400
     assert response.json()["error"]["message"] == "Application has already been set up."

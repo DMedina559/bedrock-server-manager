@@ -92,7 +92,7 @@ async def test_register_user_success(unauth_client: AsyncClient, app_context):
 
     response = await unauth_client.post(
         f"/api/register/{token_str}",
-        json={"username": "new_user", "password": "new_password"},
+        json={"username": "new_user", "password": "new password passphrase"},
     )
     assert response.status_code == 200
     assert response.json()["status"] == "success"
@@ -114,7 +114,7 @@ async def test_register_user_success(unauth_client: AsyncClient, app_context):
 async def test_register_user_invalid_token(unauth_client: AsyncClient):
     response = await unauth_client.post(
         "/api/register/bad_token",
-        json={"username": "new_user", "password": "new_password"},
+        json={"username": "new_user", "password": "new password passphrase"},
     )
     assert response.status_code == 404
     assert response.json()["error"]["code"] == "not_found"
@@ -135,7 +135,7 @@ async def test_register_user_duplicate_username(
 
     response = await unauth_client.post(
         f"/api/register/{token_str}",
-        json={"username": test_user.username, "password": "new_password"},
+        json={"username": test_user.username, "password": "new password passphrase"},
     )
     assert response.status_code == 400
     assert response.json()["error"]["code"] == "validation_error"

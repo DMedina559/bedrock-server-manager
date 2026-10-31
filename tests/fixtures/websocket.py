@@ -44,6 +44,7 @@ async def websocket_client(running_app, unauth_client):
             headers = dict(additional_headers or {})
             if cookies:
                 headers["Cookie"] = cookies
+                headers.setdefault("Origin", f"http://127.0.0.1:{port}")
             async with connect(
                 f"ws://127.0.0.1:{port}{path}", additional_headers=headers
             ) as connection:
@@ -62,10 +63,12 @@ async def websocket_client(running_app, unauth_client):
 async def subscribed_socket(websocket_client, app_context, test_admin_user):
     @asynccontextmanager
     async def subscribe(*topics):
+        # Prepare the database-backed credential before the server starts its
+        # first-frame authentication deadline, matching a real signed-in client.
+        token = await create_access_token(
+            app_context, {"sub": test_admin_user.username}
+        )
         async with websocket_client() as connection:
-            token = await create_access_token(
-                app_context, {"sub": test_admin_user.username}
-            )
             await connection.send(
                 json.dumps({"action": "authenticate", "token": token})
             )
