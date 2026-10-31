@@ -112,6 +112,7 @@ async def api_login_for_access_token(
         jwt.get_unverified_claims(access_token)["sid"], request
     )
     await app_context.session_service.authentication_succeeded(form_data.username)
+    await app_context.session_service.publish(owner_id, "login")
     logger.info("User '%s' signed in.", form_data.username)
     cookie_mode = request.headers.get("x-bsm-auth-mode") == "cookie"
     if cookie_mode:

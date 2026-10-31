@@ -198,3 +198,33 @@ are verified does an MFA-enabled account receive a 401 with
 asks for an authenticator or recovery code and resubmits the credentials with
 `otp`. Incorrect passwords never expose whether the account has MFA. API clients
 may still supply all three values in a single request.
+
+## Authentication hardening
+
+New and reset passwords require at least 15 characters, reject a local list of
+common passwords and highly repetitive values, and accept up to 1024 UTF-8 bytes.
+Existing passwords still work at login. New hashes use Argon2id; successful legacy
+bcrypt logins upgrade their hash without signing out existing sessions. Unknown
+accounts perform dummy password verification. Validation errors omit passwords.
+
+MFA and account authority changes advance the authentication revision so an
+in-flight login or verification cannot bypass the change. Role and activation
+changes revoke login sessions before advisory connection cleanup. Idle-expired
+sessions do not consume the active-session limit. Authentication attempts clean
+up old throttle rows and session/security history older than 90 days. Successful
+recent verification resets its account attempt budget.
+
+Administrators can configure `security.auth_account_attempts` (default 10),
+`security.auth_peer_attempts` (60), and `security.auth_window_seconds` (300).
+`security.require_admin_mfa` defaults to false. When enabled, an unenrolled
+administrator can only access account enrollment and sign-out until MFA is
+confirmed. Named integration credentials keep their independent authorization.
+Required administrators cannot disable their own MFA. For a lost factor, an
+operator with local configuration/database access can run `bedrock-server-manager
+reset-mfa USER` (or add `--yes`); this clears factors, revokes login sessions, and
+records the recovery action, without changing the password or integrations.
+
+Owned security changes produce safe, account-scoped notices for connected
+interactive clients and the private `on_account_security` core event. Notices
+contain an event ID, owner ID, action, and timestamp, never credentials or factor
+secrets. Delivery is advisory; the security activity log remains authoritative.

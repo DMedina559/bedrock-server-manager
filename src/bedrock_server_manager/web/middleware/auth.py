@@ -70,6 +70,32 @@ async def add_user_to_request(request: Request, call_next):
             return JSONResponse(
                 {"detail": "CSRF verification required"}, status_code=403
             )
+    if (
+        authorization is not None
+        and authorization.mfa_enrollment_required
+        and not (
+            request.method in {"GET", "HEAD"}
+            and (path in {"/", "/app"} or path.startswith(("/app/", "/themes/")))
+        )
+        and path
+        not in {
+            "/api/account",
+            "/api/account/security",
+            "/api/account/security/verify",
+            "/api/account/security/mfa/enroll",
+            "/api/account/security/mfa/confirm",
+            "/auth/logout",
+            "/auth/reauth",
+            "/api/setup/status",
+        }
+    ):
+        return JSONResponse(
+            {
+                "detail": "Administrator MFA is required. Enroll an authenticator in Account security."
+            },
+            status_code=403,
+            headers={"X-BSM-MFA-Enrollment": "required"},
+        )
     ticket = current_authorization.set(authorization)
     permission_ticket = operation_permissions.set(frozenset())
     try:

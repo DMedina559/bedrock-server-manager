@@ -14,6 +14,7 @@ from sqlalchemy import delete, or_, select, update
 
 from ..db.models import (
     AccessRevision,
+    AccountSecurity,
     AccountServerAccess,
     IntegrationToken,
     Server,
@@ -112,7 +113,16 @@ class AccessService:
                 is None
             ):
                 return None
+            factor = await session.get(AccountSecurity, record.access_id)
+            mfa_required = bool(
+                token_id is None
+                and record.role == "admin"
+                and self.context.settings.get("security.require_admin_mfa", False)
+                and not (factor and factor.totp_secret)
+            )
             permission_set = self.policy.resolve(record.role)
+            if mfa_required:
+                permission_set &= frozenset({"account:read", "sessions:manage"})
             token_servers = None
             if token_id is not None:
                 token = await session.get(IntegrationToken, token_id)
@@ -167,8 +177,9 @@ class AccessService:
                 grants=grants,
                 token_id=token_id,
                 session_id=session_id,
+                mfa_enrollment_required=mfa_required,
                 token_servers=token_servers,
-                revision=f"{self.policy.revision}:{row[2] or 0}:{record.role}",
+                revision=f"{self.policy.revision}:{row[2] or 0}:{record.role}:{int(mfa_required)}",
             )
 
     async def server_identities(self) -> dict[str, str]:
@@ -315,6 +326,9 @@ class AccessService:
             await session.flush()
             info = self.token_info(token)
         await self.notify(actor.username, kind="credentials_changed")
+        await self.context.session_service.publish(
+            user.access_id, "integration_credential_created"
+        )
         return CreatedIntegrationToken(token=credential, credential=info)
 
     async def rotate_token(self, actor, identifier):
@@ -369,6 +383,9 @@ class AccessService:
             await session.flush()
             info = self.token_info(replacement)
         await self.notify(actor.username, kind="credentials_changed")
+        await self.context.session_service.publish(
+            owner.access_id, "integration_credential_rotated"
+        )
         return CreatedIntegrationToken(token=credential, credential=info)
 
     async def revoke_token(self, actor, user_id, identifier):
@@ -393,6 +410,9 @@ class AccessService:
                 )
             username = owner.username
         await self.notify(username, kind="credentials_changed")
+        await self.context.session_service.publish(
+            owner.access_id, "integration_credential_revoked"
+        )
 
     async def get_server_access(self, user_id):
         async with self.context.storage.transaction() as session:
@@ -557,6 +577,14 @@ class AccessService:
     async def filter_message(self, authorization, data):
         if not isinstance(data, dict):
             return data if not authorization.restricted else None
+        if data.get("type") == "security_event":
+            return (
+                data
+                if authorization.token_id is None
+                and data.get("owner_id") == authorization.owner_id
+                and authorization.allows("sessions:manage")
+                else None
+            )
         if data.get("type") in {
             "access_changed",
             "policy_changed",

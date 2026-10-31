@@ -54,6 +54,7 @@ async def get_account_api(
         server_access="assigned" if authorization.resource_restricted else "all",
         credential_id=authorization.token_id,
         session_id=authorization.session_id,
+        mfa_enrollment_required=authorization.mfa_enrollment_required,
         server_permissions={
             identity: sorted(
                 permission

@@ -20,10 +20,12 @@ class LoginSessionInfo(APIResponse):
     current: bool
     connected: bool
     active: bool
+    expired_reason: Literal["absolute", "idle"] | None = None
 
 
 class SecurityStatus(APIResponse):
     enabled: bool
+    required: bool = False
     recovery_codes_remaining: int
     session_id: str | None = None
     recent_until: int

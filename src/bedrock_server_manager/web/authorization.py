@@ -62,6 +62,7 @@ class Authorization:
     token_servers: frozenset[str] | None = None
     revision: str = ""
     session_id: str | None = None
+    mfa_enrollment_required: bool = False
 
     @property
     def resource_restricted(self) -> bool:
@@ -69,7 +70,11 @@ class Authorization:
 
     @property
     def restricted(self) -> bool:
-        return self.token_id is not None or self.resource_restricted
+        return (
+            self.token_id is not None
+            or self.resource_restricted
+            or self.mfa_enrollment_required
+        )
 
     def allows(self, permission: str, server_name: str | None = None) -> bool:
         if permission not in self.permissions:

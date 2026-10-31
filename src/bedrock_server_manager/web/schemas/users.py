@@ -3,7 +3,7 @@ from typing import Optional
 from pydantic import Field
 
 from ...api.models.common import APIRequest, APIResponse
-from ...contracts import Password
+from ...contracts import NewPassword, Password
 from ...state.models import UserRole
 
 
@@ -26,6 +26,7 @@ class CurrentAccountResponse(UserResponse):
     server_access: str = "all"
     credential_id: str | None = None
     session_id: str | None = None
+    mfa_enrollment_required: bool = False
     server_permissions: dict[str, list[str]] = Field(default_factory=dict)
 
 
@@ -68,4 +69,4 @@ class ChangePasswordPayload(APIRequest):
     """
 
     current_password: Password
-    new_password: Password
+    new_password: NewPassword

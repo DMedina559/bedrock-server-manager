@@ -116,6 +116,10 @@ async def websocket_endpoint(  # noqa: C901
             authorization = await app_context.access_service.snapshot(
                 user, session_id=jwt.get_unverified_claims(token).get("sid")
             )
+        if authorization is not None and authorization.mfa_enrollment_required:
+            raise WebSocketException(
+                code=1008, reason="Administrator MFA enrollment required"
+            )
         if authorization is None:
             raise WebSocketException(
                 code=1008, reason="Account authorization unavailable"

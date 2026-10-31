@@ -7,6 +7,7 @@ import base64
 import hashlib
 import hmac
 import io
+import logging
 import os
 import secrets
 import time
@@ -46,11 +47,55 @@ class SessionService:
             ),
         )
 
+    async def publish(self, owner_id, action):
+        """Deliver only fixed, non-secret security facts after their transaction commits."""
+        if action not in {
+            "login",
+            "role_changed",
+            "account_disabled",
+            "account_enabled",
+            "recovery_code_used",
+            "mfa_enabled",
+            "mfa_disabled",
+            "recovery_codes_rotated",
+            "password_changed",
+            "password_reset",
+            "local_mfa_reset",
+            "integration_credential_created",
+            "integration_credential_rotated",
+            "integration_credential_revoked",
+            "all_integration_credentials_revoked",
+        }:
+            return
+        payload = {
+            "event_id": uuid4().hex,
+            "owner_id": owner_id,
+            "action": action,
+            "timestamp": int(time.time()),
+        }
+        try:
+            async with self.context.storage.transaction() as session:
+                username = await session.scalar(
+                    select(User.username).where(User.access_id == owner_id)
+                )
+            manager = getattr(self.context, "_connection_manager", None)
+            if manager is not None and username:
+                await manager.send_to_user(
+                    username, {"type": "security_event", **payload}
+                )
+            await self.context.events.emit("on_account_security", payload, public=False)
+        except Exception:
+            logging.getLogger(__name__).warning(
+                "Security notification delivery unavailable"
+            )
+
     async def event(self, user_id, action, **details):
         async with self.context.storage.transaction() as session:
             user = await session.get(User, user_id)
             if user is not None:
                 self.add_event(session, user.access_id, action, details)
+        if user is not None:
+            await self.publish(user.access_id, action)
 
     @staticmethod
     def add_event(session, owner_id, action, details=None):
@@ -65,20 +110,30 @@ class SessionService:
         )
 
     async def throttle(self, username, peer="", operation="login"):
+        await self.cleanup()
         # Consume IP first: arbitrary usernames cannot create unbounded rows per peer.
+        window_seconds = int(
+            self.context.settings.get("security.auth_window_seconds", 300)
+        )
         for value, limit in (
-            (f"peer:{peer}", 60),
-            (f"{operation}:{username.casefold()}", 10),
+            (
+                f"peer:{peer}",
+                int(self.context.settings.get("security.auth_peer_attempts", 60)),
+            ),
+            (
+                f"{operation}:{username.casefold()}",
+                int(self.context.settings.get("security.auth_account_attempts", 10)),
+            ),
         ):
             key = hashlib.sha256(value.encode()).hexdigest()
             now = int(time.time())
-            window = now // 300
+            window = now - now % window_seconds
             for retry in range(2):
                 try:
                     async with self.context.storage.transaction() as session:
                         await session.execute(
                             delete(AuthThrottle).where(
-                                AuthThrottle.window < window - 288
+                                AuthThrottle.window < now - 86400
                             )
                         )
                         result = await session.execute(
@@ -111,13 +166,38 @@ class SessionService:
                 raise HTTPException(
                     429,
                     "Too many authentication attempts. Try again shortly.",
-                    headers={"Retry-After": str(300 - now % 300)},
+                    headers={"Retry-After": str(window_seconds - now % window_seconds)},
                 )
 
     async def authentication_succeeded(self, username, operation="login"):
         key = hashlib.sha256(f"{operation}:{username.casefold()}".encode()).hexdigest()
         async with self.context.storage.transaction() as session:
             await session.execute(delete(AuthThrottle).where(AuthThrottle.key == key))
+
+    async def cleanup(self):
+        """Bound retained metadata during normal authentication, not only UI reads."""
+        now = int(time.time())
+        async with self.context.storage.transaction() as session:
+            await session.execute(
+                delete(AuthSecurityEvent).where(
+                    AuthSecurityEvent.timestamp < now - 90 * 86400
+                )
+            )
+            await session.execute(
+                delete(LoginSession).where(LoginSession.expires_at < now - 90 * 86400)
+            )
+
+    @staticmethod
+    async def advance_auth_revision(session, owner_id, keep_session_id=None):
+        await session.execute(
+            update(User)
+            .where(User.access_id == owner_id)
+            .values(auth_revision=User.auth_revision + 1)
+        )
+        query = update(LoginSession).where(LoginSession.owner_id == owner_id)
+        if keep_session_id:
+            query = query.where(LoginSession.id != keep_session_id)
+        await session.execute(query.values(verified_at=0))
 
     async def create(self, owner_id, expires_at, expected_revision=None):
         now = int(time.time())
@@ -153,6 +233,7 @@ class SessionService:
                     LoginSession.owner_id == owner_id,
                     LoginSession.revoked_at.is_(None),
                     LoginSession.expires_at > now,
+                    LoginSession.last_seen_at > now - self.idle_seconds(),
                 )
             )
             if count >= 100:
@@ -172,7 +253,7 @@ class SessionService:
             )
             session.add(record)
             self.add_event(session, owner_id, "login", {"session_id": record.id})
-            return record.id, record.expires_at
+        return record.id, record.expires_at
 
     async def validate(self, identifier, owner_id=None, *, touch=True):
         if not isinstance(identifier, str) or len(identifier) != 32:
@@ -264,26 +345,43 @@ class SessionService:
         from ..web.auth import authenticate_user
 
         await self.throttle(user.username, peer, "verify")
-        if await authenticate_user(self.context, user.username, password) is None:
-            raise HTTPException(401, "Verification failed")
         async with self.context.storage.transaction() as session:
             owner = await session.get(User, user.id)
-            owner_id = owner.access_id
+            if owner is None or not owner.is_active:
+                raise HTTPException(401, "Verification failed")
+            owner_id, revision = owner.access_id, owner.auth_revision
+        if await authenticate_user(self.context, user.username, password) is None:
+            raise HTTPException(401, "Verification failed")
         if not await self.verify_factor(owner_id, otp):
             raise HTTPException(401, "Verification failed")
-        record = await self.validate(identifier, owner_id, touch=False)
-        if record is None:
-            raise HTTPException(401, "Session no longer active")
         now = int(time.time())
         async with self.context.storage.transaction() as session:
-            await session.execute(
+            current = await session.scalar(
+                select(User).where(User.access_id == owner_id).with_for_update()
+            )
+            if (
+                current is None
+                or not current.is_active
+                or current.auth_revision != revision
+            ):
+                raise HTTPException(401, "Account security changed; verify again")
+            result = await session.execute(
                 update(LoginSession)
-                .where(LoginSession.id == identifier, LoginSession.revoked_at.is_(None))
+                .where(
+                    LoginSession.id == identifier,
+                    LoginSession.owner_id == owner_id,
+                    LoginSession.revoked_at.is_(None),
+                    LoginSession.expires_at > now,
+                    LoginSession.last_seen_at > now - self.idle_seconds(),
+                )
                 .values(verified_at=now)
             )
+            if result.rowcount != 1:
+                raise HTTPException(401, "Session no longer active")
             self.add_event(
                 session, owner_id, "password_verified", {"session_id": identifier}
             )
+        await self.authentication_succeeded(user.username, "verify")
         return now
 
     async def revoke(
@@ -393,6 +491,15 @@ class SessionService:
                     "revoked_at": row.revoked_at,
                     "current": row.id == current_id,
                     "connected": row.id in connected and row.revoked_at is None,
+                    "expired_reason": (
+                        "absolute"
+                        if row.expires_at <= now
+                        else (
+                            "idle"
+                            if row.last_seen_at + self.idle_seconds() <= now
+                            else None
+                        )
+                    ),
                     "active": row.revoked_at is None
                     and row.expires_at > now
                     and row.last_seen_at + self.idle_seconds() > now,
@@ -562,7 +669,9 @@ class SessionService:
                 return False
             if matched:
                 self.add_event(session, owner_id, "recovery_code_used")
-            return True
+        if matched:
+            await self.publish(owner_id, "recovery_code_used")
+        return True
 
     @staticmethod
     def recovery_codes():
@@ -601,9 +710,11 @@ class SessionService:
             )
             if result.rowcount != 1:
                 raise HTTPException(409, "Enrollment changed; start again")
+            await self.advance_auth_revision(session, owner_id, keep_session_id)
             self.add_event(session, owner_id, "mfa_enabled")
             await self.revoke_in_transaction(session, owner_id, keep_session_id)
         await self.close_revoked(owner_id)
+        await self.publish(owner_id, "mfa_enabled")
         return {"recovery_codes": codes}
 
     async def change_factor(self, owner_id, *, disable=False, keep_session_id=None):
@@ -612,6 +723,7 @@ class SessionService:
             row = await session.get(AccountSecurity, owner_id)
             if not row or not row.totp_secret:
                 raise HTTPException(400, "MFA is not enabled")
+            await self.advance_auth_revision(session, owner_id, keep_session_id)
             row.recovery_hashes = [] if disable else hashes
             row.version += 1
             if disable:
@@ -626,6 +738,9 @@ class SessionService:
             )
         if disable:
             await self.close_revoked(owner_id)
+        await self.publish(
+            owner_id, "mfa_disabled" if disable else "recovery_codes_rotated"
+        )
         return {"recovery_codes": [] if disable else codes}
 
     async def revoke_credentials(self, owner_id):
@@ -639,4 +754,5 @@ class SessionService:
                 .values(revoked_at=int(time.time()))
             )
             self.add_event(session, owner_id, "all_integration_credentials_revoked")
+        await self.publish(owner_id, "all_integration_credentials_revoked")
         await self.context.access_service.notify(kind="credentials_changed")

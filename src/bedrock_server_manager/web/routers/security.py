@@ -91,7 +91,8 @@ async def revoke(
     ),
     context: AppContext = Depends(get_app_context),
 ):
-    await recent(request, user, context)
+    if session_id != getattr(request.state, "session_id", None):
+        await recent(request, user, context)
     await context.session_service.revoke(
         await owner(context, user.id), identifier=session_id
     )
@@ -137,6 +138,8 @@ async def status(
     return SecurityStatus(
         **await context.session_service.status(await owner(context, user.id)),
         session_id=request.state.session_id,
+        required=user.role == "admin"
+        and context.settings.get("security.require_admin_mfa", False),
         recent_until=record.verified_at + 300 if record else 0,
         idle_timeout_seconds=context.session_service.idle_seconds(),
         max_session_days=context.settings.get("security.session_max_days", 28),
@@ -235,7 +238,9 @@ async def recovery(
     context: AppContext = Depends(get_app_context),
 ):
     await recent(request, user, context)
-    return await context.session_service.change_factor(await owner(context, user.id))
+    return await context.session_service.change_factor(
+        await owner(context, user.id), keep_session_id=request.state.session_id
+    )
 
 
 @router.delete(
@@ -250,6 +255,13 @@ async def disable(
     ),
     context: AppContext = Depends(get_app_context),
 ):
+    if user.role == "admin" and context.settings.get(
+        "security.require_admin_mfa", False
+    ):
+        raise HTTPException(
+            403,
+            "Administrator MFA is required; enroll a replacement factor or use local recovery",
+        )
     await recent(request, user, context)
     identity = await owner(context, user.id)
     await context.session_service.change_factor(

@@ -61,15 +61,17 @@ def test_profile_update_payload_validation():
 
 
 def test_change_password_payload_validation():
-    payload = ChangePasswordPayload(current_password="old", new_password="new")
+    payload = ChangePasswordPayload(
+        current_password="old", new_password="new sufficient passphrase"
+    )
     assert payload.current_password.get_secret_value() == "old"
-    assert payload.new_password.get_secret_value() == "new"
+    assert payload.new_password.get_secret_value() == "new sufficient passphrase"
 
     with pytest.raises(ValidationError):
         ChangePasswordPayload(current_password="old")
 
 
-@pytest.mark.parametrize("password", ["", "x" * 73, "é" * 37])
+@pytest.mark.parametrize("password", ["", "x" * 1025, "é" * 513])
 def test_password_constraints_are_shared(password):
     from bedrock_server_manager.web.schemas.auth import UserLoginPayload
 
@@ -81,7 +83,7 @@ def test_password_constraints_are_shared(password):
 
 def test_password_payloads_mask_secrets():
     payload = ChangePasswordPayload(
-        current_password="sample-current", new_password="sample-new"
+        current_password="sample-current", new_password="sample-new secret passphrase"
     )
     assert "sample-current" not in repr(payload)
-    assert "sample-new" not in payload.model_dump_json()
+    assert "sample-new secret passphrase" not in payload.model_dump_json()

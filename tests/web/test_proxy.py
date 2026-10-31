@@ -127,7 +127,7 @@ async def test_setup_https_cookie_policy(app_context, trusted):
     async with AsyncClient(transport=transport, base_url="http://bsm.test") as client:
         response = await client.post(
             "/api/setup/create-first-user",
-            json={"username": "admin", "password": "securepassword"},
+            json={"username": "admin", "password": "secure setup passphrase"},
             headers={
                 "X-Ingress-Path": "/ingress/token",
                 "X-Forwarded-Proto": "https",

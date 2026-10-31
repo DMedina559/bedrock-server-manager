@@ -10,6 +10,8 @@ from uuid import uuid4
 from weakref import WeakValueDictionary
 
 import bcrypt
+from argon2 import PasswordHasher
+from argon2.exceptions import InvalidHashError, VerificationError
 from fastapi import HTTPException, WebSocketException, status
 from jose import JWTError, jwt
 from pydantic import TypeAdapter
@@ -280,18 +282,31 @@ async def authenticate_websocket_token(
 
 
 # --- Utility for Login Route ---
+_password_hasher = PasswordHasher(time_cost=2, memory_cost=19456, parallelism=1)
+# A fixed dummy hash avoids skipping expensive verification for unknown users.
+_DUMMY_PASSWORD_HASH = "$argon2id$v=19$m=19456,t=2,p=1$c3RhdGljLWR1bW15LXNhbHQ$h9t+HjrRn7ofQei1gZsV3GTYM1A82KheDKJ3jlOXmI4"
+
+
 def verify_password(plain_password: str, hashed_password: str) -> bool:
-    """Verifies a plain password against a stored hash using bcrypt."""
-    return bool(
-        bcrypt.checkpw(plain_password.encode("utf-8"), hashed_password.encode("utf-8"))
-    )
+    """Verify Argon2id credentials and existing bcrypt hashes without truncation."""
+    try:
+        if hashed_password.startswith("$argon2"):
+            return _password_hasher.verify(hashed_password, plain_password)
+        if len(plain_password.encode("utf-8")) > 72:
+            _password_hasher.verify(_DUMMY_PASSWORD_HASH, plain_password)
+            return False
+        return bool(
+            bcrypt.checkpw(
+                plain_password.encode("utf-8"), hashed_password.encode("utf-8")
+            )
+        )
+    except (VerificationError, InvalidHashError, ValueError):
+        return False
 
 
 def get_password_hash(password: str) -> str:
-    """Hashes a password using bcrypt."""
-    return str(
-        bcrypt.hashpw(password.encode("utf-8"), bcrypt.gensalt()).decode("utf-8")
-    )
+    """Hash new credentials with bounded-memory Argon2id."""
+    return _password_hasher.hash(password)
 
 
 _password_slots: WeakValueDictionary[asyncio.AbstractEventLoop, asyncio.Semaphore] = (
@@ -331,10 +346,24 @@ async def authenticate_user(
         user = await app_context.storage.user_repo.get_user_by_username(
             session, username_form
         )
-        if not user:
-            return None
-        hashed_password = str(user.hashed_password)
-        username = str(user.username)
-    if not await verify_password_async(password_form, hashed_password):
+        hashed_password = str(user.hashed_password) if user else _DUMMY_PASSWORD_HASH
+        username = str(user.username) if user else None
+        owner_id = user.id if user else None
+    valid = await verify_password_async(password_form, hashed_password)
+    if not valid or username is None:
         return None
+    if not hashed_password.startswith(
+        "$argon2id$"
+    ) or _password_hasher.check_needs_rehash(hashed_password):
+        from sqlalchemy import update
+
+        from ..db.models import User
+
+        upgraded = await get_password_hash_async(password_form)
+        async with app_context.storage.transaction() as session:
+            await session.execute(
+                update(User)
+                .where(User.id == owner_id, User.hashed_password == hashed_password)
+                .values(hashed_password=upgraded)
+            )
     return username

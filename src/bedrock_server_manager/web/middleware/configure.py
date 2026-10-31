@@ -56,6 +56,7 @@ def configure_middleware(
             "X-BSM-Session-Invalid",
             "X-BSM-Recent-Auth",
             "X-BSM-MFA",
+            "X-BSM-MFA-Enrollment",
         ],
     }
 

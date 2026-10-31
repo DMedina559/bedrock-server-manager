@@ -855,6 +855,7 @@ class AppContext:
                 storage=self.storage,
                 revoke_connections=self._revoke_user_connections,
                 credentials_changed=self.session_service.close_revoked,
+                security_event=self.session_service.publish,
             )
         return self._user_service
 
