@@ -2,6 +2,7 @@
 Repository for managing User and RegistrationToken database entity persistence.
 """
 
+import hashlib
 from typing import List, Optional, cast
 
 from sqlalchemy import func
@@ -73,20 +74,41 @@ class UserRepository:
         """Delete a User record from the database."""
         await session.delete(user)
 
+    @staticmethod
+    def digest_token(token: str) -> str:
+        """Compute the SHA-256 hex digest of a raw token."""
+        return hashlib.sha256(token.encode("utf-8")).hexdigest()
+
     async def get_registration_token(
         self, session: AsyncSession, token: str
     ) -> Optional[RegistrationToken]:
-        """Return a RegistrationToken record by token string."""
+        """Return a RegistrationToken record by token string (matching its SHA-256 digest)."""
+        digest = self.digest_token(token)
         result = await session.execute(
-            select(RegistrationToken).filter(RegistrationToken.token == token)
+            select(RegistrationToken).filter(RegistrationToken.token_digest == digest)
+        )
+        return cast(Optional[RegistrationToken], result.scalar_one_or_none())
+
+    async def get_registration_token_for_update(
+        self, session: AsyncSession, token: str
+    ) -> Optional[RegistrationToken]:
+        """Return a RegistrationToken record locked for update during consumption."""
+        digest = self.digest_token(token)
+        result = await session.execute(
+            select(RegistrationToken)
+            .filter(RegistrationToken.token_digest == digest)
+            .with_for_update()
         )
         return cast(Optional[RegistrationToken], result.scalar_one_or_none())
 
     async def create_registration_token(
         self, session: AsyncSession, token: str, role: str, expires: int
     ) -> RegistrationToken:
-        """Create and adds a new RegistrationToken record."""
-        token_record = RegistrationToken(token=token, role=role, expires=expires)
+        """Create and add a new RegistrationToken record using its SHA-256 digest."""
+        digest = self.digest_token(token)
+        token_record = RegistrationToken(
+            token_digest=digest, role=role, expires=expires
+        )
         session.add(token_record)
         return token_record
 

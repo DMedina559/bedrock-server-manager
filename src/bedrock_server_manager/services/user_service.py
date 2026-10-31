@@ -424,10 +424,8 @@ class UserService:
                                 )
                             role = "admin"
                         else:
-                            registration = (
-                                await self.storage.user_repo.get_registration_token(
-                                    session, token or ""
-                                )
+                            registration = await self.storage.user_repo.get_registration_token_for_update(
+                                session, token or ""
                             )
                             if (
                                 registration is None

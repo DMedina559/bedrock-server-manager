@@ -238,3 +238,70 @@ def test_nonexpiring_token_migration_preserves_deadlines_and_downgrades_safely(
         )
         command.upgrade(config, "head")
     engine.dispose()
+
+
+def test_registration_token_digest_migration_upgrades_plaintext_and_downgrades_safely(
+    tmp_path,
+):
+    import hashlib
+    import time
+    from pathlib import Path
+
+    from alembic import command
+    from alembic.config import Config
+    from sqlalchemy import create_engine
+
+    import bedrock_server_manager.db.database as database_module
+
+    config = Config(str(Path(database_module.__file__).parent / "alembic.ini"))
+    config.set_main_option("skip_logging_config", "true")
+    engine = create_engine(f"sqlite:///{tmp_path / 'registration-migration.db'}")
+    with engine.begin() as connection:
+        config.attributes["connection"] = connection
+        # 1. Upgrade to revision prior to digest storage
+        command.upgrade(config, "i05e934a61c2")
+        insert = text(
+            "INSERT INTO registration_tokens (id, token, role, expires) VALUES (:id, :token, :role, :expires)"
+        )
+        raw_token = "legacy_secret_invite_123"
+        expected_digest = hashlib.sha256(raw_token.encode("utf-8")).hexdigest()
+        connection.execute(
+            insert,
+            {
+                "id": 1,
+                "token": raw_token,
+                "role": "user",
+                "expires": int(time.time()) + 3600,
+            },
+        )
+
+        # 2. Upgrade to head (j16f045b72d3)
+        command.upgrade(config, "head")
+
+        # 3. Verify column is token_digest and plaintext token is gone
+        row = connection.execute(
+            text("SELECT id, token_digest, role FROM registration_tokens WHERE id=1")
+        ).fetchone()
+        assert row is not None
+        assert row[1] == expected_digest
+        assert row[2] == "user"
+
+        columns = [
+            col["name"]
+            for col in inspect(connection).get_columns("registration_tokens")
+        ]
+        assert "token_digest" in columns
+        assert "token" not in columns
+
+        # 4. Downgrade back to i05e934a61c2 and verify columns
+        command.downgrade(config, "i05e934a61c2")
+        columns_downgraded = [
+            col["name"]
+            for col in inspect(connection).get_columns("registration_tokens")
+        ]
+        assert "token" in columns_downgraded
+        assert "token_digest" not in columns_downgraded
+
+        # 5. Upgrade back to head
+        command.upgrade(config, "head")
+    engine.dispose()

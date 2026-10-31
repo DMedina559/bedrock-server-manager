@@ -171,12 +171,9 @@ class RegistrationToken(Base):
     """Represent a token used for user registration.
 
     :ivar id: The primary key.
-
-    :ivar token: The unique registration token string.
-
+    :ivar token_digest: SHA-256 hex digest of the unique registration token.
     :ivar role: The role that will be assigned to the user who registers with this token.
-
-    :ivar expires: Timestamp (unix epoch?) indicating when the token expires.
+    :ivar expires: Timestamp (unix epoch) indicating when the token expires.
     """
 
     __tablename__ = "registration_tokens"
@@ -184,8 +181,8 @@ class RegistrationToken(Base):
     id: Mapped[int] = mapped_column(
         Integer, nullable=False, primary_key=True, index=True
     )
-    token: Mapped[str | None] = mapped_column(
-        String(255), nullable=True, unique=True, index=True
+    token_digest: Mapped[str] = mapped_column(
+        String(64), nullable=False, unique=True, index=True
     )
     role: Mapped[str | None] = mapped_column(String(50), nullable=True)
     expires: Mapped[int | None] = mapped_column(Integer, nullable=True)

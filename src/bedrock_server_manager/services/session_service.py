@@ -109,22 +109,28 @@ class SessionService:
             )
         )
 
-    async def throttle(self, username, peer="", operation="login"):
+    async def throttle(self, username="", peer="", operation="login"):
         await self.cleanup()
         # Consume IP first: arbitrary usernames cannot create unbounded rows per peer.
         window_seconds = int(
             self.context.settings.get("security.auth_window_seconds", 300)
         )
-        for value, limit in (
+        checks = [
             (
                 f"peer:{peer}",
                 int(self.context.settings.get("security.auth_peer_attempts", 60)),
-            ),
-            (
-                f"{operation}:{username.casefold()}",
-                int(self.context.settings.get("security.auth_account_attempts", 10)),
-            ),
-        ):
+            )
+        ]
+        if username:
+            checks.append(
+                (
+                    f"{operation}:{username.casefold()}",
+                    int(
+                        self.context.settings.get("security.auth_account_attempts", 10)
+                    ),
+                )
+            )
+        for value, limit in checks:
             key = hashlib.sha256(value.encode()).hexdigest()
             now = int(time.time())
             window = now - now % window_seconds

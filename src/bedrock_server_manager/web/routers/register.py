@@ -8,8 +8,9 @@ This module provides endpoints for:
 """
 
 import logging
+from typing import Annotated
 
-from fastapi import APIRouter, Depends, HTTPException, Request, Security
+from fastapi import APIRouter, Depends, HTTPException, Path, Request, Security
 from fastapi.responses import JSONResponse
 
 from ...context import AppContext
@@ -72,10 +73,16 @@ async def generate_token(
     "custom", authentication="none", additional_checks=["registration-token"]
 )
 async def validate_token(
-    token: str,
+    request: Request,
+    token: Annotated[str, Path(max_length=128)],
     app_context: AppContext = Depends(get_app_context),
 ):
     """Check if a registration token is valid."""
+    await app_context.session_service.throttle(
+        username="",
+        peer=request.client.host if request.client else "",
+        operation="register",
+    )
     if not await app_context.user_service.validate_registration_token(token):
         raise HTTPException(status_code=404, detail="Invalid or expired token.")
 
@@ -90,14 +97,30 @@ async def validate_token(
     "custom", authentication="none", additional_checks=["registration-token"]
 )
 async def register_user(
-    token: str,
+    request: Request,
+    token: Annotated[str, Path(max_length=128)],
     data: UserLoginPayload,
     app_context: AppContext = Depends(get_app_context),
 ):
     """Create a new user from a registration token."""
+    await app_context.session_service.throttle(
+        username=data.username,
+        peer=request.client.host if request.client else "",
+        operation="register",
+    )
+    # Reject invalid/expired invitations through a cheap lookup before computing password hash
+    if not await app_context.user_service.validate_registration_token(token):
+        raise HTTPException(
+            status_code=404, detail="Invalid or expired registration token."
+        )
+
+    # Hash the password outside long-lived database transactions
+    hashed_password = await get_password_hash_async(data.password.get_secret_value())
+
+    # Revalidate and consume the invitation atomically when creating the account
     record = await app_context.user_service.create_account(
         data.username,
-        await get_password_hash_async(data.password.get_secret_value()),
+        hashed_password,
         token=token,
     )
     if record is None:
