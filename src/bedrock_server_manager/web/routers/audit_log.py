@@ -32,7 +32,11 @@ async def list_audit_logs_api(
     offset: Annotated[int, Query(ge=0)] = 0,
     app_context: AppContext = Depends(get_app_context),
 ) -> List[AuditLogResponse]:
-    """Return bounded audit logs as JSON ordered deterministically by timestamp descending."""
+    """Return a bounded page of audit logs, newest first.
+
+    Defaults to 100 records; request subsequent pages with offset. Ordering uses
+    timestamp and ID descending. Concurrent new entries can shift offset pages.
+    """
     async with app_context.storage.transaction() as session:
         logs = await app_context.storage.audit_log_repo.get_all_logs(
             session, limit=limit, offset=offset

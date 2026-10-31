@@ -38,6 +38,8 @@ class AuditLogRepository:
         self, session: AsyncSession, limit: int | None = None, offset: int = 0
     ) -> List[AuditLog]:
         """Return audit logs ordered deterministically by timestamp and id descending."""
+        if offset < 0 or (limit is not None and not 1 <= limit <= 500):
+            raise ValueError("Invalid audit page bounds")
         query = select(AuditLog).order_by(AuditLog.timestamp.desc(), AuditLog.id.desc())
         if offset > 0:
             query = query.offset(offset)

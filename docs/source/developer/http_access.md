@@ -358,3 +358,46 @@ the deployment provides one. This option does not enforce a source policy.
 A frontend hosted separately must configure equivalent headers at its own host;
 backend headers do not cover standalone HTML. Do not enforce a blanket CSP
 without testing the deployment's origins, extensions and embedded integrations.
+
+## Authorization ordering and bounded audit history
+
+Server-scoped routes authorize before checking server registration or installation
+files. Anonymous requests return 401; credentials without the capability or server
+grant return 403 for both existing and missing private server names. Authorized
+callers still receive normal resource-validation errors. World and addon icons
+also require authorization (`servers:read` and `content:read` respectively),
+including server-grant checks. Embedded cookies work normally; bearer clients
+must fetch these binary operations with their credentials and display the
+returned image, rather than putting a token in an image URL. The frontend owns
+and releases the resulting object URLs on credential/resource changes.
+
+Password change and reset read the account in a short transaction, perform
+password verification/hashing outside it, then atomically update only the same
+owner, revision and previous hash. Concurrent credential/account changes reject
+the stale operation. Session revocation and the security event commit with the
+new hash; notifications follow the commit. This policy does not assume every
+SQLite transaction is an exclusive write lock or promise a fixed millisecond
+transaction budget.
+
+`GET /audit-log/list` keeps its JSON array response and adds optional `limit`
+(1–500, default 100) and `offset` (nonnegative, default 0). Ordering is timestamp,
+then ID, descending. Continue paging to access older permanent audit records;
+retention does not delete them. New entries can shift offsets between requests.
+The frontend displays 100 events at a time and uses a bounded extra record to
+check whether an older page exists. Python clients expose both query parameters;
+`bsm-cli audit --limit 100 --offset 100` reads the next page. Repository callers
+can pass the same bounded keyword arguments to `get_all_logs`.
+
+Cookie-authenticated mutations fail closed if their CSRF proof cannot be built.
+A missing/invalid cookie does not establish an authenticated identity: protected
+routes reject it, and a 401 clears only the selected cookie credential using the
+same secure, ingress-aware cookie policy. An invalid explicit bearer credential
+never deletes a separate browser cookie. Static asset bypasses match complete
+path boundaries, including `/themes`, rather than similarly prefixed endpoints.
+
+MFA enrollment, recovery-code replacement and other sensitive actions still
+require recent verification. A 403 carrying `X-BSM-Recent-Auth: required` opens
+the identity-verification dialog; after verification, retry the original action.
+Ordinary permission/CSRF failures are not treated as a step-up challenge. Browser
+`ERR_CONNECTION_REFUSED` errors mean the configured backend is unreachable and
+are separate from a five-minute verification expiry.

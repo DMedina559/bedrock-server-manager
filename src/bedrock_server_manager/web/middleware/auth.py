@@ -5,6 +5,7 @@ from fastapi import Request
 from fastapi.responses import JSONResponse
 
 from ..auth import get_jwt_secret_key
+from ..cookies import clear_session_cookie
 from ..deps.auth import get_current_user_optional
 from ..origin import browser_origin
 from .ingress import route_path
@@ -18,18 +19,7 @@ async def add_user_to_request(request: Request, call_next):
     path = route_path(request.scope)
 
     # 1. Bypass database lookup for static files to prevent SQLite locking
-    if path.startswith(
-        (
-            "/static/",
-            "/assets/",
-            "/image/",
-            "/themes/",
-            "/app/static/",
-            "/app/assets/",
-            "/app/image/",
-        )
-    ) or path in {
-        "/favicon.ico",
+    static_roots = (
         "/static",
         "/assets",
         "/image",
@@ -37,7 +27,10 @@ async def add_user_to_request(request: Request, call_next):
         "/app/static",
         "/app/assets",
         "/app/image",
-    }:
+    )
+    if path == "/favicon.ico" or any(
+        path == root or path.startswith(root + "/") for root in static_roots
+    ):
         request.state.current_user = None
         return await call_next(request)
 
@@ -63,6 +56,7 @@ async def add_user_to_request(request: Request, call_next):
         cookie_mutation = (
             getattr(request.state, "credential_source", None) == "cookie"
             and not establishing
+            and user is not None
         )
         check_origin = cookie_mutation or (
             establishing and request.headers.get("x-bsm-auth-mode") == "cookie"
@@ -124,9 +118,10 @@ async def add_user_to_request(request: Request, call_next):
             and response.status_code == 401
         ):
             response.headers["X-BSM-Session-Invalid"] = "1"
-            if getattr(request.state, "credential_source", None) == "cookie":
-                from ..cookies import clear_session_cookie
-
+            if (
+                getattr(request.state, "credential_source", None) == "cookie"
+                and not issued
+            ):
                 clear_session_cookie(response, request)
         if csrf:
             response.headers["X-BSM-CSRF-Token"] = csrf

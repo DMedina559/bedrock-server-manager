@@ -25,7 +25,6 @@ from bedrock_server_manager.api.models import (
 from ...api import addon as addon_api
 from ...context import AppContext
 from ...error import AppFileNotFoundError
-from ..access_metadata import describe_access
 from ..access_policy import Permission
 from ..deps import get_app_context, validate_server_exists
 from ..deps.auth import require_permissions
@@ -363,9 +362,20 @@ async def post_install_addon(
 @router.get(
     "/api/server/{server_name}/addon/icon",
     operation_id="get_server_addon_icon",
+    responses={
+        200: {
+            "content": {
+                media: {"schema": {"type": "string", "format": "binary"}}
+                for media in ("image/png", "image/jpeg", "image/vnd.microsoft.icon")
+            }
+        }
+    },
+    response_class=FileResponse,
 )
-@describe_access("public", authentication="none", additional_checks=[])
 async def get_server_addon_icon(
+    current_user: UserResponse = Security(
+        require_permissions, scopes=[Permission.CONTENT_READ]
+    ),
     server_name: str = Depends(validate_server_exists),
     pack_type: str = Query(...),
     uuid: str = Query(...),
@@ -399,7 +409,11 @@ async def get_server_addon_icon(
                 break
 
         if icon_path and await aiofiles.ospath.exists(icon_path):
-            return FileResponse(icon_path, media_type="image/png")
+            return FileResponse(
+                icon_path,
+                media_type="image/png",
+                headers={"Cache-Control": "private, no-store"},
+            )
 
         logger.debug(
             "Addon icon not found for uuid '%s'. Serving default world icon.", uuid
@@ -411,7 +425,9 @@ async def get_server_addon_icon(
         default_icon_path = os.path.join(STATIC_DIR, "image", "icon", "favicon.ico")
         if await aiofiles.ospath.isfile(default_icon_path):
             return FileResponse(
-                default_icon_path, media_type="image/vnd.microsoft.icon"
+                default_icon_path,
+                media_type="image/vnd.microsoft.icon",
+                headers={"Cache-Control": "private, no-store"},
             )
         else:
             raise HTTPException(

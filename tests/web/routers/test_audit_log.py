@@ -89,3 +89,43 @@ async def test_list_audit_logs_pagination(
     # Test invalid limit constraint (> 500)
     res_invalid = await admin_auth_client.get("/audit-log/list?limit=501")
     assert res_invalid.status_code == 422
+
+
+async def test_audit_pages_are_bounded_and_ties_have_stable_order(
+    admin_auth_client, app_context, test_admin_user
+):
+    from datetime import datetime, timezone
+
+    from sqlalchemy import delete
+
+    from bedrock_server_manager.db.models import AuditLog
+
+    stamp = datetime.now(timezone.utc)
+    async with app_context.storage.transaction() as session:
+        await session.execute(delete(AuditLog))
+        session.add_all(
+            [
+                AuditLog(
+                    timestamp=stamp,
+                    user_id=test_admin_user.id,
+                    action=f"event-{i}",
+                    details={},
+                )
+                for i in range(505)
+            ]
+        )
+    default = await admin_auth_client.get("/audit-log/list")
+    assert len(default.json()) == 100
+    first = (await admin_auth_client.get("/audit-log/list?limit=500&offset=0")).json()
+    last = (await admin_auth_client.get("/audit-log/list?limit=500&offset=500")).json()
+    assert len(first) == 500 and len(last) == 5
+    ids = [row["id"] for row in first + last]
+    assert len(set(ids)) == 505
+    assert ids == sorted(ids, reverse=True)
+    assert (
+        await admin_auth_client.get("/audit-log/list?limit=100&offset=505")
+    ).json() == []
+    for query in ("limit=0", "limit=501", "offset=-1"):
+        assert (
+            await admin_auth_client.get(f"/audit-log/list?{query}")
+        ).status_code == 422
