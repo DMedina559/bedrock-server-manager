@@ -1,11 +1,14 @@
 """Bounded history pages for the live application and server log viewers."""
 
-from fastapi import APIRouter, Depends, HTTPException, Query
+from fastapi import APIRouter, Depends, HTTPException, Query, Security
 
 from ...context import AppContext
 from ...error import InvalidServerNameError
 from ...utils.server import core_validate_server_name_format
-from ..deps import get_app_context, get_moderator_user
+from ..access_metadata import describe_access
+from ..access_policy import Permission
+from ..deps import get_app_context
+from ..deps.auth import require_permissions
 from ..log_streamer import LogHistoryPage
 from ..schemas import UserResponse
 
@@ -13,11 +16,16 @@ router = APIRouter(prefix="/api/logs", tags=["Logs"])
 
 
 @router.get("/history", response_model=LogHistoryPage, operation_id="get_log_history")
+@describe_access(
+    "permission", authentication="required", additional_checks=["application-log-admin"]
+)
 async def get_log_history(
     topic: str = Query(min_length=1, max_length=256),
     before: int | None = Query(default=None, ge=0),
     file_id: str | None = Query(default=None, max_length=64),
-    current_user: UserResponse = Depends(get_moderator_user),
+    current_user: UserResponse = Security(
+        require_permissions, scopes=[Permission.LOGS_READ]
+    ),
     app_context: AppContext = Depends(get_app_context),
 ) -> LogHistoryPage:
     if topic in ("app_log", "app_logs") and current_user.role != "admin":

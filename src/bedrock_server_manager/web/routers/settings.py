@@ -1,9 +1,8 @@
-# bedrock_server_manager/web/routers/settings.py
 """FastAPI router for managing global application settings."""
 
 import logging
 
-from fastapi import APIRouter, Depends, HTTPException, status
+from fastapi import APIRouter, Depends, HTTPException, Security, status
 
 from bedrock_server_manager.api.models import (
     GetAllGlobalSettingsRequest,
@@ -13,8 +12,13 @@ from bedrock_server_manager.api.models import (
 
 from ...api import settings as settings_api
 from ...context import AppContext
-from ..deps import get_admin_user, get_app_context
+from ..access_policy import Permission
+from ..deps import get_app_context
+from ..deps.auth import require_permissions
 from ..schemas import SettingItemPayload, SettingsResponse, UserResponse
+
+# bedrock_server_manager/web/routers/settings.py
+
 
 logger = logging.getLogger(__name__)
 
@@ -28,7 +32,9 @@ router = APIRouter(tags=["Application Settings"])
     response_model=SettingsResponse,
 )
 async def get_all_settings(
-    current_user: UserResponse = Depends(get_admin_user),
+    current_user: UserResponse = Security(
+        require_permissions, scopes=[Permission.SETTINGS_READ]
+    ),
     app_context: AppContext = Depends(get_app_context),
 ) -> SettingsResponse:
     """Return all global application settings."""
@@ -52,7 +58,9 @@ async def get_all_settings(
 )
 async def post_set_setting(
     payload: SettingItemPayload,
-    current_user: UserResponse = Depends(get_admin_user),
+    current_user: UserResponse = Security(
+        require_permissions, scopes=[Permission.SETTINGS_MANAGE]
+    ),
     app_context: AppContext = Depends(get_app_context),
 ) -> SettingsResponse:
     """Set a specific global application setting."""
@@ -86,7 +94,9 @@ async def post_set_setting(
     response_model=SettingsResponse,
 )
 async def put_reload_settings(
-    current_user: UserResponse = Depends(get_admin_user),
+    current_user: UserResponse = Security(
+        require_permissions, scopes=[Permission.SETTINGS_MANAGE]
+    ),
     app_context: AppContext = Depends(get_app_context),
 ) -> SettingsResponse:
     """

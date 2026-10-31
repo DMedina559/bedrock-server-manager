@@ -1,4 +1,3 @@
-# bedrock_server_manager/web/routers/register.py
 """
 FastAPI router for user registration management.
 
@@ -10,15 +9,21 @@ This module provides endpoints for:
 
 import logging
 
-from fastapi import APIRouter, Depends, HTTPException, Request
+from fastapi import APIRouter, Depends, HTTPException, Request, Security
 from fastapi.responses import JSONResponse
 
 from ...context import AppContext
+from ..access_metadata import describe_access
+from ..access_policy import Permission
 from ..auth import get_password_hash_async
-from ..deps import get_admin_user, get_app_context
+from ..deps import get_app_context
+from ..deps.auth import require_permissions
 from ..schemas import GenerateTokenPayload, UserLoginPayload
 from ..schemas import UserResponse as UserSchema
 from ..schemas.base import RegistrationResponse
+
+# bedrock_server_manager/web/routers/register.py
+
 
 logger = logging.getLogger(__name__)
 
@@ -33,7 +38,9 @@ router = APIRouter(prefix="/api/register", tags=["Registration"])
 async def generate_token(
     request: Request,
     data: GenerateTokenPayload,
-    current_user: UserSchema = Depends(get_admin_user),
+    current_user: UserSchema = Security(
+        require_permissions, scopes=[Permission.USERS_MANAGE]
+    ),
     app_context: AppContext = Depends(get_app_context),
 ) -> RegistrationResponse:
     """
@@ -61,6 +68,9 @@ async def generate_token(
     "/validate/{token}",
     operation_id="validate_registration_token",
 )
+@describe_access(
+    "custom", authentication="none", additional_checks=["registration-token"]
+)
 async def validate_token(
     token: str,
     app_context: AppContext = Depends(get_app_context),
@@ -75,6 +85,9 @@ async def validate_token(
 @router.post(
     "/{token}",
     operation_id="register_user",
+)
+@describe_access(
+    "custom", authentication="none", additional_checks=["registration-token"]
 )
 async def register_user(
     token: str,

@@ -1,6 +1,6 @@
 """Administrator scheduler configuration and status endpoints."""
 
-from fastapi import APIRouter, Depends, Response
+from fastapi import APIRouter, Depends, Response, Security
 
 from ...api import scheduler as api
 from ...api.models.common import SuccessResponse
@@ -14,10 +14,14 @@ from ...api.models.scheduler import (
 )
 from ...context import AppContext
 from ...state.settings import ScheduledTask
-from ..deps import get_admin_user, get_app_context
+from ..access_policy import Permission
+from ..deps import get_app_context
+from ..deps.auth import require_permissions
 
 router = APIRouter(
-    prefix="/api/scheduler", tags=["Scheduler"], dependencies=[Depends(get_admin_user)]
+    prefix="/api/scheduler",
+    tags=["Scheduler"],
+    dependencies=[Security(require_permissions, scopes=[Permission.SCHEDULER_MANAGE])],
 )
 
 

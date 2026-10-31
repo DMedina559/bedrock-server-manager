@@ -5,7 +5,7 @@ import logging
 import os
 
 import aiofiles.ospath
-from fastapi import APIRouter, Depends, HTTPException, Request, status
+from fastapi import APIRouter, Depends, HTTPException, Request, Security, status
 
 from bedrock_server_manager.api.models import GetSystemAndAppInfoRequest
 
@@ -18,7 +18,10 @@ from ...api.models.system import (
 )
 from ...context import AppContext
 from ...services.lifecycle import LifecyclePhase
-from ..deps import get_app_context, get_current_user
+from ..access_metadata import describe_access
+from ..access_policy import Permission
+from ..deps import get_app_context
+from ..deps.auth import require_permissions
 from ..runtime import WebRuntime
 from ..schemas import AppInfoResponse, ThemeListResponse, UserResponse
 from .runtime import require_health_access
@@ -34,6 +37,7 @@ router = APIRouter()
     tags=["Application"],
     response_model=AppInfoResponse,
 )
+@describe_access("public", authentication="none", additional_checks=[])
 async def get_system_info(
     app_context: AppContext = Depends(get_app_context),
 ) -> AppInfoResponse:
@@ -65,6 +69,7 @@ async def get_system_info(
     tags=["Appearance"],
     response_model=ThemeListResponse,
 )
+@describe_access("public", authentication="none", additional_checks=[])
 async def get_themes(
     app_context: AppContext = Depends(get_app_context),
 ) -> ThemeListResponse:
@@ -109,7 +114,9 @@ async def get_themes(
     response_model=GetApplicationMetricsResponse,
 )
 async def get_application_metrics(
-    current_user: UserResponse = Depends(get_current_user),
+    current_user: UserResponse = Security(
+        require_permissions, scopes=[Permission.RUNTIME_METRICS]
+    ),
     app_context: AppContext = Depends(get_app_context),
 ) -> GetApplicationMetricsResponse:
     """Authenticated application and host performance observations."""
@@ -124,6 +131,11 @@ async def get_application_metrics(
     tags=["Application"],
     response_model=GetApplicationHealthResponse,
     dependencies=[Depends(require_health_access)],
+)
+@describe_access(
+    "custom",
+    authentication="required",
+    additional_checks=["local-readiness-or-account", "local-readiness-peer"],
 )
 async def get_application_health(
     request: Request,

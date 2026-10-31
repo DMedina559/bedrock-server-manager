@@ -3,7 +3,7 @@ import os
 
 import aiofiles.ospath
 import bsm_frontend
-from fastapi import APIRouter, Depends, HTTPException, status
+from fastapi import APIRouter, Depends, HTTPException, Security, status
 from fastapi.responses import FileResponse
 
 from bedrock_server_manager.api.models import (
@@ -20,12 +20,10 @@ from ...error import (
     AppFileNotFoundError,
 )
 from ...logging import log_operation_error
-from ..deps import (
-    get_admin_user,
-    get_app_context,
-    get_moderator_user,
-    validate_server_exists,
-)
+from ..access_metadata import describe_access
+from ..access_policy import Permission
+from ..deps import get_app_context, validate_server_exists
+from ..deps.auth import require_permissions
 from ..schemas import ContentListResponse, FileNamePayload, UserResponse
 from ..schemas.base import TaskAcceptedResponse
 
@@ -42,7 +40,9 @@ STATIC_DIR = bsm_frontend.get_static_dir()
     response_model=ContentListResponse,
 )
 async def get_worlds_list(
-    current_user: UserResponse = Depends(get_moderator_user),
+    current_user: UserResponse = Security(
+        require_permissions, scopes=[Permission.CONTENT_READ]
+    ),
     app_context: AppContext = Depends(get_app_context),
 ) -> ContentListResponse:
     """Return a list of available .mcworld template files."""
@@ -67,7 +67,9 @@ async def get_worlds_list(
 async def post_world_install(
     payload: FileNamePayload,
     server_name: str = Depends(validate_server_exists),
-    current_user: UserResponse = Depends(get_admin_user),
+    current_user: UserResponse = Security(
+        require_permissions, scopes=[Permission.CONTENT_MANAGE]
+    ),
     app_context: AppContext = Depends(get_app_context),
 ) -> TaskAcceptedResponse:
     """
@@ -136,7 +138,9 @@ async def post_world_install(
 )
 async def post_world_export(
     server_name: str = Depends(validate_server_exists),
-    current_user: UserResponse = Depends(get_admin_user),
+    current_user: UserResponse = Security(
+        require_permissions, scopes=[Permission.CONTENT_MANAGE]
+    ),
     app_context: AppContext = Depends(get_app_context),
 ) -> TaskAcceptedResponse:
     """
@@ -167,7 +171,9 @@ async def post_world_export(
 )
 async def delete_world_reset(
     server_name: str = Depends(validate_server_exists),
-    current_user: UserResponse = Depends(get_admin_user),
+    current_user: UserResponse = Security(
+        require_permissions, scopes=[Permission.CONTENT_MANAGE]
+    ),
     app_context: AppContext = Depends(get_app_context),
 ) -> TaskAcceptedResponse:
     """
@@ -195,6 +201,7 @@ async def delete_world_reset(
     operation_id="get_world_icon",
     response_class=FileResponse,
 )
+@describe_access("public", authentication="none", additional_checks=[])
 async def get_world_icon(
     server_name: str = Depends(validate_server_exists),
     app_context: AppContext = Depends(get_app_context),

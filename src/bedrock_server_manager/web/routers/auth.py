@@ -1,4 +1,3 @@
-# bedrock_server_manager/web/routers/auth.py
 """FastAPI router for user authentication and session management."""
 
 import datetime
@@ -10,6 +9,7 @@ from fastapi.responses import JSONResponse
 from fastapi.security import OAuth2PasswordRequestForm
 
 from ...context import AppContext
+from ..access_metadata import describe_access
 from ..auth import (
     authenticate_user,
     create_access_token,
@@ -17,6 +17,9 @@ from ..auth import (
 from ..cookies import clear_session_cookie, set_session_cookie
 from ..deps import get_app_context, get_current_user
 from ..schemas import TokenResponse, UserResponse
+
+# bedrock_server_manager/web/routers/auth.py
+
 
 logger = logging.getLogger(__name__)
 
@@ -29,6 +32,7 @@ router = APIRouter(prefix="/auth", tags=["Authentication"])
     operation_id="login",
     response_model=TokenResponse,
 )
+@describe_access("public", authentication="none", additional_checks=[])
 async def api_login_for_access_token(
     request: Request,
     response: Response,

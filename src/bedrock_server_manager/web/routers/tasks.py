@@ -1,9 +1,12 @@
 # bedrock_server_manager/web/routers/tasks.py
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends, HTTPException, Security
 
 from ...api.models.tasks import TaskSnapshot
 from ...context import AppContext
-from ..deps import get_app_context, get_current_user
+from ..access_metadata import describe_access
+from ..access_policy import Permission
+from ..deps import get_app_context
+from ..deps.auth import require_permissions
 from ..schemas import UserResponse
 
 router = APIRouter(tags=["Background Tasks"])
@@ -14,9 +17,14 @@ router = APIRouter(tags=["Background Tasks"])
     operation_id="get_task_status",
     response_model=TaskSnapshot,
 )
+@describe_access(
+    "permission", authentication="required", additional_checks=["task-owner"]
+)
 async def get_task_status(
     task_id: str,
-    current_user: UserResponse = Depends(get_current_user),
+    current_user: UserResponse = Security(
+        require_permissions, scopes=[Permission.TASKS_READ]
+    ),
     app_context: AppContext = Depends(get_app_context),
 ) -> TaskSnapshot:
     """Return the status of a background task."""
@@ -33,8 +41,13 @@ async def get_task_status(
     operation_id="list_tasks",
     response_model=list[TaskSnapshot],
 )
+@describe_access(
+    "permission", authentication="required", additional_checks=["task-owner"]
+)
 async def list_tasks(
-    current_user: UserResponse = Depends(get_current_user),
+    current_user: UserResponse = Security(
+        require_permissions, scopes=[Permission.TASKS_READ]
+    ),
     app_context: AppContext = Depends(get_app_context),
 ) -> list[TaskSnapshot]:
     """Return all background tasks."""

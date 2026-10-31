@@ -1,4 +1,4 @@
-from fastapi import APIRouter, Depends
+from fastapi import APIRouter, Depends, Security
 
 from bedrock_server_manager.api.models import (
     AddServerBanRequest,
@@ -13,12 +13,17 @@ from ...api.ban import add_server_ban
 from ...api.ban import get_server_bans as get_server_bans_api
 from ...api.ban import remove_server_ban
 from ...context import AppContext
-from ..deps import get_admin_user, get_app_context, validate_server_exists
+from ..access_policy import Permission
+from ..deps import get_app_context, validate_server_exists
+from ..deps.auth import require_permissions
 from ..schemas.ban import BanAddRequest, BanRemoveRequest
 
 router = APIRouter(
     prefix="/api/server/{server_name}/bans",
-    dependencies=[Depends(get_admin_user), Depends(validate_server_exists)],
+    dependencies=[
+        Security(require_permissions, scopes=[Permission.BANS_MANAGE]),
+        Depends(validate_server_exists),
+    ],
     tags=["Server Access"],
 )
 
