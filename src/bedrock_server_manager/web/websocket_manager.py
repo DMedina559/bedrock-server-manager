@@ -6,7 +6,7 @@ import time
 import uuid
 from collections import Counter
 from dataclasses import dataclass, field
-from typing import Any, Callable, Dict, List, Optional
+from typing import Any, Awaitable, Callable, Dict, List, Optional
 
 from fastapi import WebSocket, WebSocketDisconnect
 
@@ -14,6 +14,7 @@ from ..contracts import DeliveryResult
 from ..diagnostics.models import TransportDiagnostics
 from ..logging import log_operation_error
 from ..state.models import UserInfoState
+from .authorization import Authorization
 from .schemas import UserResponse
 from .schemas.websocket import json_payload
 
@@ -29,6 +30,8 @@ class Client:
     websocket: WebSocket
     send_lock: asyncio.Lock = field(default_factory=asyncio.Lock)
     pending_sends: int = 0
+    authorization: Authorization | None = None
+    policy_revision: str = ""
 
 
 @dataclass
@@ -47,11 +50,21 @@ class ConnectionManager:
         user_provider: Callable[[str], UserInfoState | None] | None = None,
         *,
         outbound_queue_limit: int = 64,
+        authorization_resolver: (
+            Callable[..., Awaitable[Authorization | None]] | None
+        ) = None,
+        topic_authorizer: Callable[..., Awaitable[bool]] | None = None,
+        message_filter: Callable[..., Awaitable[Any]] | None = None,
+        policy_revision_provider: Callable[[], str] | None = None,
         record_failure: Callable[[str, BaseException | None], None] | None = None,
     ) -> None:
         if not 1 <= outbound_queue_limit <= 10000:
             raise ValueError("WebSocket queue limit must be between 1 and 10000")
         self.user_provider = user_provider
+        self.authorization_resolver = authorization_resolver
+        self.topic_authorizer = topic_authorizer
+        self.message_filter = message_filter
+        self.policy_revision_provider = policy_revision_provider or (lambda: "")
         self.outbound_queue_limit = outbound_queue_limit
         self.record_failure = record_failure
         self.pending_sends = 0
@@ -73,11 +86,23 @@ class ConnectionManager:
         # Maps a topic to a registered DataProvider
         self.data_providers: Dict[str, DataProvider] = {}
 
-    async def connect(self, websocket: WebSocket, user: UserResponse) -> str:
+    async def connect(
+        self,
+        websocket: WebSocket,
+        user: UserResponse,
+        *,
+        authorization: Authorization | None = None,
+    ) -> str:
         """Accepts a new WebSocket connection, tracks it, and returns the client ID."""
         # Connection is accepted in the router
         client_id = f"{user.username}:{uuid.uuid4()}"
-        client = Client(id=client_id, user=user, websocket=websocket)
+        client = Client(
+            id=client_id,
+            user=user,
+            websocket=websocket,
+            authorization=authorization,
+            policy_revision=self.policy_revision_provider(),
+        )
         self.active_connections[client_id] = client
         logger.debug("New client connected: %s for user '%s'", client_id, user.username)
         return client_id
@@ -101,25 +126,48 @@ class ConnectionManager:
 
             logger.debug("Client disconnected: %s", client_id)
 
-    async def revoke_user(self, username: str) -> None:
-        for client in list(self.active_connections.values()):
-            if client.user.username == username:
+    async def _authorization_changed(self, client) -> None:
+        try:
+            if client.authorization is not None:
                 try:
                     await asyncio.wait_for(
-                        client.websocket.close(
-                            code=1008, reason="Account authorization changed"
+                        client.websocket.send_text(
+                            json.dumps({"type": "access_changed"})
                         ),
                         timeout=self.io_timeout,
                     )
                 except Exception:
-                    logger.exception("Could not close revoked connection %s", client.id)
-                finally:
-                    await self.disconnect(client.id, reason="authorization_changed")
+                    logger.debug(
+                        "Authorization notification was not delivered", exc_info=True
+                    )
+            await asyncio.wait_for(
+                client.websocket.close(
+                    code=1008, reason="Account or credential authorization changed"
+                ),
+                timeout=self.io_timeout,
+            )
+        except Exception:
+            logger.exception("Could not close revoked connection %s", client.id)
+        finally:
+            await self.disconnect(client.id, reason="authorization_changed")
+
+    async def revoke_user(self, username: str) -> None:
+        for client in list(self.active_connections.values()):
+            if client.user.username == username:
+                await self._authorization_changed(client)
 
     async def refresh_authorization(self, client_id: str) -> bool:
         client = self.active_connections.get(client_id)
         if client is None:
             return False
+        if client.authorization is not None and self.authorization_resolver is not None:
+            refreshed = await self.authorization_resolver(
+                client.user, client.authorization.token_id
+            )
+            if refreshed is None or refreshed.owner_id != client.authorization.owner_id:
+                await self._authorization_changed(client)
+                return False
+            client.authorization = refreshed
         if self.user_provider is None:
             return True
         user = self.user_provider(client.user.username)
@@ -133,6 +181,16 @@ class ConnectionManager:
             return False
         client.user = UserResponse.model_validate(user, from_attributes=True)
         return True
+
+    async def can_access_topic(self, client_id: str, topic: str) -> bool:
+        if not await self.refresh_authorization(client_id):
+            return False
+        client = self.active_connections.get(client_id)
+        return client is not None and (
+            client.authorization is None
+            or self.topic_authorizer is None
+            or await self.topic_authorizer(client.authorization, topic)
+        )
 
     async def subscribe(self, client_id: str, topic: str):
         """Subscribes a client to a given topic."""
@@ -266,6 +324,11 @@ class ConnectionManager:
         client = self.active_connections.get(client_id)
         if client is None:
             return DeliveryResult(targeted=1, unavailable=1)
+        if client.authorization is not None and self.message_filter is not None:
+            data = await self.message_filter(client.authorization, data)
+            if data is None:
+                return DeliveryResult(targeted=1, unavailable=1)
+            encoded = json.dumps(json_payload(data).value, allow_nan=False)
         if client.pending_sends >= self.outbound_queue_limit:
             self.dropped_messages += 1
             if self.record_failure is not None:
@@ -286,6 +349,26 @@ class ConnectionManager:
                         return DeliveryResult(targeted=1, unavailable=1)
                     self.active_sends += 1
                     try:
+                        if (
+                            client.authorization is not None
+                            and self.message_filter is not None
+                        ):
+                            permitted = await self.message_filter(
+                                client.authorization, data
+                            )
+                            if permitted is None:
+                                return DeliveryResult(targeted=1, unavailable=1)
+                        revision = self.policy_revision_provider()
+                        if client.policy_revision != revision:
+                            await client.websocket.send_text(
+                                json.dumps(
+                                    {
+                                        "type": "policy_changed",
+                                        "policy_revision": revision,
+                                    }
+                                )
+                            )
+                            client.policy_revision = revision
                         await client.websocket.send_text(encoded)
                     finally:
                         self.active_sends -= 1

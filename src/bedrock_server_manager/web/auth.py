@@ -60,6 +60,13 @@ async def create_access_token(
     An omitted lifetime uses ``web.token_expires_weeks`` from application settings.
     """
     to_encode = data.copy()
+    if isinstance(to_encode.get("sub"), str):
+        async with app_context.storage.transaction() as session:
+            owner = await app_context.storage.user_repo.get_user_by_username(
+                session, to_encode["sub"]
+            )
+            if owner is not None:
+                to_encode["aid"] = owner.access_id
 
     settings = app_context.settings
 
@@ -127,6 +134,13 @@ async def _get_user_from_token(
         JWT_SECRET_KEY = await get_jwt_secret_key(settings)
         payload = jwt.decode(token, JWT_SECRET_KEY, algorithms=[ALGORITHM])
         username: Optional[str] = payload.get("sub")
+        if payload.get("aid") is not None and username:
+            async with app_context.storage.transaction() as session:
+                owner = await app_context.storage.user_repo.get_user_by_username(
+                    session, username
+                )
+                if owner is None or owner.access_id != payload["aid"]:
+                    return None
         if username is None:
             return None
 

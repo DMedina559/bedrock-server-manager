@@ -24,6 +24,17 @@ async def add_user_to_request(request: Request, call_next):
     # 2. Normal auth lookup for API and Page requests
     user = await get_current_user_optional(request)
     request.state.current_user = user
+    request.state.authentication_resolved = True
+    from ..authorization import current_authorization, operation_permissions
 
-    response = await call_next(request)
-    return response
+    authorization = getattr(request.state, "authorization", None)
+    ticket = current_authorization.set(authorization)
+    permission_ticket = operation_permissions.set(frozenset())
+    try:
+        response = await call_next(request)
+        if authorization is not None:
+            response.headers["X-BSM-Policy-Revision"] = authorization.revision
+        return response
+    finally:
+        current_authorization.reset(ticket)
+        operation_permissions.reset(permission_ticket)

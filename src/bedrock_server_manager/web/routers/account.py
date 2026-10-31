@@ -41,8 +41,27 @@ async def get_account_api(
     ),
 ) -> CurrentAccountResponse:
     """Return the current user's account details and role-derived permissions."""
+    authorization = getattr(request.state, "authorization", None)
+    if authorization is None:
+        return CurrentAccountResponse(
+            **user.model_dump(),
+            permissions=sorted(policy_for(request).resolve(user.role)),
+        )
     return CurrentAccountResponse(
-        **user.model_dump(), permissions=sorted(policy_for(request).resolve(user.role))
+        **user.model_dump(),
+        permissions=sorted(authorization.permissions),
+        policy_revision=authorization.revision,
+        server_access="assigned" if authorization.resource_restricted else "all",
+        credential_id=authorization.token_id,
+        server_permissions={
+            identity: sorted(
+                permission
+                for permission in authorization.permissions
+                if authorization.allows(permission, name)
+            )
+            for name, identity in authorization.servers.items()
+            if authorization.allows("servers:read", name)
+        },
     )
 
 
@@ -140,4 +159,9 @@ async def get_account_permissions(
     ),
 ) -> list[str]:
     """Return current role-derived capabilities, not resource-specific guarantees."""
-    return sorted(policy_for(request).resolve(user.role))
+    authorization = getattr(request.state, "authorization", None)
+    return sorted(
+        authorization.permissions
+        if authorization is not None
+        else policy_for(request).resolve(user.role)
+    )

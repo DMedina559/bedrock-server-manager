@@ -38,6 +38,10 @@ _current_task_id: ContextVar[str | None] = ContextVar("managed_task_id", default
 
 class TaskRecord(TaskState, StateRevision):
     username: str | None = None
+    access_server_id: str | None = None
+    access_token_id: str | None = None
+    access_owner_id: str | None = None
+    access_permissions: list[str] = []
 
     def __getitem__(self, key: str) -> Any:
         """Preserve read access for existing task-manager consumers."""
@@ -262,10 +266,28 @@ class TaskManager:
         if _plugin_owner in self._blocked_plugins:
             raise RuntimeError("Cannot submit work for an unloading plugin.")
 
+        from ..web.authorization import current_authorization, operation_permissions
+
+        authorization = current_authorization.get()
+        resource_name = getattr(
+            kwargs.get("request"), "server_name", None
+        ) or kwargs.get("server_name")
+        resource_id = None
+        if authorization and isinstance(resource_name, str):
+            resource_id = authorization.servers.get(resource_name)
+            context = kwargs.get("app_context")
+            if resource_id is None and context is not None:
+                resource_id = await context.access_service.server_identity(
+                    resource_name
+                )
         candidate = TaskRecord(
             status="queued",
             message="Task is queued.",
             username=username,
+            access_server_id=resource_id,
+            access_token_id=authorization.token_id if authorization else None,
+            access_owner_id=authorization.owner_id if authorization else None,
+            access_permissions=sorted(operation_permissions.get()),
             **revision_clock.capture(),
         )
         task_id = str(uuid.uuid4())

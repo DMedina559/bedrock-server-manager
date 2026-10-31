@@ -54,7 +54,7 @@ def create_web_app(
     app.state.access_policy = getattr(
         app_context.plugin_manager, "access_policy", AccessPolicy()
     )
-    app.state.access_policy.changed = lambda: setattr(app, "openapi_schema", None)
+    app.state.access_policy.bind_schema(app)
     validate_core_access(app, app.state.access_policy)
     configure_access_schema(app, app.state.access_policy)
     configure_swagger(app)

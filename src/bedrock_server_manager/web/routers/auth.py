@@ -14,6 +14,7 @@ from ..auth import (
     authenticate_user,
     create_access_token,
 )
+from ..authorization import assigned_session
 from ..cookies import clear_session_cookie, set_session_cookie
 from ..deps import get_app_context, get_current_user
 from ..schemas import TokenResponse, UserResponse
@@ -95,6 +96,7 @@ async def api_login_for_access_token(
     operation_id="reauthenticate",
     response_model=TokenResponse,
 )
+@assigned_session
 async def reauth(
     request: Request,
     response: Response,
@@ -162,6 +164,7 @@ async def reauth(
 
 # --- Logout Route ---
 @router.get("/logout", operation_id="logout")
+@assigned_session
 async def logout(
     request: Request,
     current_user: UserResponse = Depends(get_current_user),

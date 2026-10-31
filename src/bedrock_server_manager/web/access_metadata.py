@@ -5,6 +5,7 @@ from fastapi.openapi.utils import get_openapi
 from fastapi.routing import APIRoute
 
 from .access_policy import ROLE_GRANTS, AccessPolicy
+from .authorization import NON_DELEGATABLE
 from .deps.auth import (
     get_admin_user,
     get_current_user,
@@ -100,6 +101,21 @@ def access_for(route: APIRoute, policy: AccessPolicy) -> dict:
         "additional_checks": [],
     }
     metadata.update(getattr(route.endpoint, "__bsm_access__", {}))
+    metadata["integration_tokens"] = (
+        "supported"
+        if (require_permissions in calls and not (set(required) & NON_DELEGATABLE))
+        or getattr(route.endpoint, "__bsm_token_policy__", False)
+        else "unsupported"
+    )
+    metadata["resource_scope"] = (
+        "server"
+        if "server_name" in route.param_convertors
+        else (
+            "collection"
+            if getattr(route.endpoint, "__bsm_server_collection__", False)
+            else "global"
+        )
+    )
     return metadata
 
 
@@ -125,7 +141,15 @@ def configure_access_schema(app: FastAPI, policy: AccessPolicy) -> None:
                 operation["x-bsm-access"] = metadata
                 # Cookie credentials authorize the same capabilities, but API keys
                 # cannot carry OAuth scopes. Preserve all alternative schemes.
+                if metadata["integration_tokens"] == "unsupported":
+                    operation["security"] = [
+                        alternative
+                        for alternative in operation.get("security", [])
+                        if "IntegrationToken" not in alternative
+                    ]
                 for alternative in operation.get("security", []):
+                    if "IntegrationToken" in alternative:
+                        alternative["IntegrationToken"] = []
                     if "APIKeyCookie" in alternative:
                         alternative["APIKeyCookie"] = []
         schemes = document.get("components", {}).get("securitySchemes", {})

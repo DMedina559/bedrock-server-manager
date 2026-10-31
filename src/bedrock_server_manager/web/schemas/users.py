@@ -22,6 +22,10 @@ class CurrentAccountResponse(UserResponse):
     """Current account with sorted role-derived HTTP capabilities."""
 
     permissions: list[str] = Field(default_factory=list)
+    policy_revision: str | None = None
+    server_access: str = "all"
+    credential_id: str | None = None
+    server_permissions: dict[str, list[str]] = Field(default_factory=dict)
 
 
 class UpdateUserRolePayload(APIRequest):

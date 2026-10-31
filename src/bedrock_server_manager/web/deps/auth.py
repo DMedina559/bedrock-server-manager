@@ -1,8 +1,13 @@
 import logging
-from typing import Optional
+from typing import Optional, cast
 
 from fastapi import Depends, HTTPException, Request, Security, status
-from fastapi.security import APIKeyCookie, OAuth2PasswordBearer, SecurityScopes
+from fastapi.security import (
+    APIKeyCookie,
+    HTTPBearer,
+    OAuth2PasswordBearer,
+    SecurityScopes,
+)
 
 from .. import auth as auth_utils
 from ..access_policy import CORE_DESCRIPTIONS, policy_for
@@ -14,14 +19,22 @@ oauth2_scheme = OAuth2PasswordBearer(
     tokenUrl="auth/token", scopes=dict(CORE_DESCRIPTIONS), auto_error=False
 )
 cookie_scheme = APIKeyCookie(name="access_token_cookie", auto_error=False)
+integration_scheme = HTTPBearer(
+    scheme_name="IntegrationToken",
+    description="Named integration credential, supplied as Bearer bsm_it_...",
+    auto_error=False,
+)
 
 
 async def get_current_user_optional(
     request: Request,
     token_bearer: Optional[str] = Depends(oauth2_scheme),
     token_cookie: Optional[str] = Depends(cookie_scheme),
+    token_integration=Depends(integration_scheme),
 ) -> Optional[UserResponse]:
     """Resolve a user from bearer or cookie credentials, or return ``None``."""
+    if getattr(request.state, "authentication_resolved", False):
+        return cast(Optional[UserResponse], request.state.current_user)
     if hasattr(token_bearer, "dependency"):
         auth_header = request.headers.get("Authorization")
         if auth_header:
@@ -57,10 +70,24 @@ async def get_current_user_optional(
         return None
 
     app_context = request.app.state.app_context
-    return await auth_utils._get_user_from_token(app_context, token)
+    if token.startswith("bsm_it_"):
+        if request.state.credential_source != "bearer":
+            return None
+        result = await app_context.access_service.authenticate(token)
+        if result is None:
+            return None
+        user, authorization = result
+    else:
+        user = await auth_utils._get_user_from_token(app_context, token)
+        authorization = (
+            await app_context.access_service.snapshot(user) if user else None
+        )
+    request.state.authorization = authorization
+    return user if authorization is not None else None
 
 
 async def get_current_user(
+    request: Request,
     user: Optional[UserResponse] = Security(get_current_user_optional),
 ) -> UserResponse:
     """Require an authenticated user; otherwise respond with HTTP 401."""
@@ -70,6 +97,22 @@ async def get_current_user(
             detail="Not authenticated",
             headers={"WWW-Authenticate": "Bearer"},
         )
+    authorization = getattr(request.state, "authorization", None)
+    if authorization is not None and authorization.restricted:
+        from ..access_metadata import dependency_tree
+
+        route = request.scope.get("route")
+        permission_aware = route is not None and any(
+            node.call is require_permissions
+            for node in dependency_tree(route.dependant)
+        )
+        session_exception = authorization.token_id is None and getattr(
+            getattr(route, "endpoint", None), "__bsm_assigned_session__", False
+        )
+        if not permission_aware and not session_exception:
+            raise HTTPException(
+                403, "This operation does not support restricted credentials"
+            )
     return user
 
 
@@ -105,6 +148,23 @@ async def require_permissions(
     """Require all declared scopes against the account's current role."""
     required = set(security_scopes.scopes)
     policy = policy_for(request)
+    authorization = getattr(request.state, "authorization", None)
+    if authorization is not None:
+        route = request.scope.get("route")
+        collection = getattr(
+            getattr(route, "endpoint", None), "__bsm_server_collection__", False
+        )
+        server_name = request.path_params.get("server_name")
+        permitted = all(
+            (
+                scope in authorization.permissions
+                if collection
+                else authorization.allows(scope, server_name)
+            )
+            for scope in required
+        )
+        if not permitted:
+            raise HTTPException(403, "Permission denied for this credential or server")
     # Fail closed even for admin when a plugin has been unloaded.
     if not required <= policy.descriptions.keys() or not required <= policy.resolve(
         user.role
@@ -120,4 +180,7 @@ async def require_permissions(
             detail="You do not have permission to access this resource.",
             headers=headers,
         )
+    from ..authorization import operation_permissions
+
+    operation_permissions.set(operation_permissions.get() | frozenset(required))
     return user

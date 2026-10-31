@@ -5,9 +5,14 @@ from dataclasses import dataclass
 from enum import StrEnum
 from types import MappingProxyType
 from typing import Callable, cast
+from uuid import uuid4
+from weakref import WeakSet
 
 
 class Permission(StrEnum):
+    HEALTH_READ = "health:read"
+    TOKENS_MANAGE = "tokens:manage"
+    ACCESS_MANAGE = "access:manage"
     ACCOUNT_READ = "account:read"
     ACCOUNT_MANAGE = "account:manage"
     SERVERS_READ = "servers:read"
@@ -54,6 +59,9 @@ class Permission(StrEnum):
 
 CORE_DESCRIPTIONS = MappingProxyType(
     {
+        "health:read": "Read application readiness",
+        "tokens:manage": "Manage your integration credentials",
+        "access:manage": "Manage account server access",
         "account:read": "Account read",
         "account:manage": "Account manage",
         "servers:read": "Servers read",
@@ -103,6 +111,8 @@ ROLE_GRANTS = MappingProxyType(
     {
         "user": frozenset(
             [
+                "health:read",
+                "tokens:manage",
                 "account:read",
                 "account:manage",
                 "servers:read",
@@ -113,6 +123,8 @@ ROLE_GRANTS = MappingProxyType(
         ),
         "moderator": frozenset(
             [
+                "health:read",
+                "tokens:manage",
                 "account:read",
                 "account:manage",
                 "servers:read",
@@ -139,6 +151,8 @@ ROLE_GRANTS = MappingProxyType(
         ),
         "admin": frozenset(
             [
+                "health:read",
+                "tokens:manage",
                 "account:read",
                 "account:manage",
                 "servers:read",
@@ -180,6 +194,7 @@ ROLE_GRANTS = MappingProxyType(
                 "runtime:read",
                 "runtime:shutdown",
                 "bans:read",
+                "access:manage",
                 "bans:manage",
             ]
         ),
@@ -199,7 +214,23 @@ class AccessPolicy:
 
     def __init__(self, changed: Callable[[], None] | None = None):
         self._plugins: dict[str, PluginPermission] = {}
+        self._epoch = uuid4().hex
+        self._revision = 0
+        self._schema_owners: WeakSet = WeakSet()
         self.changed = changed or (lambda: None)
+
+    @property
+    def revision(self) -> str:
+        return f"{self._epoch}:{self._revision}"
+
+    def bind_schema(self, app) -> None:
+        self._schema_owners.add(app)
+
+    def touch(self) -> None:
+        self._revision += 1
+        for app in self._schema_owners:
+            app.openapi_schema = None
+        self.changed()
 
     @property
     def descriptions(self) -> dict[str, str]:
@@ -233,14 +264,14 @@ class AccessPolicy:
         if permission in self.descriptions:
             raise ValueError(f"Permission already registered: {permission}")
         self._plugins[permission] = PluginPermission(owner, description, grants)
-        self.changed()
+        self.touch()
 
     def remove_owner(self, owner: str) -> None:
         removed = [key for key, value in self._plugins.items() if value.owner == owner]
         for key in removed:
             del self._plugins[key]
         if removed:
-            self.changed()
+            self.touch()
 
 
 def policy_for(request) -> AccessPolicy:

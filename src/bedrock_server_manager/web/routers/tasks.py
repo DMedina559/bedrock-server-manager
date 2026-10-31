@@ -5,6 +5,7 @@ from ...api.models.tasks import TaskSnapshot
 from ...context import AppContext
 from ..access_metadata import describe_access
 from ..access_policy import Permission
+from ..authorization import current_authorization
 from ..deps import get_app_context
 from ..deps.auth import require_permissions
 from ..schemas import UserResponse
@@ -31,6 +32,13 @@ async def get_task_status(
     task = await app_context.task_manager.get_task(
         task_id, username=current_user.username
     )
+    authorization = current_authorization.get()
+    if (
+        task
+        and authorization is not None
+        and not await app_context.access_service.task_allowed(authorization, task_id)
+    ):
+        task = None
     if not task:
         raise HTTPException(status_code=404, detail="Task not found")
     return task
@@ -52,4 +60,11 @@ async def list_tasks(
 ) -> list[TaskSnapshot]:
     """Return all background tasks."""
     tasks = await app_context.task_manager.get_all_tasks(username=current_user.username)
-    return list(tasks.values())
+    authorization = current_authorization.get()
+    if authorization is None:
+        return list(tasks.values())
+    return [
+        task
+        for identifier, task in tasks.items()
+        if await app_context.access_service.task_allowed(authorization, identifier)
+    ]

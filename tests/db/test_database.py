@@ -100,3 +100,51 @@ def test_migration_urls_select_declared_sync_drivers():
         actual = Database(source)._get_sync_db_url()
         assert actual == expected
         assert not make_url(actual).get_dialect().is_async
+
+
+def test_access_migration_preserves_accounts_servers_and_identity(tmp_path):
+    """Upgrade populated databases, reopen idempotently, and support downgrade."""
+    from pathlib import Path
+
+    from alembic import command
+    from alembic.config import Config
+    from sqlalchemy import create_engine
+
+    import bedrock_server_manager.db.database as database_module
+
+    config = Config(str(Path(database_module.__file__).parent / "alembic.ini"))
+    config.set_main_option("skip_logging_config", "true")
+    engine = create_engine(f"sqlite:///{tmp_path / 'access-migration.db'}")
+    with engine.begin() as connection:
+        config.attributes["connection"] = connection
+        command.upgrade(config, "f72c401a908b")
+        connection.execute(
+            text(
+                "INSERT INTO users (username, hashed_password, role, is_active) VALUES ('existing', 'hash', 'user', 1)"
+            )
+        )
+        connection.execute(
+            text("INSERT INTO servers (server_name) VALUES ('existing-server')")
+        )
+        command.upgrade(config, "head")
+        identity = connection.execute(text("SELECT access_id FROM users")).scalar_one()
+        assert len(identity) == 32
+        assert (
+            len(connection.execute(text("SELECT access_id FROM servers")).scalar_one())
+            == 32
+        )
+        command.upgrade(config, "head")
+        assert (
+            connection.execute(text("SELECT access_id FROM users")).scalar_one()
+            == identity
+        )
+        command.downgrade(config, "f72c401a908b")
+        assert (
+            connection.execute(text("SELECT username FROM users")).scalar_one()
+            == "existing"
+        )
+        assert (
+            connection.execute(text("SELECT server_name FROM servers")).scalar_one()
+            == "existing-server"
+        )
+    engine.dispose()

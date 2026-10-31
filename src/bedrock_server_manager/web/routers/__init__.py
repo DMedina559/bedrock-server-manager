@@ -2,6 +2,7 @@
 Web routers package.
 """
 
+from .access import router as access_router
 from .account import router as account_router
 from .addon import router as addon_router
 from .allowlist import router as allowlist_router
@@ -33,6 +34,7 @@ from .websocket import router as websocket_router
 from .world import router as world_router
 
 all_routers = [
+    access_router,
     scheduler_router,
     diagnostics_router,
     runtime_router,
@@ -65,6 +67,7 @@ all_routers = [
 ]
 
 __all__ = [
+    "access_router",
     "account_router",
     "addon_router",
     "all_routers",

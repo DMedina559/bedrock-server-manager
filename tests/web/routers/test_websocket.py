@@ -169,7 +169,7 @@ async def test_task_subscription_does_not_replay_another_users_snapshot(
         await socket.send(
             json.dumps({"action": "subscribe", "topic": f"task:{task_id}"})
         )
-        assert json.loads(await socket.recv())["status"] == "success"
+        assert json.loads(await socket.recv())["status"] == "error"
         await socket.send(json.dumps({"action": "subscribe", "topic": "next"}))
         async with asyncio.timeout(5):
             assert "next" in json.loads(await socket.recv())["message"]

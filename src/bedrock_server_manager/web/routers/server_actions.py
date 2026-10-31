@@ -29,6 +29,7 @@ from ...api.models import (
 )
 from ...context import AppContext
 from ..access_policy import Permission
+from ..authorization import current_authorization, server_collection
 from ..deps import get_app_context, validate_server_exists
 from ..deps.auth import require_permissions
 from ..deps.server import validate_server_registered
@@ -368,6 +369,7 @@ async def get_server_process_info(
     tags=["Server Management"],
     response_model=ServersListResponse,
 )
+@server_collection
 async def get_servers_list(
     current_user: UserResponse = Security(
         require_permissions, scopes=[Permission.SERVERS_READ]
@@ -380,11 +382,22 @@ async def get_servers_list(
     result = await app_api.get_all_servers_data(
         request=GetAllServersDataRequest(), app_context=app_context
     )
+    authorization = current_authorization.get()
     return ServersListResponse(
         status=result.status,
-        errors=result.errors,
+        errors=[
+            error
+            for error in result.errors
+            if authorization is None
+            or authorization.allows("servers:read", error.resource)
+        ],
         message=result.message,
-        servers=result.servers,
+        servers=[
+            server
+            for server in result.servers
+            if authorization is None
+            or authorization.allows("servers:read", server.name)
+        ],
         epoch=result.epoch,
         revision=result.revision,
     )

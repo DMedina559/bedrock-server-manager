@@ -50,6 +50,7 @@ def configure_middleware(
         "allow_credentials": True,
         "allow_methods": ["*"],
         "allow_headers": ["*"],
+        "expose_headers": ["X-BSM-Policy-Revision"],
     }
 
     if allow_all_origins:

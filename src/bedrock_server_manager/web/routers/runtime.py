@@ -51,6 +51,9 @@ async def shutdown_actor(
             detail="Not authenticated",
             headers={"WWW-Authenticate": "Bearer"},
         )
+    authorization = getattr(request.state, "authorization", None)
+    if authorization is not None and not authorization.allows("runtime:shutdown"):
+        raise HTTPException(403, "Shutdown access denied")
     if user.role != "admin":
         raise HTTPException(status_code=403, detail="Administrator permission required")
     return "administrator"
@@ -104,6 +107,9 @@ async def require_health_access(
                 detail="Not authenticated",
                 headers={"WWW-Authenticate": "Bearer"},
             )
+        authorization = getattr(request.state, "authorization", None)
+        if authorization is not None and not authorization.allows("health:read"):
+            raise HTTPException(403, "Health access denied")
         return
     runtime = getattr(request.app.state, "web_runtime", None)
     if not isinstance(runtime, WebRuntime):
@@ -122,3 +128,6 @@ async def require_health_access(
         raise HTTPException(status_code=403, detail="Local readiness access required")
     if not runtime.authenticate_readiness(token):
         raise HTTPException(status_code=401, detail="Invalid readiness credential")
+
+
+setattr(shutdown_runtime, "__bsm_token_policy__", True)
