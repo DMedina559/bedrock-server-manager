@@ -12,6 +12,8 @@ from weakref import WeakSet
 class Permission(StrEnum):
     HEALTH_READ = "health:read"
     TOKENS_MANAGE = "tokens:manage"
+    SESSIONS_MANAGE = "sessions:manage"
+    SESSIONS_ADMIN = "sessions:admin"
     ACCESS_MANAGE = "access:manage"
     ACCOUNT_READ = "account:read"
     ACCOUNT_MANAGE = "account:manage"
@@ -60,6 +62,8 @@ class Permission(StrEnum):
 CORE_DESCRIPTIONS = MappingProxyType(
     {
         "health:read": "Read application readiness",
+        "sessions:manage": "Manage your login sessions and security settings",
+        "sessions:admin": "Inspect and revoke account login sessions",
         "tokens:manage": "Manage your integration credentials",
         "access:manage": "Manage account server access",
         "account:read": "Account read",
@@ -113,6 +117,7 @@ ROLE_GRANTS = MappingProxyType(
             [
                 "health:read",
                 "tokens:manage",
+                "sessions:manage",
                 "account:read",
                 "account:manage",
                 "servers:read",
@@ -125,6 +130,7 @@ ROLE_GRANTS = MappingProxyType(
             [
                 "health:read",
                 "tokens:manage",
+                "sessions:manage",
                 "account:read",
                 "account:manage",
                 "servers:read",
@@ -153,6 +159,7 @@ ROLE_GRANTS = MappingProxyType(
             [
                 "health:read",
                 "tokens:manage",
+                "sessions:manage",
                 "account:read",
                 "account:manage",
                 "servers:read",
@@ -195,6 +202,7 @@ ROLE_GRANTS = MappingProxyType(
                 "runtime:shutdown",
                 "bans:read",
                 "access:manage",
+                "sessions:admin",
                 "bans:manage",
             ]
         ),

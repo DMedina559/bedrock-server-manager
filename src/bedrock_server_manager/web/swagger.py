@@ -46,7 +46,7 @@ window.fetch = (input, init = {}) => swaggerFetch(input, {...init, credentials: 
         )
         body = body.replace(
             "const ui = SwaggerUIBundle({",
-            'const ui = SwaggerUIBundle({\nplugins: [SwaggerAccessPlugin],\nrequestInterceptor: request => { request.credentials = "omit"; return request; },',
+            'const ui = SwaggerUIBundle({\nplugins: [SwaggerAccessPlugin],\nrequestInterceptor: request => { request.credentials = "omit";\nif (new URL(request.url).pathname.endsWith("/auth/token")) {\n  request.headers = {...request.headers, "X-BSM-Auth-Mode": "bearer"};\n  const code = ui.getSystem().fn.consumeAuthenticatorCode?.();\n  if (code) { const form = new URLSearchParams(request.body); form.set("otp", code); request.body = form.toString(); }\n}\nreturn request; },',
         )
         # Resolve relative OAuth token URLs against the trusted ingress prefix,
         # rather than /docs or a deep page URL.

@@ -132,6 +132,7 @@ async def test_setup_https_cookie_policy(app_context, trusted):
                 "X-Ingress-Path": "/ingress/token",
                 "X-Forwarded-Proto": "https",
                 "X-Forwarded-For": "203.0.113.5",
+                "X-BSM-Auth-Mode": "cookie",
             },
         )
         assert response.status_code == 200
@@ -144,7 +145,11 @@ async def test_setup_https_cookie_policy(app_context, trusted):
 
 async def test_login_refresh_logout_proxy_cookie_policy(app_context, test_user):
     transport = ASGITransport(app=create_web_app(app_context))
-    headers = {"X-Ingress-Path": "/ingress/token", "X-Forwarded-Proto": "https"}
+    headers = {
+        "X-Ingress-Path": "/ingress/token",
+        "X-Forwarded-Proto": "https",
+        "X-BSM-Auth-Mode": "cookie",
+    }
     async with AsyncClient(transport=transport, base_url="http://bsm.test") as client:
         login = await client.post(
             "/auth/token",
@@ -152,7 +157,12 @@ async def test_login_refresh_logout_proxy_cookie_policy(app_context, test_user):
             headers=headers,
         )
         assert login.status_code == 200
-        headers["Authorization"] = "Bearer " + login.json()["access_token"]
+        # Preserve secure ingress cookie path in this direct ASGI test, where the gateway normally strips the prefix.
+
+        token = login.cookies.get("access_token_cookie")
+        client.cookies.clear()
+        client.cookies.set("access_token_cookie", token)
+        headers["X-CSRF-Token"] = login.headers["X-BSM-CSRF-Token"]
         refresh = await client.post("/auth/reauth", headers=headers)
         logout = await client.get("/auth/logout", headers=headers)
         for response in (login, refresh, logout):
@@ -195,6 +205,7 @@ async def test_configured_proxy_network(app_context):
                 "X-Ingress-Path": "/prefix/",
                 "X-Forwarded-Proto": "https",
                 "X-Forwarded-For": "203.0.113.5",
+                "X-BSM-Auth-Mode": "cookie",
             },
             follow_redirects=False,
         )

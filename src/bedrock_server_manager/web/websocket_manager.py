@@ -161,8 +161,13 @@ class ConnectionManager:
         if client is None:
             return False
         if client.authorization is not None and self.authorization_resolver is not None:
+            options = (
+                {"session_id": client.authorization.session_id}
+                if client.authorization.session_id
+                else {}
+            )
             refreshed = await self.authorization_resolver(
-                client.user, client.authorization.token_id
+                client.user, client.authorization.token_id, **options
             )
             if refreshed is None or refreshed.owner_id != client.authorization.owner_id:
                 await self._authorization_changed(client)

@@ -78,7 +78,10 @@ class AccessService:
         return user
 
     async def snapshot(
-        self, user: UserResponse, token_id: str | None = None
+        self,
+        user: UserResponse,
+        token_id: str | None = None,
+        session_id: str | None = None,
     ) -> Authorization | None:
         async with self.context.storage.transaction() as session:
             row = (
@@ -99,6 +102,14 @@ class AccessService:
                 record is None
                 or not record.is_active
                 or record.username != user.username
+            ):
+                return None
+            if (
+                session_id is not None
+                and await self.context.session_service.validate(
+                    session_id, record.access_id, touch=False
+                )
+                is None
             ):
                 return None
             permission_set = self.policy.resolve(record.role)
@@ -152,6 +163,7 @@ class AccessService:
                 servers=servers,
                 grants=grants,
                 token_id=token_id,
+                session_id=session_id,
                 token_servers=token_servers,
                 revision=f"{self.policy.revision}:{row[2] or 0}:{record.role}",
             )
@@ -278,6 +290,12 @@ class AccessService:
                 expires_at=now + payload.expires_in_days * 86400,
             )
             session.add(token)
+            self.context.session_service.add_event(
+                session,
+                user.access_id,
+                "integration_credential_created",
+                {"credential_id": identifier, "name": token.name},
+            )
             await self.context.storage.audit_log_repo.create_audit_log(
                 session,
                 actor.id,
@@ -289,6 +307,60 @@ class AccessService:
         await self.notify(actor.username, kind="credentials_changed")
         return CreatedIntegrationToken(token=credential, credential=info)
 
+    async def rotate_token(self, actor, identifier):
+        now = int(time.time())
+        new_id = uuid4().hex
+        credential = f"bsm_it_{new_id}.{secrets.token_urlsafe(32)}"
+        async with self.context.storage.transaction() as session:
+            owner = await self._user(session, actor.id)
+            old = await session.get(IntegrationToken, identifier)
+            if (
+                old is None
+                or old.owner_id != owner.access_id
+                or old.revoked_at is not None
+                or old.expires_at <= now
+            ):
+                raise HTTPException(404, "Active credential not found")
+            permissions = sorted(
+                set(old.permissions) & self.policy.resolve(owner.role) - NON_DELEGATABLE
+            )
+            if not permissions:
+                raise HTTPException(
+                    403, "The account no longer grants this credential any permissions"
+                )
+            replacement = IntegrationToken(
+                id=new_id,
+                owner_id=owner.access_id,
+                name=old.name,
+                digest=hashlib.sha256(credential.encode()).hexdigest(),
+                permissions=permissions,
+                server_ids=old.server_ids,
+                created_at=now,
+                expires_at=old.expires_at,
+            )
+            session.add(replacement)
+            changed = await session.execute(
+                update(IntegrationToken)
+                .where(
+                    IntegrationToken.id == identifier,
+                    IntegrationToken.revoked_at.is_(None),
+                )
+                .values(revoked_at=now)
+                .execution_options(synchronize_session=False)
+            )
+            if changed.rowcount != 1:
+                raise HTTPException(409, "Credential was already rotated or revoked")
+            self.context.session_service.add_event(
+                session,
+                owner.access_id,
+                "integration_credential_rotated",
+                {"credential_id": new_id, "previous_id": identifier},
+            )
+            await session.flush()
+            info = self.token_info(replacement)
+        await self.notify(actor.username, kind="credentials_changed")
+        return CreatedIntegrationToken(token=credential, credential=info)
+
     async def revoke_token(self, actor, user_id, identifier):
         async with self.context.storage.transaction() as session:
             owner = await self._user(session, user_id)
@@ -297,6 +369,12 @@ class AccessService:
                 raise HTTPException(404, "Credential not found")
             if token.revoked_at is None:
                 token.revoked_at = int(time.time())
+                self.context.session_service.add_event(
+                    session,
+                    owner.access_id,
+                    "integration_credential_revoked",
+                    {"credential_id": identifier},
+                )
                 await self.context.storage.audit_log_repo.create_audit_log(
                     session,
                     actor.id,

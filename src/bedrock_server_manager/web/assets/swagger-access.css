@@ -107,3 +107,19 @@
     gap: 6px;
   }
 }
+
+.swagger-ui .bsm-doc-factor {
+  display: grid;
+  gap: 8px;
+  margin: 12px 20px 20px;
+  color: #526579;
+  font-size: 12px;
+}
+.swagger-ui .bsm-doc-factor input {
+  width: 100%;
+  min-width: 0;
+  padding: 8px 10px;
+  border: 1px solid #c4d1dd;
+  border-radius: 5px;
+  font: inherit;
+}

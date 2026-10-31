@@ -6,10 +6,11 @@ import logging
 import secrets
 from datetime import timezone
 from typing import TYPE_CHECKING, Any, Optional
+from uuid import uuid4
 from weakref import WeakValueDictionary
 
 import bcrypt
-from fastapi import WebSocketException, status
+from fastapi import HTTPException, WebSocketException, status
 from jose import JWTError, jwt
 from pydantic import TypeAdapter
 
@@ -66,6 +67,11 @@ async def create_access_token(
                 session, to_encode["sub"]
             )
             if owner is not None:
+                if "authv" in to_encode and to_encode["authv"] != owner.auth_revision:
+                    raise HTTPException(
+                        401, "Account credentials changed; sign in again"
+                    )
+                to_encode["authv"] = owner.auth_revision
                 to_encode["aid"] = owner.access_id
 
     settings = app_context.settings
@@ -83,7 +89,33 @@ async def create_access_token(
         expire = datetime.datetime.now(datetime.timezone.utc) + datetime.timedelta(
             minutes=access_token_expire_minutes
         )
-    to_encode.update({"exp": expire})
+    owner_id = to_encode.get("aid")
+    if owner_id:
+        identifier = to_encode.get("sid")
+        if identifier:
+            login_session = await app_context.session_service.validate(
+                identifier, owner_id
+            )
+            if login_session is None:
+                raise HTTPException(401, "Session expired or revoked")
+            absolute_expiry = login_session.expires_at
+        else:
+            identifier, absolute_expiry = await app_context.session_service.create(
+                owner_id,
+                int(expire.timestamp()),
+                expected_revision=to_encode.get("authv"),
+            )
+        to_encode["sid"] = identifier
+        expire = datetime.datetime.fromtimestamp(
+            min(int(expire.timestamp()), absolute_expiry), datetime.timezone.utc
+        )
+    to_encode.update(
+        {
+            "exp": expire,
+            "iat": int(datetime.datetime.now(datetime.timezone.utc).timestamp()),
+            "jti": uuid4().hex,
+        }
+    )
     encoded_jwt = jwt.encode(to_encode, JWT_SECRET_KEY, algorithm=ALGORITHM)
     return str(encoded_jwt)
 
@@ -141,6 +173,14 @@ async def _get_user_from_token(
                 )
                 if owner is None or owner.access_id != payload["aid"]:
                     return None
+        if (
+            not payload.get("aid")
+            or await app_context.session_service.validate(
+                payload.get("sid"), payload.get("aid")
+            )
+            is None
+        ):
+            return None
         if username is None:
             return None
 

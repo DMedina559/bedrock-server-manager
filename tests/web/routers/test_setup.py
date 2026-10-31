@@ -42,7 +42,7 @@ async def test_create_first_user_success(unauth_client: AsyncClient, app_context
     data = response.json()
     assert data["status"] == "success"
     assert "access_token" in data
-    assert "access_token_cookie" in response.cookies
+    assert "access_token_cookie" not in response.cookies
 
 
 async def test_create_first_user_already_exists(

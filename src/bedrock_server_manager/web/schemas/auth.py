@@ -19,7 +19,9 @@ class GenerateTokenPayload(APIRequest):
 class TokenResponse(APIResponse):
     """Response model for successful authentication, providing an access token."""
 
-    access_token: str
+    access_token: str = Field(
+        description="Bearer JWT; empty in explicitly negotiated cookie mode, where the credential is HttpOnly"
+    )
     token_type: Literal["bearer"] = "bearer"
     message: Optional[str] = None
 

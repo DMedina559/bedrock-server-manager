@@ -44,6 +44,7 @@ async def websocket_client(running_app, unauth_client):
             headers = dict(additional_headers or {})
             if cookies:
                 headers["Cookie"] = cookies
+                headers.setdefault("Origin", f"http://127.0.0.1:{port}")
             async with connect(
                 f"ws://127.0.0.1:{port}{path}", additional_headers=headers
             ) as connection:

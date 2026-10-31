@@ -112,13 +112,36 @@ async def list_tokens(
     status_code=201,
 )
 async def create_token(
+    request: Request,
     payload: CreateIntegrationToken,
     user: UserResponse = Security(
         require_permissions, scopes=[Permission.TOKENS_MANAGE]
     ),
     context: AppContext = Depends(get_app_context),
 ):
+    await context.session_service.require_recent(
+        user, getattr(request.state, "session_id", None)
+    )
     return await context.access_service.create_token(user, payload)
+
+
+@router.post(
+    "/api/account/tokens/{token_id}/rotate",
+    operation_id="rotate_integration_token",
+    response_model=CreatedIntegrationToken,
+)
+async def rotate_token(
+    token_id: str,
+    request: Request,
+    user: UserResponse = Security(
+        require_permissions, scopes=[Permission.TOKENS_MANAGE]
+    ),
+    context: AppContext = Depends(get_app_context),
+):
+    await context.session_service.require_recent(
+        user, getattr(request.state, "session_id", None)
+    )
+    return await context.access_service.rotate_token(user, token_id)
 
 
 @router.delete(
@@ -158,6 +181,7 @@ async def get_server_access(
     response_model=AccountServerAccessInfo,
 )
 async def set_server_access(
+    request: Request,
     user_id: int,
     payload: SetServerAccess,
     user: UserResponse = Security(
@@ -165,6 +189,9 @@ async def set_server_access(
     ),
     context: AppContext = Depends(get_app_context),
 ):
+    await context.session_service.require_recent(
+        user, getattr(request.state, "session_id", None)
+    )
     return await context.access_service.set_server_access(user, user_id, payload)
 
 

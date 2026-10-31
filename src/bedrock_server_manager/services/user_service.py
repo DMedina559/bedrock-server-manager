@@ -29,10 +29,12 @@ class UserService:
         state: "AppState",
         storage: "Storage",
         revoke_connections: Callable[[str], Awaitable[None]] | None = None,
+        credentials_changed: Callable[[str], Awaitable[None]] | None = None,
     ):
         self.state = state
         self.storage = storage
         self.revoke_connections = revoke_connections
+        self.credentials_changed = credentials_changed
 
     def get_user_state(self, username: str) -> Optional[UserInfoState]:
         """Return a user state snapshot."""
@@ -48,7 +50,12 @@ class UserService:
             return await self.storage.user_repo.get_all_users(session)
 
     async def change_password(
-        self, username: str, current_password: str, new_password: str
+        self,
+        username: str,
+        current_password: str,
+        new_password: str,
+        *,
+        keep_session_id: str | None = None,
     ) -> bool:
         """Verify current password and update hashed password for a user."""
         from ..web.auth import get_password_hash_async, verify_password_async
@@ -63,18 +70,70 @@ class UserService:
                 current_password, str(db_user.hashed_password)
             ):
                 raise UserInputError("Incorrect current password.")
-            db_user.hashed_password = await get_password_hash_async(new_password)
-            return True
+            hashed_pwd = await get_password_hash_async(new_password)
+            from sqlalchemy import update
+
+            from ..db.models import LoginSession, User
+
+            changed = await session.execute(
+                update(User)
+                .where(
+                    User.id == db_user.id, User.auth_revision == db_user.auth_revision
+                )
+                .values(
+                    hashed_password=hashed_pwd, auth_revision=User.auth_revision + 1
+                )
+            )
+            if getattr(changed, "rowcount", None) != 1:
+                raise UserInputError("Account credentials changed; try again")
+            query = update(LoginSession).where(
+                LoginSession.owner_id == db_user.access_id,
+                LoginSession.revoked_at.is_(None),
+            )
+            if keep_session_id:
+                query = query.where(LoginSession.id != keep_session_id)
+            await session.execute(query.values(revoked_at=int(time.time())))
+            from .session_service import SessionService
+
+            SessionService.add_event(session, db_user.access_id, "password_changed")
+        if self.credentials_changed:
+            await self.credentials_changed(db_user.access_id)
+        return True
 
     async def reset_password(self, username: str, new_password: str) -> bool:
         """Reset hashed password for a user without verifying old password."""
+        from sqlalchemy import update
+
+        from ..db.models import LoginSession, User
         from ..web.auth import get_password_hash_async
+        from .session_service import SessionService
 
         async with self.storage.transaction() as session:
+            user = await self.storage.user_repo.get_user_by_username(session, username)
+            if user is None:
+                return False
             hashed_pwd = await get_password_hash_async(new_password)
-            return await self.storage.user_repo.update_password(
-                session, username, hashed_pwd
+            changed = await session.execute(
+                update(User)
+                .where(User.id == user.id, User.auth_revision == user.auth_revision)
+                .values(
+                    hashed_password=hashed_pwd, auth_revision=User.auth_revision + 1
+                )
             )
+            if getattr(changed, "rowcount", None) != 1:
+                raise UserInputError("Account credentials changed; try again")
+            await session.execute(
+                update(LoginSession)
+                .where(
+                    LoginSession.owner_id == user.access_id,
+                    LoginSession.revoked_at.is_(None),
+                )
+                .values(revoked_at=int(time.time()))
+            )
+            SessionService.add_event(session, user.access_id, "password_reset")
+        if self.credentials_changed:
+            await self.credentials_changed(user.access_id)
+        return True
 
     async def create_registration_token(
         self, role: str, ttl_seconds: int = 86400

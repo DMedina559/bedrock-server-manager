@@ -8,6 +8,7 @@ from fastapi.security import (
     OAuth2PasswordBearer,
     SecurityScopes,
 )
+from jose import jwt
 
 from .. import auth as auth_utils
 from ..access_policy import CORE_DESCRIPTIONS, policy_for
@@ -79,8 +80,13 @@ async def get_current_user_optional(
         user, authorization = result
     else:
         user = await auth_utils._get_user_from_token(app_context, token)
+        request.state.invalid_session = user is None
+        session_id = jwt.get_unverified_claims(token).get("sid") if user else None
+        request.state.session_id = session_id
         authorization = (
-            await app_context.access_service.snapshot(user) if user else None
+            await app_context.access_service.snapshot(user, session_id=session_id)
+            if user
+            else None
         )
     request.state.authorization = authorization
     return user if authorization is not None else None
@@ -181,6 +187,14 @@ async def require_permissions(
             status_code=403,
             detail="You do not have permission to access this resource.",
             headers=headers,
+        )
+    if (
+        authorization is not None
+        and required & {"users:manage", "access:manage", "sessions:admin"}
+        and request.method not in {"GET", "HEAD", "OPTIONS"}
+    ):
+        await request.app.state.app_context.session_service.require_recent(
+            user, getattr(request.state, "session_id", None)
         )
     from ..authorization import operation_permissions
 

@@ -127,6 +127,20 @@ def test_access_migration_preserves_accounts_servers_and_identity(tmp_path):
             text("INSERT INTO servers (server_name) VALUES ('existing-server')")
         )
         command.upgrade(config, "head")
+        assert (
+            connection.execute(text("SELECT auth_revision FROM users")).scalar_one()
+            == 0
+        )
+        for table in (
+            "login_sessions",
+            "account_security",
+            "auth_throttle",
+            "auth_security_events",
+        ):
+            assert (
+                connection.execute(text(f"SELECT count(*) FROM {table}")).scalar_one()
+                == 0
+            )
         identity = connection.execute(text("SELECT access_id FROM users")).scalar_one()
         assert len(identity) == 32
         assert (

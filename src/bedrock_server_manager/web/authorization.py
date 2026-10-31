@@ -29,10 +29,24 @@ SERVER_PERMISSIONS = frozenset(
     }
 )
 PERSONAL_PERMISSIONS = frozenset(
-    {"account:read", "account:manage", "tokens:manage", "tasks:read", "health:read"}
+    {
+        "account:read",
+        "account:manage",
+        "tokens:manage",
+        "tasks:read",
+        "health:read",
+        "sessions:manage",
+    }
 )
 NON_DELEGATABLE = frozenset(
-    {"tokens:manage", "access:manage", "account:manage", "users:manage"}
+    {
+        "tokens:manage",
+        "access:manage",
+        "account:manage",
+        "users:manage",
+        "sessions:manage",
+        "sessions:admin",
+    }
 )
 
 
@@ -47,6 +61,7 @@ class Authorization:
     token_id: str | None = None
     token_servers: frozenset[str] | None = None
     revision: str = ""
+    session_id: str | None = None
 
     @property
     def resource_restricted(self) -> bool:

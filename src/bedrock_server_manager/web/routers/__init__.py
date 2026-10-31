@@ -22,6 +22,7 @@ from .properties import router as properties_router
 from .register import router as register_router
 from .runtime import router as runtime_router
 from .scheduler import router as scheduler_router
+from .security import router as security_router
 from .server_actions import router as server_actions_router
 from .server_settings import router as server_settings_router
 from .settings import router as settings_router
@@ -35,6 +36,7 @@ from .world import router as world_router
 
 all_routers = [
     access_router,
+    security_router,
     scheduler_router,
     diagnostics_router,
     runtime_router,

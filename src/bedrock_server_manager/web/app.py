@@ -36,7 +36,7 @@ def create_web_app(
         lifespan=application_lifespan(app_context, runtime),
         responses={
             code: {"model": ErrorEnvelope}
-            for code in (400, 401, 403, 404, 409, 422, 500, 503)
+            for code in (400, 401, 403, 404, 409, 422, 429, 500, 503)
         },
     )
     configure_errors(app)

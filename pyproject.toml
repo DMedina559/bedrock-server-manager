@@ -25,6 +25,8 @@ classifiers = [
 ]
 
 dependencies = [
+    "pyotp>=2.9,<3",
+    "qrcode>=8,<9",
     "pydantic >=2.9,<3",
     "securetar >=2026.10.0,<2027",
     "tzdata >=2025.1",

@@ -30,6 +30,10 @@ class User(Base):
 
     __tablename__ = "users"
 
+    auth_revision: Mapped[int] = mapped_column(
+        Integer, nullable=False, default=0, server_default="0"
+    )
+
     access_id: Mapped[str] = mapped_column(
         String(32), unique=True, nullable=False, default=lambda: uuid4().hex
     )
@@ -313,3 +317,52 @@ class IntegrationToken(Base):
     expires_at: Mapped[int] = mapped_column(Integer, nullable=False)
     last_used_at: Mapped[int | None] = mapped_column(Integer, nullable=True)
     revoked_at: Mapped[int | None] = mapped_column(Integer, nullable=True)
+
+
+class LoginSession(Base):
+    """Revocable login family; JWT renewal never extends its absolute expiry."""
+
+    __tablename__ = "login_sessions"
+    id: Mapped[str] = mapped_column(String(32), primary_key=True)
+    owner_id: Mapped[str] = mapped_column(String(32), nullable=False, index=True)
+    name: Mapped[str] = mapped_column(String(100), nullable=False)
+    user_agent: Mapped[str] = mapped_column(String(512), nullable=False)
+    ip_address: Mapped[str] = mapped_column(String(64), nullable=False)
+    created_at: Mapped[int] = mapped_column(Integer, nullable=False)
+    last_seen_at: Mapped[int] = mapped_column(Integer, nullable=False)
+    expires_at: Mapped[int] = mapped_column(Integer, nullable=False)
+    verified_at: Mapped[int] = mapped_column(Integer, nullable=False)
+    revoked_at: Mapped[int | None] = mapped_column(Integer, nullable=True)
+
+
+class AccountSecurity(Base):
+    """Encrypted TOTP material and one-use recovery digests, never raw codes."""
+
+    __tablename__ = "account_security"
+    owner_id: Mapped[str] = mapped_column(String(32), primary_key=True)
+    totp_secret: Mapped[str | None] = mapped_column(Text, nullable=True)
+    pending_secret: Mapped[str | None] = mapped_column(Text, nullable=True)
+    pending_until: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    last_counter: Mapped[int] = mapped_column(Integer, nullable=False, default=-1)
+    recovery_hashes: Mapped[list[str]] = mapped_column(
+        JSON, nullable=False, default=list
+    )
+    version: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
+
+
+class AuthThrottle(Base):
+    """Persistent fixed-window budgets shared across workers and restarts."""
+
+    __tablename__ = "auth_throttle"
+    key: Mapped[str] = mapped_column(String(64), primary_key=True)
+    window: Mapped[int] = mapped_column(Integer, nullable=False)
+    attempts: Mapped[int] = mapped_column(Integer, nullable=False)
+
+
+class AuthSecurityEvent(Base):
+    __tablename__ = "auth_security_events"
+    id: Mapped[str] = mapped_column(String(32), primary_key=True)
+    owner_id: Mapped[str] = mapped_column(String(32), nullable=False, index=True)
+    action: Mapped[str] = mapped_column(String(64), nullable=False)
+    timestamp: Mapped[int] = mapped_column(Integer, nullable=False)
+    details: Mapped[dict] = mapped_column(JSON, nullable=False)

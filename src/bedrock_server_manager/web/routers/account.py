@@ -53,6 +53,7 @@ async def get_account_api(
         policy_revision=authorization.revision,
         server_access="assigned" if authorization.resource_restricted else "all",
         credential_id=authorization.token_id,
+        session_id=authorization.session_id,
         server_permissions={
             identity: sorted(
                 permission
@@ -124,6 +125,7 @@ async def post_update_profile(
     response_model=BaseApiResponse,
 )
 async def post_change_password(
+    request: Request,
     data: ChangePasswordPayload,
     user: UserResponse = Security(
         require_permissions, scopes=[Permission.ACCOUNT_MANAGE]
@@ -133,10 +135,14 @@ async def post_change_password(
     """
     Changes the current user's password.
     """
+    await app_context.session_service.require_recent(
+        user, getattr(request.state, "session_id", None)
+    )
     updated = await app_context.user_service.change_password(
         user.username,
         data.current_password.get_secret_value(),
         data.new_password.get_secret_value(),
+        keep_session_id=getattr(request.state, "session_id", None),
     )
     if not updated:
         raise HTTPException(

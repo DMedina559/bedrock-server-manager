@@ -90,6 +90,11 @@ class MonitoringSettings(SettingsRecord):
 DEFAULT_CORS_ORIGINS: tuple[str, ...] = ()
 
 
+class SecuritySettings(SettingsRecord):
+    session_idle_hours: int = Field(default=24, ge=1, le=672)
+    session_max_days: int = Field(default=28, ge=1, le=90)
+
+
 class WebSettings(SettingsRecord):
     cors_origins: tuple[str, ...] = DEFAULT_CORS_ORIGINS
     outbound_queue_limit: int = Field(default=64, ge=1, le=10000)
@@ -236,6 +241,7 @@ class SettingsState(BaseModel):
     backups: BackupSettings = Field(default_factory=BackupSettings)
     monitoring: MonitoringSettings = Field(default_factory=MonitoringSettings)
     web: WebSettings = Field(default_factory=WebSettings)
+    security: SecuritySettings = Field(default_factory=SecuritySettings)
     lifecycle: LifecycleSettings = Field(default_factory=LifecycleSettings)
     diagnostics: DiagnosticOptions = Field(default_factory=DiagnosticOptions)
     events: EventOptions = Field(default_factory=EventOptions)

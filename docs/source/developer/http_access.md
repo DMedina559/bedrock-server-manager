@@ -28,19 +28,19 @@ Without that header, the existing `access_token_cookie` JWT remains supported.
 Authentication failures on protected routes return 401; insufficient permissions
 return 403. Bearer permission failures include an `insufficient_scope` challenge.
 
-Login and reauthentication retain their JSON token responses and cookie behavior:
-HttpOnly, SameSite=Lax, Secure on HTTPS, trusted ingress path or `/`, and lifetime
-matching the issued token. Authentication responses remain non-cacheable.
-Cookies are scoped by host and path, **not TCP port**. CORS and SameSite alone
-are not a complete CSRF strategy; this migration does not introduce new
-cross-origin cookie workflows or change mutation CSRF enforcement.
+Login, setup, and reauthentication default to bearer mode: JSON contains the
+JWT and no authentication cookie is set. The embedded frontend explicitly sends
+`X-BSM-Auth-Mode: cookie`: the JSON access token is empty and the JWT stays in an
+HttpOnly, SameSite=Lax cookie (Secure on HTTPS). The SPA never copies it into
+JavaScript storage. Saved instances, remote connections, SDKs, and Swagger use
+bearer mode. Authentication responses are non-cacheable.
 
-The embedded default frontend may recover an existing cookie session via
-`/api/account` and `/auth/reauth`. Saved-instance workspaces, the multi-instance
-hub, standalone remote connections, and Swagger use bearer credentials without
-cookies. Authentication mode participates in frontend request cancellation and
-account cache identity. Older backends without access metadata remain usable;
-clients label their access unknown.
+Cookie mutations require `X-CSRF-Token`, obtained from the response header
+`X-BSM-CSRF-Token`, and reject a mismatching Origin. Cookie WebSockets require
+a same-origin Origin. Explicit bearer requests are exempt from CSRF checks.
+Only trusted ingress peers can supply the forwarded public host. Cookies are
+scoped by host and path, not TCP port. Authentication mode participates in request
+cancellation and account cache identity.
 
 ## Swagger
 
@@ -74,12 +74,43 @@ This does not change trusted in-process Python plugin access.
 
 ## Logout
 
-Embedded logout discards its bearer token and clears the browser cookie.
-Saved-instance logout discards only that instance's scoped credentials. Swagger
-logout clears only Swagger authorization. The backend logout endpoint retains
-its existing behavior and clears the cookie where applicable. Clearing cookies
-or local credentials does not revoke JWTs retained elsewhere. Named integration credentials are revoked separately in account settings or through the API.
+`POST /auth/logout` revokes the current login session and closes its live
+connections. Cookie mode also clears its cookie. The deprecated GET shim remains
+hidden from OpenAPI. Refreshing a JWT retains its session ID and original
+absolute deadline. Swagger's local authorization clear only forgets its bearer.
+Account security settings can revoke individual logins, other logins, or every
+login. Integration credentials are managed separately and survive session logout.
+A client receiving `X-BSM-Session-Invalid: 1` must request an explicit sign-in;
+the SDK does not silently authenticate again with a saved password.
 
+## Account security
+
+The Account page provides Sessions, Integrations, My access, Activity, and
+Password & MFA tabs. Session labels, user agents, and IPs are informational hints,
+not proof of device identity. Last activity includes authenticated background
+polling. Administrators can inspect and revoke another account's sessions and
+reset its MFA. Password resets revoke existing logins; changing your own password
+keeps the verified current session. Integration credentials remain independent.
+
+`security.session_idle_hours` defaults to 24 (range 1–672), and
+`security.session_max_days` defaults to 28 (range 1–90). Non-remembered logins
+last at most 24 hours. Remembered logins are capped by the configured maximum.
+Sensitive account and administrator changes require password verification within
+five minutes, plus a factor when MFA is enabled. Refresh does not renew this proof.
+Authentication attempts are limited per peer and account in five-minute windows;
+a successful login resets its account failure budget.
+
+Authenticator enrollment expires after ten minutes. TOTP codes cannot be replayed.
+Ten one-use recovery codes are displayed once; save them securely. Replacing them
+invalidates the old set. Enabling or disabling MFA revokes other login sessions.
+Back up the database together with `config/security/mfa.key` (relative to the
+installation configuration directory). The key encrypts authenticator secrets;
+losing it requires recovery codes or an administrator MFA reset. Recovery codes
+are stored as hashes. Security activity is retained for 90 days with opportunistic
+cleanup; it excludes passwords, bearer credentials, and authenticator secrets.
+
+Upgrading requires one new sign-in: older JWTs without a tracked session are
+rejected. Database migration creates the session and MFA records automatically.
 
 ## Named integration credentials
 
@@ -122,8 +153,7 @@ are operational authorization, not a redesign of public presentation data.
 
 Users and servers have immutable identities. Deleting and recreating a name
 cannot transfer grants or integration credentials. Newly issued JWTs also carry
-the account identity; legacy JWTs without that claim retain their existing
-compatibility behavior until expiry. Ordinary server backups do not export
+the account identity and a tracked session; older JWTs require a new sign-in. Ordinary server backups do not export
 account grants or credentials; those reside in the application database.
 
 ## Changes, tasks, and sockets
@@ -146,3 +176,10 @@ restricted principals. Legacy plugin routes without explicit permission
 policies remain available to ordinary unrestricted sessions, but fail closed for
 integration credentials and assigned-server sessions. Plugins should declare
 permissions and explicitly authorize each resource in collection endpoints.
+
+
+Integration credentials can be rotated with
+`POST /api/account/tokens/{token_id}/rotate`. Rotation atomically revokes the old
+secret and returns its replacement once, preserving the original absolute expiry
+and permission/resource ceilings. Bulk integration revocation is an explicit,
+separate action from signing out logins.

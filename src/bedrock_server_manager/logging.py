@@ -23,8 +23,8 @@ _HANDLER_MARKER = "_bsm_handler"
 
 # Protect common credential representations in URLs, messages, and tracebacks.
 _CREDENTIAL = re.compile(
-    r"(?i)(\b(?:access_token|refresh_token|token|password|secret|jwt_secret_key|authorization|api_key)"
-    r"['\"]?\s*[:=]\s*)(?:\"(?:\\.|[^\"\\])*\"|'(?:\\.|[^'\\])*'|[^\s&,'\"}]+)"
+    r"(?i)(\b(?:access_token|refresh_token|token|password|secret|jwt_secret_key|authorization|api_key|otp|recovery_codes|provisioning_uri|qr_svg)"
+    r"['\"]?\s*[:=]\s*)(?:\[[^\]]*\]|\"(?:\\.|[^\"\\])*\"|'(?:\\.|[^'\\])*'|[^\s&,'\"}]+)"
 )
 _BEARER = re.compile(r"(?i)\bBearer\s+[^\s,;\'\"]+")
 _URL_CREDENTIAL = re.compile(r"(https?://)[^/\s:@]+:[^/\s@]+@", re.IGNORECASE)

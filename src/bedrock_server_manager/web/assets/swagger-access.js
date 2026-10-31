@@ -2,6 +2,8 @@
 function SwaggerAccessPlugin(system) {
   const React = system.React;
   const h = React.createElement;
+  let factorCode = "";
+  let resetFactor = () => {};
   const labels = {
     public: "Public endpoint",
     authenticated: "Sign-in required",
@@ -90,7 +92,46 @@ function SwaggerAccessPlugin(system) {
     );
   }
   return {
+    fn: {
+      consumeAuthenticatorCode: () => {
+        const code = factorCode;
+        factorCode = "";
+        resetFactor();
+        return code;
+      },
+    },
     wrapComponents: {
+      oauth2: (Original) =>
+        function PasswordFactor(props) {
+          const [value, setValue] = React.useState("");
+          React.useEffect(() => {
+            resetFactor = () => setValue("");
+            return () => {
+              factorCode = "";
+              resetFactor = () => {};
+            };
+          }, []);
+          return h(
+            React.Fragment,
+            null,
+            h(Original, props),
+            h(
+              "label",
+              { className: "bsm-doc-factor" },
+              "Authenticator or recovery code",
+              h("input", {
+                value,
+                autoComplete: "one-time-code",
+                maxLength: 128,
+                placeholder: "Only if two-factor authentication is enabled",
+                onChange: (event) => {
+                  factorCode = event.target.value;
+                  setValue(event.target.value);
+                },
+              }),
+            ),
+          );
+        },
       OperationExt: (Original) =>
         function OperationExtensions(props) {
           const raw = props.extensions?.get("x-bsm-access");
