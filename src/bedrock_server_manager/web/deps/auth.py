@@ -148,6 +148,12 @@ async def require_permissions(
     """Require all declared scopes against the account's current role."""
     required = set(security_scopes.scopes)
     policy = policy_for(request)
+    headers = None
+    if getattr(request.state, "credential_source", None) == "bearer":
+        scopes = " ".join(sorted(required))
+        headers = {
+            "WWW-Authenticate": f'Bearer error="insufficient_scope", scope="{scopes}"'
+        }
     authorization = getattr(request.state, "authorization", None)
     if authorization is not None:
         route = request.scope.get("route")
@@ -164,17 +170,13 @@ async def require_permissions(
             for scope in required
         )
         if not permitted:
-            raise HTTPException(403, "Permission denied for this credential or server")
+            raise HTTPException(
+                403, "Permission denied for this credential or server", headers=headers
+            )
     # Fail closed even for admin when a plugin has been unloaded.
     if not required <= policy.descriptions.keys() or not required <= policy.resolve(
         user.role
     ):
-        headers = None
-        if getattr(request.state, "credential_source", None) == "bearer":
-            scopes = " ".join(sorted(required))
-            headers = {
-                "WWW-Authenticate": f'Bearer error="insufficient_scope", scope="{scopes}"'
-            }
         raise HTTPException(
             status_code=403,
             detail="You do not have permission to access this resource.",

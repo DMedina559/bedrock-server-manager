@@ -71,9 +71,9 @@ async def test_integration_token_scope_ceiling_secret_storage_and_legacy_isolati
     assert (
         await admin_auth_client.get("/_resource/beta", headers=bearer)
     ).status_code == 403
-    assert (
-        await admin_auth_client.post("/_resource/alpha", headers=bearer)
-    ).status_code == 403
+    denied = await admin_auth_client.post("/_resource/alpha", headers=bearer)
+    assert denied.status_code == 403
+    assert 'error="insufficient_scope"' in denied.headers["WWW-Authenticate"]
     for path in ("/_legacy", "/api/account/tokens", "/api/users/list"):
         assert (await admin_auth_client.get(path, headers=bearer)).status_code == 403
     assert (
