@@ -291,7 +291,7 @@ def verify_password(plain_password: str, hashed_password: str) -> bool:
     """Verify Argon2id credentials and existing bcrypt hashes without truncation."""
     try:
         if hashed_password.startswith("$argon2"):
-            return _password_hasher.verify(hashed_password, plain_password)
+            return bool(_password_hasher.verify(hashed_password, plain_password))
         if len(plain_password.encode("utf-8")) > 72:
             _password_hasher.verify(_DUMMY_PASSWORD_HASH, plain_password)
             return False
@@ -306,7 +306,7 @@ def verify_password(plain_password: str, hashed_password: str) -> bool:
 
 def get_password_hash(password: str) -> str:
     """Hash new credentials with bounded-memory Argon2id."""
-    return _password_hasher.hash(password)
+    return str(_password_hasher.hash(password))
 
 
 _password_slots: WeakValueDictionary[asyncio.AbstractEventLoop, asyncio.Semaphore] = (
