@@ -64,7 +64,7 @@ class TaskDefinition:
     owner: str = "application"
     generation: int = 0
     options_model: type[BaseModel] | None = None
-    timeout_seconds: float = 300
+    timeout_seconds: float | None = 300
     requires_server_lock: bool = True
     with_context: bool = False
     manage_server_lock: bool = True
@@ -73,23 +73,6 @@ class TaskDefinition:
     options_validator: Callable[[Any, str, dict[str, Any]], None] | None = None
     description: str = ""
     api_method_name: str | None = None
-
-    def _as_tuple(self) -> tuple[Any, ...]:
-        return (
-            self.handler,
-            self.owner,
-            self.generation,
-            self.options_model,
-            self.timeout_seconds,
-            self.requires_server_lock,
-            self.with_context,
-        )
-
-    def __iter__(self):
-        return iter(self._as_tuple())
-
-    def __getitem__(self, index: int) -> Any:
-        return self._as_tuple()[index]
 
 
 def _derive_api_options_model(
@@ -199,7 +182,7 @@ class Scheduler:
         owner: str = "application",
         generation: int = 0,
         options_model: type[BaseModel] | None = None,
-        timeout_seconds: float = 300,
+        timeout_seconds: float | None = 300,
         requires_server_lock: bool = True,
         with_context: bool = False,
         manage_server_lock: bool | None = None,
@@ -252,7 +235,7 @@ class Scheduler:
             or not issubclass(options_model, BaseModel)
         ):
             raise TypeError("Task options_model must be a Pydantic model class")
-        if (
+        if timeout_seconds is not None and (
             type(timeout_seconds) not in (int, float)
             or not 1 <= timeout_seconds <= 86400
         ):
@@ -292,7 +275,7 @@ class Scheduler:
         options_model: type[BaseModel] | None = None,
         default_options: dict[str, Any] | None = None,
         slot_field: str | None = None,
-        timeout_seconds: float = 300,
+        timeout_seconds: float | None = 300,
         requires_server_lock: bool = True,
         manage_server_lock: bool = False,
         exclude_unset_options: bool = True,
@@ -364,7 +347,10 @@ class Scheduler:
 
         if target_callable is not None:
             unwrapped = getattr(target_callable, "__wrapped__", target_callable)
-            contract = get_contract(unwrapped) or get_contract(target_callable)
+            try:
+                contract = get_contract(unwrapped) or get_contract(target_callable)
+            except (TypeError, NameError):
+                contract = None
             if contract is not None:
                 request_cls = contract[0]
             else:
@@ -398,7 +384,8 @@ class Scheduler:
         ) -> Any:
             payload: dict[str, Any] = dict(default_options or {})
             payload.update(options)
-            payload["server_name"] = server_name
+            if request_cls is None or "server_name" in request_cls.model_fields:
+                payload["server_name"] = server_name
             if slot_field and execution_context and "slot" in execution_context:
                 payload[slot_field] = execution_context["slot"]
 
@@ -426,8 +413,25 @@ class Scheduler:
             if inspect.isawaitable(result):
                 result = await result
 
-            if hasattr(result, "status") and getattr(result, "status") != "success":
-                raise RuntimeError(err_msg)
+            if hasattr(result, "status"):
+                status = getattr(result, "status")
+                detail = getattr(result, "message", None)
+                if status == "skipped":
+                    try:
+                        server = self.context.get_server(
+                            server_name, require_installation=False
+                        )
+                    except Exception:
+                        server = None
+                    if (server is not None and server.operation_lock.locked()) or (
+                        isinstance(detail, str)
+                        and "already in progress" in detail.lower()
+                    ):
+                        raise DeferredRun(
+                            "Scheduled task yielded to active server operation"
+                        )
+                if status != "success":
+                    raise RuntimeError(f"{err_msg}: {detail}" if detail else err_msg)
             return result
 
         return self.register(
@@ -535,6 +539,7 @@ class Scheduler:
             options_model=BackupScheduleOptions,
             default_options={"purpose": "scheduled"},
             slot_field="schedule_slot",
+            timeout_seconds=None,
             requires_server_lock=True,
             manage_server_lock=False,
             exclude_unset_options=True,
@@ -548,6 +553,7 @@ class Scheduler:
             _verify_backups_handler,
             owner="application",
             options_model=VerifyScheduleOptions,
+            timeout_seconds=None,
             requires_server_lock=True,
             manage_server_lock=False,
             exclude_unset_options=True,
@@ -558,6 +564,7 @@ class Scheduler:
             "backup:prune",
             "backup_restore.prune_old_backups",
             owner="application",
+            timeout_seconds=None,
             requires_server_lock=True,
             manage_server_lock=False,
             description="Prune old backups according to server retention policies.",
@@ -566,6 +573,7 @@ class Scheduler:
             "backup:world",
             "backup_restore.backup_world",
             owner="application",
+            timeout_seconds=None,
             requires_server_lock=True,
             manage_server_lock=False,
             description="Back up the server world directory.",
@@ -574,6 +582,7 @@ class Scheduler:
             "backup:all",
             "backup_restore.backup_all",
             owner="application",
+            timeout_seconds=None,
             requires_server_lock=True,
             manage_server_lock=False,
             description="Back up server world and configuration files.",
@@ -614,6 +623,7 @@ class Scheduler:
             "world:export",
             "world.export_world",
             owner="application",
+            timeout_seconds=None,
             requires_server_lock=True,
             manage_server_lock=False,
             description="Export the active server world to a .mcworld archive.",
@@ -634,44 +644,10 @@ class Scheduler:
             return await self._configurations(server_name)
 
     async def _configurations(self, server_name=None):
-        import hashlib
-
-        # Existing settings remain a compatibility adapter. Stable IDs prevent duplication.
         rows = await self.repository.list()
-        known = {row[0]: row for row in rows}
-        changed = False
-        for server, raw in self.context.settings.get("backups.schedules", {}).items():
-            name = "backup-" + hashlib.sha256(server.encode()).hexdigest()[:20]
-            config = raw.model_dump() if hasattr(raw, "model_dump") else raw
-            config = dict(config, task="backup", server_name=server, options={})
-            state = None
-            if name not in known:
-                try:
-                    instance = self.context.get_server(
-                        server, require_installation=False
-                    )
-                    async with instance.operation_lock:
-                        value = await run_in_thread(instance.backups.catalog.load)
-                    state = value.get("schedule", {})
-                except Exception as error:
-                    self._log_failures.report(
-                        "legacy-schedule", "Scheduler %s failed: %s", error
-                    )
-                    state = {}
-            if name not in known or known[name][1] != config:
-                await self.repository.save(
-                    name, config, legacy_server=server, initial_state=state
-                )
-                changed = True
-        legacy = self.context.settings.get("backups.schedules", {})
-        for name, _, _, server in rows:
-            if server and server not in legacy:
-                await self.repository.delete(name)
-                changed = True
-        loaded = await self.repository.list() if changed else rows
         return {
             name: (config, state, server)
-            for name, config, state, server in loaded
+            for name, config, state, server in rows
             if server_name is None or config["server_name"] == server_name
         }
 
@@ -764,9 +740,18 @@ class Scheduler:
         self.context.get_server(
             request.configuration.server_name, require_installation=False
         )
-        task = request.configuration.task
+        raw_task = request.configuration.task
+        canonical_task = self.resolve_task_name(raw_task, warn_deprecated=True)
+        if canonical_task != raw_task:
+            request = request.model_copy(
+                update={
+                    "configuration": request.configuration.model_copy(
+                        update={"task": canonical_task}
+                    )
+                }
+            )
         options = request.configuration.options
-        definition = self.get_task_definition(task, warn_deprecated=True)
+        definition = self.get_task_definition(canonical_task, warn_deprecated=False)
         if definition is not None:
             if definition.options_validator is not None:
                 definition.options_validator(
@@ -811,25 +796,6 @@ class Scheduler:
                 configuration = configuration.model_copy(update={"timezone": zone})
             if previous is None and len(rows) >= 500:
                 raise UserInputError("At most 500 schedules may be configured")
-            if previous and previous[2]:
-                if (
-                    task not in ("backup", "backup:create")
-                    or request.configuration.server_name != previous[2]
-                    or options
-                ):
-                    raise UserInputError(
-                        "Legacy schedules retain their backup task and server; create a new schedule instead"
-                    )
-                config = configuration.model_dump(
-                    exclude={"task", "server_name", "options"}
-                )
-                legacy = self.context.settings.get("backups.schedules", {})
-                legacy = {
-                    k: v.model_dump() if hasattr(v, "model_dump") else v
-                    for k, v in legacy.items()
-                }
-                legacy[previous[2]] = config
-                await self.context.settings.set("backups.schedules", legacy)
             await self.repository.save(request.schedule_id, configuration.model_dump())
             self._wake.set()
 
@@ -842,14 +808,6 @@ class Scheduler:
                 raise UserInputError(
                     "Wait for the active schedule run to finish before removing it"
                 )
-            if previous and previous[2]:
-                legacy = self.context.settings.get("backups.schedules", {})
-                legacy = {
-                    k: v.model_dump() if hasattr(v, "model_dump") else v
-                    for k, v in legacy.items()
-                    if k != previous[2]
-                }
-                await self.context.settings.set("backups.schedules", legacy)
             await self.repository.delete(name)
             self._wake.set()
 
@@ -953,7 +911,11 @@ class Scheduler:
                     "attempt": (execution or {}).get("attempts", 1),
                     "correlation_id": current_correlation_id(),
                 }
-            async with asyncio.timeout(definition.timeout_seconds):
+            async with (
+                asyncio.timeout(definition.timeout_seconds)
+                if definition.timeout_seconds is not None
+                else nullcontext()
+            ):
                 async with (
                     server.operation_lock
                     if definition.manage_server_lock
@@ -1061,18 +1023,6 @@ class Scheduler:
                 raise UserInputError("Schedule changed; refresh before trying again")
             if request.action in ("pause", "resume"):
                 configuration = dict(config, enabled=request.action == "resume")
-                if previous[2]:
-                    legacy = self.context.settings.get("backups.schedules", {})
-                    legacy = {
-                        k: v.model_dump() if hasattr(v, "model_dump") else v
-                        for k, v in legacy.items()
-                    }
-                    legacy[previous[2]] = {
-                        k: v
-                        for k, v in configuration.items()
-                        if k not in ("task", "server_name", "options")
-                    }
-                    await self.context.settings.set("backups.schedules", legacy)
                 await self.repository.save(request.schedule_id, configuration)
                 self._wake.set()
                 return

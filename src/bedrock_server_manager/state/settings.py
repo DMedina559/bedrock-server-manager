@@ -237,8 +237,6 @@ class BackupSettings(SettingsRecord):
     components: BackupComponents = Field(
         default_factory=lambda: list(DEFAULT_COMPONENTS)
     )
-
-    schedules: dict[str, BackupSchedule] = Field(default_factory=dict)
     compression: Literal["fast", "balanced", "small"] = Field(
         default="balanced",
         description="Fast uses less compression; Small favors archive size. All modes preserve encryption and integrity checks.",
@@ -512,6 +510,7 @@ class SettingsState(BaseModel):
             "paths": ("logs",),
             "retention": ("logs",),
             "web": ("threads",),
+            "backups": ("schedules",),
         }
         for section, removed_names in removed_fields.items():
             values = merged.get(section)

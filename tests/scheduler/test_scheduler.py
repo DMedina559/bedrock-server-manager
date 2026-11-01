@@ -59,13 +59,14 @@ async def test_scheduler_persists_runs_and_restarts(
     )
     rows = (await service.snapshot()).schedules
     assert len(rows) == 1 and rows[0].available
-    assert rows[0].configuration.task == "verify"
+    assert rows[0].configuration.task == "backup:verify"
+    saved_config = rows[0].configuration.model_dump()
     moment = datetime(2026, 1, 1, 2, tzinfo=timezone.utc)
 
     async def execute(slot, execution):
         await service.execute(
             "weekly-check",
-            config.model_dump(),
+            saved_config,
             populated_server,
             slot,
             execution,
@@ -74,7 +75,7 @@ async def test_scheduler_persists_runs_and_restarts(
     assert not await run_schedule(
         service.repository,
         "weekly-check",
-        config.model_dump(),
+        saved_config,
         populated_server,
         execute,
         moment=moment,
@@ -82,7 +83,7 @@ async def test_scheduler_persists_runs_and_restarts(
     assert await run_schedule(
         service.repository,
         "weekly-check",
-        config.model_dump(),
+        saved_config,
         populated_server,
         execute,
         moment=moment + timedelta(hours=1),
@@ -90,7 +91,7 @@ async def test_scheduler_persists_runs_and_restarts(
     assert not await run_schedule(
         service.repository,
         "weekly-check",
-        config.model_dump(),
+        saved_config,
         populated_server,
         execute,
         moment=moment + timedelta(hours=2),
@@ -103,19 +104,16 @@ async def test_scheduler_persists_runs_and_restarts(
     assert (await restarted.snapshot()).schedules[0].last_status == "completed"
 
 
-async def test_legacy_schedules_are_imported_once_and_remain_editable(
+async def test_legacy_backup_schedules_setting_is_retired(
     app_context, populated_server
 ):
-    name = populated_server.server_name
-    await app_context.settings.set("backups.schedules", {name: {"time": "04:00"}})
+    from bedrock_server_manager.state.settings import SettingsState
+
+    loaded = SettingsState.from_dict(
+        {"backups": {"schedules": {populated_server.server_name: {"time": "04:00"}}}}
+    )
+    assert "schedules" not in loaded.to_dict()["backups"]
     service = app_context.scheduler
-    first = (await service.snapshot()).schedules
-    second = (await service.snapshot()).schedules
-    assert len(first) == len(second) == 1
-    assert first[0].schedule_id == second[0].schedule_id and first[0].legacy
-    await app_context.settings.set("backups.schedules", {name: {"time": "05:00"}})
-    assert (await service.snapshot()).schedules[0].configuration.time == "05:00"
-    await service.delete(first[0].schedule_id)
     assert not (await service.snapshot()).schedules
 
 
@@ -135,7 +133,7 @@ async def test_scheduler_endpoints_are_admin_only(
     result = await admin_auth_client.get(path)
     assert result.status_code == 200, result.text
     assert result.headers["cache-control"] == "no-store"
-    assert result.json()["schedules"][0]["configuration"]["task"] == "verify"
+    assert result.json()["schedules"][0]["configuration"]["task"] == "backup:verify"
     assert (await admin_auth_client.delete(path + "/weekly")).status_code == 200
 
 
@@ -343,7 +341,9 @@ async def test_scheduler_writes_publish_committed_state_and_storage_metrics(
     assert {"state-test"} in observed
     copied = app_context.state.scheduler.records
     copied["state-test"][0]["task"] = "verify"
-    assert app_context.state.scheduler.records["state-test"][0]["task"] == "backup"
+    assert (
+        app_context.state.scheduler.records["state-test"][0]["task"] == "backup:create"
+    )
     await service.delete("state-test")
     assert app_context.state.scheduler.count == 0
 
@@ -449,7 +449,9 @@ async def test_diagnostic_history_links_scheduled_runs(
     call = next(call for call in record.call_args_list if call.args[0] == "scheduler")
     assert call.kwargs["correlation_id"] == runs[0]["correlation_id"]
     assert call.kwargs["operation_id"]
-    assert app_context.state.scheduler.records["trace-job"][0]["task"] == "verify"
+    assert (
+        app_context.state.scheduler.records["trace-job"][0]["task"] == "backup:verify"
+    )
 
 
 async def test_new_schedules_inherit_application_timezone_without_moving_saved_jobs(
@@ -574,3 +576,78 @@ async def test_legacy_task_names_log_deprecation_warning(
         and "backup:verify" in record.getMessage()
         for record in caplog.records
     )
+    assert (
+        app_context.state.scheduler.records["legacy-verify-alias"][0]["task"]
+        == "backup:verify"
+    )
+
+
+async def test_api_task_handler_handles_global_requests_lock_contention_and_error_detail(
+    app_context, populated_server
+):
+    from types import SimpleNamespace
+
+    from pydantic import BaseModel
+
+    from bedrock_server_manager.scheduler.runner import DeferredRun
+
+    service = app_context.scheduler
+    assert service._handlers["backup:create"].timeout_seconds is None
+    assert service._handlers["server:start"].timeout_seconds == 300
+
+    class GlobalRequest(BaseModel):
+        tag: str = "daily"
+
+    seen_payloads = []
+
+    async def global_api(request: GlobalRequest):
+        seen_payloads.append(dict(request))
+        return SimpleNamespace(status="success", message="ok")
+
+    service.register_api_task(
+        "system:global_test",
+        global_api,
+        owner="application",
+        timeout_seconds=None,
+        requires_server_lock=False,
+    )
+    await service._execute(
+        {"task": "system:global_test", "options": {"tag": "nightly"}},
+        populated_server,
+        "slot-global",
+    )
+    assert seen_payloads == [{"tag": "nightly"}]
+
+    async def skipped_busy_api(request: GlobalRequest):
+        return SimpleNamespace(
+            status="skipped", message="Backup/restore operation already in progress."
+        )
+
+    service.register_api_task(
+        "system:busy_test",
+        skipped_busy_api,
+        owner="application",
+        requires_server_lock=False,
+    )
+    with pytest.raises(DeferredRun, match="yielded to active server operation"):
+        await service._execute(
+            {"task": "system:busy_test", "options": {}},
+            populated_server,
+            "slot-busy",
+        )
+
+    async def failed_api(request: GlobalRequest):
+        return SimpleNamespace(status="error", message="Disk quota exceeded")
+
+    service.register_api_task(
+        "system:fail_test",
+        failed_api,
+        owner="application",
+        requires_server_lock=False,
+    )
+    with pytest.raises(RuntimeError, match="Disk quota exceeded"):
+        await service._execute(
+            {"task": "system:fail_test", "options": {}},
+            populated_server,
+            "slot-fail",
+        )
