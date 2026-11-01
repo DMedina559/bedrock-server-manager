@@ -8,6 +8,7 @@ from fastapi.middleware.cors import CORSMiddleware
 
 from ...state.settings import DEFAULT_CORS_ORIGINS
 from .auth import add_user_to_request
+from .auth_body import AuthBodyLimit
 from .backup_upload import BackupUploadLimit
 from .ingress import IngressMiddleware, route_path
 from .lifecycle import reject_new_mutations
@@ -79,6 +80,7 @@ def configure_middleware(
     app.middleware("http")(security_headers)
 
     app.add_middleware(BackupUploadLimit)
+    app.add_middleware(AuthBodyLimit)
 
     # Add CORS Middleware
     cors_kwargs: dict[str, Any] = {

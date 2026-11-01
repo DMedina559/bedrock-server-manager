@@ -330,6 +330,12 @@ class LoginSession(Base):
     expires_at: Mapped[int] = mapped_column(Integer, nullable=False)
     verified_at: Mapped[int] = mapped_column(Integer, nullable=False)
     verified_device_id: Mapped[str | None] = mapped_column(String(32), nullable=True)
+    authentication_method: Mapped[str] = mapped_column(
+        String(32), nullable=False, default="unknown"
+    )
+    factor_verified: Mapped[bool] = mapped_column(
+        Boolean, nullable=False, default=False
+    )
     revoked_at: Mapped[int | None] = mapped_column(Integer, nullable=True)
 
 

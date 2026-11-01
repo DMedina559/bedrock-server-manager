@@ -10,7 +10,13 @@ from uuid import uuid4
 from fastapi import HTTPException
 from sqlalchemy import case, select, update
 
-from ..db.models import AccountSecurity, LoginSession, TrustedDevice, User
+from ..db.models import (
+    AccountSecurity,
+    LoginSession,
+    PasskeyCredential,
+    TrustedDevice,
+    User,
+)
 
 TRUST_DAYS = 30
 MAX_DEVICES = 20
@@ -22,6 +28,7 @@ class FactorProof:
     auth_revision: int
     fresh_factor: bool
     device_id: str | None = None
+    passkey_id: str | None = None
 
 
 class TrustedDeviceService:
@@ -68,6 +75,16 @@ class TrustedDeviceService:
             or proof.auth_revision != owner.auth_revision
         ):
             raise HTTPException(401, "Account security changed; verify again")
+        if proof.passkey_id is not None:
+            active = await session.scalar(
+                select(PasskeyCredential.id).where(
+                    PasskeyCredential.id == proof.passkey_id,
+                    PasskeyCredential.owner_id == owner.access_id,
+                    PasskeyCredential.revoked_at.is_(None),
+                )
+            )
+            if active is None:
+                raise HTTPException(401, "Passkey revoked; verify again")
         if proof.fresh_factor or proof.device_id is None:
             return None
         if await self.live_record(session, owner.access_id, proof.device_id) is None:
@@ -100,13 +117,34 @@ class TrustedDeviceService:
                 )
             return device
 
+    @staticmethod
+    async def enrolled_factors(session, owner_id):
+        factor = await session.get(AccountSecurity, owner_id)
+        has_passkey = (
+            await session.scalar(
+                select(PasskeyCredential.id)
+                .where(
+                    PasskeyCredential.owner_id == owner_id,
+                    PasskeyCredential.revoked_at.is_(None),
+                )
+                .limit(1)
+            )
+            is not None
+        )
+        return bool(factor and factor.totp_secret), has_passkey
+
     async def verify_factor(self, owner_id, revision, otp, token):
         async with self.context.storage.transaction() as session:
             owner = await session.scalar(select(User).where(User.access_id == owner_id))
             if owner is None or not owner.is_active or owner.auth_revision != revision:
                 return None
-            factor = await session.get(AccountSecurity, owner_id)
-            enabled = bool(factor and factor.totp_secret)
+            enabled, has_passkey = await self.enrolled_factors(session, owner_id)
+        if not enabled and has_passkey:
+            raise HTTPException(
+                401,
+                "Sign in or verify with your passkey",
+                headers={"X-BSM-MFA": "passkey"},
+            )
         if not enabled:
             return FactorProof(owner_id, revision, False)
         # An explicitly supplied OTP must pass; do not silently fall back to trust.

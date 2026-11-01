@@ -74,7 +74,12 @@ def b64url_encode(data: bytes) -> str:
 
 def b64url_decode(value: str) -> bytes:
     """Strictly decode an unpadded or padded base64url string."""
-    if not isinstance(value, str) or not value or not value.isascii():
+    if (
+        not isinstance(value, str)
+        or not value
+        or len(value) > 22000
+        or not value.isascii()
+    ):
         raise WebAuthnError("Invalid base64url value")
     cleaned = value.rstrip("=")
     if any(
@@ -229,16 +234,16 @@ def _load_cose_public_key(cose_bytes: bytes) -> tuple[int, Any]:
         if (
             not isinstance(n, bytes)
             or not isinstance(e, bytes)
-            or len(n) < 256
-            or len(e) < 1
+            or not 256 <= len(n) <= 1024
+            or not 1 <= len(e) <= 8
         ):
             raise WebAuthnError("Invalid RS256 COSE public key parameters")
         try:
-            numbers = rsa.RSAPublicNumbers(
+            rsa_numbers = rsa.RSAPublicNumbers(
                 int.from_bytes(e, "big"),
                 int.from_bytes(n, "big"),
             )
-            return alg, numbers.public_key()
+            return alg, rsa_numbers.public_key()
         except ValueError as error:
             raise WebAuthnError("Invalid RSA public key") from error
 
@@ -420,7 +425,7 @@ def verify_authentication_response(
         allowed_origins=allowed_origins,
     )
     auth_data = b64url_decode(auth_data_b64)
-    if len(auth_data) < 37:
+    if not 37 <= len(auth_data) <= 16384:
         raise WebAuthnError("authenticatorData is too short")
 
     rp_id_hash = auth_data[:32]
@@ -441,6 +446,8 @@ def verify_authentication_response(
 
     sign_count = struct.unpack(">I", auth_data[33:37])[0]
     signature = b64url_decode(signature_b64)
+    if len(signature) > 1024:
+        raise WebAuthnError("Passkey signature exceeds maximum size")
     signed_data = auth_data + hashlib.sha256(client_data_raw).digest()
 
     alg, public_key = _load_cose_public_key(b64url_decode(public_key_b64))

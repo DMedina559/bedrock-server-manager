@@ -181,16 +181,17 @@ async def passkey_login_verify(
     app_context: AppContext = Depends(get_app_context),
 ) -> TokenResponse:
     """Verify a WebAuthn passkey assertion and establish an authenticated session."""
-    username, _, auth_revision = (
-        await app_context.session_service.complete_passkey_login(payload, request)
+    username, proof = await app_context.session_service.complete_passkey_login(
+        payload, request
     )
     expires_delta = token_lifetime(
         app_context.settings, remember_me=payload.remember_me
     )
     access_token = await create_access_token(
-        data={"sub": username, "authv": auth_revision},
+        data={"sub": username, "authv": proof.auth_revision},
         app_context=app_context,
         expires_delta=expires_delta,
+        factor_proof=proof,
     )
     session_id = jwt.get_unverified_claims(access_token)["sid"]
     await app_context.session_service.annotate(session_id, request)

@@ -631,3 +631,31 @@ frozen verbatim, and new IDs should use stable namespaced snake_case. The legacy
 GET logout operation remains hidden and unchanged. Registration/logout/key-info and
 panorama responses have concrete success or binary content declarations. Client
 contracts are regenerated without renaming existing core operation IDs.
+
+### Passkey proof and concurrency guarantees
+
+Passkey registration, passwordless login, and passkey step-up request and verify
+user verification (PIN/biometric). A presence-only assertion cannot replace a
+password or satisfy administrator MFA. Accounts with passkeys but no authenticator
+app must use their passkey for sign-in and sensitive verification; password-only
+attempts return `X-BSM-MFA: passkey`. Accounts with TOTP retain password plus
+OTP/recovery-code/remembered-device authentication.
+
+Enrolling a passkey signs out other sessions, retaining the enrolling session.
+Revocation invalidates in-flight factor proofs and recent-verification grants,
+without automatically revoking unrelated established sessions. Challenges are
+consumed by a conditional database write; concurrent zero-counter assertions
+cannot reuse a challenge. Session creation and step-up recheck the proof at the
+write boundary. Secret-free login activity records the authentication method.
+
+Auth request bodies are bounded to 64 KiB before parsing, including chunked
+requests. Encoded WebAuthn fields and RSA/signature sizes are bounded, and
+verification uses a limited worker pool. Passkey orchestration lives in
+`services/passkey_service.py`; persisted session lifecycle remains in
+`services/session_service.py`. Existing HTTP operation IDs are unchanged.
+
+Session rows now persist the authentication method and whether a second factor
+was verified. Migration marks existing sessions as unknown/unverified rather than
+assuming proof from current enrollment. An older session on an account with an
+enrolled factor must sign in again; unaffected password-only accounts and named
+integration credentials keep their existing behavior.

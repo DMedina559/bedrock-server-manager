@@ -14,11 +14,9 @@ from sqlalchemy import delete, or_, select, update
 
 from ..db.models import (
     AccessRevision,
-    AccountSecurity,
     AccountServerAccess,
     IntegrationToken,
     LoginSession,
-    PasskeyCredential,
     Server,
     ServerAccessGrant,
     User,
@@ -121,6 +119,7 @@ class AccessService:
                 or record.role != user.role
             ):
                 return None
+            login = None
             if session_id is not None:
                 login = validated_session
                 if login is None:
@@ -137,32 +136,25 @@ class AccessService:
                     <= int(time.time())
                 ):
                     return None
-            factor = await session.get(AccountSecurity, record.access_id)
-            has_totp = bool(factor and factor.totp_secret)
-            has_passkey = False
-            if (
+            mfa_required = False
+            admin_policy = (
                 token_id is None
                 and record.role == "admin"
                 and self.context.settings.get("security.require_admin_mfa", False)
-                and not has_totp
-            ):
-                has_passkey = (
-                    await session.scalar(
-                        select(PasskeyCredential.id)
-                        .where(
-                            PasskeyCredential.owner_id == record.access_id,
-                            PasskeyCredential.revoked_at.is_(None),
-                        )
-                        .limit(1)
-                    )
-                    is not None
-                )
-            mfa_required = bool(
-                token_id is None
-                and record.role == "admin"
-                and self.context.settings.get("security.require_admin_mfa", False)
-                and not (has_totp or has_passkey)
             )
+            if admin_policy or (login is not None and not login.factor_verified):
+                has_totp, has_passkey = (
+                    await self.context.trusted_device_service.enrolled_factors(
+                        session, record.access_id
+                    )
+                )
+                if (
+                    login is not None
+                    and (has_totp or has_passkey)
+                    and not login.factor_verified
+                ):
+                    return None
+                mfa_required = admin_policy and not (has_totp or has_passkey)
             permission_set = self.policy.resolve(record.role)
             if mfa_required:
                 permission_set &= frozenset({"account:read", "sessions:manage"})
