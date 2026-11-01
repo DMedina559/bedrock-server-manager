@@ -30,9 +30,28 @@ Discover and enable the plugin through management, then check its load log. Inte
 
 For a package, put the main subclass in—or expose it from—`my_plugin/__init__.py`. Additional modules can live beside it. Dependencies refer to plugin identities, not arbitrary Python packages; install Python dependencies into BSM's environment separately.
 
+## Standardized decorators and declarative attributes
+
+Import decorators and `PluginBase` directly from `bedrock_server_manager`. BSM automatically discovers and registers these extensions when your plugin loads, and cleans them up on unload:
+
+| Extension | How to declare | Purpose |
+|---|---|---|
+| Event listeners | `@app_event("event_name")` | Listen to lifecycle, before/after operation, or custom events |
+| Periodic background loops | `@task_loop(interval=60)` | Run an async or sync method repeatedly while the plugin is loaded |
+| Scheduled server tasks | `@scheduled_task(...)` | Register an async handler in the server scheduler (`<plugin_name>:<task>`) |
+| Scheduled API tasks | `scheduled_apis = [...]` | Expose existing `@api_method` APIs or dotted API paths in the scheduler |
+| Diagnostic providers | `@diagnostic_provider(...)` | Contribute bounded numeric/boolean telemetry to `plugin:<plugin_name>:<name>` |
+| WebSocket data providers | `@data_provider("topic")` / `@websocket_provider("topic")` | Handle WebSocket `request` messages for `<plugin_name>:<topic>` |
+| FastAPI routes | `router = APIRouter(...)` or `routers = [...]` | Mount custom authenticated HTTP/UI routes on the web application |
+| Static asset mounts | `static_mounts = [(prefix, path, name)]` | Mount static directories under the plugin web namespace |
+| HTTP permissions | `http_permissions = [(perm, description, roles)]` | Register custom `plugin:<plugin_name>:<perm>` HTTP scopes |
+| Typed settings | `settings_model`, `global_settings_model`, `server_settings_model` | Validate plugin, global, and per-server settings and generate web forms |
+
+Imperative registration methods (`get_fastapi_routers()`, `get_static_mounts()`, `api.runtime.register_scheduled_task()`, `api.runtime.register_diagnostic_provider()`, `api.runtime.register_data_provider()`, `api.runtime.register_http_permission()`) and unscoped `self.api.<method>` calls remain supported for backward compatibility, but log deprecation warnings and will be removed in a future release.
+
 ## Call typed capabilities
 
-Use `self.api` with declared request models or supported mappings. Results are Pydantic models; inspect their fields and use `model_dump(mode="json")` when serialization is needed. The bridge supplies caller identity; do not pass a caller plugin name or AppContext.
+Use domain-scoped namespaces on `self.api` (for example `self.api.server`, `self.api.backup_restore`, `self.api.settings`) with declared request models or supported mappings. Results are Pydantic models; inspect their fields and use `model_dump(mode="json")` when serialization is needed. The bridge supplies caller identity; do not pass a caller plugin name or AppContext.
 
 Use `PluginBase` settings helpers and managed runtime capabilities instead of importing internal servers, database sessions or application context. Narrow capabilities preserve ownership and cleanup boundaries. Await direct operations when their result is needed; see [managed tasks](task_manager.md) for work that belongs in the background.
 
@@ -46,6 +65,6 @@ For custom declarations, priorities, delivery limits, waits and diagnostics, use
 
 ## Own and release resources
 
-Register routes, listeners, waits, tasks and data providers through supported capabilities. Stop producers and release external resources during unload. Reload can be blocked while an old generation still has outstanding synchronous work.
+Declare routes, listeners, scheduled tasks, diagnostic providers, and WebSocket data providers through `PluginBase` attributes and decorators, or use `self.api.runtime` and `self.api.events` when dynamic registration is required. Stop producers and release external resources during unload. Reload can be blocked while an old generation still has outstanding synchronous work.
 
-Additional guides cover [settings](settings.md), [FastAPI routes](fastapi_endpoints.md) and [native JSON UI](native_json_ui.md). Authenticate custom routes explicitly and validate their requests with Pydantic models.
+Additional guides cover [settings and scheduled tasks](settings.md), [FastAPI routes](fastapi_endpoints.md), [background tasks](task_manager.md), and [native JSON UI](native_json_ui.md). Authenticate custom routes explicitly and validate their requests with Pydantic models.

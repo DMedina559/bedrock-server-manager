@@ -37,19 +37,22 @@ async def get_ui(server: str = "default_server"): # Accept the server query para
 
 ### Basic Example
 
-Here is a minimal example of a plugin that adds a native UI page:
+Here is a minimal example of a plugin that adds an authenticated native UI page:
 
 ```python
-from fastapi import APIRouter, Request
+from fastapi import APIRouter, Depends, Request
 from fastapi.responses import JSONResponse
-from bedrock_server_manager import PluginBase, app_event
+from bedrock_server_manager import PluginBase, app_event, get_current_user
 
 class MyPlugin(PluginBase):
     version = "4.0.0"
 
     @app_event("on_load")
     async def plugin_loaded(self, **kwargs):
-        self.router = APIRouter(tags=["My Plugin"])
+        self.router = APIRouter(
+            tags=["My Plugin"],
+            dependencies=[Depends(get_current_user)],
+        )
 
         @self.router.get(
             "/my_plugin/ui",
@@ -74,9 +77,6 @@ class MyPlugin(PluginBase):
                     }
                 ]
             })
-
-    def get_fastapi_routers(self, **kwargs):
-        return [self.router]
 ```
 
 ## Available Components

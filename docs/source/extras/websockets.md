@@ -9,7 +9,9 @@ The backend WebSocket implementation is built using FastAPI and is divided into 
 The WebSocket router is defined in `src/bedrock_server_manager/web/routers/websocket.py`. It is responsible for the following:
 
 -   **Endpoint**: Creates a WebSocket endpoint at `/ws`.
--   **Authentication**: Authenticates the user on the first message payload. The client must send an authentication message within 5 seconds of connecting, containing their JWT access token (e.g., `{"action": "authenticate", "token": "eyJhb..."}`).
+-   **Authentication**: Authenticates the user on the first message payload within 5 seconds of connecting:
+    -   Bearer/integration token clients send `{"action": "authenticate", "token": "<jwt_or_bsm_it_token>"}`.
+    -   Same-origin browser sessions using cookie authentication send `{"action": "authenticate"}` (the backend resolves the HttpOnly `access_token_cookie`).
 -   **Message Handling**: Listens for incoming JSON messages from the client. After authentication, supported actions include `subscribe`, `unsubscribe`, `request`, and `request_data`.
 -   **Connection Management**: Hands off the connection and subscription management to the `ConnectionManager`.
 
@@ -17,20 +19,33 @@ The WebSocket router is defined in `src/bedrock_server_manager/web/routers/webso
 
 The `ConnectionManager` is a class defined in `src/bedrock_server_manager/web/websocket_manager.py`. It is the core of the backend WebSocket implementation and is responsible for the following:
 
--   **Connection Tracking**: Keeps track of all active WebSocket connections and their authenticated `UserResponse` identity (`user.username`, `user.role`, `user.id`).
--   **Topic-Based Subscriptions**: Manages which clients are subscribed to which topics.
+-   **Connection Tracking**: Keeps track of all active WebSocket connections, their authenticated `UserResponse` identity (`user.username`, `user.role`, `user.id`), and their effective permission and server `Authorization` snapshot.
+-   **Topic-Based Subscriptions**: Manages which clients are subscribed to which topics and enforces topic-level and per-server authorization filters. When an account's permissions or sessions change, `ConnectionManager` notifies affected connections (`access_changed` / `policy_changed`).
 -   **Message Broadcasting**: Provides methods for sending messages to a single client, all clients subscribed to a specific topic, or all clients for a specific user.
--   **Data Provider Registration**: Allows plugins to register real-time topic data providers to handle client request-response messages.
+-   **Data Provider Registration**: Allows plugins to declare real-time topic data providers using `@data_provider` (or `@websocket_provider`) to handle client request-response messages.
 
-Plugins use typed requests with `self.api.websocket`; provider registration belongs to owned runtime capabilities:
+Plugins use typed requests with `self.api.websocket` and declare topic providers on `PluginBase`:
 
 ```python
-await self.api.websocket.websocket_broadcast({"topic": "my-plugin:status", "data": {"connected": True}})
-await self.api.websocket.websocket_send_to_user({"username": "admin", "data": {"message": "Ready"}})
-await self.api.runtime.register_data_provider("my-plugin:status", handler)
+from bedrock_server_manager import PluginBase, data_provider
+
+class MyStatusPlugin(PluginBase):
+    version = "1.0.0"
+
+    @data_provider("status")
+    async def provide_status(self, topic, data, user, **kwargs):
+        return {"connected": True}
+
+    async def notify(self):
+        await self.api.websocket.websocket_broadcast(
+            {"topic": "my_status_plugin:status", "data": {"connected": True}}
+        )
+        await self.api.websocket.websocket_send_to_user(
+            {"username": "admin", "data": {"message": "Ready"}}
+        )
 ```
 
-See the generated [WebSocket API reference](../plugins/api/websocket.md) for exact request fields and delivery results. Providers enforce access to their own data.
+`@data_provider("status")` automatically prefixes `<plugin_name>:` when `:` is omitted (legacy `await self.api.runtime.register_data_provider(...)` remains supported for compatibility but logs a deprecation warning). See the generated [WebSocket API reference](../plugins/api/websocket.md) for exact request fields and delivery results. Providers enforce access to their own data.
 
 ## Request / Response Messaging
 

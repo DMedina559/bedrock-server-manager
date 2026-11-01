@@ -2,15 +2,30 @@
 
 BSM's local command manages the web host and its installation. The separate `bsm-cli` client performs server-management operations against the HTTP API.
 
-## Local hosting
+## Local hosting and administration
 
 ```sh
 bedrock-server-manager --help
+bedrock-server-manager setup
 bedrock-server-manager web start
 bedrock-server-manager web stop --timeout 180
 ```
 
-Place global configuration options before `web`. Keep the same configuration directory when starting, stopping or configuring a service. See the [local command reference](commands.rst) and [runtime guide](../extras/web_runtime.md).
+In addition to `web start` and `web stop`, the local `bedrock-server-manager` command provides administration and recovery tools that operate directly against your local configuration directory:
+
+| Command | Purpose |
+|---|---|
+| `bedrock-server-manager setup` | Interactive initial setup for data directory, database URL, web bind host/port, and system service |
+| `bedrock-server-manager web` | Start or stop the FastAPI web host (`start`, `stop`) |
+| `bedrock-server-manager service` | Configure, enable, disable, remove, or check OS service status (`configure`, `enable`, `disable`, `remove`, `status`) |
+| `bedrock-server-manager database` | Inspect schema status, run migrations, or back up and restore the database (`status`, `upgrade`, `downgrade`, `backup`, `restore`) |
+| `bedrock-server-manager logs` | List, view, or follow application and server logs with verified PID status (`--app`, `--server`, `--list`, `--lines`, `--follow`) |
+| `bedrock-server-manager cleanup` | Prune downloads cache, old logs, or orphaned plugin/server/addon artifacts (`--cache`, `--logs`, `--orphans`, `--all`, `--dry-run`) |
+| `bedrock-server-manager backup` | Offline `.bsmbackup` archive inspection and extraction (`inspect`, `extract`) |
+| `bedrock-server-manager reset-password` | Reset a local user account's password and revoke its existing sessions |
+| `bedrock-server-manager reset-mfa` | Clear MFA, passkeys, and trusted devices for a locked-out local account |
+
+Place global configuration options (`--config-dir`, `--data-dir`, `--db-url`, `--log-level`) before the subcommand. Keep the same configuration directory when starting, stopping or configuring a service. See the [local command reference](commands.rst) and [runtime guide](../extras/web_runtime.md).
 
 ## Remote management
 

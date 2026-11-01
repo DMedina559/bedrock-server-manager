@@ -423,7 +423,7 @@ class AppAPI:
 
     @property
     def scheduler(self) -> "SchedulerAPI":
-        """Read application schedules; registration uses runtime.register_scheduled_task."""
+        """Read application schedules; task registration uses ``@scheduled_task``, ``scheduled_apis``, or ``runtime.register_api_task``."""
         return cast("SchedulerAPI", self._namespace("scheduler"))
 
     @property
@@ -643,6 +643,7 @@ class AppAPI:
         return api_details
 
     def listen_for_event(self, event_name: str, callback: Callable[..., None]):
+        """Deprecated unscoped event listener helper; prefer ``@app_event`` or ``self.api.events.listen()``."""
         logger.warning(
             "Plugin '%s' used deprecated unscoped 'self.api.listen_for_event()'; use '@app_event' or 'self.api.events.listen()' instead. Unscoped self.api usage will be removed in a future version.",
             self._plugin_name,
@@ -650,6 +651,7 @@ class AppAPI:
         self._event_listener(event_name, callback)
 
     async def send_event(self, event_name: str, *args: Any, **kwargs: Any):
+        """Deprecated unscoped event emitter helper; prefer ``self.api.events.emit()``."""
         logger.warning(
             "Plugin '%s' used deprecated unscoped 'self.api.send_event()'; use 'self.api.events.emit()' instead. Unscoped self.api usage will be removed in a future version.",
             self._plugin_name,

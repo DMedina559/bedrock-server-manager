@@ -18,7 +18,7 @@ import bedrock_server_manager  # noqa: E402
 # https://www.sphinx-doc.org/en/master/usage/configuration.html#project-information
 
 project = "Bedrock Server Manager"
-copyright = "2025, DMedina559"
+copyright = "2026, DMedina559"
 author = "DMedina559"
 release = bedrock_server_manager.__version__
 version = release

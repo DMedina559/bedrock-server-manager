@@ -30,11 +30,20 @@ allows every origin. Same-origin access does not require a CORS entry. Changes
 take effect after restarting the web server. Existing bootstrap JSON
 `web.cors_origins` values are imported only when no database policy exists;
 once imported, the database is authoritative and the legacy JSON entry can be
-removed.
+removed. `web.frame_ancestors` controls which origins may embed the Web UI in a
+frame (defaulting to same-origin `'self'`), and `web.csp_report_only` switches
+Content-Security-Policy enforcement to report-only mode when testing proxy or
+ingress embedding.
+
+Security settings under `security.*` configure administrator MFA enforcement
+(`security.require_admin_mfa`), login session lifetimes (`security.session_idle_hours`
+and `security.session_max_days`), and authentication rate-limit thresholds
+(`security.auth_account_attempts`, `security.auth_peer_attempts`,
+`security.auth_window_seconds`, `security.auth_ipv6_prefix`).
 
 ## Accounts and plugins
 
-Administrators manage accounts and invitation tokens. Use the expiry returned for the generated invitation rather than assuming a fixed lifetime. BSM roles are separate from Bedrock player permissions; see [access and roles](../web/role_access_table.md).
+Administrators manage accounts, per-server access assignments, and invitation tokens. Use the expiry returned for the generated invitation rather than assuming a fixed lifetime. BSM roles and permission scopes are separate from Bedrock player permissions; see [access and roles](../web/role_access_table.md).
 
 Plugin settings determine optional automation. Review the [bundled plugins](default_plugins.md) and keep external plugins compatible with the installed backend.
 
@@ -46,8 +55,14 @@ See [runtime and shutdown](../extras/web_runtime.md) for the cleanup order, cont
 
 ## Application configuration and private credentials
 
-The `--config-dir` option still identifies BSM's configuration root. Bootstrap JSON resides at `<config_dir>/bootstrap/bedrock_server_manager.json`, default SQLite databases reside under `<config_dir>/db/`, and web/server PID and runtime lock files reside under `<config_dir>/runtime/`. On first access, BSM moves recognized legacy bootstrap files into their dedicated subdirectory. Existing legacy SQLite databases remain in place, including their WAL/SHM files; explicit database URLs are always preserved. New installations use the nested database directory. If both legacy and nested default databases exist without an explicit database URL, startup reports a conflict and preserves both files. Select the intended database with `db_url` or `BSM_DB_URL`. Relocate databases only while BSM is stopped, using a consistent SQLite backup. Unknown root files remain untouched. Conflicting old and new bootstrap files produce an error rather than an overwrite.
+The `--config-dir` option identifies BSM's configuration root:
+- Bootstrap JSON resides at `<config_dir>/bootstrap/bedrock_server_manager.json`.
+- Default SQLite databases reside under `<config_dir>/db/`.
+- Application logs reside under `<config_dir>/logs/` and per-server process logs under `<config_dir>/logs/servers/<server_name>/`.
+- Web and server PID/runtime lock files reside under `<config_dir>/runtime/` (and `<config_dir>/runtime/servers/<server_name>/`).
 
-Database-backed settings remain in the database. Backup encryption keys reside separately at `<config_dir>/credentials/backup-keys.json` and are excluded from server backups and normal settings exports. The credential directory and file use restrictive host permissions.
+On first access, BSM moves recognized legacy bootstrap, log, and runtime files into their dedicated subdirectories. Existing legacy SQLite databases remain in place, including their WAL/SHM files; explicit database URLs are always preserved. New installations use the nested database directory. If both legacy and nested default databases exist without an explicit database URL, startup reports a conflict and preserves both files. Select the intended database with `db_url` or `BSM_DB_URL`. Relocate databases only while BSM is stopped, using a consistent SQLite backup. Unknown root files remain untouched. Conflicting old and new bootstrap files produce an error rather than an overwrite.
 
-Supported plugin file access is scoped to `<config_dir>/plugin_data/<plugin-id>/` (private) and `<config_dir>/plugin_data/public/` (shared). This manager plugin data tree is separate from each Minecraft server's `config/` directory, which is included in that server's backups.
+Database-backed settings remain in the database. Private keyring files reside separately under `<config_dir>/credentials/` (`backup.key` for backup encryption, `jwt.key` for session signing, and `mfa.key` for MFA secret encryption) and are excluded from server backups and normal settings exports. The credential directory and files use restrictive host permissions.
+
+Supported plugin file access is scoped to `<config_dir>/plugins/<plugin-id>/` (private) and `<config_dir>/plugins/public/` (shared). This manager plugin data tree is separate from each Minecraft server's `config/` directory, which is included in that server's backups.

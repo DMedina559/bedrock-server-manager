@@ -58,22 +58,25 @@ The report contains metadata only, but plugin names and event names can still id
 
 ## Plugin-owned observations
 
-Plugins can register an asynchronous provider during load:
+Plugins can declare an asynchronous diagnostic provider method using `@diagnostic_provider`:
 
 ```python
+from bedrock_server_manager import PluginBase, diagnostic_provider
 from bedrock_server_manager.diagnostics import PluginValues
 
-async def diagnostic_values():
-    return PluginValues(
-        health="ok",
-        values={"queued": 3, "connected": True},
-        units={"queued": "count"},
-    )
+class MyPlugin(PluginBase):
+    version = "1.0.0"
 
-await self.api.runtime.register_diagnostic_provider("connection", diagnostic_values)
+    @diagnostic_provider("connection")
+    async def diagnostic_values(self):
+        return PluginValues(
+            health="ok",
+            values={"queued": 3, "connected": True},
+            units={"queued": "count"},
+        )
 ```
 
-The runtime assigns the section name `plugin:<plugin_name>:connection` and its owner. Providers return bounded numeric/boolean observations; arbitrary state dumps and string values are excluded. Providers must yield normally and cooperate with cancellation. A timeout cannot forcibly terminate Python code that blocks the event loop.
+The runtime assigns the section name `plugin:<plugin_name>:connection` and its owner (or `plugin:<plugin_name>:<method_name>` when `@diagnostic_provider` is used without arguments). The legacy `await self.api.runtime.register_diagnostic_provider(...)` helper remains supported for compatibility but logs a deprecation warning. Providers return bounded numeric/boolean observations; arbitrary state dumps and string values are excluded. Providers must yield normally and cooperate with cancellation. A timeout cannot forcibly terminate Python code that blocks the event loop.
 
 Providers are removed during plugin unload. An old unfinished provider prevents replacement of the same name until it drains. Registration limits bound provider counts globally and per plugin owner. Registry diagnostics show configured limits, ownership, pending providers, failures, timeouts, and rejected registrations. Built-in application providers are outside the per-plugin limit. Plugin authors can read typed diagnostics with `self.api.diagnostics.get_application_diagnostics({})`, `get_diagnostic_history({})`, and `get_diagnostic_report({})`.
 

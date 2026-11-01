@@ -16,8 +16,14 @@ from .api_bridge import AppAPI
 class PluginBase(ABC):
     """Base class for plugins with a version, scoped API and logger.
 
-    Declare event handlers with ``@app_event`` or register them through
-    ``api.events``.
+    Declare event handlers with ``@app_event``, periodic tasks with ``@task_loop``,
+    scheduled tasks with ``@scheduled_task``, diagnostic providers with
+    ``@diagnostic_provider``, and WebSocket data providers with ``@data_provider``
+    or ``@websocket_provider``.
+
+    Declarative extension attributes (``router``, ``routers``, ``static_mounts``,
+    ``http_permissions``, ``scheduled_apis``) are discovered and registered
+    automatically after ``on_load`` completes.
     """
 
     # Class attribute: version
@@ -171,20 +177,19 @@ class PluginBase(ABC):
     # --- Plugin Extension Hooks ---
 
     def get_fastapi_routers(self) -> List[Any]:
-        """Called by the PluginManager after the plugin is loaded to retrieve
-        any custom FastAPI routers (fastapi.APIRouter instances)
-        the plugin wishes to register with the main web application.
+        """Deprecated extension hook returning custom FastAPI routers.
 
-        Plugins should override this method to return a list of APIRouter objects.
+        Prefer setting ``self.router`` or ``self.routers`` (or declaring them on
+        the plugin class) instead of overriding ``get_fastapi_routers()``.
 
-        :returns: A list of fastapi.APIRouter objects. Defaults to an empty list.
+        :returns: A list of ``fastapi.APIRouter`` objects. Defaults to an empty list.
         """
         return []
 
     def get_static_mounts(self) -> List[tuple[str, "Path", str]]:
-        """Return static mounts as ``(URL prefix, directory, name)`` tuples.
+        """Deprecated extension hook returning static mounts as ``(URL prefix, directory, name)`` tuples.
 
-        Prefixes and names must be unique across plugins; the default is an empty
-        list.
+        Prefer setting ``self.static_mounts`` (or declaring it on the plugin class)
+        instead of overriding ``get_static_mounts()``.
         """
         return []

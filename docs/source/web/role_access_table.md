@@ -12,9 +12,11 @@ Permissions are attached to individual routes. This table summarizes the roles; 
 
 Authentication endpoints and invitation registration have their own public/token-based flows. Plugin endpoints must explicitly apply their required authentication dependencies.
 
-## Manage user accounts
+## Manage user accounts and per-server access
 
-Administrators can inspect accounts in **Users**, create invitations, and edit a user's role or active status. Confirm the intended account before saving access changes. Invitation expiry is reported when the invitation is created.
+Administrators can inspect accounts in **Users**, create invitations, and edit a user's role, active status, and server access policy. Confirm the intended account before saving access changes. Invitation expiry is reported when the invitation is created.
+
+For `user` and `moderator` accounts, administrators can leave server access unrestricted (`all`) or restrict the account to `assigned` servers (`/api/access/users/{user_id}/servers`) with specific per-server permissions (such as `servers:read`, `servers:control`, `servers:configure`, or `backups:create`). Use the access preview tool to inspect an account's effective capabilities before saving.
 
 ```{figure} ../../images/web_users_page.png
 :alt: User Management listing BSM accounts, assigned roles and active status
@@ -32,9 +34,17 @@ The user list shows account roles and whether each account is active.
 Edit the selected account's BSM role and active status.
 ```
 
-## Your account
+## Your account, MFA, sessions, and integration tokens
 
-Open **Account** to inspect your profile and change your password using the current-password and confirmation fields. Your BSM role describes access to the manager; it does not grant Minecraft operator permissions.
+Open **Account** to manage your profile, security credentials, and API integrations across five tabs:
+
+- **Sessions:** Inspect active login sessions, rename devices, or revoke individual or all other sessions.
+- **Integrations:** Create, preview, rotate, and revoke named integration tokens (`bsm_it_...`) scoped to specific permissions, optional assigned servers, and an expiration window.
+- **My access:** Inspect your effective role, global permissions, and per-server access grants.
+- **Activity:** Review recent account security events (logins, MFA changes, token and session changes).
+- **Password & MFA:** Update your password, enroll a TOTP authenticator app with one-use recovery codes, register **WebAuthn Passkeys** for passwordless sign-in and step-up verification, and manage remembered trusted devices. Sensitive account changes require recent authentication verification (`X-BSM-Recent-Auth: required`).
+
+Your BSM role describes access to the manager; it does not grant Minecraft operator permissions. See [HTTP permissions and browser authentication](../developer/http_access.md) for full details on scopes, MFA, passkeys, and token policies.
 
 ```{figure} ../../images/web_account_page.png
 :alt: My Account page with profile information and a password-change form

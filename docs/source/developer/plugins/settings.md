@@ -110,7 +110,7 @@ existence outside the settings service.
 Plugins can request current valid names without sampling server processes:
 
 ```python
-result = await self.api.server.get_valid_server_names(request={})
+result = await self.api.server.get_valid_names(request={})
 names = result.server_names
 ```
 
@@ -123,7 +123,7 @@ selection to mean all servers, and reads its selection for every start event.
 
 Use `await self.api.runtime.write_plugin_file("settings.json", value)` to atomically write files inside this plugin's private data directory (`scope="private"`, default) or the shared public plugin data directory (`scope="public"`). Read them with `await self.api.runtime.read_plugin_file("settings.json")`, or resolve a validated directory/file path with `await self.api.runtime.get_plugin_data_path()`.
 
-Paths are relative to `<config_dir>/plugin_data/<plugin-id>/` (private) or `<config_dir>/plugin_data/public/` (shared). Traversal and symlink escapes are rejected, ownership is injected by the runtime, and capabilities from an unloaded plugin are revoked. Use the existing plugin settings API for ordinary structured settings; these file methods are for plugin-owned files.
+Paths are relative to `<config_dir>/plugins/<plugin-id>/` (private) or `<config_dir>/plugins/public/` (shared). Traversal and symlink escapes are rejected, ownership is injected by the runtime, and capabilities from an unloaded plugin are revoked. Use the existing plugin settings API for ordinary structured settings; these file methods are for plugin-owned files.
 
 The application does not expose its credentials directory through this capability. In-process Python plugins are trusted code with the host process's operating-system permissions; scoped APIs are not an OS sandbox.
 
@@ -167,40 +167,37 @@ Ordinary global/server setting writes and server-settings restores validate chan
 
 ## Scheduled task options and execution context
 
-Register plugin tasks with `self.api.runtime.register_scheduled_task`:
+Register custom plugin tasks declaratively with `@scheduled_task`, or expose existing API methods with `scheduled_apis` or `self.api.runtime.register_api_task`:
 
 ```python
+from pydantic import BaseModel, Field
+from bedrock_server_manager import PluginBase, scheduled_task
+
 class TaskOptions(BaseModel):
     count: int = Field(default=1, ge=1, le=100)
 
-self.api.runtime.register_scheduled_task(
-    "my_plugin:cleanup", self.cleanup,
-    options_model=TaskOptions,
-    timeout_seconds=300,
-    requires_server_lock=False,
-    with_context=True,
-)
+class MyScheduledPlugin(PluginBase):
+    version = "1.0.0"
+    scheduled_apis = [
+        {
+            "name": "prune_backups",
+            "api": "backup_restore.prune_old_backups",
+            "description": "Prune old backups via plugin schedule.",
+        }
+    ]
 
-async def cleanup(self, *, server_name, options, execution_context):
-    key = execution_context["idempotency_key"]
-    # Use key to recognize a repeated attempt before producing external effects.
+    @scheduled_task("cleanup", timeout_seconds=300, requires_server_lock=False)
+    async def cleanup(self, *, server_name: str, options: TaskOptions, execution_context: dict):
+        """Run periodic cleanup for the selected server."""
+        key = execution_context["idempotency_key"]
+        # Use key to recognize a repeated attempt before producing external effects.
 ```
 
-All registration keywords are optional. Existing handlers continue receiving only
-`server_name` and `options`. The default server lock remains enabled. Choose
-`requires_server_lock=False` only when the task does not need exclusive server
-access; operations called through the API still apply their own locks. Plugin task
-timeouts default to 300 seconds and can be set from 1 through 86400 seconds.
-Cancellation is cooperative; handlers must propagate cancellation and clean up in
-`finally` blocks. Long built-in backups do not inherit this plugin timeout.
+`@scheduled_task` automatically prefixes `<plugin_name>:` when `:` is omitted from the task name (or defaults to `<plugin_name>:<method_name>` when called as `@scheduled_task`), infers `options_model` from a type-annotated `options: BaseModel` parameter, enables `with_context=True` when `execution_context` is in the signature, and uses the method's docstring as the default description. When using `scheduled_apis` or `self.api.runtime.register_api_task`, the scheduler automatically derives the schedule's `options_model` from the target API method's request contract (excluding `server_name` and `schedule_slot`, which are injected at runtime). The legacy `self.api.runtime.register_scheduled_task()` method remains supported for compatibility but logs a deprecation warning.
 
-An options model validates saved options and validates again before execution.
-The scheduler listing exposes its JSON Schema for clients. With context enabled,
-the handler additionally receives a stable slot/idempotency key, attempt number,
-and operation correlation ID. A manual run has its own slot. Execution is
-at-least-once across a crash; database claims and completed-run reconciliation do
-not replace idempotency for external effects. Disabled or unloaded plugin owners
-cannot run registered handlers.
+All registration keywords are optional. Existing handlers that omit `execution_context` continue receiving `server_name` and `options`. The default server lock remains enabled. Choose `requires_server_lock=False` only when the task does not need exclusive server access; operations called through the API still apply their own locks. Plugin task timeouts default to 300 seconds and can be set from 1 through 86400 seconds. Cancellation is cooperative; handlers must propagate cancellation and clean up in `finally` blocks. Long built-in backups do not inherit this plugin timeout.
+
+An options model validates saved options and validates again before execution. The scheduler listing exposes its JSON Schema for clients. With context enabled, the handler additionally receives a stable slot/idempotency key, attempt number, and operation correlation ID. A manual run has its own slot. Execution is at-least-once across a crash; database claims and completed-run reconciliation do not replace idempotency for external effects. Disabled or unloaded plugin owners cannot run registered handlers.
 
 
 HTTP permissions follow the selected storage scope: plugin-local GET/PUT require

@@ -139,6 +139,8 @@ def _derive_api_options_model(
 
 
 class Scheduler:
+    """Manage scheduled server tasks and the unified ``TaskDefinition`` registry."""
+
     def __init__(self, context):
         self._log_failures = RepeatedFailureReporter(logging.getLogger(__name__))
         self.context = context
@@ -161,6 +163,7 @@ class Scheduler:
         return self.context.storage.scheduler_repo
 
     def resolve_task_name(self, name: str, *, warn_deprecated: bool = False) -> str:
+        """Resolve a task name, normalizing legacy aliases when present."""
         canonical = _TASK_ALIASES.get(name)
         if canonical is not None:
             if warn_deprecated:
@@ -175,6 +178,7 @@ class Scheduler:
     def get_task_definition(
         self, name: str, *, warn_deprecated: bool = False
     ) -> TaskDefinition | None:
+        """Return the active ``TaskDefinition`` for ``name`` if available."""
         canonical = self.resolve_task_name(name, warn_deprecated=warn_deprecated)
         entry = self._handlers.get(canonical)
         if entry is None:
@@ -205,6 +209,7 @@ class Scheduler:
         description: str = "",
         api_method_name: str | None = None,
     ) -> TaskDefinition:
+        """Register an async scheduled task handler in the unified task registry."""
         if not inspect.iscoroutinefunction(handler):
             raise TypeError("Scheduled task handlers must be async functions")
 
@@ -615,11 +620,13 @@ class Scheduler:
         )
 
     def remove_owner(self, owner):
+        """Remove all scheduled task definitions registered by ``owner``."""
         for name, entry in list(self._handlers.items()):
             if entry.owner == owner:
                 self._handlers.pop(name, None)
 
     def available(self, name: str) -> bool:
+        """Return whether ``name`` resolves to an active registered task."""
         return self.get_task_definition(name) is not None
 
     async def configurations(self, server_name=None):

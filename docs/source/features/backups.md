@@ -121,7 +121,7 @@ encryption. The manifest, filenames, settings, and payload are encrypted; a smal
 public header identifies the format and key ID. Unencrypted archives and explicit
 decrypted exports expose readable server secrets.
 
-BSM stores keys privately at `<config_dir>/credentials/backup-keys.json`. Rotating
+BSM stores keys privately at `<config_dir>/credentials/backup.key`. Rotating
 the active key affects future captures; older archives still require their
 original key. Keep their emergency kits. Losing every copy of the matching key
 makes an encrypted archive unrecoverable.
@@ -131,18 +131,35 @@ archive. This does not prove the kit is safely stored elsewhere. Host permission
 limit access to stored keys, but an administrator or in-process Python plugin
 with BSM's operating-system permissions can access them.
 
-## Schedule backup and verification tasks
+## Schedule backup and server tasks
 
 Open **Scheduler** as an administrator and select **Add schedule**. Give the job
 an ID using letters, digits, underscores, dots or hyphens (1–100 characters, no
-spaces), choose a server, and select **Backup** or **Verify backups**. New jobs are
-paused until enabled.
+spaces), choose a server, and select a task from the unified scheduler task
+registry. New jobs are paused until enabled.
 
-- **Backup** jobs use the global encryption default. Their content picker can
-  inherit global contents or choose any of the same three modes as manual
-  creation. A full-directory job requires Minecraft to be stopped when it runs.
-- **Verify backups** jobs check unverified archives and archives older than the
-  configured recheck age. They do not create backups or run Minecraft.
+Built-in application task types include:
+
+- **`backup:create`** — Create a scheduled `.bsmbackup` snapshot archive. Uses the
+  global encryption default unless overridden. Its content picker can inherit
+  global contents or choose `world`, `selected`, or `full` mode. A full-directory
+  job requires Minecraft to be stopped when it runs.
+- **`backup:verify`** — Check unverified archives and archives older than the
+  configured `minimum_age_hours` (default 168 hours). Does not create backups or
+  run Minecraft.
+- **`backup:prune`** — Prune old backups for the server according to retention policies.
+- **`backup:world`** — Back up the server world directory.
+- **`backup:all`** — Back up the server world and configuration files.
+- **`server:start`**, **`server:stop`**, **`server:restart`** — Start, stop, or
+  restart the Bedrock server on schedule.
+- **`server:send_command`** — Send a console command (`command`) to a running
+  Bedrock server.
+- **`world:export`** — Export the active server world to a `.mcworld` archive.
+
+Legacy task names `"backup"` and `"verify"` are normalized to `backup:create` and
+`backup:verify` with a deprecation warning. Plugins can also register custom
+scheduled tasks (`<plugin_name>:<task>`) using `@scheduled_task`, `scheduled_apis`,
+or `api.runtime.register_api_task`.
 
 Choose a daily time, weekdays, timezone, catch-up behavior and staggering window.
 BSM stores schedules and run history across restarts. The page shows the next run,
@@ -181,10 +198,10 @@ A stable server-specific offset provides staggering. Work runs serially per
 server, with bounded concurrency across servers.
 
 Persisted checkpoints prevent duplicate captures for a published occurrence.
-Failures back off and stop after three attempts for that occurrence. Interrupted
-runs are recorded on startup. Unavailable plugin-provided tasks remain visible
-and require their plugin to register the handler again before they can resume.
-BSM provides backup and verification tasks; plugins may add other task types.
+Failures back off and stop after three attempts for that occurrence. Interrupted runs are recorded on startup. Unavailable plugin-provided tasks remain
+visible and require their plugin to register the handler again before they can
+resume. BSM provides built-in backup, verification, server lifecycle, console
+command, and world export tasks; plugins may register additional task types.
 
 Scheduled backups use the normal hooks, encryption defaults, optional verification,
 retention and destination-copy policies. Scheduler status is also included in

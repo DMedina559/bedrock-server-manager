@@ -54,23 +54,28 @@ URLs respect the trusted ingress root path. Tokens are not copied from the SPA.
 
 ## Plugins
 
-The legacy helpers `get_current_user`, `get_moderator_user`, and `get_admin_user`
-remain available. The last two retain their actual role checks.
+The helpers `get_current_user`, `get_moderator_user`, `get_admin_user`, and
+`require_permissions` are exported from `bedrock_server_manager`.
 
-A plugin may register a permission during load:
+A plugin may declare custom HTTP permissions on `PluginBase`:
 
 ```python
-self.api.runtime.register_http_permission(
-    "plugin:example:jobs:run", "Run example jobs", ["moderator", "admin"]
-)
+class ExamplePlugin(PluginBase):
+    version = "1.0.0"
+    http_permissions = [
+        ("jobs:run", "Run example jobs", ["moderator", "admin"]),
+    ]
 ```
 
-Use it in a route with `Security(require_permissions,
+Omitting `plugin:` automatically prefixes `plugin:<plugin_name>:` (for example
+`plugin:example:jobs:run`). Use it in a route with `Security(require_permissions,
 scopes=["plugin:example:jobs:run"])`. Names must use the plugin's own namespace.
 Descriptions and explicit role grants are required; collisions and invalid names
 are rejected. Registration is owned by the plugin, removed on unload or failed
 load, and invalidates OpenAPI. Admin has no implicit bypass for plugin grants.
-This does not change trusted in-process Python plugin access.
+This does not change trusted in-process Python plugin access. (The legacy
+`self.api.runtime.register_http_permission()` method remains supported for
+compatibility but logs a deprecation warning.)
 
 ## Logout
 

@@ -67,6 +67,10 @@ page refreshes, redirects, downloads, themes, plugin content, and live updates.
 
 HTML and token responses use `Cache-Control: no-store`. Fingerprinted build
 bundles are immutable; mutable static files and custom themes revalidate.
+To allow embedding the Web UI inside a trusted parent frame on another origin
+(such as an external Home Assistant dashboard), configure `web.frame_ancestors`
+(default `["'self'"]`); use `web.csp_report_only` to test Content-Security-Policy
+changes before enforcing them.
 
 ## Appearance
 

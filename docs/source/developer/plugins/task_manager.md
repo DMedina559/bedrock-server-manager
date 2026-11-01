@@ -19,10 +19,13 @@ another caller after the task finishes.
 ```python
 import asyncio
 from fastapi import APIRouter, Depends
-from bedrock_server_manager import PluginBase
-from bedrock_server_manager.api.models.tasks import TaskAcceptedResponse
-from bedrock_server_manager.web import get_admin_user
-from bedrock_server_manager.web.schemas import UserResponse
+from bedrock_server_manager import (
+    PluginBase,
+    TaskAcceptedResponse,
+    UserResponse,
+    app_event,
+    get_admin_user,
+)
 
 class MyTaskPlugin(PluginBase):
     version = "4.0.0"
@@ -31,18 +34,20 @@ class MyTaskPlugin(PluginBase):
         await asyncio.sleep(5)
         return {"message": "Collection finished."}
 
-    def get_fastapi_routers(self):
-        router = APIRouter(prefix="/my_task_plugin", tags=["My Task Plugin"])
+    @app_event("on_load")
+    async def on_load(self, **kwargs):
+        self.router = APIRouter(prefix="/my_task_plugin", tags=["My Task Plugin"])
 
-        @router.post("/collect", operation_id="my_task_plugin_collect",
-                     response_model=TaskAcceptedResponse)
+        @self.router.post(
+            "/collect",
+            operation_id="my_task_plugin_collect",
+            response_model=TaskAcceptedResponse,
+        )
         async def collect(current_user: UserResponse = Depends(get_admin_user)):
             task_id = await self.api.runtime.run_task(
                 self.collect, username=current_user.username
             )
             return TaskAcceptedResponse(task_id=task_id, message="Collection queued.")
-
-        return [router]
 ```
 
 Return JSON data or a serializable Pydantic model from your function. Errors are
@@ -118,8 +123,7 @@ Both synchronous and asynchronous methods are supported.
 ```python
 import asyncio
 import time
-from bedrock_server_manager import PluginBase
-from bedrock_server_manager.plugins.task_loop import task_loop
+from bedrock_server_manager import PluginBase, task_loop
 
 class MyPollingPlugin(PluginBase):
     version = "1.0.0"

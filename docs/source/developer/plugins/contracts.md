@@ -16,7 +16,8 @@ The same call can use a mapping:
 result = await self.api.server.start({"server_name": "example"})
 ```
 
-Use domain names such as `server`, `settings`, and `websocket`. See
+Use domain names such as `server`, `settings`, and `websocket` (unscoped calls
+like `self.api.start(...)` are deprecated and log a warning). See
 [Available APIs](../../plugins/plugin_apis.md) for request fields, response
 fields, and available operations. Import request models from
 `bedrock_server_manager.api.models`.
@@ -94,21 +95,18 @@ JSON values. See [Custom events](custom_events.md) and
 
 ## Runtime capabilities
 
-Functions and context managers use `self.api.runtime`:
+Runtime helpers, plugin-owned files, dynamic API task registration, and lifecycle context managers use `self.api.runtime`:
 
 ```python
 task_id = await self.api.runtime.run_task(collect_stats, username="admin")
-await self.api.runtime.register_data_provider("my-plugin:stats", provide_stats)
+self.api.runtime.register_api_task("prune", "backup_restore.prune_old_backups")
 async with self.api.runtime.server_lifecycle_manager(
     server_name="example", stop_before=True, start_after=True
 ):
     await perform_operation()
 ```
 
-Await server start, stop, and restart directly. Use background tasks for operations
-whose progress must outlive an HTTP request. See [Background tasks](task_manager.md).
-Use `get_plugin_setting` and `set_plugin_setting` for persistent plugin settings;
-see [Plugin settings](settings.md).
+Declare WebSocket data providers, diagnostic providers, and custom scheduled task methods with the `@data_provider` / `@websocket_provider`, `@diagnostic_provider`, and `@scheduled_task` decorators on `PluginBase`. Await server start, stop, and restart directly. Use background tasks for operations whose progress must outlive an HTTP request. See [Background tasks](task_manager.md). Use `get_plugin_setting` and `set_plugin_setting` for persistent plugin settings; see [Plugin settings](settings.md).
 
 ## Operation context
 

@@ -1,25 +1,23 @@
 # Bundled plugins
 
-BSM ships plugins for common automation and content tools. Check the plugin management view for enabled state and settings; optional policies should match your installation's needs.
+BSM ships built-in plugins for common server lifecycle and maintenance automation. Check the plugin management view for enabled state and settings; optional policies should match your installation's needs.
 
 | Plugin | Behavior |
 |---|---|
-| Autostart | Starts servers configured for autostart during application startup |
-| Backup on start | Defaults to world-only protection before starting; contents and encryption are configurable, and its failure policy can cancel startup |
-| Update before start | Checks updates for servers configured for autoupdate |
-| Server lifecycle notifications | Warns connected players before server maintenance; configured delays affect operation duration |
-| World operation notifications | Announces supported world operations |
-| Auto reload configuration | Sends supported Bedrock reload commands after access-file changes |
-| Content uploader | Adds upload tools for supported content archives |
-| Download page | Adds downloads for supported content and backup files |
+| Autostart (`autostart_plugin`) | Starts servers configured for autostart during application startup |
+| Backup on start (`backup_on_start`) | Defaults to world-only protection before starting; contents and encryption are configurable, and its failure policy can cancel startup |
+| Update before start (`update_before_start`) | Checks updates for servers configured for autoupdate |
+| Server lifecycle notifications (`server_lifecycle_notifications`) | Warns connected players before server maintenance; configured delays affect operation duration |
+| World operation notifications (`world_operation_notifications`) | Announces supported world operations |
+| Auto reload configuration (`auto_reload_config`) | Sends supported Bedrock reload commands after access-file changes |
+
+Content upload and download are built-in core endpoints (`/api/content/...`), not plugins.
 
 ## Review automation before maintenance
 
 Backup-on-start and update-before-start run as hooks. Inspect their settings and logs to understand what happens before a start operation. A successful start does not by itself prove every optional backup succeeded.
 
 Notification delays are part of the operation's timeline, not the game process's termination policy. Configure lifecycle and service deadlines to allow intentional delays and cleanup.
-
-Content tools add plugin-owned routes and interface components. Their availability follows plugin state. Use the [manual content library](../extras/install_content.md) if upload tools are unavailable.
 
 See [plugin management](../plugins/introduction.md) for installation/reload and [plugin development](../developer/plugins/introduction.md) for hook contracts.
 

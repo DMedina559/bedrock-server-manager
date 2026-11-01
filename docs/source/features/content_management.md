@@ -4,15 +4,15 @@ Create a [backup](backups.md) before replacing a world, resetting it or changing
 
 ## Import and export worlds
 
-Place a `.mcworld` file in the configured world-content library, or use the enabled content-uploader plugin. Select it for the intended server through the content view. Import replaces the active world. Archive validation/extraction failure preserves the existing world.
+Upload a `.mcworld` file through the Web UI content library (`POST /api/content/upload`) or place it directly in the configured `worlds` content directory. Select it for the intended server through the content view. Import replaces the active world. Archive validation/extraction failure preserves the existing world.
 
-Export packages the active world as a `.mcworld` file in the world-content library. Confirm the exported file exists before copying or deleting source data.
+Export packages the active world as a `.mcworld` file in the world-content library, where it can be downloaded through the Web UI (`GET /api/content/worlds/{filename}/download`). Confirm the exported file exists before copying or deleting source data.
 
 Reset removes the active world; it does not mean deleting every world belonging to every server. Bedrock creates the replacement on the next start using the configured world properties. Save anything you want to keep first.
 
 ## Install and manage addons
 
-Place `.mcpack` or `.mcaddon` files in the addon-content library and select them for installation. Packs must be compatible with your Bedrock version and world. Some features require Bedrock experiment settings.
+Upload `.mcpack` or `.mcaddon` files through the Web UI or place them in the `addons` content library, then select them for installation. Packs must be compatible with your Bedrock version and world. Some features require Bedrock experiment settings.
 
 ```{figure} ../../images/web_install_addons.png
 :alt: Web interface for installing addons on the selected server
@@ -32,7 +32,7 @@ Enabling and disabling packs changes the world's activation lists. Disabled pack
 Inspect installed behavior and resource packs, adjust their order, and enable or disable them.
 ```
 
-Removing a pack can affect existing world content. Back up the world, check task results and verify it in-game after restarting. The [manual content guide](../extras/install_content.md) explains file placement when the upload/download plugins are unavailable.
+Removing a pack can affect existing world content. Back up the world, check task results and verify it in-game after restarting. The [manual content guide](../extras/install_content.md) explains direct filesystem placement in the content library.
 
 ## Choose a subpack
 

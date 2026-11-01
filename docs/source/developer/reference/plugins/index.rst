@@ -8,6 +8,7 @@ Internal contributor reference. Plugins should use supported capabilities.
 
    api_bridge
    app_event
+   decorators
    event_api
    files
    lifespan
