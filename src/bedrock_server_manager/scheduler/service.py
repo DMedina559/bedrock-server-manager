@@ -706,7 +706,7 @@ class Scheduler:
         available_handlers = [
             name for name in list(self._handlers) if self.available(name)
         ]
-        types = sorted(set(available_handlers) | set(_TASK_ALIASES))
+        types = sorted(available_handlers)
         from ..utils.timezones import schedule_timezones, timezone_database_available
 
         return ListSchedulesResponse(
