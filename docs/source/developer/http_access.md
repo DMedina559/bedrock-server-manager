@@ -654,8 +654,8 @@ verification uses a limited worker pool. Passkey orchestration lives in
 `services/passkey_service.py`; persisted session lifecycle remains in
 `services/session_service.py`. Existing HTTP operation IDs are unchanged.
 
-Session rows now persist the authentication method and whether a second factor
-was verified. Migration marks existing sessions as unknown/unverified rather than
-assuming proof from current enrollment. An older session on an account with an
-enrolled factor must sign in again; unaffected password-only accounts and named
-integration credentials keep their existing behavior.
+Session rows persist the authentication method and whether a second factor was
+verified (defaulting to `unknown` and `false` rather than assuming proof from
+current enrollment). An unverified session on an account with an enrolled factor
+must sign in again; unaffected password-only accounts and named integration
+credentials keep their existing behavior.

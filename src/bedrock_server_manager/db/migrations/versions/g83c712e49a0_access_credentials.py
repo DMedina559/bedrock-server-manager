@@ -112,6 +112,18 @@ def upgrade():
             for name in ("created_at", "last_seen_at", "expires_at", "verified_at")
         ],
         sa.Column("verified_device_id", sa.String(32), nullable=True),
+        sa.Column(
+            "authentication_method",
+            sa.String(32),
+            nullable=False,
+            server_default="unknown",
+        ),
+        sa.Column(
+            "factor_verified",
+            sa.Boolean(),
+            nullable=False,
+            server_default=sa.false(),
+        ),
         sa.Column("revoked_at", sa.Integer(), nullable=True),
     )
     op.create_index("ix_login_sessions_owner_id", "login_sessions", ["owner_id"])
