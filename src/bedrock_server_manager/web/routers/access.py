@@ -182,6 +182,32 @@ async def revoke_token(
     return BaseApiResponse(status="success", message="Credential revoked")
 
 
+@router.post(
+    "/api/account/tokens/revoke-all",
+    operation_id="revoke_all_integration_tokens",
+    response_model=BaseApiResponse,
+)
+@describe_access(
+    "permission",
+    additional_checks=["credential-owner", "recent-interactive-verification"],
+)
+async def revoke_credentials(
+    request: Request,
+    user: UserResponse = Security(
+        require_permissions, scopes=[Permission.TOKENS_MANAGE]
+    ),
+    context: AppContext = Depends(get_app_context),
+):
+    authorization = current_authorization.get()
+    if authorization is None or authorization.user_id != user.id:
+        raise HTTPException(401, "Account authorization unavailable")
+    await context.session_service.require_recent(
+        user, getattr(request.state, "session_id", None)
+    )
+    await context.session_service.revoke_credentials(authorization.owner_id)
+    return BaseApiResponse(status="success", message="Integration credentials revoked")
+
+
 @router.get(
     "/api/access/users/{user_id}/servers",
     operation_id="get_account_server_access",

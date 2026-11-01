@@ -146,7 +146,7 @@ async def api_login_for_access_token(
 
 @router.post(
     "/passkey/options",
-    operation_id="passkey_login_options",
+    operation_id="begin_passkey_login",
     response_model=PasskeyOptionsResponse,
 )
 @describe_access("public", authentication="none", additional_checks=[])
@@ -170,7 +170,7 @@ async def passkey_login_options(
 
 @router.post(
     "/passkey/verify",
-    operation_id="passkey_login_verify",
+    operation_id="complete_passkey_login",
     response_model=TokenResponse,
 )
 @describe_access("public", authentication="none", additional_checks=[])

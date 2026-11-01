@@ -75,6 +75,7 @@ async def get_account_api(
     operation_id="update_account_theme",
     response_model=BaseApiResponse,
 )
+@describe_access("permission", additional_checks=["account-owner"])
 async def post_update_theme(
     theme_update: ThemeUpdatePayload,
     user: UserResponse = Security(
@@ -101,6 +102,7 @@ async def post_update_theme(
     operation_id="update_account_profile",
     response_model=BaseApiResponse,
 )
+@describe_access("permission", additional_checks=["account-owner"])
 async def post_update_profile(
     profile_update: ProfileUpdatePayload,
     user: UserResponse = Security(

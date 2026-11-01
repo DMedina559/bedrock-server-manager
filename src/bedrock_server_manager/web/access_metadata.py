@@ -29,7 +29,13 @@ def describe_access(
             "classification": classification,
             "authentication": authentication,
             "additional_checks": list(additional_checks),
-            "credential_alternatives": list(credential_alternatives),
+            "credential_alternatives": [
+                {
+                    **item,
+                    "permissions": [str(p) for p in item.get("permissions", ())],
+                }
+                for item in credential_alternatives
+            ],
         }
         if allowed_roles is not None:
             endpoint.__bsm_access__["allowed_roles"] = list(allowed_roles)
@@ -63,7 +69,7 @@ def access_for(route: APIRoute, policy: AccessPolicy) -> dict:
     calls = [node.call for node in nodes]
     required = sorted(
         {
-            scope
+            str(scope)
             for node in nodes
             if node.call is require_permissions
             for scope in (

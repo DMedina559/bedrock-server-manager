@@ -269,6 +269,50 @@ ROLE_BASELINE = {
     "dry_run_server_restore": ["moderator", "admin"],
     "cleanup_backup_destination": ["admin"],
     "download_backup_recovery_report": ["moderator", "admin"],
+    "begin_passkey_registration": ["user", "moderator", "admin"],
+    "begin_passkey_step_up": ["user", "moderator", "admin"],
+    "complete_passkey_registration": ["user", "moderator", "admin"],
+    "confirm_account_mfa": ["user", "moderator", "admin"],
+    "create_integration_token": ["user", "moderator", "admin"],
+    "disable_account_mfa": ["user", "moderator", "admin"],
+    "enroll_account_mfa": ["user", "moderator", "admin"],
+    "get_access_policy": ["user", "moderator", "admin"],
+    "get_account_permissions": ["user", "moderator", "admin"],
+    "get_account_security": ["user", "moderator", "admin"],
+    "get_account_server_access": ["admin"],
+    "get_application_health": ["user", "moderator", "admin"],
+    "get_server_addon_icon": ["moderator", "admin"],
+    "get_world_icon": ["user", "moderator", "admin"],
+    "list_access_servers": ["user", "moderator", "admin"],
+    "list_account_integration_tokens": ["admin"],
+    "list_account_login_sessions": ["admin"],
+    "list_account_passkeys": ["admin"],
+    "list_integration_tokens": ["user", "moderator", "admin"],
+    "list_login_sessions": ["user", "moderator", "admin"],
+    "list_passkeys": ["user", "moderator", "admin"],
+    "list_security_activity": ["user", "moderator", "admin"],
+    "list_trusted_devices": ["user", "moderator", "admin"],
+    "preview_account_server_access": ["admin"],
+    "preview_integration_token": ["user", "moderator", "admin"],
+    "rename_login_session": ["user", "moderator", "admin"],
+    "rename_passkey": ["user", "moderator", "admin"],
+    "reset_account_mfa": ["admin"],
+    "revoke_account_integration_token": ["admin"],
+    "revoke_account_login_session": ["admin"],
+    "revoke_account_login_sessions": ["admin"],
+    "revoke_all_integration_tokens": ["user", "moderator", "admin"],
+    "revoke_integration_token": ["user", "moderator", "admin"],
+    "revoke_login_session": ["user", "moderator", "admin"],
+    "revoke_login_sessions": ["user", "moderator", "admin"],
+    "revoke_passkey": ["user", "moderator", "admin"],
+    "revoke_trusted_device": ["user", "moderator", "admin"],
+    "revoke_trusted_devices": ["user", "moderator", "admin"],
+    "rotate_account_recovery_codes": ["user", "moderator", "admin"],
+    "rotate_integration_token": ["user", "moderator", "admin"],
+    "set_account_server_access": ["admin"],
+    "shutdown_web_runtime": ["admin"],
+    "verify_account_security": ["user", "moderator", "admin"],
+    "verify_account_security_passkey": ["user", "moderator", "admin"],
 }
 
 
@@ -279,6 +323,12 @@ def test_migration_preserves_existing_role_grants():
         for item in schema["paths"].values()
         for operation in item.values()
     }
+    authenticated = {
+        identifier
+        for identifier, operation in operations.items()
+        if operation["x-bsm-access"]["authentication"] == "required"
+    }
+    assert authenticated == set(ROLE_BASELINE.keys())
     for identifier, roles in ROLE_BASELINE.items():
         assert (
             operations[identifier]["x-bsm-access"]["allowed_roles"] == roles

@@ -61,6 +61,7 @@ async def recent(request, user, context):
     operation_id="list_login_sessions",
     response_model=list[LoginSessionInfo],
 )
+@describe_access("permission", additional_checks=["account-owner"])
 async def sessions(
     request: Request,
     user: UserResponse = Security(
@@ -148,6 +149,7 @@ async def revoke_many(
     operation_id="get_account_security",
     response_model=SecurityStatus,
 )
+@describe_access("permission", additional_checks=["account-owner"])
 async def status(
     request: Request,
     user: UserResponse = Security(
@@ -186,6 +188,7 @@ async def status(
     operation_id="verify_account_security",
     response_model=VerifiedSecurity,
 )
+@describe_access("permission", additional_checks=["account-owner"])
 async def verify(
     payload: VerifySecurity,
     request: Request,
@@ -225,6 +228,7 @@ async def verify(
     operation_id="list_security_activity",
     response_model=list[SecurityEventInfo],
 )
+@describe_access("permission", additional_checks=["account-owner"])
 async def activity(
     user: UserResponse = Security(
         require_permissions, scopes=[Permission.SESSIONS_MANAGE]
@@ -343,27 +347,6 @@ async def disable(
     return BaseApiResponse(status="success", message="Second factor disabled")
 
 
-@router.post(
-    "/api/account/tokens/revoke-all",
-    operation_id="revoke_all_integration_tokens",
-    response_model=BaseApiResponse,
-)
-@describe_access(
-    "permission",
-    additional_checks=["credential-owner", "recent-interactive-verification"],
-)
-async def revoke_credentials(
-    request: Request,
-    user: UserResponse = Security(
-        require_permissions, scopes=[Permission.TOKENS_MANAGE]
-    ),
-    context: AppContext = Depends(get_app_context),
-):
-    await recent(request, user, context)
-    await context.session_service.revoke_credentials(self_owner(user))
-    return BaseApiResponse(status="success", message="Integration credentials revoked")
-
-
 @router.get(
     "/api/access/users/{user_id}/sessions",
     operation_id="list_account_login_sessions",
@@ -409,6 +392,7 @@ async def admin_revoke(
     operation_id="reset_account_mfa",
     response_model=BaseApiResponse,
 )
+@describe_access("permission", additional_checks=["other-account-only"])
 async def admin_reset_mfa(
     user_id: int,
     request: Request,
@@ -461,6 +445,7 @@ async def admin_revoke_all(
     operation_id="list_trusted_devices",
     response_model=list[TrustedDeviceInfo],
 )
+@describe_access("permission", additional_checks=["account-owner"])
 async def trusted_devices(
     request: Request,
     user: UserResponse = Security(
@@ -478,6 +463,7 @@ async def trusted_devices(
     operation_id="revoke_trusted_device",
     response_model=BaseApiResponse,
 )
+@describe_access("permission", additional_checks=["account-owner"])
 async def revoke_trusted_device(
     device_id: str,
     request: Request,
@@ -505,6 +491,7 @@ async def revoke_trusted_device(
     operation_id="revoke_trusted_devices",
     response_model=BaseApiResponse,
 )
+@describe_access("permission", additional_checks=["account-owner"])
 async def revoke_trusted_devices(
     payload: RevokeTrustedDevices,
     request: Request,
@@ -530,9 +517,10 @@ async def revoke_trusted_devices(
 
 @router.get(
     "/api/account/security/passkeys",
-    operation_id="list_account_passkeys",
+    operation_id="list_passkeys",
     response_model=list[PasskeyInfo],
 )
+@describe_access("permission", additional_checks=["account-owner"])
 async def list_passkeys(
     user: UserResponse = Security(
         require_permissions, scopes=[Permission.SESSIONS_MANAGE]
@@ -588,7 +576,7 @@ async def complete_passkey_registration(
 
 @router.patch(
     "/api/account/security/passkeys/{passkey_id}",
-    operation_id="rename_account_passkey",
+    operation_id="rename_passkey",
     response_model=PasskeyInfo,
 )
 @describe_access("permission", additional_checks=["account-owner"])
@@ -607,7 +595,7 @@ async def rename_passkey(
 
 @router.delete(
     "/api/account/security/passkeys/{passkey_id}",
-    operation_id="revoke_account_passkey",
+    operation_id="revoke_passkey",
     response_model=BaseApiResponse,
 )
 @describe_access(
@@ -673,7 +661,7 @@ async def verify_passkey_step_up(
 
 @router.get(
     "/api/access/users/{user_id}/passkeys",
-    operation_id="list_user_passkeys",
+    operation_id="list_account_passkeys",
     response_model=list[PasskeyInfo],
 )
 async def admin_list_passkeys(
