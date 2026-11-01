@@ -117,9 +117,7 @@ def test_plugin_files_are_owner_scoped(tmp_path):
     with pytest.raises(BackupRestoreError):
         read_plugin_json(str(tmp_path), "first", "../second/settings.json")
     with pytest.raises(BackupRestoreError):
-        read_plugin_json(
-            str(tmp_path), "first", "../../../credentials/backup-keys.json"
-        )
+        read_plugin_json(str(tmp_path), "first", "../../../credentials/backup.key")
 
 
 async def test_restore_preview_redacts_secrets_and_retains_safety_backup(

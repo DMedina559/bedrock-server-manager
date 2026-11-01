@@ -1,7 +1,7 @@
 import logging
 from typing import Optional, cast
 
-from fastapi import Depends, HTTPException, Request, Security, status
+from fastapi import Depends, HTTPException, Request, Response, Security, status
 from fastapi.security import (
     APIKeyCookie,
     HTTPBearer,
@@ -200,6 +200,23 @@ async def require_permissions(
 
     operation_permissions.set(operation_permissions.get() | frozenset(required))
     return user
+
+
+def no_store(response: Response) -> None:
+    """Prevent browsers and shared caches from storing sensitive auth/account responses."""
+    response.headers["Cache-Control"] = "no-store"
+
+
+async def require_recent_interactive(
+    request: Request, user: UserResponse, app_context=None
+) -> None:
+    """Require recent interactive authentication unless using an explicit integration token."""
+    authorization = getattr(request.state, "authorization", None)
+    if authorization is None or authorization.token_id is None:
+        context = app_context or request.app.state.app_context
+        await context.session_service.require_recent(
+            user, getattr(request.state, "session_id", None)
+        )
 
 
 async def require_context_permission(request, user, permission, server_name=None):

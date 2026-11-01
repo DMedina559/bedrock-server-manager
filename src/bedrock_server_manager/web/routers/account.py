@@ -16,7 +16,7 @@ from ...state.updates import AccountPatch
 from ..access_metadata import describe_access
 from ..access_policy import Permission, policy_for
 from ..deps import get_app_context
-from ..deps.auth import require_permissions
+from ..deps.auth import no_store, require_permissions
 from ..schemas import (
     BaseApiResponse,
     ChangePasswordPayload,
@@ -29,7 +29,7 @@ from ..schemas.users import CurrentAccountResponse
 # bedrock_server_manager/web/routers/account_router.py
 
 
-router = APIRouter(tags=["Account Management"])
+router = APIRouter(tags=["Account Management"], dependencies=[Depends(no_store)])
 
 
 @router.get(

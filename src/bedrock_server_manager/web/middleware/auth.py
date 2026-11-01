@@ -28,7 +28,7 @@ async def add_user_to_request(request: Request, call_next):
         "/app/assets",
         "/app/image",
     )
-    if path == "/favicon.ico" or any(
+    if path in {"/favicon.ico", "/site.webmanifest"} or any(
         path == root or path.startswith(root + "/") for root in static_roots
     ):
         request.state.current_user = None
@@ -52,7 +52,12 @@ async def add_user_to_request(request: Request, call_next):
     if unsafe:
         origin = request.headers.get("origin")
         allowed = request.app.state.app_context.settings.get("web.cors_origins", ())
-        establishing = path in {"/auth/token", "/api/setup/create-first-user"}
+        establishing = path in {
+            "/auth/token",
+            "/auth/passkey/options",
+            "/auth/passkey/verify",
+            "/api/setup/create-first-user",
+        }
         cookie_mutation = (
             getattr(request.state, "credential_source", None) == "cookie"
             and not establishing
@@ -91,6 +96,11 @@ async def add_user_to_request(request: Request, call_next):
             "/api/account/security/verify",
             "/api/account/security/mfa/enroll",
             "/api/account/security/mfa/confirm",
+            "/api/account/security/passkeys",
+            "/api/account/security/passkeys/register/options",
+            "/api/account/security/passkeys/register/verify",
+            "/api/account/security/passkeys/verify/options",
+            "/api/account/security/passkeys/verify",
             "/auth/logout",
             "/auth/reauth",
             "/api/setup/status",

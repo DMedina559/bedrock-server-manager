@@ -44,3 +44,17 @@ class SetupAccountResponse(TokenResponse):
 
     status: Literal["success"] = "success"
     message: str
+
+
+class PasskeyLoginOptionsRequest(APIRequest):
+    """Optional username hint when requesting WebAuthn authentication options."""
+
+    username: str | None = Field(default=None, max_length=80)
+
+
+class PasskeyLoginVerifyRequest(APIRequest):
+    """WebAuthn assertion payload for passwordless passkey login."""
+
+    challenge_id: str = Field(min_length=32, max_length=32, pattern=r"^[0-9a-f]{32}$")
+    credential: dict
+    remember_me: bool = Field(default=False)

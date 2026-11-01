@@ -280,7 +280,7 @@ async def test_migrated_legacy_invitation_registers_once(
 
     def migrate_legacy(connection):
         config.attributes["connection"] = connection
-        command.downgrade(config, "i05e934a61c2")
+        command.downgrade(config, "f72c401a908b")
         connection.execute(
             text(
                 "INSERT INTO registration_tokens (token, role, expires) VALUES (:token, :role, :expires)"

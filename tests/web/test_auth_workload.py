@@ -33,10 +33,11 @@ async def test_auth_workloads(auth_client, app_context, websocket_client):
         )
         owner_id = user.access_id
     # Prepare a real scoped credential and factor outside measured operations.
-    from bedrock_server_manager.web.auth import _get_user_from_token
+    from bedrock_server_manager.web.auth import resolve_session_token
     from bedrock_server_manager.web.schemas.access import CreateIntegrationToken
 
-    user = await _get_user_from_token(app_context, token)
+    resolved = await resolve_session_token(app_context, token)
+    user = resolved.user
     integration = await app_context.access_service.create_token(
         user, CreateIntegrationToken(name="Benchmark", permissions=["account:read"])
     )

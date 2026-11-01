@@ -20,7 +20,7 @@ from bedrock_server_manager.web.deps.auth import require_permissions
 
 
 def key_path(context):
-    return Path(context.config_dir) / "security" / "jwt-signing-key.json"
+    return Path(context.config_dir) / "credentials" / "jwt.key"
 
 
 async def legacy_key(context, value):
@@ -76,16 +76,16 @@ async def test_failed_credential_write_leaves_legacy_value_retryable(
 ):
     secret = "synthetic-legacy-retry-key"
     await legacy_key(app_context, secret)
-    write = jwt_credentials.atomic_json
+    write = jwt_credentials.atomic_bytes
 
     def fail(*args):
         raise OSError("disk unavailable")
 
-    monkeypatch.setattr(jwt_credentials, "atomic_json", fail)
+    monkeypatch.setattr(jwt_credentials, "atomic_bytes", fail)
     with pytest.raises(ConfigurationError):
         await get_jwt_secret_key(app_context.settings)
     assert app_context.settings.get("web.jwt_secret_key") == secret
-    monkeypatch.setattr(jwt_credentials, "atomic_json", write)
+    monkeypatch.setattr(jwt_credentials, "atomic_bytes", write)
     assert await get_jwt_secret_key(app_context.settings) == secret
 
 
@@ -136,7 +136,7 @@ async def test_concurrent_first_use_has_one_persisted_key(app_context):
         *(get_jwt_secret_key(app_context.settings) for _ in range(8))
     )
     assert len(set(values)) == 1
-    assert json.loads(key_path(app_context).read_text())["secret"] == values[0]
+    assert key_path(app_context).read_text().strip() == values[0]
 
 
 async def test_http_settings_keep_scope_boundaries(

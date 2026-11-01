@@ -1,19 +1,21 @@
 """Durable signing credentials, isolated from public configuration snapshots."""
 
 import asyncio
-import json
-import os
 import secrets
 import threading
-import time
-from importlib import import_module
 from pathlib import Path
-from typing import TYPE_CHECKING, Any
+from typing import TYPE_CHECKING
 from weakref import WeakValueDictionary
 
 from sqlalchemy import select
 
-from ..backups.credentials import atomic_json, private_directory, protect
+from ..backups.credentials import (
+    CREDENTIALS_DIR_NAME,
+    atomic_bytes,
+    locked_credential_file,
+    private_directory,
+    protect,
+)
 from ..db.models import LoginSession
 from ..error import ConfigurationError
 from ..state.changeset import ChangeSet
@@ -29,24 +31,32 @@ _ASYNC_LOCKS: WeakValueDictionary[asyncio.AbstractEventLoop, asyncio.Lock] = (
 PRIVATE_FIELDS = frozenset({"jwt_secret_key", "jwt_key_initialized"})
 
 
+def _parse_key_bytes(data: bytes) -> str:
+    if len(data) > 8192:
+        raise ValueError("Invalid signing credential")
+    text = data.decode("utf-8").strip("\r\n")
+    if (
+        not 1 <= len(text) <= 4096
+        or "\n" in text
+        or "\r" in text
+        or any(ord(ch) < 32 or ord(ch) == 127 for ch in text)
+        or any(ch in "{}" for ch in text)
+    ):
+        raise ValueError("Invalid signing credential")
+    return text
+
+
 def _read_key(path: Path) -> str:
     if not path.is_file():
         raise ConfigurationError("Signing credential is not a regular file.")
     protect(path)
     with path.open("rb") as stream:
         data = stream.read(8193)
-    value = json.loads(data)
-    if (
-        len(data) > 8192
-        or not isinstance(value, dict)
-        or set(value) != {"version", "secret"}
-        or type(value["version"]) is not int
-        or value["version"] != 1
-        or not isinstance(value["secret"], str)
-        or not 1 <= len(value["secret"]) <= 4096
-    ):
-        raise ValueError("Invalid signing credential")
-    return value["secret"]
+    return _parse_key_bytes(data)
+
+
+def _write_key(path: Path, key: str) -> None:
+    atomic_bytes(path, f"{key}\n".encode("utf-8"))
 
 
 def _file_key(
@@ -54,65 +64,34 @@ def _file_key(
 ) -> str | None:
     """Serialize initial publication across processes; never replace a live key."""
     with _LOCK:
-        directory = private_directory(Path(config_dir) / "security")
-        path = directory / "jwt-signing-key.json"
-        lock_path = directory / ".jwt-signing-key.lock"
-        if lock_path.is_symlink():
-            raise ConfigurationError("Private storage must not be a symbolic link.")
-        fd = os.open(
-            lock_path, os.O_RDWR | os.O_CREAT | getattr(os, "O_NOFOLLOW", 0), 0o600
-        )
-        with os.fdopen(fd, "r+b") as stream:
-            protect(lock_path)
-            if os.name == "nt" and lock_path.stat().st_size == 0:
-                stream.write(b"0")
-                stream.flush()
-            started = time.monotonic()
-            while True:
-                try:
-                    if os.name == "nt":
-                        platform_lock: Any = import_module("msvcrt")
-                        stream.seek(0)
-                        platform_lock.locking(fd, platform_lock.LK_NBLCK, 1)
-                    else:
-                        platform_lock = import_module("fcntl")
-                        platform_lock.flock(
-                            fd, platform_lock.LOCK_EX | platform_lock.LOCK_NB
-                        )
-                    break
-                except OSError:
-                    if time.monotonic() - started >= 5:
-                        raise ConfigurationError(
-                            "Signing credential is busy; retry startup."
-                        ) from None
-                    time.sleep(0.05)
-            try:
-                if path.exists() or path.is_symlink():
-                    key = _read_key(path)
-                    if legacy is not None and key != legacy:
-                        raise ConfigurationError(
-                            "Signing credential conflicts with the database; restore matching configuration and database."
-                        )
-                    return key
-                if initialized:
+        root = Path(config_dir)
+        directory = private_directory(root / CREDENTIALS_DIR_NAME)
+        path = directory / "jwt.key"
+        lock_path = directory / ".jwt.key.lock"
+        with locked_credential_file(
+            lock_path,
+            busy_message="Signing credential is busy; retry startup.",
+        ):
+            if path.exists() or path.is_symlink():
+                key = _read_key(path)
+                if legacy is not None and key != legacy:
                     raise ConfigurationError(
-                        "Signing credential is missing; restore security/jwt-signing-key.json."
+                        "Signing credential conflicts with the database; restore matching configuration and database."
                     )
-                if legacy is None and not create:
-                    return None
-                key = legacy if legacy is not None else secrets.token_urlsafe(32)
-                if not isinstance(key, str) or not 1 <= len(key) <= 4096:
-                    raise ConfigurationError("Legacy signing credential is invalid.")
-                atomic_json(path, {"version": 1, "secret": key})
-                if _read_key(path) != key:
-                    raise ConfigurationError("Cannot verify signing credential.")
                 return key
-            finally:
-                if os.name == "nt":
-                    stream.seek(0)
-                    platform_lock.locking(fd, platform_lock.LK_UNLCK, 1)
-                else:
-                    platform_lock.flock(fd, platform_lock.LOCK_UN)
+            if initialized:
+                raise ConfigurationError(
+                    "Signing credential is missing; restore credentials/jwt.key."
+                )
+            if legacy is None and not create:
+                return None
+            key = legacy if legacy is not None else secrets.token_urlsafe(32)
+            if not isinstance(key, str) or not 1 <= len(key) <= 4096:
+                raise ConfigurationError("Legacy signing credential is invalid.")
+            _write_key(path, key)
+            if _read_key(path) != key:
+                raise ConfigurationError("Cannot verify signing credential.")
+            return key
 
 
 async def signing_key(settings: "Settings", *, create: bool = True) -> str | None:
@@ -143,7 +122,7 @@ async def signing_key(settings: "Settings", *, create: bool = True) -> str | Non
             raise
         except Exception:
             raise ConfigurationError(
-                "Cannot read or protect signing credential; restore security/jwt-signing-key.json."
+                "Cannot read or protect signing credential; restore credentials/jwt.key."
             ) from None
         if key is None:
             return None

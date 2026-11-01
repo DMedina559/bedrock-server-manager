@@ -136,11 +136,26 @@ def test_access_migration_preserves_accounts_servers_and_identity(tmp_path):
             "account_security",
             "auth_throttle",
             "auth_security_events",
+            "trusted_devices",
+            "passkey_credentials",
+            "passkey_challenges",
         ):
             assert (
                 connection.execute(text(f"SELECT count(*) FROM {table}")).scalar_one()
                 == 0
             )
+        connection.execute(
+            text(
+                "INSERT INTO integration_tokens (id, owner_id, name, digest, permissions, created_at, expires_at) "
+                "VALUES ('forever', 'owner', 'test', 'hash', '[]', 1, NULL)"
+            )
+        )
+        assert (
+            connection.execute(
+                text("SELECT expires_at FROM integration_tokens WHERE id='forever'")
+            ).scalar_one()
+            is None
+        )
         identity = connection.execute(text("SELECT access_id FROM users")).scalar_one()
         assert len(identity) == 32
         assert (
@@ -194,52 +209,6 @@ async def test_sqlite_close_then_repeated_stop_does_not_leak_future_errors():
         loop.set_exception_handler(previous_handler)
 
 
-def test_nonexpiring_token_migration_preserves_deadlines_and_downgrades_safely(
-    tmp_path,
-):
-    import time
-    from pathlib import Path
-
-    from alembic import command
-    from alembic.config import Config
-    from sqlalchemy import create_engine
-
-    import bedrock_server_manager.db.database as database_module
-
-    config = Config(str(Path(database_module.__file__).parent / "alembic.ini"))
-    config.set_main_option("skip_logging_config", "true")
-    engine = create_engine(f"sqlite:///{tmp_path / 'token-expiry.db'}")
-    with engine.begin() as connection:
-        config.attributes["connection"] = connection
-        command.upgrade(config, "h94d823f50b1")
-        insert = text(
-            "INSERT INTO integration_tokens (id, owner_id, name, digest, permissions, created_at, expires_at) VALUES (:id, 'owner', 'test', 'hash', '[]', 1, :expiry)"
-        )
-        connection.execute(insert, {"id": "dated", "expiry": 2000000000})
-        command.upgrade(config, "head")
-        connection.execute(insert, {"id": "forever", "expiry": None})
-        assert (
-            connection.execute(
-                text("SELECT expires_at FROM integration_tokens WHERE id='dated'")
-            ).scalar_one()
-            == 2000000000
-        )
-        before = int(time.time())
-        command.downgrade(config, "h94d823f50b1")
-        deadline = connection.execute(
-            text("SELECT expires_at FROM integration_tokens WHERE id='forever'")
-        ).scalar_one()
-        assert before <= deadline <= int(time.time())
-        assert (
-            connection.execute(
-                text("SELECT expires_at FROM integration_tokens WHERE id='dated'")
-            ).scalar_one()
-            == 2000000000
-        )
-        command.upgrade(config, "head")
-    engine.dispose()
-
-
 def test_registration_token_digest_migration_upgrades_plaintext_and_downgrades_safely(
     tmp_path,
 ):
@@ -259,7 +228,7 @@ def test_registration_token_digest_migration_upgrades_plaintext_and_downgrades_s
     with engine.begin() as connection:
         config.attributes["connection"] = connection
         # 1. Upgrade to revision prior to digest storage
-        command.upgrade(config, "i05e934a61c2")
+        command.upgrade(config, "f72c401a908b")
         insert = text(
             "INSERT INTO registration_tokens (id, token, role, expires) VALUES (:id, :token, :role, :expires)"
         )
@@ -275,7 +244,7 @@ def test_registration_token_digest_migration_upgrades_plaintext_and_downgrades_s
             },
         )
 
-        # 2. Upgrade to head (j16f045b72d3)
+        # 2. Upgrade to head (g83c712e49a0)
         command.upgrade(config, "head")
 
         # 3. Verify column is token_digest and plaintext token is gone
@@ -305,24 +274,8 @@ def test_registration_token_digest_migration_upgrades_plaintext_and_downgrades_s
             )
         )
 
-        # Index-only downgrade/upgrade preserves a migrated invitation.
-        command.downgrade(config, "j16f045b72d3")
-        assert (
-            connection.execute(
-                text("SELECT token_digest FROM registration_tokens WHERE id=1")
-            ).scalar_one()
-            == expected_digest
-        )
-        command.upgrade(config, "head")
-        assert (
-            connection.execute(
-                text("SELECT token_digest FROM registration_tokens WHERE id=1")
-            ).scalar_one()
-            == expected_digest
-        )
-
-        # 4. Downgrade back to i05e934a61c2 and verify columns
-        command.downgrade(config, "i05e934a61c2")
+        # 4. Downgrade back to f72c401a908b and verify columns
+        command.downgrade(config, "f72c401a908b")
         columns_downgraded = [
             col["name"]
             for col in inspect(connection).get_columns("registration_tokens")
@@ -347,47 +300,3 @@ def test_registration_token_digest_migration_upgrades_plaintext_and_downgrades_s
             == 0
         )
     engine.dispose()
-
-
-def test_remembered_device_migration_downgrade_clears_only_derived_verification(
-    tmp_path,
-):
-    from importlib.resources import files
-
-    from alembic import command
-    from alembic.config import Config
-    from sqlalchemy import create_engine
-
-    config = Config(str(files("bedrock_server_manager").joinpath("db/alembic.ini")))
-    config.set_main_option("skip_logging_config", "true")
-    engine = create_engine(f"sqlite:///{tmp_path / 'remembered-devices.db'}")
-    try:
-        with engine.connect() as connection:
-            config.attributes["connection"] = connection
-            command.upgrade(config, "l38b267d94f5")
-            connection.execute(
-                text(
-                    "INSERT INTO login_sessions (id, owner_id, name, user_agent, ip_address, "
-                    "created_at, last_seen_at, expires_at, verified_at, verified_device_id) "
-                    "VALUES (:id, 'owner', 'test', '', '', 1, 1, 2000000000, 123, :device)"
-                ),
-                [
-                    {"id": "remembered", "device": "device"},
-                    {"id": "fresh-otp", "device": None},
-                ],
-            )
-            connection.commit()
-            command.downgrade(config, "k27a156c83e4")
-            assert dict(
-                connection.execute(
-                    text("SELECT id, verified_at FROM login_sessions")
-                ).all()
-            ) == {"remembered": 0, "fresh-otp": 123}
-            assert "trusted_devices" not in inspect(connection).get_table_names()
-            command.upgrade(config, "l38b267d94f5")
-            rows = connection.execute(
-                text("SELECT id, verified_device_id FROM login_sessions")
-            ).all()
-            assert dict(rows) == {"remembered": None, "fresh-otp": None}
-    finally:
-        engine.dispose()

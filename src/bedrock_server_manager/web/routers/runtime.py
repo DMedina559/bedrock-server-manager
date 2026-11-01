@@ -15,7 +15,7 @@ from fastapi.security import APIKeyHeader
 
 from ...error import DependencyUnavailableError
 from ..access_metadata import describe_access
-from ..access_policy import Permission
+from ..access_policy import Permission, policy_for
 from ..deps.auth import get_current_user_optional, require_permissions
 from ..runtime import RuntimeStatus, ShutdownRequest, ShutdownResponse, WebRuntime
 
@@ -81,7 +81,8 @@ async def shutdown_actor(
     authorization = getattr(request.state, "authorization", None)
     if authorization is not None and not authorization.allows(SHUTDOWN_PERMISSION):
         raise HTTPException(403, "Shutdown access denied")
-    if user.role != "admin":
+    policy = policy_for(request)
+    if SHUTDOWN_PERMISSION not in policy.resolve(user.role):
         raise HTTPException(status_code=403, detail="Administrator permission required")
     return "administrator"
 
@@ -137,6 +138,9 @@ async def require_health_access(
             )
         authorization = getattr(request.state, "authorization", None)
         if authorization is not None and not authorization.allows(HEALTH_PERMISSION):
+            raise HTTPException(403, "Health access denied")
+        policy = policy_for(request)
+        if HEALTH_PERMISSION not in policy.resolve(user.role):
             raise HTTPException(403, "Health access denied")
         return
     runtime = getattr(request.app.state, "web_runtime", None)

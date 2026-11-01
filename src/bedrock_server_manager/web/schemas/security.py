@@ -25,6 +25,8 @@ class LoginSessionInfo(APIResponse):
 
 class SecurityStatus(APIResponse):
     enabled: bool
+    passkeys_enabled: bool = False
+    passkey_count: int = 0
     trusted_device: bool = False
     trusted_device_expires_at: int | None = None
     required: bool = False
@@ -91,3 +93,37 @@ class TrustedDeviceInfo(APIResponse):
 
 class RevokeTrustedDevices(APIRequest):
     mode: Literal["others", "all"]
+
+
+class PasskeyInfo(APIResponse):
+    id: ResourceID
+    name: str
+    transports: list[str] = Field(default_factory=list)
+    aaguid: str | None = None
+    user_verified: bool = False
+    backup_eligible: bool = False
+    backup_state: bool = False
+    created_at: int
+    last_used_at: int | None = None
+    revoked_at: int | None = None
+    active: bool
+
+
+class PasskeyOptionsResponse(APIResponse):
+    challenge_id: ResourceID
+    public_key: dict
+
+
+class CompletePasskeyRegistration(APIRequest):
+    challenge_id: ResourceID
+    name: str | None = Field(default=None, min_length=1, max_length=100)
+    credential: dict
+
+
+class RenamePasskey(APIRequest):
+    name: str = Field(min_length=1, max_length=100, pattern=r".*\S.*")
+
+
+class VerifyPasskeyAssertion(APIRequest):
+    challenge_id: ResourceID
+    credential: dict

@@ -15,6 +15,8 @@ from ..models import (
     AccountServerAccess,
     IntegrationToken,
     LoginSession,
+    PasskeyChallenge,
+    PasskeyCredential,
     RegistrationToken,
     ServerAccessGrant,
     TrustedDevice,
@@ -86,6 +88,8 @@ class UserRepository:
             AccountServerAccess,
             IntegrationToken,
             LoginSession,
+            PasskeyChallenge,
+            PasskeyCredential,
             ServerAccessGrant,
             TrustedDevice,
         ):

@@ -18,7 +18,7 @@ from ...context import AppContext
 from ...state.updates import AccountPatch
 from ..access_policy import Permission
 from ..deps import get_app_context
-from ..deps.auth import require_permissions
+from ..deps.auth import no_store, require_permissions
 from ..schemas import BaseApiResponse, UpdateUserRolePayload
 from ..schemas import UserResponse as UserSchema
 
@@ -27,7 +27,11 @@ from ..schemas import UserResponse as UserSchema
 
 logger = logging.getLogger(__name__)
 
-router = APIRouter(prefix="/api/users", tags=["User Management"])
+router = APIRouter(
+    prefix="/api/users",
+    tags=["User Management"],
+    dependencies=[Depends(no_store)],
+)
 
 
 @router.get("/list", operation_id="list_users", response_model=List[UserSchema])

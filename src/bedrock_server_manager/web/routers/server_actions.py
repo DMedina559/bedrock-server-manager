@@ -2,7 +2,7 @@
 
 import logging
 
-from fastapi import APIRouter, Depends, HTTPException, Security, status
+from fastapi import APIRouter, Depends, HTTPException, Request, Security, status
 
 from bedrock_server_manager.api.models import (
     DeleteServerDataRequest,
@@ -28,10 +28,11 @@ from ...api.models import (
     StopServerResponse,
 )
 from ...context import AppContext
+from ..access_metadata import describe_access
 from ..access_policy import Permission
 from ..authorization import current_authorization, server_collection
 from ..deps import get_app_context, validate_server_exists
-from ..deps.auth import require_permissions
+from ..deps.auth import require_permissions, require_recent_interactive
 from ..deps.server import validate_server_registered
 from ..schemas import (
     BaseApiResponse,
@@ -238,7 +239,12 @@ async def post_update_server(
     response_model=TaskAcceptedResponse,
     status_code=status.HTTP_202_ACCEPTED,
 )
+@describe_access(
+    "permission",
+    additional_checks=["recent-interactive-verification"],
+)
 async def delete_server(
+    request: Request,
     current_user: UserResponse = Security(
         require_permissions, scopes=[Permission.SERVERS_MANAGE]
     ),
@@ -251,6 +257,7 @@ async def delete_server(
     This is a **DESTRUCTIVE** operation. The deletion is performed as a background task.
     This endpoint immediately returns a 202 Accepted response.
     """
+    await require_recent_interactive(request, current_user, app_context)
     identity = current_user.username
     logger.info(
         "Server deletion requested for '%s' by user '%s'.", server_name, identity

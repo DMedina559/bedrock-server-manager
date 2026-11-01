@@ -18,6 +18,7 @@ from ..db.models import (
     AccountServerAccess,
     IntegrationToken,
     LoginSession,
+    PasskeyCredential,
     Server,
     ServerAccessGrant,
     User,
@@ -137,11 +138,30 @@ class AccessService:
                 ):
                     return None
             factor = await session.get(AccountSecurity, record.access_id)
+            has_totp = bool(factor and factor.totp_secret)
+            has_passkey = False
+            if (
+                token_id is None
+                and record.role == "admin"
+                and self.context.settings.get("security.require_admin_mfa", False)
+                and not has_totp
+            ):
+                has_passkey = (
+                    await session.scalar(
+                        select(PasskeyCredential.id)
+                        .where(
+                            PasskeyCredential.owner_id == record.access_id,
+                            PasskeyCredential.revoked_at.is_(None),
+                        )
+                        .limit(1)
+                    )
+                    is not None
+                )
             mfa_required = bool(
                 token_id is None
                 and record.role == "admin"
                 and self.context.settings.get("security.require_admin_mfa", False)
-                and not (factor and factor.totp_secret)
+                and not (has_totp or has_passkey)
             )
             permission_set = self.policy.resolve(record.role)
             if mfa_required:

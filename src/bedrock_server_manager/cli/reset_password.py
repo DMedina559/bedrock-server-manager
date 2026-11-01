@@ -55,7 +55,9 @@ def reset_mfa_command(ctx, username: str):
             if user is None:
                 raise click.ClickException("Account not found.")
             identifier, user_id = user.access_id, user.id
-        await app_context.session_service.change_factor(identifier, disable=True)
+        await app_context.session_service.change_factor(
+            identifier, disable=True, reset_passkeys=True
+        )
         await app_context.session_service.event(user_id, "local_mfa_reset")
         click.echo(
             "MFA reset. All login sessions were signed out; integration credentials are unchanged."

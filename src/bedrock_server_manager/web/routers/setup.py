@@ -5,6 +5,7 @@ This module provides endpoints for:
 - Handling the creation of the first user (System Admin).
 """
 
+import datetime
 import logging
 
 from fastapi import APIRouter, Depends, HTTPException, Request, status
@@ -57,6 +58,11 @@ async def create_first_user(
     app_context: AppContext = Depends(get_app_context),
 ):
     """Create the first user (admin) in the database."""
+    await app_context.session_service.throttle(
+        username=data.username,
+        peer=request.client.host if request.client else "",
+        operation="setup",
+    )
     if not await app_context.check_setup():
         # If an admin user already exists, prevent creating another first user
         raise HTTPException(
@@ -89,6 +95,16 @@ async def create_first_user(
         ).model_dump(mode="json")
     )
     if cookie_mode:
-        request.state.issued_session_id = jwt.get_unverified_claims(access_token)["sid"]
-        set_session_cookie(response, request, access_token)
+        claims = jwt.get_unverified_claims(access_token)
+        request.state.issued_session_id = claims["sid"]
+        set_session_cookie(
+            response,
+            request,
+            access_token,
+            max_age=max(
+                0,
+                claims["exp"]
+                - int(datetime.datetime.now(datetime.timezone.utc).timestamp()),
+            ),
+        )
     return response

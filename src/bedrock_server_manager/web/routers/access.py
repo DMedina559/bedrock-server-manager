@@ -8,7 +8,6 @@ from fastapi import (
     HTTPException,
     Query,
     Request,
-    Response,
     Security,
 )
 
@@ -23,7 +22,7 @@ from ..authorization import (
     server_collection,
 )
 from ..deps import get_app_context
-from ..deps.auth import require_permissions
+from ..deps.auth import no_store, require_permissions
 from ..schemas import BaseApiResponse, UserResponse
 from ..schemas.access import (
     AccessPolicyInfo,
@@ -35,11 +34,6 @@ from ..schemas.access import (
     IntegrationTokenInfo,
     SetServerAccess,
 )
-
-
-def no_store(response: Response):
-    response.headers["Cache-Control"] = "no-store"
-
 
 router = APIRouter(tags=["Access Management"], dependencies=[Depends(no_store)])
 

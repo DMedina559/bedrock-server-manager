@@ -71,8 +71,6 @@ async def get_log_history(
             )
         if not permitted:
             raise HTTPException(403, "Log access denied")
-    if topic in ("app_log", "app_logs") and current_user.role != "admin":
-        raise HTTPException(status_code=403, detail="Administrator access required.")
     if topic not in ("app_log", "app_logs") and not topic.startswith("server_log:"):
         raise HTTPException(status_code=400, detail="Invalid log topic.")
     if topic.startswith("server_log:"):

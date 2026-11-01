@@ -2,7 +2,7 @@
 
 import logging
 
-from fastapi import APIRouter, Depends, HTTPException, Security, status
+from fastapi import APIRouter, Depends, HTTPException, Request, Security, status
 
 from bedrock_server_manager.api.models import (
     GetAllGlobalSettingsRequest,
@@ -12,9 +12,10 @@ from bedrock_server_manager.api.models import (
 
 from ...api import settings as settings_api
 from ...context import AppContext
+from ..access_metadata import describe_access
 from ..access_policy import Permission
 from ..deps import get_app_context
-from ..deps.auth import require_permissions
+from ..deps.auth import require_permissions, require_recent_interactive
 from ..schemas import SettingItemPayload, SettingsResponse, UserResponse
 
 # bedrock_server_manager/web/routers/settings.py
@@ -64,14 +65,20 @@ async def get_all_settings(
     operation_id="set_setting",
     response_model=SettingsResponse,
 )
+@describe_access(
+    "permission",
+    additional_checks=["recent-interactive-verification"],
+)
 async def post_set_setting(
     payload: SettingItemPayload,
+    request: Request,
     current_user: UserResponse = Security(
         require_permissions, scopes=[Permission.SETTINGS_MANAGE]
     ),
     app_context: AppContext = Depends(get_app_context),
 ) -> SettingsResponse:
     """Set a specific global application setting."""
+    await require_recent_interactive(request, current_user, app_context)
     identity = current_user.username
     logger.info(
         "Set global setting request for key '%s' by '%s'.", payload.key, identity

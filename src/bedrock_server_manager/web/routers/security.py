@@ -8,13 +8,17 @@ from ..access_metadata import describe_access
 from ..access_policy import Permission
 from ..authorization import current_authorization
 from ..deps import get_app_context
-from ..deps.auth import require_permissions
+from ..deps.auth import no_store, require_permissions
 from ..schemas import BaseApiResponse, UserResponse
 from ..schemas.security import (
+    CompletePasskeyRegistration,
     FactorCode,
     FactorEnrollment,
     LoginSessionInfo,
+    PasskeyInfo,
+    PasskeyOptionsResponse,
     RecoveryCodes,
+    RenamePasskey,
     RenameSession,
     RevokeSessions,
     RevokeTrustedDevices,
@@ -22,10 +26,10 @@ from ..schemas.security import (
     SecurityStatus,
     TrustedDeviceInfo,
     VerifiedSecurity,
+    VerifyPasskeyAssertion,
     VerifySecurity,
 )
 from ..trusted_devices import clear_device, cookie_name, deliver_device, device_token
-from .access import no_store
 
 router = APIRouter(tags=["Account Security"], dependencies=[Depends(no_store)])
 
@@ -322,15 +326,17 @@ async def disable(
     ),
     context: AppContext = Depends(get_app_context),
 ):
-    if user.role == "admin" and context.settings.get(
-        "security.require_admin_mfa", False
+    identity = self_owner(user)
+    if (
+        user.role == "admin"
+        and context.settings.get("security.require_admin_mfa", False)
+        and not await context.session_service.has_active_passkeys(identity)
     ):
         raise HTTPException(
             403,
             "Administrator MFA is required; enroll a replacement factor or use local recovery",
         )
     await recent(request, user, context)
-    identity = self_owner(user)
     await context.session_service.change_factor(
         identity, disable=True, keep_session_id=request.state.session_id
     )
@@ -416,7 +422,9 @@ async def admin_reset_mfa(
             403, "Use your account security settings to disable your own second factor"
         )
     identity = await owner(context, user_id)
-    await context.session_service.change_factor(identity, disable=True)
+    await context.session_service.change_factor(
+        identity, disable=True, reset_passkeys=True
+    )
     await context.session_service.event(
         user.id, "admin_mfa_reset", target_user_id=user_id
     )
@@ -518,3 +526,161 @@ async def revoke_trusted_devices(
     ):
         clear_device(response, request, owner_id)
     return BaseApiResponse(status="success", message="Remembered devices removed")
+
+
+@router.get(
+    "/api/account/security/passkeys",
+    operation_id="list_account_passkeys",
+    response_model=list[PasskeyInfo],
+)
+async def list_passkeys(
+    user: UserResponse = Security(
+        require_permissions, scopes=[Permission.SESSIONS_MANAGE]
+    ),
+    context: AppContext = Depends(get_app_context),
+):
+    return await context.session_service.list_passkeys(self_owner(user))
+
+
+@router.post(
+    "/api/account/security/passkeys/register/options",
+    operation_id="begin_passkey_registration",
+    response_model=PasskeyOptionsResponse,
+)
+@describe_access(
+    "permission", additional_checks=["account-owner", "recent-interactive-verification"]
+)
+async def begin_passkey_registration(
+    request: Request,
+    user: UserResponse = Security(
+        require_permissions, scopes=[Permission.SESSIONS_MANAGE]
+    ),
+    context: AppContext = Depends(get_app_context),
+):
+    await recent(request, user, context)
+    return await context.session_service.begin_passkey_registration(
+        self_owner(user), user.username, request
+    )
+
+
+@router.post(
+    "/api/account/security/passkeys/register/verify",
+    operation_id="complete_passkey_registration",
+    response_model=PasskeyInfo,
+    status_code=201,
+)
+@describe_access(
+    "permission", additional_checks=["account-owner", "recent-interactive-verification"]
+)
+async def complete_passkey_registration(
+    payload: CompletePasskeyRegistration,
+    request: Request,
+    user: UserResponse = Security(
+        require_permissions, scopes=[Permission.SESSIONS_MANAGE]
+    ),
+    context: AppContext = Depends(get_app_context),
+):
+    await recent(request, user, context)
+    return await context.session_service.complete_passkey_registration(
+        self_owner(user), payload, request
+    )
+
+
+@router.patch(
+    "/api/account/security/passkeys/{passkey_id}",
+    operation_id="rename_account_passkey",
+    response_model=PasskeyInfo,
+)
+@describe_access("permission", additional_checks=["account-owner"])
+async def rename_passkey(
+    passkey_id: str,
+    payload: RenamePasskey,
+    user: UserResponse = Security(
+        require_permissions, scopes=[Permission.SESSIONS_MANAGE]
+    ),
+    context: AppContext = Depends(get_app_context),
+):
+    return await context.session_service.rename_passkey(
+        self_owner(user), passkey_id, payload.name
+    )
+
+
+@router.delete(
+    "/api/account/security/passkeys/{passkey_id}",
+    operation_id="revoke_account_passkey",
+    response_model=BaseApiResponse,
+)
+@describe_access(
+    "permission",
+    additional_checks=[
+        "account-owner",
+        "recent-interactive-verification",
+        "administrator-mfa-policy",
+    ],
+)
+async def revoke_passkey(
+    passkey_id: str,
+    request: Request,
+    user: UserResponse = Security(
+        require_permissions, scopes=[Permission.SESSIONS_MANAGE]
+    ),
+    context: AppContext = Depends(get_app_context),
+):
+    await recent(request, user, context)
+    await context.session_service.revoke_passkey(
+        self_owner(user), passkey_id, is_admin_role=(user.role == "admin")
+    )
+    return BaseApiResponse(status="success", message="Passkey removed")
+
+
+@router.post(
+    "/api/account/security/passkeys/verify/options",
+    operation_id="begin_passkey_step_up",
+    response_model=PasskeyOptionsResponse,
+)
+@describe_access("permission", additional_checks=["account-owner"])
+async def begin_passkey_step_up(
+    request: Request,
+    user: UserResponse = Security(
+        require_permissions, scopes=[Permission.SESSIONS_MANAGE]
+    ),
+    context: AppContext = Depends(get_app_context),
+):
+    return await context.session_service.begin_passkey_authentication(
+        request, purpose="verify", owner_id=self_owner(user)
+    )
+
+
+@router.post(
+    "/api/account/security/passkeys/verify",
+    operation_id="verify_account_security_passkey",
+    response_model=VerifiedSecurity,
+)
+@describe_access("permission", additional_checks=["account-owner"])
+async def verify_passkey_step_up(
+    payload: VerifyPasskeyAssertion,
+    request: Request,
+    user: UserResponse = Security(
+        require_permissions, scopes=[Permission.SESSIONS_MANAGE]
+    ),
+    context: AppContext = Depends(get_app_context),
+):
+    now = await context.session_service.verify_recent_passkey(
+        user, request.state.session_id, payload, request
+    )
+    return VerifiedSecurity(verified_until=now + 300)
+
+
+@router.get(
+    "/api/access/users/{user_id}/passkeys",
+    operation_id="list_user_passkeys",
+    response_model=list[PasskeyInfo],
+)
+async def admin_list_passkeys(
+    user_id: int,
+    user: UserResponse = Security(
+        require_permissions, scopes=[Permission.SESSIONS_ADMIN]
+    ),
+    context: AppContext = Depends(get_app_context),
+):
+    return await context.session_service.list_passkeys(await owner(context, user_id))

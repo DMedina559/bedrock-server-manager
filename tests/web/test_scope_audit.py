@@ -108,7 +108,7 @@ async def test_mfa_key_protects_new_and_existing_paths(app_context, monkeypatch)
 
     monkeypatch.setattr(credentials, "protect", protect)
     cipher = app_context.session_service._cipher(create=True)
-    path = Path(app_context.config_dir) / "security" / "mfa.key"
+    path = Path(app_context.config_dir) / "credentials" / "mfa.key"
     original = path.read_bytes()
     if os.name != "nt":
         path.chmod(0o644)
@@ -118,7 +118,7 @@ async def test_mfa_key_protects_new_and_existing_paths(app_context, monkeypatch)
         == b"secret"
     )
     assert path.read_bytes() == original
-    assert ("mfa.key", False) in calls and ("security", True) in calls
+    assert ("mfa.key", False) in calls and ("credentials", True) in calls
     if os.name != "nt":
         assert path.stat().st_mode & 0o777 == 0o600
         assert path.parent.stat().st_mode & 0o777 == 0o700

@@ -48,6 +48,9 @@ async def generate_token(
     Generates a new registration token.
     """
     token = await app_context.user_service.create_registration_token(role=data.role)
+    await app_context.session_service.event(
+        current_user.id, "registration_token_created", role=data.role
+    )
 
     base_url = str(request.base_url)
     registration_link = f"{base_url}app/register/{token}"
@@ -129,6 +132,9 @@ async def register_user(
         raise HTTPException(
             status_code=404, detail="Invalid or expired registration token."
         )
+    await app_context.session_service.event(
+        record.id, "account_registered", role=record.role
+    )
     return JSONResponse(
         content={
             "status": "success",

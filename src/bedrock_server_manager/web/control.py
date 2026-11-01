@@ -102,12 +102,16 @@ class ControlFiles:
         self._write("web_server.pid", str(record.pid))
 
     def _write(self, name: str, data: str) -> None:
+        from ..backups.credentials import protect
+
         temporary = self.directory / f".{name}.{uuid4().hex}"
         try:
             fd = os.open(temporary, os.O_WRONLY | os.O_CREAT | os.O_EXCL, 0o600)
             with os.fdopen(fd, "w", encoding="utf-8") as stream:
+                protect(temporary)
                 stream.write(data)
             os.replace(temporary, self.directory / name)
+            protect(self.directory / name)
         finally:
             temporary.unlink(missing_ok=True)
 

@@ -11,7 +11,7 @@ from weakref import WeakValueDictionary
 import bcrypt
 from argon2 import PasswordHasher
 from argon2.exceptions import InvalidHashError, VerificationError
-from fastapi import HTTPException, WebSocketException, status
+from fastapi import HTTPException
 from jose import JWTError, jwt
 from pydantic import TypeAdapter
 
@@ -184,33 +184,6 @@ async def resolve_session_token(
         raise DependencyUnavailableError(
             "Authentication infrastructure is unavailable."
         ) from error
-
-
-async def _get_user_from_token(
-    app_context: AppContext, token: str
-) -> Optional[UserResponse]:
-    identity = await resolve_session_token(app_context, token)
-    return identity.user if identity is not None else None
-
-
-async def authenticate_websocket_token(
-    app_context: AppContext, token: str
-) -> UserResponse:
-    """Authenticates a WebSocket connection using a provided token."""
-    if not token:
-        raise WebSocketException(
-            code=status.WS_1008_POLICY_VIOLATION, reason="Missing token"
-        )
-
-    user = await _get_user_from_token(app_context, token)
-
-    if user is None:
-        raise WebSocketException(
-            code=status.WS_1008_POLICY_VIOLATION,
-            reason="Invalid token, user not found, or inactive",
-        )
-
-    return user
 
 
 # --- Utility for Login Route ---

@@ -23,7 +23,6 @@ from pydantic import (
 
 from ..backups.contents import (
     DEFAULT_COMPONENTS,
-    SERVER_PACK_COMPONENTS,
     BackupComponents,
     BackupMode,
 )
@@ -527,22 +526,6 @@ class SettingsState(BaseModel):
                         logger.warning(
                             "Ignoring removed legacy setting %s.%s", section, name
                         )
-
-        # Retired pack toggle is migrated only when reading saved settings.
-        # Current writes and schema expose components as the single source of truth.
-        backups = merged.get("backups", {})
-        if isinstance(backups, dict) and "include_server_packs" in backups:
-            include = backups.pop("include_server_packs")
-            if type(include) is not bool:
-                raise ValueError("Saved include_server_packs must be a boolean")
-            if include:
-                chosen = backups.get("components", list(DEFAULT_COMPONENTS))
-                if not isinstance(chosen, list):
-                    raise ValueError("Saved backup components must be a list")
-                backups["components"] = [
-                    *chosen,
-                    *(name for name in SERVER_PACK_COMPONENTS if name not in chosen),
-                ]
 
         monitoring = merged.get("monitoring", {})
         if "max_retiries" in monitoring:

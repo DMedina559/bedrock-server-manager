@@ -1,16 +1,12 @@
 import datetime
 
-import pytest
-from fastapi import WebSocketException
-
 from bedrock_server_manager.db.models import User
 from bedrock_server_manager.web.auth import (
-    _get_user_from_token,
     authenticate_user,
-    authenticate_websocket_token,
     create_access_token,
     get_jwt_secret_key,
     get_password_hash,
+    resolve_session_token,
     verify_password,
 )
 
@@ -20,9 +16,7 @@ async def test_get_jwt_secret_key_creates_if_missing(app_context):
 
     key = await get_jwt_secret_key(app_context.settings)
     assert key
-    assert (
-        Path(app_context.config_dir) / "security" / "jwt-signing-key.json"
-    ).is_file()
+    assert (Path(app_context.config_dir) / "credentials" / "jwt.key").is_file()
     assert app_context.settings.get("web.jwt_secret_key") is None
 
 
@@ -55,8 +49,8 @@ async def test_create_access_token_with_custom_expiry(app_context):
     assert len(token) > 0
 
 
-async def test_get_user_from_token_success(app_context, db):
-    """Test _get_user_from_token successfully retrieves an active user from the database."""
+async def test_resolve_session_token_success(app_context, db):
+    """Test resolve_session_token successfully retrieves an active user and authorization from the database."""
     user = User(
         username="test_token_user", hashed_password="pw", role="admin", is_active=True
     )
@@ -67,56 +61,26 @@ async def test_get_user_from_token_success(app_context, db):
     app_context._db = db
 
     token = await create_access_token(app_context, {"sub": "test_token_user"})
-    user_response = await _get_user_from_token(app_context, token)
+    session_info = await resolve_session_token(app_context, token)
 
-    assert user_response is not None
-    assert user_response.username == "test_token_user"
+    assert session_info is not None
+    assert session_info.user.username == "test_token_user"
+    assert session_info.authorization.username == "test_token_user"
 
 
-async def test_get_user_from_token_invalid_token(app_context, db):
-    """Test _get_user_from_token gracefully handles and returns None for invalid token strings."""
+async def test_resolve_session_token_invalid_token(app_context, db):
+    """Test resolve_session_token gracefully handles and returns None for invalid token strings."""
     app_context._db = db
-    user_response = await _get_user_from_token(app_context, "invalid_token_string")
-    assert user_response is None
+    session_info = await resolve_session_token(app_context, "invalid_token_string")
+    assert session_info is None
 
 
-async def test_get_user_from_token_user_not_found(app_context, db):
-    """Test _get_user_from_token returns None when the token payload references a missing user."""
+async def test_resolve_session_token_user_not_found(app_context, db):
+    """Test resolve_session_token returns None when the token payload references a missing user."""
     app_context._db = db
     token = await create_access_token(app_context, {"sub": "non_existent_user"})
-    user_response = await _get_user_from_token(app_context, token)
-    assert user_response is None
-
-
-async def test_authenticate_websocket_token_success(app_context, db):
-    """Test authenticate_websocket_token correctly resolves a valid user object."""
-    user = User(username="ws_user", hashed_password="pw", role="admin", is_active=True)
-    async with db.session_manager() as session:
-        session.add(user)
-        await session.commit()
-
-    app_context._db = db
-
-    token = await create_access_token(app_context, {"sub": "ws_user"})
-    user_response = await authenticate_websocket_token(app_context, token)
-
-    assert user_response.username == "ws_user"
-
-
-async def test_authenticate_websocket_token_missing_token(app_context):
-    """Test authenticate_websocket_token raises a WebSocketException on empty tokens."""
-    with pytest.raises(WebSocketException) as exc_info:
-        await authenticate_websocket_token(app_context, "")
-    assert exc_info.value.reason == "Missing token"
-
-
-async def test_authenticate_websocket_token_invalid_user(app_context, db):
-    """Test authenticate_websocket_token raises a WebSocketException when a token user is missing."""
-    app_context._db = db
-    token = await create_access_token(app_context, {"sub": "missing_ws_user"})
-    with pytest.raises(WebSocketException) as exc_info:
-        await authenticate_websocket_token(app_context, token)
-    assert "Invalid token, user not found, or inactive" in exc_info.value.reason
+    session_info = await resolve_session_token(app_context, token)
+    assert session_info is None
 
 
 async def test_password_hashing():
@@ -177,7 +141,7 @@ async def test_token_resolution_does_not_publish_a_partial_cached_profile(app_co
         user.full_name = "Full Name"
         user.email = "user@example.com"
     token = await create_access_token(data={"sub": "profile"}, app_context=app_context)
-    assert await _get_user_from_token(app_context, token) is not None
+    assert await resolve_session_token(app_context, token) is not None
     assert app_context.state.users.get("profile") is None
     async with app_context.storage.transaction() as session:
         profile = await app_context.storage.user_repo.get_user_by_username(
@@ -213,7 +177,7 @@ async def test_token_cache_fill_cannot_overwrite_concurrent_disable(
         return record
 
     monkeypatch.setattr(app_context.storage.user_repo, "get_user_by_username", delayed)
-    lookup = asyncio.create_task(_get_user_from_token(app_context, token))
+    lookup = asyncio.create_task(resolve_session_token(app_context, token))
     await entered.wait()
     disable = asyncio.create_task(
         app_context.user_service.update_account(action="disable", user_id=user_id)
@@ -222,4 +186,4 @@ async def test_token_cache_fill_cannot_overwrite_concurrent_disable(
     release.set()
     await asyncio.gather(lookup, disable)
     assert not app_context.state.users.get("racing").is_active
-    assert await _get_user_from_token(app_context, token) is None
+    assert await resolve_session_token(app_context, token) is None

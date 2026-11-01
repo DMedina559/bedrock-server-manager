@@ -21,6 +21,8 @@ from ..authorization import assigned_session
 from ..cookies import clear_session_cookie, set_session_cookie
 from ..deps import get_app_context, get_current_user
 from ..schemas import BaseApiResponse, TokenResponse, UserResponse
+from ..schemas.auth import PasskeyLoginOptionsRequest, PasskeyLoginVerifyRequest
+from ..schemas.security import PasskeyOptionsResponse
 from ..trusted_devices import deliver_device, device_token
 
 # bedrock_server_manager/web/routers/auth.py
@@ -139,6 +141,77 @@ async def api_login_for_access_token(
         **deliver_device(
             response, request, owner_id, issued_device, cookie_mode=cookie_mode
         ),
+    )
+
+
+@router.post(
+    "/passkey/options",
+    operation_id="passkey_login_options",
+    response_model=PasskeyOptionsResponse,
+)
+@describe_access("public", authentication="none", additional_checks=[])
+async def passkey_login_options(
+    request: Request,
+    payload: Optional[PasskeyLoginOptionsRequest] = None,
+    app_context: AppContext = Depends(get_app_context),
+) -> PasskeyOptionsResponse:
+    """Issue a single-use WebAuthn authentication challenge for passkey sign-in."""
+    username = payload.username if payload else None
+    await app_context.session_service.throttle(
+        username or "",
+        request.client.host if request.client else "",
+        "passkey_login",
+    )
+    options = await app_context.session_service.begin_passkey_authentication(
+        request, username=username, purpose="login"
+    )
+    return PasskeyOptionsResponse(**options)
+
+
+@router.post(
+    "/passkey/verify",
+    operation_id="passkey_login_verify",
+    response_model=TokenResponse,
+)
+@describe_access("public", authentication="none", additional_checks=[])
+async def passkey_login_verify(
+    request: Request,
+    response: Response,
+    payload: PasskeyLoginVerifyRequest,
+    app_context: AppContext = Depends(get_app_context),
+) -> TokenResponse:
+    """Verify a WebAuthn passkey assertion and establish an authenticated session."""
+    username, _, auth_revision = (
+        await app_context.session_service.complete_passkey_login(payload, request)
+    )
+    expires_delta = token_lifetime(
+        app_context.settings, remember_me=payload.remember_me
+    )
+    access_token = await create_access_token(
+        data={"sub": username, "authv": auth_revision},
+        app_context=app_context,
+        expires_delta=expires_delta,
+    )
+    session_id = jwt.get_unverified_claims(access_token)["sid"]
+    await app_context.session_service.annotate(session_id, request)
+    logger.info("User '%s' signed in with passkey.", username)
+    cookie_mode = request.headers.get("x-bsm-auth-mode") == "cookie"
+    if cookie_mode:
+        request.state.issued_session_id = session_id
+        set_session_cookie(
+            response,
+            request,
+            access_token,
+            max_age=max(
+                0,
+                jwt.get_unverified_claims(access_token)["exp"]
+                - int(datetime.datetime.now(datetime.timezone.utc).timestamp()),
+            ),
+        )
+    return TokenResponse(
+        access_token="" if cookie_mode else access_token,
+        token_type="bearer",
+        message="Successfully authenticated.",
     )
 
 

@@ -381,3 +381,40 @@ class TrustedDevice(Base):
     last_used_at: Mapped[int] = mapped_column(Integer, nullable=False)
     expires_at: Mapped[int] = mapped_column(Integer, nullable=False, index=True)
     revoked_at: Mapped[int | None] = mapped_column(Integer, nullable=True)
+
+
+class PasskeyCredential(Base):
+    """WebAuthn public-key credential bound to an account's immutable owner_id."""
+
+    __tablename__ = "passkey_credentials"
+    id: Mapped[str] = mapped_column(String(32), primary_key=True)
+    owner_id: Mapped[str] = mapped_column(String(32), nullable=False, index=True)
+    credential_id: Mapped[str] = mapped_column(
+        String(1400), nullable=False, unique=True, index=True
+    )
+    public_key: Mapped[str] = mapped_column(Text, nullable=False)
+    sign_count: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
+    name: Mapped[str] = mapped_column(String(100), nullable=False)
+    transports: Mapped[list[str]] = mapped_column(JSON, nullable=False, default=list)
+    aaguid: Mapped[str | None] = mapped_column(String(64), nullable=True)
+    user_verified: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False)
+    backup_eligible: Mapped[bool] = mapped_column(
+        Boolean, nullable=False, default=False
+    )
+    backup_state: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False)
+    created_at: Mapped[int] = mapped_column(Integer, nullable=False)
+    last_used_at: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    revoked_at: Mapped[int | None] = mapped_column(Integer, nullable=True)
+
+
+class PasskeyChallenge(Base):
+    """Single-use, short-lived WebAuthn ceremony challenge shared across workers."""
+
+    __tablename__ = "passkey_challenges"
+    id: Mapped[str] = mapped_column(String(32), primary_key=True)
+    owner_id: Mapped[str | None] = mapped_column(String(32), nullable=True, index=True)
+    purpose: Mapped[str] = mapped_column(String(32), nullable=False)
+    challenge: Mapped[str] = mapped_column(String(128), nullable=False, unique=True)
+    rp_id: Mapped[str] = mapped_column(String(255), nullable=False)
+    created_at: Mapped[int] = mapped_column(Integer, nullable=False)
+    expires_at: Mapped[int] = mapped_column(Integer, nullable=False, index=True)

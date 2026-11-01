@@ -575,9 +575,14 @@ async def import_snapshot(
         }
     },
 )
+@describe_access(
+    "permission",
+    additional_checks=["recent-interactive-verification"],
+)
 async def export_snapshot(
     backup_id: str,
     payload: SnapshotInspectPayload,
+    request: Request,
     current_user: UserResponse = Security(
         require_permissions, scopes=[Permission.BACKUPS_EXPORT]
     ),
@@ -585,6 +590,9 @@ async def export_snapshot(
     app_context: AppContext = Depends(get_app_context),
 ) -> StreamingResponse:
     """Explicitly export an unencrypted archive; temporary files remain private."""
+    from ..deps.auth import require_recent_interactive
+
+    await require_recent_interactive(request, current_user, app_context)
     stream = await backup_transfer.export_decrypted_snapshot(
         app_context,
         server_name,
@@ -617,13 +625,21 @@ async def list_keys(
 @router.post(
     "/api/backups/keys", operation_id="rotate_backup_key", response_model=BackupKeyInfo
 )
+@describe_access(
+    "permission",
+    additional_checks=["recent-interactive-verification"],
+)
 async def rotate_key(
+    request: Request,
     current_user: UserResponse = Security(
         require_permissions, scopes=[Permission.BACKUPS_KEYS]
     ),
     app_context: AppContext = Depends(get_app_context),
 ) -> dict[str, str]:
     """Generate a new active key and retain all previous keys."""
+    from ..deps.auth import require_recent_interactive
+
+    await require_recent_interactive(request, current_user, app_context)
     return await backup_transfer.rotate_backup_key(app_context)
 
 

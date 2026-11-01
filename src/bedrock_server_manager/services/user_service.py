@@ -348,8 +348,9 @@ class UserService:
                     if action in {"disable", "enable", "role"}:
                         from sqlalchemy import update as sql_update
 
-                        from ..db.models import LoginSession
+                        from ..db.models import IntegrationToken, LoginSession
 
+                        now = int(time.time())
                         user.auth_revision += 1
                         await session.execute(
                             sql_update(LoginSession)
@@ -357,8 +358,17 @@ class UserService:
                                 LoginSession.owner_id == user.access_id,
                                 LoginSession.revoked_at.is_(None),
                             )
-                            .values(revoked_at=int(time.time()), verified_at=0)
+                            .values(revoked_at=now, verified_at=0)
                         )
+                        if action == "disable":
+                            await session.execute(
+                                sql_update(IntegrationToken)
+                                .where(
+                                    IntegrationToken.owner_id == user.access_id,
+                                    IntegrationToken.revoked_at.is_(None),
+                                )
+                                .values(revoked_at=now)
+                            )
                     if action in {"disable", "enable", "role"}:
                         from .session_service import SessionService
 
