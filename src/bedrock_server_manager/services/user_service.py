@@ -68,7 +68,7 @@ class UserService:
             )
         except ValidationError:
             raise UserInputError(
-                "Use a less common passphrase of at least 15 characters (up to 1024 UTF-8 bytes)."
+                "Use a less common passphrase of at least 8 characters (up to 1024 UTF-8 bytes)."
             ) from None
         from ..web.auth import get_password_hash_async, verify_password_async
 
@@ -150,7 +150,7 @@ class UserService:
             )
         except ValidationError:
             raise UserInputError(
-                "Use a less common passphrase of at least 15 characters (up to 1024 UTF-8 bytes)."
+                "Use a less common passphrase of at least 8 characters (up to 1024 UTF-8 bytes)."
             ) from None
         hashed_pwd = await get_password_hash_async(new_password)
         async with self.storage.transaction() as session:

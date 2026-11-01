@@ -55,17 +55,33 @@ async def test_new_password_policy_keeps_legacy_login_and_accepts_long_passphras
             "/auth/token", data={"username": "testuser", "password": "testpassword"}
         )
     ).status_code == 200
-    for weak in ["tiny-pw", "passwordpassword", "aaaaaaaaaaaaaaaa"]:
+    for weak in [
+        "tiny-pw",
+        "PaSsWoRd",
+        "12345678",
+        "passwordpassword",
+        "aaaaaaaaaaaaaaaa",
+    ]:
         rejected = await auth_client.post(
             "/api/account/change-password",
             json={"current_password": "testpassword", "new_password": weak},
         )
         assert rejected.status_code == 422
         assert weak not in rejected.text
+    changed = await auth_client.post(
+        "/api/account/change-password",
+        json={"current_password": "testpassword", "new_password": "Otter42!"},
+    )
+    assert changed.status_code == 200, changed.text
+    assert (
+        await auth_client.post(
+            "/auth/token", data={"username": "testuser", "password": "Otter42!"}
+        )
+    ).status_code == 200
     long_password = "a long memorable Unicode passphrase 🦊 " * 4
     changed = await auth_client.post(
         "/api/account/change-password",
-        json={"current_password": "testpassword", "new_password": long_password},
+        json={"current_password": "Otter42!", "new_password": long_password},
     )
     assert changed.status_code == 200, changed.text
     assert (

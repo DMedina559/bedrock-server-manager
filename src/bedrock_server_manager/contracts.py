@@ -33,6 +33,16 @@ Password = Annotated[
 
 COMMON_PASSWORDS = frozenset(
     {
+        "password",
+        "password1",
+        "password123",
+        "12345678",
+        "123456789",
+        "qwerty123",
+        "abcdefgh",
+        "letmein123",
+        "minecraft",
+        "changeme",
         "passwordpassword",
         "password123456789",
         "123456789012345",
@@ -48,9 +58,9 @@ COMMON_PASSWORDS = frozenset(
 
 def validate_new_password(value: SecretStr) -> SecretStr:
     text = value.get_secret_value()
-    if len(text) < 15:
+    if len(text) < 8:
         raise ValueError(
-            "Use at least 15 characters; a memorable passphrase works well."
+            "Use at least 8 characters; a memorable passphrase works well."
         )
     if text.casefold() in COMMON_PASSWORDS or len(set(text)) < 4:
         raise ValueError("Choose a less common password or passphrase.")
@@ -59,7 +69,7 @@ def validate_new_password(value: SecretStr) -> SecretStr:
 
 NewPassword = Annotated[
     SecretStr,
-    Field(min_length=15, max_length=1024),
+    Field(min_length=8, max_length=1024),
     AfterValidator(validate_new_password),
 ]
 

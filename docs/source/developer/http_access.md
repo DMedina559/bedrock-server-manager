@@ -201,7 +201,7 @@ may still supply all three values in a single request.
 
 ## Authentication hardening
 
-New and reset passwords require at least 15 characters, reject a local list of
+New and reset passwords require at least 8 characters, reject a local list of
 common passwords and highly repetitive values, and accept up to 1024 UTF-8 bytes.
 Existing passwords still work at login. New hashes use Argon2id; successful legacy
 bcrypt logins upgrade their hash without signing out existing sessions. Unknown
