@@ -69,19 +69,39 @@ async def test_monitor_restarts_crashed_child_and_isolates_failures(
     child.kill()
     await child.wait()
     manager = app_context.bedrock_process_manager
-    await manager.start()
-    try:
-        await wait_until(
-            lambda: real_bedrock_server.process._process is not None
-            and real_bedrock_server.process._process is not child
-            and real_bedrock_server.process._process.returncode is None
-        )
-        assert manager.restart_attempts[real_bedrock_server.server_name] == 1
-    finally:
-        await manager.quiesce()
+    from bedrock_server_manager.core.server.process import system_process
+
+    publishing_pid = asyncio.Event()
+    release_pid = asyncio.Event()
+    write_pid = system_process.write_pid_to_file
+
+    async def pause_pid_publication(*args, **kwargs):
+        publishing_pid.set()
+        await release_pid.wait()
+        return await write_pid(*args, **kwargs)
+
+    with monkeypatch.context() as startup:
+        startup.setattr(system_process, "write_pid_to_file", pause_pid_publication)
+        await manager.start()
+        try:
+            await asyncio.wait_for(publishing_pid.wait(), 10)
+            replacement = real_bedrock_server.process._process
+            assert replacement is not None and replacement is not child
+            assert replacement.returncode is None
+            recovery = manager._server_checks[real_bedrock_server.server_name]
+            assert not recovery.done()
+            # A published process handle is not a completed start. Quiescing here
+            # cancels PID/state publication and correctly rolls the child back.
+            release_pid.set()
+            await asyncio.wait_for(asyncio.shield(recovery), 10)
+            assert await real_bedrock_server.is_running()
+            assert await real_bedrock_server.get_status() == "RUNNING"
+            assert manager.restart_attempts[real_bedrock_server.server_name] == 1
+        finally:
+            release_pid.set()
+            await manager.quiesce()
 
     # Player failure retains last known runtime
-    manager._stopping = False
     real_bedrock_server.players = [{"name": "Alex", "xuid": "1"}]
     scanned = asyncio.Event()
 
@@ -105,7 +125,6 @@ async def test_monitor_restarts_crashed_child_and_isolates_failures(
             await manager.quiesce()
 
     # Probe failure does not stop other servers
-    manager._stopping = False
     other = app_context.prepare_server("other")
     other.process.intentionally_stopped = True
     await manager.add_server(other)
