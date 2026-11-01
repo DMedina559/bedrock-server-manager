@@ -159,40 +159,6 @@ def _resolve_setting(
     return default_val
 
 
-def _is_legacy_sqlite_url(db_url: Any, legacy_db_path: str) -> bool:
-    """Return True when ``db_url`` points to the legacy root SQLite database path."""
-    if not isinstance(db_url, str) or not db_url.startswith("sqlite:///"):
-        return False
-    raw_path = db_url.removeprefix("sqlite:///")
-    try:
-        return os.path.normcase(os.path.abspath(raw_path)) == os.path.normcase(
-            os.path.abspath(legacy_db_path)
-        )
-    except (OSError, ValueError):
-        return False
-
-
-def _sqlite_user_server_count(db_path: str) -> int:
-    """Return total rows in ``users`` and ``servers`` tables of a SQLite file."""
-    import sqlite3
-    from contextlib import closing
-
-    total = 0
-    try:
-        with closing(sqlite3.connect(f"file:{db_path}?mode=ro", uri=True)) as conn:
-            cur = conn.cursor()
-            for table in ("users", "servers"):
-                try:
-                    row = cur.execute(f"SELECT count(*) FROM {table}").fetchone()
-                    if row:
-                        total += int(row[0])
-                except sqlite3.Error:
-                    pass
-    except sqlite3.Error:
-        pass
-    return total
-
-
 def load_config() -> Dict[str, Any]:
     """Resolve bootstrap values from CLI, environment, file and defaults, in that order."""
     config = _read_raw_config()
@@ -214,52 +180,32 @@ def load_config() -> Dict[str, Any]:
     os.makedirs(db_dir, exist_ok=True)
     default_db_path = os.path.join(db_dir, f"{package_name}.db")
     legacy_db_path = os.path.join(config_dir, f"{package_name}.db")
-    if os.path.exists(legacy_db_path) and not os.path.exists(default_db_path):
-        for suffix in ("", "-wal", "-shm"):
-            src_db = f"{legacy_db_path}{suffix}"
-            dst_db = f"{default_db_path}{suffix}"
-            if os.path.exists(src_db) and not os.path.exists(dst_db):
-                try:
-                    os.replace(src_db, dst_db)
-                except OSError:
-                    pass
-    elif os.path.exists(legacy_db_path) and os.path.exists(default_db_path):
-        legacy_count = _sqlite_user_server_count(legacy_db_path)
-        default_count = _sqlite_user_server_count(default_db_path)
-        if legacy_count == 0 and default_count >= 0:
-            for suffix in ("", "-wal", "-shm"):
-                src_db = f"{legacy_db_path}{suffix}"
-                if os.path.exists(src_db):
-                    try:
-                        os.unlink(src_db)
-                    except OSError:
-                        pass
-        elif default_count == 0 and legacy_count > 0:
-            for suffix in ("", "-wal", "-shm"):
-                src_db = f"{legacy_db_path}{suffix}"
-                dst_db = f"{default_db_path}{suffix}"
-                if os.path.exists(src_db):
-                    try:
-                        os.replace(src_db, dst_db)
-                    except OSError:
-                        pass
-
-    if _is_legacy_sqlite_url(config.get("db_url"), legacy_db_path):
-        config["db_url"] = f"sqlite:///{default_db_path}"
-        final_config["db_url"] = config["db_url"]
-        try:
-            save_config(config)
-        except Exception:
-            pass
-
-    final_config["db_url"] = _resolve_setting(
+    # Resolve explicit selections before inspecting legacy defaults. Database files
+    # may still be open in another process; moving a main file and its WAL here
+    # cannot safely migrate a running SQLite database.
+    selected_db_url = _resolve_setting(
         name="db_url",
         cli_val=_custom_db_url,
         env_var_name=f"{env_name}_DB_URL",
         config=config,
         config_key="db_url",
-        default_val=f"sqlite:///{default_db_path}",
+        default_val=None,
     )
+    if selected_db_url is None:
+        if os.path.exists(legacy_db_path):
+            if os.path.exists(default_db_path):
+                raise ConfigurationError(
+                    "Both legacy and nested default SQLite databases exist. "
+                    "Select the intended database with db_url or BSM_DB_URL; "
+                    "neither file has been modified."
+                )
+            # Preserve upgrades in place, including WAL/SHM files and open handles.
+            # New installations use the nested layout. Relocation is an explicit
+            # administrative operation performed with BSM stopped.
+            selected_db_url = f"sqlite:///{legacy_db_path}"
+        else:
+            selected_db_url = f"sqlite:///{default_db_path}"
+    final_config["db_url"] = selected_db_url
 
     final_log_level = _resolve_setting(
         name="log_level",
