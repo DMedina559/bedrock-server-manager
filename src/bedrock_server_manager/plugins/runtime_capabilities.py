@@ -45,7 +45,7 @@ async def register_data_provider(
     app_context: AppContext,
     plugin_name: Optional[str] = None,
 ) -> None:
-    """Register an owner-scoped WebSocket topic provider."""
+    """Register an owner-scoped WebSocket topic provider (deprecated; prefer @data_provider)."""
     if not topic:
         raise UserInputError("Topic name cannot be empty.")
     if not callable(handler):
@@ -58,6 +58,11 @@ async def register_data_provider(
             plugin_name = getattr(api, "_plugin_name", None) or getattr(
                 bound_self, "name", None
             )
+
+    logger.warning(
+        "Plugin '%s' used deprecated 'api.runtime.register_data_provider()'; use the '@data_provider' decorator instead. 'register_data_provider()' will be removed in a future version.",
+        plugin_name or "unknown",
+    )
 
     try:
         app_context.connection_manager.register_data_provider(
@@ -81,9 +86,13 @@ async def register_diagnostic_provider(
     app_context: AppContext,
     plugin_name: str | None = None,
 ) -> None:
-    """Register asynchronous numeric metadata for this plugin's diagnostic section."""
+    """Register asynchronous numeric metadata for this plugin's diagnostic section (deprecated; prefer @diagnostic_provider)."""
     if not plugin_name:
         raise UserInputError("Plugin diagnostics require an explicit owner")
+    logger.warning(
+        "Plugin '%s' used deprecated 'api.runtime.register_diagnostic_provider()'; use the '@diagnostic_provider' decorator instead. 'register_diagnostic_provider()' will be removed in a future version.",
+        plugin_name,
+    )
     app_context.events.check_owner(f"plugin:{plugin_name}")
     app_context.diagnostics.register(
         f"plugin:{plugin_name}:{name}", handler, owner=f"plugin:{plugin_name}"
@@ -191,14 +200,20 @@ def register_scheduled_task(
     timeout_seconds=300,
     requires_server_lock=True,
     with_context=False,
+    description: str = "",
 ):
     """Register an async ``plugin_name:task`` handler accepting server_name and options.
 
-    Administrators create schedules separately. Unloaded owners cannot run tasks.
+    Deprecated for plugin methods; prefer the ``@scheduled_task`` decorator or
+    ``api.runtime.register_api_task``.
     """
+    logger.warning(
+        "Plugin '%s' used deprecated 'api.runtime.register_scheduled_task()'; use the '@scheduled_task' decorator or 'api.runtime.register_api_task()' instead. 'register_scheduled_task()' will be removed in a future version.",
+        plugin_name,
+    )
     owner = f"plugin:{plugin_name}"
     bus = app_context.events
-    app_context.scheduler.register(
+    return app_context.scheduler.register(
         name,
         handler,
         owner=owner,
@@ -207,6 +222,37 @@ def register_scheduled_task(
         timeout_seconds=timeout_seconds,
         requires_server_lock=requires_server_lock,
         with_context=with_context,
+        description=description,
+    )
+
+
+def register_api_task(
+    name: str,
+    api_method: Callable[..., Any] | str,
+    *,
+    app_context: AppContext,
+    plugin_name: str,
+    options_model=None,
+    default_options: dict[str, Any] | None = None,
+    slot_field: str | None = None,
+    timeout_seconds: float = 300,
+    requires_server_lock: bool = True,
+    description: str = "",
+):
+    """Register an API method or callable to run as a scheduled plugin task."""
+    owner = f"plugin:{plugin_name}"
+    bus = app_context.events
+    return app_context.scheduler.register_api_task(
+        name,
+        api_method,
+        owner=owner,
+        generation=bus.owner_generation(owner),
+        options_model=options_model,
+        default_options=default_options,
+        slot_field=slot_field,
+        timeout_seconds=timeout_seconds,
+        requires_server_lock=requires_server_lock,
+        description=description,
     )
 
 
@@ -218,7 +264,13 @@ def register_http_permission(
     app_context: AppContext,
     plugin_name: str,
 ) -> None:
-    """Register a namespaced HTTP capability with explicit role grants."""
+    """Register a namespaced HTTP capability with explicit role grants (deprecated; prefer http_permissions attribute)."""
+    logger.warning(
+        "Plugin '%s' used deprecated 'api.runtime.register_http_permission()'; declare 'http_permissions' on the plugin class/instance instead. 'register_http_permission()' will be removed in a future version.",
+        plugin_name,
+    )
+    if not permission.startswith("plugin:"):
+        permission = f"plugin:{plugin_name}:{permission}"
     app_context.plugin_manager.access_policy.register(
         plugin_name, permission, description, roles
     )

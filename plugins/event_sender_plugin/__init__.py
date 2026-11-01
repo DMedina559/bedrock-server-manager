@@ -34,7 +34,3 @@ class EventSenderPlugin(PluginBase):
     @app_event("on_unload")
     async def plugin_unloaded(self):
         self.logger.debug("Plugin '%s' v%s unloaded.", self.name, self.version)
-
-    def get_fastapi_routers(self):
-        self.logger.debug("Providing FastAPI router for %s", self.name)
-        return [self.router]

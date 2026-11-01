@@ -179,6 +179,7 @@ def create_app_api(
             "report_task_stage": runtime_capabilities.report_task_stage,
             "run_task": runtime_capabilities.run_task,
             "register_scheduled_task": runtime_capabilities.register_scheduled_task,
+            "register_api_task": runtime_capabilities.register_api_task,
             "read_plugin_file": runtime_capabilities.read_plugin_file,
             "write_plugin_file": runtime_capabilities.write_plugin_file,
             "get_plugin_data_path": runtime_capabilities.get_plugin_data_path,
@@ -194,6 +195,7 @@ def create_app_api(
                 "write_plugin_file",
                 "get_plugin_data_path",
                 "register_scheduled_task",
+                "register_api_task",
                 "register_http_permission",
             }:
                 if file_bus is None:
@@ -338,6 +340,7 @@ class CapabilityNamespace:
                 "report_task_stage": "report_task_stage",
                 "run_task": "run_task",
                 "register_scheduled_task": "register_scheduled_task",
+                "register_api_task": "register_api_task",
                 "register_http_permission": "register_http_permission",
                 "read_plugin_file": "read_plugin_file",
                 "write_plugin_file": "write_plugin_file",
@@ -496,10 +499,46 @@ class AppAPI:
                 self._namespaces[name] = CapabilityNamespace(self, name)
             return self._namespaces[name]
         entry = _api_registry.get(name)
-        from ..api.contract import get_contract
-
-        if entry is not None and get_contract(entry[0]) is None:
+        if entry is not None:
+            if not entry[1] and not self._is_core:
+                return self._api_dispatcher(name)
+            domain = entry[4]
+            scoped_method = next(
+                (m for m, reg in _api_methods().get(domain, {}).items() if reg == name),
+                name,
+            )
+            logger.warning(
+                "Plugin '%s' used deprecated unscoped API 'self.api.%s'; use 'self.api.%s.%s' instead. Unscoped self.api usage will be removed in a future version.",
+                self._plugin_name,
+                name,
+                domain,
+                scoped_method,
+            )
             return self._api_dispatcher(name)
+
+        runtime_names = {
+            "register_diagnostic_provider",
+            "report_task_progress",
+            "report_task_stage",
+            "run_task",
+            "register_scheduled_task",
+            "register_api_task",
+            "register_http_permission",
+            "read_plugin_file",
+            "write_plugin_file",
+            "get_plugin_data_path",
+            "server_lifecycle_manager",
+            "register_data_provider",
+        }
+        if name in runtime_names and self._runtime_dispatcher is not None:
+            logger.warning(
+                "Plugin '%s' used deprecated unscoped runtime capability 'self.api.%s'; use 'self.api.runtime.%s' instead. Unscoped self.api usage will be removed in a future version.",
+                self._plugin_name,
+                name,
+                name,
+            )
+            return getattr(self.runtime, name)
+
         raise AttributeError(f"Use a typed API namespace instead of '{name}'")
 
     def list_available_apis(
@@ -604,7 +643,15 @@ class AppAPI:
         return api_details
 
     def listen_for_event(self, event_name: str, callback: Callable[..., None]):
+        logger.warning(
+            "Plugin '%s' used deprecated unscoped 'self.api.listen_for_event()'; use '@app_event' or 'self.api.events.listen()' instead. Unscoped self.api usage will be removed in a future version.",
+            self._plugin_name,
+        )
         self._event_listener(event_name, callback)
 
     async def send_event(self, event_name: str, *args: Any, **kwargs: Any):
+        logger.warning(
+            "Plugin '%s' used deprecated unscoped 'self.api.send_event()'; use 'self.api.events.emit()' instead. Unscoped self.api usage will be removed in a future version.",
+            self._plugin_name,
+        )
         await self._event_sender(event_name, *args, **kwargs)

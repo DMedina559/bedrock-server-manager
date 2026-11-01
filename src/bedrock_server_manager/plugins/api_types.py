@@ -602,7 +602,21 @@ class RuntimeAPI(Protocol):
         timeout_seconds: float = 300,
         requires_server_lock: bool = True,
         with_context: bool = False,
-    ) -> None: ...
+        description: str = "",
+    ) -> Any: ...
+
+    def register_api_task(
+        self,
+        name: str,
+        api_method: Callable[..., Any] | str,
+        *,
+        options_model: Any = None,
+        default_options: dict[str, Any] | None = None,
+        slot_field: str | None = None,
+        timeout_seconds: float = 300,
+        requires_server_lock: bool = True,
+        description: str = "",
+    ) -> Any: ...
 
     async def run_task(
         self,

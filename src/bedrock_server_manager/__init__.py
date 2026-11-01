@@ -26,6 +26,10 @@ if TYPE_CHECKING:
     from .events import PluginEvent as PluginEvent
     from .plugins import PluginBase as PluginBase
     from .plugins.app_event import app_event as app_event
+    from .plugins.decorators import data_provider as data_provider
+    from .plugins.decorators import diagnostic_provider as diagnostic_provider
+    from .plugins.decorators import scheduled_task as scheduled_task
+    from .plugins.decorators import websocket_provider as websocket_provider
     from .plugins.settings import ExistingServerName as ExistingServerName
     from .plugins.task_loop import task_loop as task_loop
     from .web.deps.auth import get_admin_user as get_admin_user
@@ -41,6 +45,10 @@ __version__ = get_installed_version()
 _EXPORTS = {
     "PluginBase": ("plugins", "PluginBase"),
     "app_event": ("plugins", "app_event"),
+    "scheduled_task": ("plugins", "scheduled_task"),
+    "diagnostic_provider": ("plugins", "diagnostic_provider"),
+    "data_provider": ("plugins", "data_provider"),
+    "websocket_provider": ("plugins", "websocket_provider"),
     "task_loop": ("plugins", "task_loop"),
     "ExistingServerName": ("plugins.settings", "ExistingServerName"),
     # Event & Operation types for plugins
@@ -91,6 +99,10 @@ __all__ = [
     "__version__",
     "PluginBase",
     "app_event",
+    "scheduled_task",
+    "diagnostic_provider",
+    "data_provider",
+    "websocket_provider",
     "task_loop",
     "ExistingServerName",
     "CancellableEvent",

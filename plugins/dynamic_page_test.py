@@ -376,6 +376,3 @@ class DynamicPageTestPlugin(PluginBase):
     @app_event("on_unload")
     async def plugin_unloaded(self, **kwargs):
         pass
-
-    def get_fastapi_routers(self, **kwargs):
-        return [self.router]

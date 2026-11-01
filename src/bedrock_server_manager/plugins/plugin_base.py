@@ -42,6 +42,13 @@ class PluginBase(ABC):
         []
     )  # Optional list of optional plugin names (strings) to load before this plugin, if they are enabled.
 
+    # Standardized declarative extension attributes:
+    router: Any = None
+    routers: List[Any] = []
+    static_mounts: List[tuple[str, "Path", str]] = []
+    http_permissions: List[tuple[str, str, list[str]]] = []
+    scheduled_apis: List[dict[str, Any]] = []
+
     def __init__(self, plugin_name: str, api: AppAPI, logger: Logger):
         """Bind this plugin to its name, scoped API and logger."""
         # Use class property name if provided, else fallback to module name

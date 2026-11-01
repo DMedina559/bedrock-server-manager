@@ -143,3 +143,27 @@ async def test_plugin_task_bridge_runs_actual_server_api(
     assert await real_bedrock_server.is_running()
     assert app_context.task_manager._plugin_owners[task_id] == "autostart"
     assert await app_context.task_manager.get_task(task_id, username="other") is None
+
+
+async def test_unscoped_api_access_is_backward_compatible_and_logs_deprecation(
+    app_context, caplog
+):
+    import logging
+
+    api = create_app_api("legacy_caller", app_context)
+    caplog.clear()
+    with caplog.at_level(logging.WARNING):
+        response = await api.set_custom_global_setting(
+            SetCustomGlobalSettingRequest(key="unscoped_test", value={"ok": 1})
+        )
+        assert response.status == "success"
+        data_dir = await api.get_plugin_data_path()
+        assert data_dir.name == "legacy_caller"
+
+    messages = "\n".join(record.getMessage() for record in caplog.records)
+    assert "deprecated unscoped API 'self.api.set_custom_global_setting'" in messages
+    assert "use 'self.api.settings.set_custom_global_setting' instead" in messages
+    assert (
+        "deprecated unscoped runtime capability 'self.api.get_plugin_data_path'"
+        in messages
+    )

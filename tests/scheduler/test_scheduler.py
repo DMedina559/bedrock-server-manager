@@ -478,3 +478,99 @@ async def test_new_schedules_inherit_application_timezone_without_moving_saved_j
     assert rows["explicit"]["timezone"] == "UTC"
     await service.save(request("new"))
     assert (await service.configurations())["new"][0]["timezone"] == "America/New_York"
+
+
+async def test_builtin_tasks_registered_via_unified_registry_with_schemas(
+    app_context, populated_server
+):
+
+    from bedrock_server_manager.error import UserInputError
+    from bedrock_server_manager.scheduler.service import TaskDefinition
+
+    service = app_context.scheduler
+    expected_builtins = {
+        "backup:create",
+        "backup:verify",
+        "backup:prune",
+        "backup:world",
+        "backup:all",
+        "server:start",
+        "server:stop",
+        "server:restart",
+        "server:send_command",
+        "world:export",
+    }
+    assert expected_builtins.issubset(service._handlers.keys())
+    for task_name in expected_builtins:
+        defn = service._handlers[task_name]
+        assert isinstance(defn, TaskDefinition)
+        assert defn.owner == "application"
+        assert defn.options_model is not None
+
+    snap = await service.snapshot()
+    assert expected_builtins.issubset(set(snap.task_types))
+    assert expected_builtins.issubset(set(snap.task_definitions.keys()))
+    assert (
+        "command"
+        in snap.task_definitions["server:send_command"]["options_schema"]["properties"]
+    )
+    assert (
+        "server_name"
+        not in snap.task_definitions["server:send_command"]["options_schema"][
+            "properties"
+        ]
+    )
+
+    await service.save(
+        SaveScheduleRequest(
+            schedule_id="canonical-backup",
+            configuration=ScheduledTask(
+                task="backup:create",
+                server_name=populated_server.server_name,
+            ),
+        )
+    )
+    await service.execute(
+        "canonical-backup",
+        {"task": "backup:create", "options": {}},
+        populated_server,
+        "slot-1",
+    )
+    snapshots = await populated_server.backups.list_snapshots()
+    assert len(snapshots) == 1 and snapshots[0].purpose == "scheduled"
+
+    with pytest.raises(UserInputError):
+        await service.save(
+            SaveScheduleRequest(
+                schedule_id="bad-cmd",
+                configuration=ScheduledTask(
+                    task="server:send_command",
+                    server_name=populated_server.server_name,
+                    options={"unknown_field": 1},
+                ),
+            )
+        )
+
+
+async def test_legacy_task_names_log_deprecation_warning(
+    app_context, populated_server, caplog
+):
+    import logging
+
+    service = app_context.scheduler
+    caplog.clear()
+    with caplog.at_level(logging.WARNING):
+        await service.save(
+            SaveScheduleRequest(
+                schedule_id="legacy-verify-alias",
+                configuration=ScheduledTask(
+                    task="verify",
+                    server_name=populated_server.server_name,
+                ),
+            )
+        )
+    assert any(
+        "Scheduled task 'verify' is deprecated" in record.getMessage()
+        and "backup:verify" in record.getMessage()
+        for record in caplog.records
+    )
