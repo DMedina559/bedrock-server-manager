@@ -116,7 +116,7 @@ def test_cleanup_orphans_and_dry_run(runner, app_context):
     public_dir.mkdir(parents=True, exist_ok=True)
     (public_dir / "shared.txt").write_text("keep")
 
-    # 2. Seed orphaned server DB entry, runtime dir, and log dir
+    # 2. Seed orphaned server DB entry, runtime dir, log dir, and stale PID file
     app_context.state.servers.set(
         ServerConfigState(server_name="ghost_server", status="STOPPED")
     )
@@ -126,6 +126,9 @@ def test_cleanup_orphans_and_dry_run(runner, app_context):
     ghost_runtime_dir.mkdir(parents=True, exist_ok=True)
     ghost_log_dir = Path(app_context.config_dir) / "logs" / "servers" / "ghost_server"
     ghost_log_dir.mkdir(parents=True, exist_ok=True)
+    stale_web_pid = Path(app_context.config_dir) / "runtime" / "web_server.pid"
+    stale_web_pid.parent.mkdir(parents=True, exist_ok=True)
+    stale_web_pid.write_text("99999999")
 
     # Dry run preserves everything
     dry_res = runner.invoke(
@@ -137,8 +140,9 @@ def test_cleanup_orphans_and_dry_run(runner, app_context):
     assert ghost_plugin_dir.exists()
     assert ghost_runtime_dir.exists()
     assert ghost_log_dir.exists()
+    assert stale_web_pid.exists()
 
-    # Real run removes orphans while keeping public dir
+    # Real run removes orphans and stale PID files while keeping public dir
     res = runner.invoke(cleanup, ["--orphans"], obj={"app_context": app_context})
     assert res.exit_code == 0, res.output
     assert "ghost_plugin" not in app_context.state.plugins.plugins
@@ -147,27 +151,59 @@ def test_cleanup_orphans_and_dry_run(runner, app_context):
     assert "ghost_server" not in app_context.state.servers.servers
     assert not ghost_runtime_dir.exists()
     assert not ghost_log_dir.exists()
+    assert not stale_web_pid.exists()
 
 
-def test_logs_cli_list_and_view(runner, app_context, real_bedrock_server):
+def test_logs_cli_list_and_view(runner, app_context, real_bedrock_server, monkeypatch):
     log_dir = Path(app_context.log_dir)
     log_dir.mkdir(parents=True, exist_ok=True)
-    app_log = log_dir / "bedrock_server_manager_20261101_120000_000000_1_abc.log"
+    app_log = log_dir / "bedrock_server_manager_20261101_120000_000000_4242_abc.log"
     app_log.write_text("app line 1\napp line 2\napp line 3\n", encoding="utf-8")
+
+    # Simulate short-lived CLI invocation log with current PID — should be excluded
+    cli_log = (
+        log_dir / f"bedrock_server_manager_20261101_120500_000000_{os.getpid()}_cli.log"
+    )
+    cli_log.write_text("cli invocation log\n", encoding="utf-8")
 
     server_log_dir = Path(real_bedrock_server.paths.server_log_dir)
     server_log_dir.mkdir(parents=True, exist_ok=True)
     s_log = (
         server_log_dir
-        / f"{real_bedrock_server.server_name}_20261101_120000_000000_1_def.log"
+        / f"{real_bedrock_server.server_name}_20261101_120000_000000_5151_def.log"
     )
     s_log.write_text("server line 1\nserver line 2\n", encoding="utf-8")
 
+    # Without verified running processes, newest non-CLI logs are marked [LATEST]
     list_res = runner.invoke(logs, ["--list"], obj={"app_context": app_context})
     assert list_res.exit_code == 0, list_res.output
     assert app_log.name in list_res.output
+    assert cli_log.name not in list_res.output
     assert s_log.name in list_res.output
-    assert "[ACTIVE]" in list_res.output
+    assert "[LATEST]" in list_res.output
+    assert "[ACTIVE" not in list_res.output
+
+    # With verified running web & server PIDs, matching PID logs are marked [ACTIVE - PID ...]
+    from types import SimpleNamespace
+
+    async def _fake_web_proc(ctx):
+        return SimpleNamespace(pid=4242)
+
+    async def _fake_server_procs(ctx, names):
+        return {real_bedrock_server.server_name: SimpleNamespace(pid=5151)}
+
+    monkeypatch.setattr(
+        "bedrock_server_manager.cli.logs.get_verified_web_process",
+        _fake_web_proc,
+    )
+    monkeypatch.setattr(
+        "bedrock_server_manager.cli.logs.get_verified_server_processes",
+        _fake_server_procs,
+    )
+    active_list_res = runner.invoke(logs, ["--list"], obj={"app_context": app_context})
+    assert active_list_res.exit_code == 0, active_list_res.output
+    assert "[ACTIVE - PID 4242]" in active_list_res.output
+    assert "[ACTIVE - PID 5151]" in active_list_res.output
 
     app_res = runner.invoke(
         logs, ["--app", "-n", "2"], obj={"app_context": app_context}

@@ -1,18 +1,24 @@
 # bedrock_server_manager/cli/logs.py
 """Define the ``bsm logs`` command for listing, selecting, viewing, and streaming logs."""
 
+import asyncio
 import os
 import time
 from collections import deque
 from datetime import datetime, timezone
 from pathlib import Path
-from typing import List, Optional, Tuple
+from typing import TYPE_CHECKING, Iterable, List, Optional, Tuple
 
 import click
 import questionary
 
 from ..context import AppContext
+from ..core.system import process as system_process
 from ..logging import get_application_log_path
+from ..web.process import WebProcessPaths, read_control, verify_web_owner
+
+if TYPE_CHECKING:
+    import psutil
 
 
 def _format_size(num_bytes: int) -> str:
@@ -27,40 +33,125 @@ def _format_mtime(mtime: float) -> str:
     return datetime.fromtimestamp(mtime, timezone.utc).strftime("%Y-%m-%d %H:%M:%S UTC")
 
 
-def _discover_app_logs(log_dir: Path) -> Tuple[List[Path], Optional[Path]]:
-    """Return ``(ordered_files_newest_first, active_file)`` for application logs."""
+def _is_cli_own_log(path: Path, log_dir: Path) -> bool:
+    """Return True if ``path`` is the log file opened by this short-lived CLI process."""
+    cli_log = get_application_log_path(str(log_dir))
+    if cli_log:
+        try:
+            if path.resolve() == Path(cli_log).resolve():
+                return True
+        except OSError:
+            pass
+    return f"_{os.getpid()}_" in path.name
+
+
+async def get_verified_web_process(
+    app_context: AppContext,
+) -> Optional["psutil.Process"]:
+    """Return the verified background web server process if one is running."""
+    if not app_context.config_dir:
+        return None
+    paths = WebProcessPaths(
+        config_dir=app_context.config_dir,
+        data_dir=app_context.data_dir,
+        db_url=app_context.db_url,
+    )
+    try:
+        record = read_control(paths)
+    except Exception:
+        record = None
+    pid: Optional[int] = record.pid if record is not None else None
+    if pid is None and paths.pid_file.is_file():
+        pid = await system_process.read_pid_from_file(str(paths.pid_file))
+    if pid is None or pid == os.getpid():
+        return None
+    try:
+        return await verify_web_owner(paths, pid, record)
+    except Exception:
+        return None
+
+
+async def get_verified_server_processes(
+    app_context: AppContext, server_names: Iterable[str]
+) -> dict[str, "psutil.Process"]:
+    """Return ``{server_name: psutil.Process}`` for servers with a verified running PID."""
+    verified: dict[str, "psutil.Process"] = {}
+    if not app_context.config_dir:
+        return verified
+    servers_base = app_context.settings.get("paths.servers")
+    if not servers_base:
+        return verified
+    for server_name in server_names:
+        server_dir = os.path.join(str(servers_base), server_name)
+        try:
+            proc = await system_process.get_verified_bedrock_process(
+                server_name, server_dir, app_context.config_dir
+            )
+            if proc is not None:
+                verified[server_name] = proc
+        except Exception:
+            continue
+    return verified
+
+
+def resolve_active_app_log(
+    log_dir: Path, web_process: Optional["psutil.Process"]
+) -> Tuple[List[Path], Optional[Path], Optional[int]]:
+    """Return ``(files_newest_first, active_web_log, web_pid)`` for application logs.
+
+    Excludes the current CLI invocation's own log file when other application logs exist.
+    Only marks a file as active when a verified background web server process owns it.
+    """
     if not log_dir.is_dir():
-        return ([], None)
-    files = [
+        return ([], None, None)
+    all_files = [
         p
         for p in log_dir.iterdir()
         if p.is_file() and (p.suffix == ".log" or ".log." in p.name)
     ]
-    files.sort(key=os.path.getmtime, reverse=True)
-    active_str = get_application_log_path(str(log_dir))
-    active_path = (
-        Path(active_str) if active_str and os.path.isfile(active_str) else None
-    )
-    if active_path is None and files:
-        active_path = files[0]
-    return (files, active_path)
+    all_files.sort(key=os.path.getmtime, reverse=True)
+    non_cli_files = [p for p in all_files if not _is_cli_own_log(p, log_dir)]
+    files = non_cli_files if non_cli_files else all_files
+
+    if web_process is None:
+        return (files, None, None)
+
+    web_pid = web_process.pid
+    pid_token = f"_{web_pid}_"
+    for candidate in files:
+        if candidate.suffix == ".log" and pid_token in candidate.name:
+            return (files, candidate, web_pid)
+
+    fixed = log_dir / "bedrock_server_manager.log"
+    if fixed in files:
+        return (files, fixed, web_pid)
+
+    return (files, None, web_pid)
 
 
-def _discover_server_logs(
-    log_dir: Path, server_name: str
-) -> Tuple[List[Path], Optional[Path]]:
-    """Return ``(ordered_files_newest_first, active_file)`` for one server."""
+def resolve_server_logs(
+    log_dir: Path,
+    server_name: str,
+    server_process: Optional["psutil.Process"] = None,
+) -> Tuple[List[Path], Optional[Path], Optional[int]]:
+    """Return ``(files_newest_first, active_server_log, server_pid)`` for one server.
+
+    Only marks a log file as active when ``server_process`` is a verified running process.
+    """
     s_dir = log_dir / "servers" / server_name
     if not s_dir.is_dir():
-        return ([], None)
+        return ([], None, None)
     files = [
         p
         for p in s_dir.iterdir()
         if p.is_file() and (p.suffix == ".log" or ".log." in p.name)
     ]
     files.sort(key=os.path.getmtime, reverse=True)
-    active_path = files[0] if files else None
-    return (files, active_path)
+    if server_process is None or not files:
+        return (files, None, None)
+    primary_logs = [p for p in files if p.suffix == ".log"]
+    active = primary_logs[0] if primary_logs else files[0]
+    return (files, active, server_process.pid)
 
 
 def _discover_all_server_names(app_context: AppContext, log_dir: Path) -> List[str]:
@@ -127,28 +218,49 @@ def _follow_file(path: Path, start_pos: int, poll_interval: float = 0.25) -> Non
         click.secho("\nStopped following log.", fg="yellow")
 
 
-def _print_log_inventory(app_context: AppContext, log_dir: Path) -> None:
-    app_files, app_active = _discover_app_logs(log_dir)
-    click.secho("\nApplication Logs:", bold=True)
+def _file_status_tag(
+    file_path: Path,
+    files: List[Path],
+    active_path: Optional[Path],
+    active_pid: Optional[int],
+) -> str:
+    if active_path is not None and file_path == active_path:
+        return f" [ACTIVE - PID {active_pid}]" if active_pid else " [ACTIVE]"
+    if files and file_path == files[0]:
+        return " [LATEST]"
+    return ""
+
+
+def _print_log_inventory(
+    app_context: AppContext,
+    log_dir: Path,
+    web_proc: Optional["psutil.Process"],
+    server_procs: dict[str, "psutil.Process"],
+) -> None:
+    app_files, app_active, web_pid = resolve_active_app_log(log_dir, web_proc)
+    web_status = f"running (PID {web_pid})" if web_proc is not None else "stopped"
+    click.secho(f"\nApplication Logs (Web Server: {web_status}):", bold=True)
     if not app_files:
         click.echo("  (no application log files found)")
     else:
         for f in app_files:
             stat = f.stat()
-            marker = " [ACTIVE]" if app_active and f == app_active else ""
+            marker = _file_status_tag(f, app_files, app_active, web_pid)
             click.echo(
                 f"  - {f.name} ({_format_size(stat.st_size)}, {_format_mtime(stat.st_mtime)}){marker}"
             )
 
     for server_name in _discover_all_server_names(app_context, log_dir):
-        s_files, s_active = _discover_server_logs(log_dir, server_name)
-        click.secho(f"\nServer Logs [{server_name}]:", bold=True)
+        s_proc = server_procs.get(server_name)
+        s_files, s_active, s_pid = resolve_server_logs(log_dir, server_name, s_proc)
+        s_status = f"running (PID {s_pid})" if s_proc is not None else "stopped"
+        click.secho(f"\nServer Logs [{server_name}] ({s_status}):", bold=True)
         if not s_files:
             click.echo("  (no server log files found)")
         else:
             for f in s_files:
                 stat = f.stat()
-                marker = " [ACTIVE]" if s_active and f == s_active else ""
+                marker = _file_status_tag(f, s_files, s_active, s_pid)
                 click.echo(
                     f"  - {f.name} ({_format_size(stat.st_size)}, {_format_mtime(stat.st_mtime)}){marker}"
                 )
@@ -160,7 +272,7 @@ def _print_log_inventory(app_context: AppContext, log_dir: Path) -> None:
     "--app",
     "use_app",
     is_flag=True,
-    help="Select the application log.",
+    help="Select the background web server's active (or latest) application log.",
 )
 @click.option(
     "-s",
@@ -180,7 +292,7 @@ def _print_log_inventory(app_context: AppContext, log_dir: Path) -> None:
     "--list",
     "list_only",
     is_flag=True,
-    help="List available application and server log files.",
+    help="List available application and server log files with verified PID status.",
 )
 @click.option(
     "-n",
@@ -215,8 +327,12 @@ def logs(
     if use_app and server_name:
         raise click.ClickException("Cannot specify both --app and --server.")
 
+    all_servers = _discover_all_server_names(app_context, log_dir)
+    web_proc = asyncio.run(get_verified_web_process(app_context))
+    server_procs = asyncio.run(get_verified_server_processes(app_context, all_servers))
+
     if list_only:
-        _print_log_inventory(app_context, log_dir)
+        _print_log_inventory(app_context, log_dir, web_proc, server_procs)
         return
 
     target_path: Optional[Path] = None
@@ -239,11 +355,14 @@ def logs(
 
     # 2. Explicit --app or --server
     elif use_app:
-        _, target_path = _discover_app_logs(log_dir)
+        files, active_path, _ = resolve_active_app_log(log_dir, web_proc)
+        target_path = active_path or (files[0] if files else None)
         if target_path is None:
             raise click.ClickException("No application log files found.")
     elif server_name:
-        _, target_path = _discover_server_logs(log_dir, server_name)
+        s_proc = server_procs.get(server_name)
+        files, active_path, _ = resolve_server_logs(log_dir, server_name, s_proc)
+        target_path = active_path or (files[0] if files else None)
         if target_path is None:
             raise click.ClickException(
                 f"No log files found for server '{server_name}'."
@@ -251,12 +370,21 @@ def logs(
 
     # 3. Interactive selection when no target flags were provided
     else:
+        web_tag = (
+            f" [ACTIVE - PID {web_proc.pid}]" if web_proc is not None else " [stopped]"
+        )
         sources: list[questionary.Choice] = [
-            questionary.Choice("Application Logs", value=("app", None))
+            questionary.Choice(
+                f"Application Logs (Web Server{web_tag})", value=("app", None)
+            )
         ]
-        for s_name in _discover_all_server_names(app_context, log_dir):
+        for s_name in all_servers:
+            s_proc = server_procs.get(s_name)
+            s_tag = (
+                f" [ACTIVE - PID {s_proc.pid}]" if s_proc is not None else " [stopped]"
+            )
             sources.append(
-                questionary.Choice(f"Server: {s_name}", value=("server", s_name))
+                questionary.Choice(f"Server: {s_name}{s_tag}", value=("server", s_name))
             )
 
         selected_source = questionary.select(
@@ -267,9 +395,12 @@ def logs(
 
         kind, chosen_server = selected_source
         if kind == "app":
-            files, active = _discover_app_logs(log_dir)
+            files, active, active_pid = resolve_active_app_log(log_dir, web_proc)
         else:
-            files, active = _discover_server_logs(log_dir, str(chosen_server))
+            s_proc = server_procs.get(str(chosen_server))
+            files, active, active_pid = resolve_server_logs(
+                log_dir, str(chosen_server), s_proc
+            )
 
         if not files:
             raise click.ClickException("No log files found for the selected source.")
@@ -277,7 +408,7 @@ def logs(
         file_choices: list[questionary.Choice] = []
         for f in files:
             stat = f.stat()
-            tag = " [ACTIVE]" if active and f == active else ""
+            tag = _file_status_tag(f, files, active, active_pid)
             label = f"{f.name} ({_format_size(stat.st_size)}, {_format_mtime(stat.st_mtime)}){tag}"
             file_choices.append(questionary.Choice(label, value=f))
 
