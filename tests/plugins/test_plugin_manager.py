@@ -403,81 +403,31 @@ async def test_example_listener_logs_metadata_without_payload(
     assert "example_sender" in caplog.text
 
 
-async def test_download_ui_propagates_listing_errors_and_validates_type(
-    plugin_factory, admin_auth_client
-):
-    from pathlib import Path
+async def test_core_content_upload_download_and_delete(admin_auth_client, app_context):
+    import io
+    import zipfile
 
-    from bedrock_server_manager.plugins import default
+    buf = io.BytesIO()
+    with zipfile.ZipFile(buf, "w") as zf:
+        zf.writestr("levelname.txt", "TestWorld")
+    payload = buf.getvalue()
 
-    source = Path(default.__file__).parent / "download_page_plugin.py"
-    await plugin_factory("download_page_plugin", source.read_text())
-    response = await admin_auth_client.get(
-        "/api/download_page/ui", params={"server": "missing_server", "type": "backups"}
+    upload_res = await admin_auth_client.post(
+        "/api/content/upload",
+        files={"file": ("my_world.mcworld", payload, "application/zip")},
     )
-    assert response.status_code == 404
-    response = await admin_auth_client.get(
-        "/api/download_page/ui", params={"server": "missing_server", "type": "invalid"}
+    assert upload_res.status_code == 200, upload_res.text
+    assert upload_res.json()["category"] == "worlds"
+    assert upload_res.json()["filename"] == "my_world.mcworld"
+
+    dl_res = await admin_auth_client.get(
+        "/api/content/worlds/my_world.mcworld/download"
     )
-    assert response.status_code == 422
+    assert dl_res.status_code == 200
+    assert dl_res.content == payload
 
-
-async def test_download_plugin_delegates_archives_and_rejects_internal_files(
-    admin_auth_client, populated_server, plugin_factory
-):
-    import json
-    from pathlib import Path
-
-    from bedrock_server_manager.plugins import default
-
-    source = Path(default.__file__).parent / "download_page_plugin.py"
-    await plugin_factory("download_page_plugin", source.read_text())
-    snapshot = await populated_server.backups.create_snapshot()
-    server_name = populated_server.server_name
-    ui = await admin_auth_client.get(
-        "/api/download_page/ui", params={"server": server_name}
-    )
-    assert ui.status_code == 200
-    core_url = f"/api/server/{server_name}/backups/{snapshot.filename}/download"
-    assert core_url in json.dumps(ui.json())
-    response = await admin_auth_client.get(
-        "/api/download_page/download",
-        params={
-            "server": server_name,
-            "file_type": "backup_snapshot",
-            "filename": snapshot.filename,
-        },
-        follow_redirects=False,
-    )
-    assert response.status_code == 307
-    assert response.headers["location"] == core_url
-    downloaded = await admin_auth_client.get(response.headers["location"])
-    assert downloaded.status_code == 200
+    del_res = await admin_auth_client.delete("/api/content/worlds/my_world.mcworld")
+    assert del_res.status_code == 200
     assert (
-        downloaded.content
-        == populated_server.backups.resolve_backup(snapshot.backup_id).read_bytes()
-    )
-    for file_type in ("backup_snapshot", "backup_world", "backup_config"):
-        rejected = await admin_auth_client.get(
-            "/api/download_page/download",
-            params={
-                "server": server_name,
-                "file_type": file_type,
-                "filename": ".catalog.json",
-            },
-        )
-        assert rejected.status_code == 404
-    legacy = (
-        Path(populated_server.backups.server_backup_directory)
-        / "allowlist_backup_20261019_000000.json"
-    )
-    legacy.write_text("[]")
-    response = await admin_auth_client.get(
-        "/api/download_page/download",
-        params={
-            "server": server_name,
-            "file_type": "backup_config",
-            "filename": legacy.name,
-        },
-    )
-    assert response.status_code == 200 and response.content == b"[]"
+        await admin_auth_client.get("/api/content/worlds/my_world.mcworld/download")
+    ).status_code == 404

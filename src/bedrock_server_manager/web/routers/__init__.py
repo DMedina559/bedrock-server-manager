@@ -10,6 +10,7 @@ from .audit_log import router as audit_log_router
 from .auth import router as auth_router
 from .backup_restore import router as backup_restore_router
 from .bans import router as bans_router
+from .content import router as content_router
 from .diagnostics import router as diagnostics_router
 from .events import router as events_router
 from .install import router as install_router
@@ -52,6 +53,7 @@ all_routers = [
     properties_router,
     install_router,
     backup_restore_router,
+    content_router,
     addon_router,
     settings_router,
     players_router,
@@ -78,6 +80,7 @@ __all__ = [
     "auth_router",
     "backup_restore_router",
     "bans_router",
+    "content_router",
     "diagnostics_router",
     "events_router",
     "install_router",

@@ -36,10 +36,12 @@ from ...api.models.backup_restore import (
     BackupHealthResponse,
     CleanupBackupDestinationRequest,
     CreateSnapshotRequest,
+    DeleteSnapshotRequest,
     InspectSnapshotRequest,
     ListSnapshotsRequest,
     ListSnapshotsResponse,
     ManageSnapshotRequest,
+    ManageSnapshotResponse,
     PlanSnapshotRestoreRequest,
     PrepareBackupCopyRequest,
     RecoveryReportResponse,
@@ -494,6 +496,26 @@ async def post_snapshot_restore(
         current_user,
         backup_restore_api.restore_server_snapshot,
         _request(payload, RestoreSnapshotRequest, server_name, backup_id=backup_id),
+    )
+
+
+@router.delete(
+    "/api/server/{server_name}/backups/{backup_id}",
+    operation_id="delete_server_snapshot",
+    response_model=ManageSnapshotResponse,
+)
+async def delete_snapshot(
+    backup_id: str,
+    current_user: UserResponse = Security(
+        require_permissions, scopes=[Permission.BACKUPS_MANAGE]
+    ),
+    server_name: str = Depends(validate_server_registered),
+    app_context: AppContext = Depends(get_app_context),
+) -> ManageSnapshotResponse:
+    """Delete an unprotected local backup archive for a server."""
+    return await backup_restore_api.delete_server_backup(
+        DeleteSnapshotRequest(server_name=server_name, backup_id=backup_id),
+        app_context=app_context,
     )
 
 

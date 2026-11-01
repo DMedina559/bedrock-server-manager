@@ -382,52 +382,46 @@ async def test_content_read_inventory_is_safe_and_does_not_grant_mutations(
     ).status_code == 403
 
 
-async def test_builtin_downloads_enforce_context_before_filesystem(
-    auth_client, admin_auth_client, test_app
-):
-    from types import SimpleNamespace
-
-    from bedrock_server_manager.plugins.default.download_page_plugin import (
-        DownloadPagePlugin,
-    )
-
-    plugin = SimpleNamespace(router=APIRouter(tags=["Download Page Plugin"]))
-    DownloadPagePlugin._define_routes(plugin)
-    test_app.include_router(plugin.router)
+async def test_core_content_routes_enforce_permissions(auth_client, admin_auth_client):
     assert (
-        await auth_client.get("/api/download_page/ui", params={"server": "one"})
+        await auth_client.get("/api/content/worlds/sample.mcworld/download")
     ).status_code == 403
     issued = await admin_auth_client.post(
         "/api/account/tokens",
         json={"name": "Content files", "permissions": ["content:read"]},
     )
     headers = {"Authorization": "Bearer " + issued.json()["token"]}
-    # A valid content credential must not gain backup access via a query switch.
-    response = await admin_auth_client.get(
-        "/api/download_page/download",
+    # content:read cannot upload or delete content
+    response = await admin_auth_client.delete(
+        "/api/content/worlds/sample.mcworld",
         headers=headers,
-        params={
-            "file_type": "backup_snapshot",
-            "filename": "sample.bsmbackup",
-            "server": "one",
-        },
     )
     assert response.status_code == 403, response.text
 
 
-def test_builtin_plugin_ids_remain_stable():
-    from types import SimpleNamespace
+def test_core_content_operation_ids_remain_stable():
+    from bedrock_server_manager.web.routers.content import router as content_router
 
-    from bedrock_server_manager.plugins.default.content_uploader_plugin import (
-        ContentUploaderPlugin,
-    )
-
-    plugin = SimpleNamespace(router=APIRouter())
-    ContentUploaderPlugin._define_routes(plugin)
-    assert [route.operation_id for route in plugin.router.routes] == [
-        "Content_Upload_UI_content_upload_ui_get",
-        "handle_file_upload_api_content_upload_post",
+    assert [route.operation_id for route in content_router.routes] == [
+        "upload_content_file",
+        "download_content_file",
+        "delete_content_file",
     ]
+
+
+async def test_delete_server_snapshot_route(admin_auth_client, real_bedrock_server):
+    server_name = real_bedrock_server.server_name
+    backup_dir = Path(real_bedrock_server.backups._directory())
+    backup_dir.mkdir(parents=True, exist_ok=True)
+    archive = backup_dir / "20261101T120000Z_deadbeef.bsmbackup"
+    archive.write_bytes(b"backup-data")
+
+    response = await admin_auth_client.delete(
+        f"/api/server/{server_name}/backups/{archive.name}"
+    )
+    assert response.status_code == 200, response.text
+    assert not archive.exists()
+    assert f"Deleted backup '{archive.name}'." in response.json()["message"]
 
 
 async def test_unknown_plugin_scope_is_rejected_before_mount(app_context, test_app):

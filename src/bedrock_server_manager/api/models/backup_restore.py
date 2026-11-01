@@ -195,6 +195,11 @@ class ManageSnapshotRequest(InspectSnapshotRequest):
     notes: str | None = Field(default=None, max_length=2000)
 
 
+class DeleteSnapshotRequest(APIRequest):
+    server_name: ServerName
+    backup_id: NonEmptyStr
+
+
 class ManageSnapshotResponse(SuccessResponse):
     message: str
 

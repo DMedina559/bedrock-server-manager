@@ -2155,6 +2155,37 @@ Schemas are listed once. Local `$defs` references identify other models on this 
 }
 ```
 
+## DeleteSnapshotRequest
+
+```json
+{
+  "additionalProperties": false,
+  "properties": {
+    "backup_id": {
+      "minLength": 1,
+      "pattern": ".*\\S.*",
+      "title": "Backup Id",
+      "type": "string"
+    },
+    "server_name": {
+      "examples": [
+        "example"
+      ],
+      "minLength": 1,
+      "pattern": "^[a-zA-Z0-9_-]+$",
+      "title": "Server Name",
+      "type": "string"
+    }
+  },
+  "required": [
+    "server_name",
+    "backup_id"
+  ],
+  "title": "DeleteSnapshotRequest",
+  "type": "object"
+}
+```
+
 ## DeliveryResult
 
 ```json

@@ -192,6 +192,37 @@ data = result.model_dump(mode="json")
 ---
 
 
+## `backup_restore.delete_server_backup`
+```python
+await self.api.backup_restore.delete_server_backup(request: bedrock_server_manager.api.models.backup_restore.DeleteSnapshotRequest)
+```
+- **Async (Requires await):** Yes
+
+- **Description:** Delete an unprotected local backup archive for a server.
+
+- **Returns:** `ManageSnapshotResponse`
+
+Runtime context and plugin identity are injected by the bridge. Failures raise application exceptions; plugin cancellation raises `APICancelledError`.
+
+```python
+from bedrock_server_manager.api.models import DeleteSnapshotRequest
+payload = {...}  # Supply required request fields below.
+request = DeleteSnapshotRequest(**payload)
+result = await self.api.backup_restore.delete_server_backup(request)
+data = result.model_dump(mode="json")
+```
+- **Request schema:** [DeleteSnapshotRequest](models.md#deletesnapshotrequest)
+- **Response schema:** [ManageSnapshotResponse](models.md#managesnapshotresponse)
+- **Transport error schema:** [APIErrorResponse](models.md#apierrorresponse)
+**Parameters:**
+
+| Name | Type | Default |
+|------|------|---------|
+| `request` | `bedrock_server_manager.api.models.backup_restore.DeleteSnapshotRequest` | `REQUIRED` |
+
+---
+
+
 ## `backup_restore.download_backup_recovery_report`
 ```python
 await self.api.backup_restore.download_backup_recovery_report(request: bedrock_server_manager.api.models.backup_restore.ListSnapshotsRequest)

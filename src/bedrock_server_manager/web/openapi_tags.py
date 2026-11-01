@@ -35,6 +35,10 @@ OPENAPI_TAGS = [
         ("Player Management", "Discover and manage the global player directory."),
         ("World Management", "Install, export, and reset server worlds."),
         ("Addon Management", "Install and configure server addons."),
+        (
+            "Content Management",
+            "Upload, download, and manage world and addon content archives.",
+        ),
         ("Backup & Restore", "Create, list, prune, and restore server backups."),
         ("Downloads", "Downloaded Bedrock versions and cleanup."),
         ("Plugin Management", "Plugin discovery, configuration, events, and reloads."),
