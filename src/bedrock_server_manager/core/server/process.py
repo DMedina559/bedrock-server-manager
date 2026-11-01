@@ -8,6 +8,7 @@ from io import BufferedWriter
 from typing import TYPE_CHECKING, Any, Dict, Optional, Union
 
 import aiofiles
+import aiofiles.os
 import aiofiles.ospath
 
 from ...error import (
@@ -18,7 +19,7 @@ from ...error import (
     ServerStartError,
     ServerStopError,
 )
-from ...logging import log_operation_error
+from ...logging import log_operation_error, prepare_server_log_path
 from ...utils.threads import run_in_thread
 from ..data import ProcessRecord
 from ..system import base as system_base
@@ -136,7 +137,6 @@ class ServerProcess:
             self.logger.debug(
                 "Attempting to start server '%s'...", self.server.server_name
             )
-            output_file = self.server.paths.server_log_path
             pid_file_path = self.server.get_pid_file_path()
             if await aiofiles.ospath.exists(pid_file_path):
                 self.logger.error(
@@ -149,6 +149,11 @@ class ServerProcess:
                 )
             started_process = None
             try:
+                output_file = await run_in_thread(
+                    prepare_server_log_path,
+                    self.server.paths.server_log_dir,
+                    self.server.server_name,
+                )
                 async with aiofiles.open(output_file, "w") as f:
                     await f.truncate(0)
                 self._log_file_handle = await run_in_thread(open, output_file, "ab")

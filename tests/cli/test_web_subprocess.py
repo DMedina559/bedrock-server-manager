@@ -114,7 +114,7 @@ async def test_direct_web_cli_serves_http_and_shuts_down(web_process_config, tmp
             assert process.returncode == 1, log.read_text(errors="replace")
             # Click reports an interrupted foreground command with exit code 1.
             assert "Application shutdown complete" in log.read_text()
-            assert not (config / "web_server.pid").exists()
+            assert not (config / "runtime" / "web_server.pid").exists()
         finally:
             if process.returncode is None:
                 process.kill()
@@ -125,7 +125,7 @@ async def test_detached_web_cli_serves_requested_port_and_cleans_pid(
     web_process_config,
 ):
     config, command, environment, port = web_process_config
-    pid_file = config / "web_server.pid"
+    pid_file = config / "runtime" / "web_server.pid"
     pid = None
     try:
         await run_cli(
@@ -191,7 +191,7 @@ async def test_foreground_runtime_shutdown_exits_cleanly(web_process_config, tmp
         try:
             await wait_for_http(port, process)
             record = ControlRecord.model_validate_json(
-                (config / "web_server.control.json").read_text()
+                (config / "runtime" / "web_server.control.json").read_text()
             )
             async with AsyncClient(timeout=5, trust_env=False) as client:
                 response = await client.post(
@@ -204,8 +204,8 @@ async def test_foreground_runtime_shutdown_exits_cleanly(web_process_config, tmp
             await asyncio.wait_for(process.wait(), 20)
             assert process.returncode == 0, log.read_text(errors="replace")
             assert "Application shutdown complete" in log.read_text()
-            assert not (config / "web_server.pid").exists()
-            assert not (config / "web_server.control.json").exists()
+            assert not (config / "runtime" / "web_server.pid").exists()
+            assert not (config / "runtime" / "web_server.control.json").exists()
         finally:
             if process.returncode is None:
                 process.kill()

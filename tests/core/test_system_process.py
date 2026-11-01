@@ -31,7 +31,7 @@ from bedrock_server_manager.error import (
 async def test_pid_file_paths_and_io(tmp_path: Path):
     """Test PID path resolution and PID file read/write/remove operations."""
     config_dir = str(tmp_path)
-    expected = os.path.join(config_dir, "test.pid")
+    expected = os.path.join(config_dir, "runtime", "test.pid")
     assert await get_pid_file_path(config_dir, "test.pid") == expected
 
     with pytest.raises(AppFileNotFoundError):
@@ -47,8 +47,8 @@ async def test_pid_file_paths_and_io(tmp_path: Path):
     with pytest.raises(AppFileNotFoundError):
         await get_bedrock_server_pid_file_path(server_name, str(srv_cfg_root))
 
-    server_config_dir = srv_cfg_root / server_name
-    server_config_dir.mkdir()
+    server_config_dir = srv_cfg_root / "runtime" / "servers" / server_name
+    server_config_dir.mkdir(parents=True)
     assert await get_bedrock_server_pid_file_path(
         server_name, str(srv_cfg_root)
     ) == os.path.join(str(server_config_dir), f"bedrock_{server_name}.pid")

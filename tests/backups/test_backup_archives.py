@@ -110,7 +110,15 @@ async def test_archive_inventory_rejects_extra_file(populated_server):
 
 def test_plugin_files_are_owner_scoped(tmp_path):
     write_plugin_json(str(tmp_path), "first", "settings.json", {"value": 1})
+    assert (tmp_path / "plugins" / "first" / "settings.json").is_file()
     assert read_plugin_json(str(tmp_path), "first", "settings.json") == {"value": 1}
+    write_plugin_json(
+        str(tmp_path), "first", "shared.json", {"shared": True}, scope="public"
+    )
+    assert (tmp_path / "plugins" / "public" / "shared.json").is_file()
+    assert read_plugin_json(str(tmp_path), "second", "shared.json", scope="public") == {
+        "shared": True
+    }
     with pytest.raises(BackupRestoreError):
         read_plugin_json(str(tmp_path), "first", "../second/settings.json")
     with pytest.raises(BackupRestoreError):

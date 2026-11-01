@@ -50,11 +50,15 @@ async def test_installation_validation_permissions_and_deletion(real_bedrock_ser
         os.path.join(server.paths.server_config_dir, "runtime.pid"), "w"
     ) as handle:
         handle.write("0")
+    os.makedirs(server.paths.server_log_dir, exist_ok=True)
+    with open(server.paths.server_log_path, "w") as handle:
+        handle.write("server log")
     assert server.state.servers.get(server.server_name) is not None
 
     await delete_all_data(server)
     assert not await aiofiles.ospath.exists(server.paths.server_dir)
     assert not await aiofiles.ospath.exists(server.paths.server_config_dir)
+    assert not await aiofiles.ospath.exists(server.paths.server_log_dir)
     assert server.state.servers.get(server.server_name) is None
     async with server.storage.transaction() as session:
         record = await server.storage.server_repo.get_server_by_name(

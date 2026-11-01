@@ -219,11 +219,14 @@ class PluginManager:
 
     def _find_plugin_path(self, plugin_name: str) -> Optional[Path]:
         """Searches for the plugin file or package in the configured plugin directories."""
+        from .files import RESERVED_PLUGIN_NAMES
+
         if (
             not plugin_name
             or ".." in plugin_name
             or "/" in plugin_name
             or "\\" in plugin_name
+            or plugin_name.lower() in RESERVED_PLUGIN_NAMES
         ):
             logger.warning("Invalid or unsafe plugin name requested: '%s'", plugin_name)
             return None
@@ -701,15 +704,47 @@ class PluginManager:
     def _validate_static_mounts(
         self, plugin_name: str, mounts: list[Any], *, warn_invalid: bool = False
     ) -> list[tuple[str, Path, str]]:
+        from .files import plugin_path
+
+        allowed_roots: list[Path] = []
+        for p_dir in self.plugin_dirs:
+            try:
+                p_root = p_dir.resolve()
+                pkg_dir = (p_root / plugin_name).resolve()
+                if pkg_dir.is_relative_to(p_root):
+                    allowed_roots.append(pkg_dir)
+            except ValueError:
+                continue
+
+        config_dir = getattr(self.settings, "config_dir", None)
+        if config_dir:
+            for scope in ("private", "public"):
+                try:
+                    data_root = plugin_path(
+                        config_dir, plugin_name, scope=scope
+                    ).resolve()
+                    allowed_roots.append(data_root)
+                except Exception:
+                    continue
+
         valid_mounts: list[tuple[str, Path, str]] = []
         for m in mounts:
             if isinstance(m, tuple) and len(m) == 3:
                 route_path, static_dir, mount_name = m
-                resolved_dir = Path(static_dir).resolve()
+                candidate = Path(static_dir)
+                if candidate.is_symlink():
+                    if warn_invalid:
+                        logger.warning(
+                            "Plugin '%s' provided symlink static mount path: '%s'",
+                            plugin_name,
+                            static_dir,
+                        )
+                    continue
+                resolved_dir = candidate.resolve()
                 is_safe = False
-                for p_dir in self.plugin_dirs:
+                for allowed_root in allowed_roots:
                     try:
-                        if resolved_dir.is_relative_to(p_dir.resolve()):
+                        if resolved_dir.is_relative_to(allowed_root):
                             is_safe = True
                             break
                     except ValueError:

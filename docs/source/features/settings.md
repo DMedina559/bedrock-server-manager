@@ -46,8 +46,8 @@ See [runtime and shutdown](../extras/web_runtime.md) for the cleanup order, cont
 
 ## Application configuration and private credentials
 
-The `--config-dir` option still identifies BSM's configuration root. Bootstrap JSON now resides at `<config_dir>/config/bedrock_server_manager.json`. On first access, BSM moves the recognized legacy root file into this nested directory. Unknown root files remain untouched. Conflicting old and new bootstrap files produce an error rather than an overwrite.
+The `--config-dir` option still identifies BSM's configuration root. Bootstrap JSON resides at `<config_dir>/bootstrap/bedrock_server_manager.json`, default SQLite databases reside under `<config_dir>/db/`, and web/server PID and runtime lock files reside under `<config_dir>/runtime/`. On first access, BSM moves recognized legacy bootstrap and database files into their dedicated subdirectories. Unknown root files remain untouched. Conflicting old and new bootstrap files produce an error rather than an overwrite.
 
 Database-backed settings remain in the database. Backup encryption keys reside separately at `<config_dir>/credentials/backup-keys.json` and are excluded from server backups and normal settings exports. The credential directory and file use restrictive host permissions.
 
-Supported plugin file access is scoped to `<config_dir>/config/plugins/<plugin-id>/`. This manager configuration tree is separate from each Minecraft server's `config/` directory, which is included in that server's backups.
+Supported plugin file access is scoped to `<config_dir>/plugin_data/<plugin-id>/` (private) and `<config_dir>/plugin_data/public/` (shared). This manager plugin data tree is separate from each Minecraft server's `config/` directory, which is included in that server's backups.

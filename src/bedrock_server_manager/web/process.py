@@ -31,8 +31,16 @@ class WebProcessPaths(BaseModel):
     db_url: str
 
     @property
+    def runtime_dir(self) -> Path:
+        return Path(self.config_dir) / "runtime"
+
+    @property
     def control_file(self) -> Path:
-        return Path(self.config_dir) / "web_server.control.json"
+        return self.runtime_dir / "web_server.control.json"
+
+    @property
+    def pid_file(self) -> Path:
+        return self.runtime_dir / "web_server.pid"
 
 
 def read_control(paths: WebProcessPaths) -> ControlRecord | None:
@@ -209,9 +217,13 @@ async def stop_local(
 ) -> str:
     record = await asyncio.to_thread(read_control, paths)
     if record is None:
-        pid_file = Path(paths.config_dir) / "web_server.pid"
+        pid_file = paths.pid_file
         if not await asyncio.to_thread(pid_file.exists):
-            return "Web server not running."
+            legacy_pid_file = Path(paths.config_dir) / "web_server.pid"
+            if await asyncio.to_thread(legacy_pid_file.exists):
+                pid_file = legacy_pid_file
+            else:
+                return "Web server not running."
         if not force:
             raise ServerStopError(
                 "No graceful runtime control record; use --force only for a verified legacy process"
@@ -259,7 +271,5 @@ async def stop_local(
         current = await asyncio.to_thread(read_control, paths)
         if current is not None and current.instance_id == record.instance_id:
             await asyncio.to_thread(paths.control_file.unlink, missing_ok=True)
-            await asyncio.to_thread(
-                (Path(paths.config_dir) / "web_server.pid").unlink, missing_ok=True
-            )
+            await asyncio.to_thread(paths.pid_file.unlink, missing_ok=True)
         return "Web server stopped by forced termination."

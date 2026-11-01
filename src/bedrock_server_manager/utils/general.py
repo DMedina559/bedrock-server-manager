@@ -40,6 +40,7 @@ def startup_checks(
         settings = settings.settings
 
     # Ensure essential directories exist
+    config_dir = getattr(settings, "config_dir", None)
     dirs_to_create = {
         "SERVERS_DIR": settings.get("paths.servers"),
         "CONTENT_DIR": settings.get("paths.content"),
@@ -56,6 +57,15 @@ def startup_checks(
         "DOWNLOAD_DIR": settings.get("paths.downloads"),
         "PLUGIN_DIR": settings.get("paths.plugins"),
         "BACKUP_DIR": settings.get("paths.backups"),
+        "RUNTIME_DIR": (
+            os.path.join(str(config_dir), "runtime") if config_dir else None
+        ),
+        "SERVER_LOGS_DIR": (
+            os.path.join(str(config_dir), "logs", "servers") if config_dir else None
+        ),
+        "PLUGIN_DATA_PUBLIC_DIR": (
+            os.path.join(str(config_dir), "plugins", "public") if config_dir else None
+        ),
     }
 
     logger.debug("Insuring essential directories exist...")
@@ -74,7 +84,130 @@ def startup_checks(
                 name,
             )
 
+    if config_dir and isinstance(config_dir, str):
+        _migrate_legacy_layout(
+            config_dir=config_dir,
+            servers_dir=settings.get("paths.servers"),
+            backups_dir=settings.get("paths.backups"),
+        )
+
     logger.debug("Startup checks completed.")
+
+
+_RESERVED_CONFIG_SUBDIRS = frozenset(
+    {
+        "bootstrap",
+        "config",
+        "credentials",
+        "data",
+        "db",
+        "logs",
+        "plugins",
+        "runtime",
+    }
+)
+
+
+def _migrate_legacy_layout(
+    config_dir: str,
+    servers_dir: Any = None,
+    backups_dir: Any = None,
+) -> None:
+    """Migrate legacy root/server runtime, log, and plugin files into their scoped directories."""
+    runtime_dir = os.path.join(config_dir, "runtime")
+    os.makedirs(runtime_dir, exist_ok=True)
+
+    # 1. Legacy web runtime files in <config_dir>
+    for filename in ("web_server.pid", "web_server.lock", "web_server.control.json"):
+        legacy_file = os.path.join(config_dir, filename)
+        target_file = os.path.join(runtime_dir, filename)
+        if os.path.isfile(legacy_file):
+            try:
+                if not os.path.exists(target_file):
+                    os.replace(legacy_file, target_file)
+                else:
+                    os.unlink(legacy_file)
+            except OSError:
+                pass
+
+    # 2. Legacy plugin doc files in <config_dir> and <backups_dir>
+    plugin_docs_dir = os.path.join(config_dir, "plugins", "api_docs_generator")
+    for doc_name in ("PLUGIN_API_REFERENCE.md", "PLUGIN_EVENT_REFERENCE.md"):
+        for source_dir in (config_dir, backups_dir):
+            if not source_dir or not isinstance(source_dir, str):
+                continue
+            legacy_doc = os.path.join(source_dir, doc_name)
+            if os.path.isfile(legacy_doc):
+                try:
+                    os.makedirs(plugin_docs_dir, exist_ok=True)
+                    target_doc = os.path.join(plugin_docs_dir, doc_name)
+                    if not os.path.exists(target_doc):
+                        os.replace(legacy_doc, target_doc)
+                    else:
+                        os.unlink(legacy_doc)
+                except OSError:
+                    pass
+
+    # 3. Per-server legacy runtime dirs (<config_dir>/<server_name>) and logs (<servers_dir>/<server_name>/server_output.txt)
+    if servers_dir and isinstance(servers_dir, str) and os.path.isdir(servers_dir):
+        try:
+            server_names = [
+                entry
+                for entry in os.listdir(servers_dir)
+                if os.path.isdir(os.path.join(servers_dir, entry))
+            ]
+        except OSError:
+            server_names = []
+
+        for server_name in server_names:
+            target_runtime_dir = os.path.join(runtime_dir, "servers", server_name)
+            os.makedirs(target_runtime_dir, exist_ok=True)
+
+            if server_name not in _RESERVED_CONFIG_SUBDIRS:
+                legacy_server_cfg_dir = os.path.join(config_dir, server_name)
+                if os.path.isdir(legacy_server_cfg_dir):
+                    try:
+                        for item in os.listdir(legacy_server_cfg_dir):
+                            src_item = os.path.join(legacy_server_cfg_dir, item)
+                            dst_item = os.path.join(target_runtime_dir, item)
+                            if os.path.isfile(src_item):
+                                if not os.path.exists(dst_item):
+                                    os.replace(src_item, dst_item)
+                                else:
+                                    os.unlink(src_item)
+                        os.rmdir(legacy_server_cfg_dir)
+                    except OSError:
+                        pass
+
+            target_log_dir = os.path.join(config_dir, "logs", "servers", server_name)
+            os.makedirs(target_log_dir, exist_ok=True)
+            for legacy_log_path in (
+                os.path.join(servers_dir, server_name, "server_output.txt"),
+                os.path.join(target_log_dir, "server_output.txt"),
+                os.path.join(target_log_dir, "server_output.log"),
+            ):
+                if os.path.isfile(legacy_log_path):
+                    try:
+                        if os.path.getsize(legacy_log_path) > 0:
+                            from uuid import uuid4
+
+                            mtime = datetime.fromtimestamp(
+                                os.path.getmtime(legacy_log_path), timezone.utc
+                            ).strftime("%Y%m%d_%H%M%S_%f")
+                            target_log_path = os.path.join(
+                                target_log_dir,
+                                f"{server_name}_{mtime}_{os.getpid()}_{uuid4().hex}.log",
+                            )
+                            try:
+                                os.replace(legacy_log_path, target_log_path)
+                            except PermissionError:
+                                import shutil
+
+                                shutil.copy2(legacy_log_path, target_log_path)
+                        else:
+                            os.unlink(legacy_log_path)
+                    except OSError:
+                        pass
 
 
 def run_async(coro):

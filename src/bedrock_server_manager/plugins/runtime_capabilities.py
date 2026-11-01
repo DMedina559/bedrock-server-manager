@@ -106,26 +106,79 @@ async def report_task_stage(
     )
 
 
-async def read_plugin_file(filename: str, *, app_context: AppContext, plugin_name: str):
-    """Read a JSON file from this plugin's configuration directory."""
+async def read_plugin_file(
+    filename: str,
+    *,
+    scope: str = "private",
+    format: str = "json",
+    app_context: AppContext,
+    plugin_name: str,
+):
+    """Read a file from this plugin's private directory or the shared public plugin directory."""
     from ..utils.threads import run_in_thread
-    from .files import read_plugin_json
+    from .files import read_plugin_content
 
     return await run_in_thread(
-        read_plugin_json, app_context.config_dir, plugin_name, filename
+        read_plugin_content,
+        app_context.config_dir,
+        plugin_name,
+        filename,
+        scope=scope,  # type: ignore[arg-type]
+        format=format,  # type: ignore[arg-type]
     )
 
 
 async def write_plugin_file(
-    filename: str, value: Any, *, app_context: AppContext, plugin_name: str
+    filename: str,
+    value: Any,
+    *,
+    scope: str = "private",
+    format: str = "json",
+    app_context: AppContext,
+    plugin_name: str,
 ) -> None:
-    """Atomically write JSON inside this plugin's configuration directory."""
+    """Atomically write a file inside this plugin's private directory or the shared public plugin directory."""
     from ..utils.threads import run_in_thread
-    from .files import write_plugin_json
+    from .files import write_plugin_content
 
     await run_in_thread(
-        write_plugin_json, app_context.config_dir, plugin_name, filename, value
+        write_plugin_content,
+        app_context.config_dir,
+        plugin_name,
+        filename,
+        value,
+        scope=scope,  # type: ignore[arg-type]
+        format=format,  # type: ignore[arg-type]
     )
+
+
+async def get_plugin_data_path(
+    filename: str = "",
+    *,
+    scope: str = "private",
+    app_context: AppContext,
+    plugin_name: str,
+):
+    """Return a validated path inside this plugin's private directory or the shared public plugin directory."""
+    from ..utils.threads import run_in_thread
+    from .files import plugin_path
+
+    def _resolve():
+        target = plugin_path(
+            app_context.config_dir,
+            plugin_name,
+            filename,
+            scope=scope,  # type: ignore[arg-type]
+        )
+        base = plugin_path(
+            app_context.config_dir,
+            plugin_name,
+            scope=scope,  # type: ignore[arg-type]
+        )
+        base.mkdir(parents=True, exist_ok=True)
+        return target
+
+    return await run_in_thread(_resolve)
 
 
 def register_scheduled_task(

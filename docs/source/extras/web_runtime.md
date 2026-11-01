@@ -31,8 +31,8 @@ bedrock-server-manager web stop --timeout 180
 ```
 
 Detached startup waits for HTTP readiness and reports failure if its child exits.
-The hosting process owns `web_server.pid`, `web_server.control.json` and an OS-held
-lock. Runtime records are written atomically and removed after cleanup, including
+The hosting process owns `runtime/web_server.pid`, `runtime/web_server.control.json` and an OS-held
+lock (`runtime/web_server.lock`) under `<config_dir>`. Runtime records are written atomically and removed after cleanup, including
 startup failures. A second host using the same configuration is rejected.
 
 The control record contains separate random per-instance shutdown and readiness credentials. POSIX

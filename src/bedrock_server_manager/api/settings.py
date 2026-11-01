@@ -29,10 +29,17 @@ logger = logging.getLogger(__name__)
 
 @api_method("get_global_setting")
 async def get_global_setting(
-    request: GetGlobalSettingRequest, *, app_context: AppContext
+    request: GetGlobalSettingRequest,
+    *,
+    app_context: AppContext,
+    plugin_name: str | None = None,
 ) -> GetGlobalSettingResponse:
     """Reads a single value from the global application settings."""
     key = request.key
+    if plugin_name is not None and (key == "paths" or key.startswith("paths.")):
+        raise PermissionError(
+            "Access to host filesystem paths ('paths.*') is restricted for plugins."
+        )
     logger.debug("Reading global setting '%s'.", key)
     try:
         settings = app_context.settings
@@ -50,13 +57,18 @@ async def get_global_setting(
 
 @api_method("get_all_global_settings")
 async def get_all_global_settings(
-    request: GetAllGlobalSettingsRequest, *, app_context: AppContext
+    request: GetAllGlobalSettingsRequest,
+    *,
+    app_context: AppContext,
+    plugin_name: str | None = None,
 ) -> GetAllGlobalSettingsResponse:
     """Reads the entire global application settings configuration."""
     logger.debug("Reading all global settings.")
     try:
         settings = app_context.settings
-        all_settings = settings.state.settings.to_dict()
+        all_settings = dict(settings.state.settings.to_dict())
+        if plugin_name is not None:
+            all_settings.pop("paths", None)
         logger.debug("Successfully retrieved all global settings.")
         return GetAllGlobalSettingsResponse.model_validate(
             {"status": "success", "settings": all_settings}

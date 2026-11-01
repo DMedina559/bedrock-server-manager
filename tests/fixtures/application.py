@@ -162,6 +162,7 @@ async def real_bedrock_server(app_context, tmp_path_factory, dummy_server_zip):
     server = app_context.prepare_server(server_name)
     shutil.copytree(template_dir, server.paths.server_dir, dirs_exist_ok=True)
     os.makedirs(server.paths.server_config_dir, exist_ok=True)
+    os.makedirs(server.paths.server_log_dir, exist_ok=True)
     await app_context.server_service.register_or_update_server(
         server_name,
         installed_version=_SERVER_TEMPLATE_VERSION,
