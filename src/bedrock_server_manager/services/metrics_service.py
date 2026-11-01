@@ -258,6 +258,9 @@ class MetricsService:
 
     async def snapshot(self) -> MetricsSnapshot:
         async with self._snapshot_lock:
+            if not self._history and self._lock.locked():
+                async with self._lock:
+                    pass
             if not self._history:
                 await self.sample()
         latest = self._history[-1]

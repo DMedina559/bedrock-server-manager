@@ -106,29 +106,41 @@ async def test_failed_db_commit_reuses_durable_file(app_context, monkeypatch):
     assert await get_jwt_secret_key(app_context.settings) == secret
 
 
-@pytest.mark.parametrize("change", ["missing", "corrupt", "protection", "conflict"])
-async def test_existing_credential_never_silently_rotates(
-    app_context, monkeypatch, change
-):
+async def test_existing_credential_never_silently_rotates(app_context, monkeypatch):
     await get_jwt_secret_key(app_context.settings)
-    app_context.settings._jwt_signing_credential = None
     path = key_path(app_context)
-    if change == "missing":
-        path.unlink()
-    elif change == "corrupt":
-        path.write_text("{invalid")
-    elif change == "conflict":
-        await legacy_key(app_context, "synthetic-mismatching-key")
-    else:
-        monkeypatch.setattr(
+    valid_bytes = path.read_bytes()
+
+    # 1. protection error
+    app_context.settings._jwt_signing_credential = None
+    with monkeypatch.context() as fault:
+        fault.setattr(
             jwt_credentials,
             "protect",
             lambda *args, **kwargs: (_ for _ in ()).throw(PermissionError("denied")),
         )
+        with pytest.raises(ConfigurationError):
+            await get_jwt_secret_key(app_context.settings)
+
+    # 2. corrupt file
+    app_context.settings._jwt_signing_credential = None
+    path.write_text("{invalid")
     with pytest.raises(ConfigurationError):
         await get_jwt_secret_key(app_context.settings)
-    if change == "missing":
-        assert not path.exists()
+
+    # 3. missing file
+    app_context.settings._jwt_signing_credential = None
+    path.unlink()
+    with pytest.raises(ConfigurationError):
+        await get_jwt_secret_key(app_context.settings)
+    assert not path.exists()
+
+    # 4. conflict with legacy key
+    path.write_bytes(valid_bytes)
+    app_context.settings._jwt_signing_credential = None
+    await legacy_key(app_context, "synthetic-mismatching-key")
+    with pytest.raises(ConfigurationError):
+        await get_jwt_secret_key(app_context.settings)
 
 
 async def test_concurrent_first_use_has_one_persisted_key(app_context):

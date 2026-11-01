@@ -163,8 +163,6 @@ class AppContext:
             from .services.settings_service import migrate_bootstrap_cors
 
             await migrate_bootstrap_cors(self._storage, legacy_web["cors_origins"])
-        await self._storage.load_state(self._state)
-
         if self._settings is not None:
             self._settings.app_context = self
         else:
@@ -201,9 +199,6 @@ class AppContext:
         self._db_url = None
         self._log_level = None
         self._log_dir = None
-
-        if self._storage and self._state:
-            await self._storage.load_state(self._state)
 
         await self.settings.reload()
 

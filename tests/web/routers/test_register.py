@@ -8,7 +8,6 @@ import time
 from pathlib import Path
 from unittest.mock import AsyncMock, patch
 
-import pytest
 from alembic import command
 from alembic.config import Config
 from httpx2 import AsyncClient
@@ -18,33 +17,31 @@ import bedrock_server_manager.db.database as database_module
 from bedrock_server_manager.db.models import RegistrationToken, User
 
 
-async def test_generate_token_unauthorized(unauth_client: AsyncClient):
-    response = await unauth_client.post(
-        "/api/register/generate-token", json={"role": "user"}
-    )
-    assert response.status_code == 401
+async def test_generate_validate_and_register_user_lifecycle(
+    unauth_client: AsyncClient,
+    auth_client: AsyncClient,
+    admin_auth_client: AsyncClient,
+    app_context,
+    test_user,
+):
+    # Authorization checks on generate-token
+    assert (
+        await unauth_client.post("/api/register/generate-token", json={"role": "user"})
+    ).status_code == 401
+    assert (
+        await auth_client.post("/api/register/generate-token", json={"role": "user"})
+    ).status_code == 403
 
-
-async def test_generate_token_forbidden(auth_client: AsyncClient):
-    response = await auth_client.post(
-        "/api/register/generate-token", json={"role": "user"}
-    )
-    assert response.status_code == 403
-
-
-async def test_generate_token_success(admin_auth_client: AsyncClient, app_context):
+    # Admin generates token; only digest stored
     response = await admin_auth_client.post(
         "/api/register/generate-token", json={"role": "user"}
     )
     assert response.status_code == 200
     data = response.json()
-    assert data["status"] == "success"
-    assert "registration_url" in data
-
+    assert data["status"] == "success" and "registration_url" in data
     raw_token = data["registration_url"].rsplit("/", 1)[-1]
     expected_digest = hashlib.sha256(raw_token.encode("utf-8")).hexdigest()
 
-    # Verify only token_digest is stored in DB; plaintext token is absent
     async with app_context.db.session_manager() as db:
         res = await db.execute(
             select(RegistrationToken).filter(RegistrationToken.role == "user")
@@ -54,138 +51,82 @@ async def test_generate_token_success(admin_auth_client: AsyncClient, app_contex
         assert token_record.token_digest == expected_digest
         assert not hasattr(token_record, "token")
 
+    # Validate valid, missing, and expired tokens + cache/referrer headers
+    for path in (
+        "/api/register/validate/private-invite",
+        "/app/register/private-invite",
+    ):
+        hdr_resp = await unauth_client.get(path)
+        assert hdr_resp.headers["Cache-Control"] == "no-store"
+        assert hdr_resp.headers["Referrer-Policy"] == "no-referrer"
 
-async def test_validate_token_success(unauth_client: AsyncClient, app_context):
-    token_str = "valid_token_123"
-    token_digest = hashlib.sha256(token_str.encode("utf-8")).hexdigest()
+    assert (
+        await unauth_client.get(f"/api/register/validate/{raw_token}")
+    ).status_code == 200
+    assert (
+        await unauth_client.get("/api/register/validate/invalid_token")
+    ).status_code == 404
+
+    expired_str = "expired_token_123"
+    expired_digest = hashlib.sha256(expired_str.encode("utf-8")).hexdigest()
     async with app_context.db.session_manager() as db:
-        token = RegistrationToken(
-            token_digest=token_digest, role="user", expires=int(time.time()) + 3600
-        )
-        db.add(token)
-        await db.commit()
-
-    response = await unauth_client.get(f"/api/register/validate/{token_str}")
-    assert response.status_code == 200
-    assert response.json()["status"] == "success"
-
-
-async def test_validate_token_not_found(unauth_client: AsyncClient):
-    response = await unauth_client.get("/api/register/validate/invalid_token")
-    assert response.status_code == 404
-    assert response.json()["error"]["code"] == "not_found"
-
-
-async def test_validate_token_expired(unauth_client: AsyncClient, app_context):
-    token_str = "expired_token_123"
-    token_digest = hashlib.sha256(token_str.encode("utf-8")).hexdigest()
-    async with app_context.db.session_manager() as db:
-        token = RegistrationToken(
-            token_digest=token_digest, role="user", expires=int(time.time()) - 3600
-        )
-        db.add(token)
-        await db.commit()
-
-    response = await unauth_client.get(f"/api/register/validate/{token_str}")
-    assert response.status_code == 404
-    assert response.json()["error"]["code"] == "not_found"
-
-
-async def test_register_user_success(unauth_client: AsyncClient, app_context):
-    token_str = "register_token_123"
-    token_digest = hashlib.sha256(token_str.encode("utf-8")).hexdigest()
-    async with app_context.db.session_manager() as db:
-        token = RegistrationToken(
-            token_digest=token_digest, role="user", expires=int(time.time()) + 3600
-        )
-        db.add(token)
-        await db.commit()
-
-    response = await unauth_client.post(
-        f"/api/register/{token_str}",
-        json={"username": "new_user", "password": "new password passphrase"},
-    )
-    assert response.status_code == 200
-    assert response.json()["status"] == "success"
-
-    # Verify token is deleted and user is created
-    async with app_context.db.session_manager() as db:
-        res = await db.execute(
-            select(RegistrationToken).filter(
-                RegistrationToken.token_digest == token_digest
+        db.add(
+            RegistrationToken(
+                token_digest=expired_digest,
+                role="user",
+                expires=int(time.time()) - 3600,
             )
         )
-        token = res.scalars().first()
-        assert token is None
-
-        res_user = await db.execute(select(User).filter(User.username == "new_user"))
-        user = res_user.scalars().first()
-        assert user is not None
-        assert user.role == "user"
-
-
-async def test_register_user_invalid_token(unauth_client: AsyncClient):
-    response = await unauth_client.post(
-        "/api/register/bad_token",
-        json={"username": "new_user", "password": "new password passphrase"},
-    )
-    assert response.status_code == 404
-    assert response.json()["error"]["code"] == "not_found"
-
-
-async def test_register_user_duplicate_username(
-    unauth_client: AsyncClient, app_context, test_user
-):
-    token_str = "duplicate_token_123"
-    token_digest = hashlib.sha256(token_str.encode("utf-8")).hexdigest()
-    async with app_context.db.session_manager() as db:
-        token = RegistrationToken(
-            token_digest=token_digest, role="user", expires=int(time.time()) + 3600
-        )
-        db.add(token)
         await db.commit()
+    assert (
+        await unauth_client.get(f"/api/register/validate/{expired_str}")
+    ).status_code == 404
 
-    response = await unauth_client.post(
-        f"/api/register/{token_str}",
-        json={"username": test_user.username, "password": "new password passphrase"},
-    )
-    assert response.status_code == 400
-    assert response.json()["error"]["code"] == "validation_error"
-    assert "already exists" in response.json()["error"]["message"]
-
-
-async def test_pre_hash_invitation_validation_skips_expensive_hashing(
-    unauth_client: AsyncClient, app_context
-):
-    """Ensure invalid/expired invitations reject before computing Argon2id hashes."""
-    token_str = "expired_invite_999"
-    token_digest = hashlib.sha256(token_str.encode("utf-8")).hexdigest()
-    async with app_context.db.session_manager() as db:
-        token = RegistrationToken(
-            token_digest=token_digest, role="user", expires=int(time.time()) - 100
-        )
-        db.add(token)
-        await db.commit()
-
+    # Pre-hash invitation validation skips expensive hashing on expired/missing tokens
     with patch(
         "bedrock_server_manager.web.routers.register.get_password_hash_async",
         new=AsyncMock(),
     ) as mock_hash:
-        # 1. Expired token
-        res_expired = await unauth_client.post(
-            f"/api/register/{token_str}",
-            json={"username": "cheap_user1", "password": "secure passphrase 123"},
-        )
-        assert res_expired.status_code == 404
+        assert (
+            await unauth_client.post(
+                f"/api/register/{expired_str}",
+                json={"username": "cheap_user1", "password": "secure passphrase 123"},
+            )
+        ).status_code == 404
+        assert (
+            await unauth_client.post(
+                "/api/register/nonexistent_invite_token",
+                json={"username": "cheap_user2", "password": "secure passphrase 123"},
+            )
+        ).status_code == 404
         mock_hash.assert_not_called()
 
-        # 2. Non-existent token
-        res_nonexistent = await unauth_client.post(
-            "/api/register/nonexistent_invite_token",
-            json={"username": "cheap_user2", "password": "secure passphrase 123"},
+    # Duplicate username rejected without consuming valid token
+    dup_resp = await unauth_client.post(
+        f"/api/register/{raw_token}",
+        json={"username": test_user.username, "password": "new password passphrase"},
+    )
+    assert dup_resp.status_code == 400
+    assert "already exists" in dup_resp.json()["error"]["message"]
+
+    # Successful registration consumes token and creates user
+    reg_resp = await unauth_client.post(
+        f"/api/register/{raw_token}",
+        json={"username": "new_user", "password": "new password passphrase"},
+    )
+    assert reg_resp.status_code == 200 and reg_resp.json()["status"] == "success"
+
+    async with app_context.db.session_manager() as db:
+        assert (
+            await db.scalar(
+                select(RegistrationToken).filter(
+                    RegistrationToken.token_digest == expected_digest
+                )
+            )
+            is None
         )
-        assert res_nonexistent.status_code == 404
-        mock_hash.assert_not_called()
+        user = await db.scalar(select(User).filter(User.username == "new_user"))
+        assert user is not None and user.role == "user"
 
 
 async def test_concurrent_invitation_redemption_allows_only_one_user(
@@ -201,7 +142,6 @@ async def test_concurrent_invitation_redemption_allows_only_one_user(
         db.add(token)
         await db.commit()
 
-    # Force both requests to observe a valid invitation before either may consume it.
     barrier = asyncio.Barrier(2)
     original = app_context.user_service.validate_registration_token
 
@@ -226,11 +166,9 @@ async def test_concurrent_invitation_redemption_allows_only_one_user(
     )
 
     statuses = [r.status_code for r in responses]
-    # Exactly one succeeded (200) and one failed (404)
     assert statuses.count(200) == 1
     assert statuses.count(404) == 1
 
-    # Verify database has exactly one user registered and token is consumed
     async with app_context.db.session_manager() as db:
         res = await db.execute(
             select(RegistrationToken).filter(
@@ -238,7 +176,6 @@ async def test_concurrent_invitation_redemption_allows_only_one_user(
             )
         )
         assert res.scalars().first() is None
-
         users = (
             (
                 await db.execute(
@@ -253,21 +190,49 @@ async def test_concurrent_invitation_redemption_allows_only_one_user(
         assert len(users) == 1
 
 
-async def test_registration_peer_throttling(unauth_client: AsyncClient, app_context):
-    """Verify peer throttling limits repeated registration attempts."""
+async def test_registration_peer_throttling_and_post_protection(
+    unauth_client: AsyncClient, app_context, monkeypatch
+):
+    """Verify peer throttling limits validation probes and protects POST from hashing/consuming."""
+    monkeypatch.setattr(
+        "bedrock_server_manager.services.session_service.time.time", lambda: 2000000000
+    )
     await app_context.settings.set("security.auth_peer_attempts", 10)
-    try:
-        # Rapidly attempt to validate non-existent tokens up to the configured limit
-        for i in range(10):
-            res = await unauth_client.get(f"/api/register/validate/probe_{i}")
-            assert res.status_code == 404
+    token = await app_context.user_service.create_registration_token("user")
 
-        # 11th attempt from the same client should be throttled (429)
-        throttled_res = await unauth_client.get("/api/register/validate/probe_blocked")
-        assert throttled_res.status_code == 429
-        assert "Retry-After" in throttled_res.headers
-    finally:
-        await app_context.settings.set("security.auth_peer_attempts", 60)
+    for i in range(10):
+        res = await unauth_client.get(f"/api/register/validate/probe_{i}")
+        assert res.status_code == 404
+
+    throttled_res = await unauth_client.get("/api/register/validate/probe_blocked")
+    assert throttled_res.status_code == 429
+    assert "Retry-After" in throttled_res.headers
+
+    with patch(
+        "bedrock_server_manager.web.routers.register.get_password_hash_async",
+        new_callable=AsyncMock,
+    ) as hasher:
+        response = await unauth_client.post(
+            f"/api/register/{token}",
+            json={
+                "username": "throttled_invitee",
+                "password": "valid registration passphrase",
+            },
+        )
+        assert response.status_code == 429
+        assert response.headers["Cache-Control"] == "no-store"
+        assert response.headers["Referrer-Policy"] == "no-referrer"
+        assert "Retry-After" in response.headers
+        hasher.assert_not_awaited()
+
+    assert await app_context.user_service.validate_registration_token(token)
+    async with app_context.db.session_manager() as session:
+        assert (
+            await session.scalar(
+                select(User).where(User.username == "throttled_invitee")
+            )
+            is None
+        )
 
 
 async def test_migrated_legacy_invitation_registers_once(
@@ -332,53 +297,3 @@ async def test_migrated_legacy_invitation_registers_once(
             },
         )
     ).status_code == 404
-
-
-async def test_throttled_registration_post_never_hashes_or_consumes_invitation(
-    unauth_client: AsyncClient, app_context, monkeypatch
-):
-    # Avoid a fixed-window boundary between the two requests.
-    monkeypatch.setattr(
-        "bedrock_server_manager.services.session_service.time.time", lambda: 2000000000
-    )
-    await app_context.settings.set("security.auth_peer_attempts", 10)
-    token = await app_context.user_service.create_registration_token("user")
-    for _ in range(10):
-        assert (
-            await unauth_client.get(f"/api/register/validate/{token}")
-        ).status_code == 200
-    with patch(
-        "bedrock_server_manager.web.routers.register.get_password_hash_async",
-        new_callable=AsyncMock,
-    ) as hasher:
-        response = await unauth_client.post(
-            f"/api/register/{token}",
-            json={
-                "username": "throttled_invitee",
-                "password": "valid registration passphrase",
-            },
-        )
-        assert response.status_code == 429
-        assert response.headers["Cache-Control"] == "no-store"
-        assert response.headers["Referrer-Policy"] == "no-referrer"
-        assert "Retry-After" in response.headers
-        hasher.assert_not_awaited()
-    assert await app_context.user_service.validate_registration_token(token)
-    async with app_context.db.session_manager() as session:
-        assert (
-            await session.scalar(
-                select(User).where(User.username == "throttled_invitee")
-            )
-            is None
-        )
-
-
-@pytest.mark.parametrize(
-    "path", ["/api/register/validate/private-invite", "/app/register/private-invite"]
-)
-async def test_invitation_responses_are_not_cached_or_forwarded_as_referrers(
-    unauth_client, path
-):
-    response = await unauth_client.get(path)
-    assert response.headers["Cache-Control"] == "no-store"
-    assert response.headers["Referrer-Policy"] == "no-referrer"

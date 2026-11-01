@@ -41,34 +41,32 @@ def test_core_schema_is_classified_and_scopes_match():
     )
 
 
-@pytest.mark.parametrize("role", ["user", "moderator", "admin"])
-@pytest.mark.parametrize(
-    "scopes",
-    [
-        [Permission.SERVERS_READ],
-        [Permission.SERVERS_CONTROL],
-        [Permission.SERVERS_READ, Permission.USERS_MANAGE],
-        ["unknown:permission"],
-    ],
-)
-async def test_permissions_require_all_and_fail_closed(role, scopes):
-    app = FastAPI()
-    app.state.access_policy = AccessPolicy()
-    app.dependency_overrides[get_current_user] = lambda: UserResponse(
-        id=1, username="operator", role=role, is_active=True
-    )
+async def test_permissions_require_all_and_fail_closed():
+    policy = AccessPolicy()
+    for role in ("user", "moderator", "admin"):
+        for scopes in (
+            [Permission.SERVERS_READ],
+            [Permission.SERVERS_CONTROL],
+            [Permission.SERVERS_READ, Permission.USERS_MANAGE],
+            ["unknown:permission"],
+        ):
+            app = FastAPI()
+            app.state.access_policy = policy
+            app.dependency_overrides[get_current_user] = lambda r=role: UserResponse(
+                id=1, username="operator", role=r, is_active=True
+            )
 
-    @app.get("/")
-    async def endpoint(user=Security(require_permissions, scopes=scopes)):
-        return user.username
+            @app.get("/")
+            async def endpoint(user=Security(require_permissions, scopes=scopes)):
+                return user.username
 
-    async with AsyncClient(
-        transport=ASGITransport(app=app), base_url="http://test"
-    ) as client:
-        response = await client.get("/")
-    assert response.status_code == (
-        200 if set(scopes) <= app.state.access_policy.resolve(role) else 403
-    )
+            async with AsyncClient(
+                transport=ASGITransport(app=app), base_url="http://test"
+            ) as client:
+                response = await client.get("/")
+            assert response.status_code == (
+                200 if set(scopes) <= policy.resolve(role) else 403
+            )
 
 
 def test_nested_dependencies_and_plugin_invalidation():
@@ -119,12 +117,12 @@ def test_nested_dependencies_and_plugin_invalidation():
     )
 
 
-@pytest.mark.parametrize(
-    "header", ["Basic abc", "Bearer", "Bearer bad", "Bearer one two", ""]
-)
-async def test_explicit_invalid_header_never_uses_cookie(auth_client, header):
-    response = await auth_client.get("/api/account", headers={"Authorization": header})
-    assert response.status_code == 401
+async def test_explicit_invalid_header_never_uses_cookie(auth_client):
+    for header in ("Basic abc", "Bearer", "Bearer bad", "Bearer one two", ""):
+        response = await auth_client.get(
+            "/api/account", headers={"Authorization": header}
+        )
+        assert response.status_code == 401
 
 
 async def test_bearer_wins_over_cookie(

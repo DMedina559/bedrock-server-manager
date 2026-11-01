@@ -178,36 +178,45 @@ async def test_device_revocation_invalidates_recent_proof_but_not_the_login(
     assert (await login(auth_client, proof=proof)).status_code == 401
 
 
-@pytest.mark.parametrize("mutation", ["expire", "disable", "password", "tamper"])
 async def test_expired_or_invalidated_credentials_never_skip_otp(
-    auth_client, enrolled, app_context, mutation
+    auth_client, enrolled, app_context
 ):
+    # Test tamper and expire first before mutating user password/status
     remembered = await login(auth_client, otp=enrolled[0], remember=True)
     proof = remembered.json()["trusted_device_token"]
-    if mutation == "expire":
-        async with app_context.storage.transaction() as session:
-            await session.execute(
-                update(TrustedDevice).values(expires_at=int(time.time()))
-            )
-    elif mutation == "disable":
-        await app_context.user_service.update_account(
-            action="disable", username="testuser"
-        )
-    elif mutation == "password":
-        await app_context.user_service.reset_password(
-            "testuser", "replacement password phrase"
-        )
-    else:
-        proof = proof[:-1] + ("A" if proof[-1] != "A" else "B")
-    response = await login(
-        auth_client,
-        proof=proof,
-        password=(
-            "replacement password phrase" if mutation == "password" else "testpassword"
-        ),
+    tampered = proof[:-1] + ("A" if proof[-1] != "A" else "B")
+    resp = await login(auth_client, proof=tampered, password="testpassword")
+    assert resp.status_code == 401 and "access_token" not in resp.json()
+
+    async with app_context.storage.transaction() as session:
+        await session.execute(update(TrustedDevice).values(expires_at=int(time.time())))
+    resp = await login(auth_client, proof=proof, password="testpassword")
+    assert resp.status_code == 401 and "access_token" not in resp.json()
+
+    # Re-remember with next recovery code and test password reset invalidation
+    remembered2 = await login(auth_client, otp=enrolled[1], remember=True)
+    proof2 = remembered2.json()["trusted_device_token"]
+    await app_context.user_service.reset_password(
+        "testuser", "replacement password phrase"
     )
-    assert response.status_code == 401
-    assert "access_token" not in response.json()
+    resp = await login(
+        auth_client, proof=proof2, password="replacement password phrase"
+    )
+    assert resp.status_code == 401 and "access_token" not in resp.json()
+
+    # Re-remember and test account disable invalidation
+    remembered3 = await login(
+        auth_client,
+        otp=enrolled[2],
+        remember=True,
+        password="replacement password phrase",
+    )
+    proof3 = remembered3.json()["trusted_device_token"]
+    await app_context.user_service.update_account(action="disable", username="testuser")
+    resp = await login(
+        auth_client, proof=proof3, password="replacement password phrase"
+    )
+    assert resp.status_code == 401 and "access_token" not in resp.json()
 
 
 async def test_reverify_can_remember_after_a_fresh_recovery_code(auth_client, enrolled):
@@ -255,12 +264,9 @@ async def test_forgetting_other_devices_preserves_current_absolute_expiry(
     assert (await login(auth_client, proof=proof)).status_code == 401
 
 
-@pytest.mark.parametrize("action", ["login", "verify"])
 async def test_revocation_after_factor_check_rejects_inflight_device_proof(
-    auth_client, enrolled, app_context, monkeypatch, action
+    auth_client, enrolled, app_context, monkeypatch
 ):
-    remembered = await login(auth_client, otp=enrolled[0], remember=True)
-    proof = remembered.json()["trusted_device_token"]
     service = app_context.trusted_device_service
     original = service.verify_factor
 
@@ -271,16 +277,19 @@ async def test_revocation_after_factor_check_rejects_inflight_device_proof(
         return result
 
     monkeypatch.setattr(service, "verify_factor", revoke_after_check)
-    if action == "login":
-        response = await login(auth_client, proof=proof)
-    else:
-        response = await auth_client.post(
-            "/api/account/security/verify",
-            headers=headers(remembered, proof),
-            json={"password": "testpassword"},
-        )
-    assert response.status_code == 401
-    assert response.headers["X-BSM-MFA"] == "required"
+    for idx, action in enumerate(("login", "verify")):
+        remembered = await login(auth_client, otp=enrolled[idx], remember=True)
+        proof = remembered.json()["trusted_device_token"]
+        if action == "login":
+            response = await login(auth_client, proof=proof)
+        else:
+            response = await auth_client.post(
+                "/api/account/security/verify",
+                headers=headers(remembered, proof),
+                json={"password": "testpassword"},
+            )
+        assert response.status_code == 401
+        assert response.headers["X-BSM-MFA"] == "required"
 
 
 async def test_device_ownership_is_enforced_for_proof_and_revocation(

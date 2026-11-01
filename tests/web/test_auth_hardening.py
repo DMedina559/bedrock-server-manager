@@ -133,44 +133,50 @@ async def test_required_admin_mfa_allows_only_enrollment_until_completed(
     ).status_code == 403
 
 
-@pytest.mark.parametrize("operation", ["login", "verify"])
 async def test_mfa_enrollment_invalidates_inflight_password_only_proof(
-    auth_client, app_context, monkeypatch, operation
+    auth_client, app_context, monkeypatch
 ):
-    verified, release = asyncio.Event(), asyncio.Event()
     original = app_context.trusted_device_service.verify_factor
 
-    async def pause(*args, **kwargs):
-        result = await original(*args, **kwargs)
-        verified.set()
-        await release.wait()
-        return result
+    for operation in ("login", "verify"):
+        verified, release = asyncio.Event(), asyncio.Event()
 
-    monkeypatch.setattr(app_context.trusted_device_service, "verify_factor", pause)
-    if operation == "login":
-        pending = asyncio.create_task(
-            auth_client.post(
-                "/auth/token", data={"username": "testuser", "password": "testpassword"}
-            )
-        )
-    else:
-        pending = asyncio.create_task(
-            auth_client.post(
-                "/api/account/security/verify", json={"password": "testpassword"}
-            )
-        )
-    try:
-        await asyncio.wait_for(verified.wait(), 5)
-        enrollment = await auth_client.post("/api/account/security/mfa/enroll")
-        confirmed = await auth_client.post(
-            "/api/account/security/mfa/confirm",
-            json={"code": pyotp.TOTP(enrollment.json()["secret"]).now()},
-        )
-        assert confirmed.status_code == 200, confirmed.text
-    finally:
-        release.set()
-    result = await pending
-    assert result.status_code == 401, result.text
+        async def pause(*args, v=verified, r=release, **kwargs):
+            result = await original(*args, **kwargs)
+            v.set()
+            await r.wait()
+            return result
+
+        with monkeypatch.context() as fault:
+            fault.setattr(app_context.trusted_device_service, "verify_factor", pause)
+            if operation == "login":
+                pending = asyncio.create_task(
+                    auth_client.post(
+                        "/auth/token",
+                        data={"username": "testuser", "password": "testpassword"},
+                    )
+                )
+            else:
+                pending = asyncio.create_task(
+                    auth_client.post(
+                        "/api/account/security/verify",
+                        json={"password": "testpassword"},
+                    )
+                )
+            try:
+                await asyncio.wait_for(verified.wait(), 5)
+                enrollment = await auth_client.post("/api/account/security/mfa/enroll")
+                confirmed = await auth_client.post(
+                    "/api/account/security/mfa/confirm",
+                    json={"code": pyotp.TOTP(enrollment.json()["secret"]).now()},
+                )
+                assert confirmed.status_code == 200, confirmed.text
+            finally:
+                release.set()
+            result = await pending
+            assert result.status_code == 401, result.text
+        # Reset MFA for second iteration
+        await auth_client.delete("/api/account/security/mfa")
 
 
 async def test_successful_recent_verification_resets_its_attempt_budget(

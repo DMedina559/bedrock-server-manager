@@ -238,6 +238,7 @@ class SessionService:
         """Delete expired metadata in bounded transactions, yielding between batches."""
         now = int(time.time())
         # Delete by primary key, rather than by owner, to bound even large histories.
+        orphan_queries = []
         for model in (
             AccountSecurity,
             AccountServerAccess,
@@ -252,25 +253,9 @@ class SessionService:
             orphan = (
                 ~select(User.access_id).where(User.access_id == model.owner_id).exists()
             )
-            while True:
-                async with self.context.storage.transaction() as session:
-                    rows = list(
-                        (
-                            await session.execute(
-                                select(*columns)
-                                .where(orphan)
-                                .order_by(*columns)
-                                .limit(250)
-                            )
-                        ).all()
-                    )
-                    ids = [row[0] for row in rows] if len(columns) == 1 else rows
-                    if ids:
-                        await session.execute(delete(model).where(key.in_(ids), orphan))
-                if len(rows) < 250:
-                    break
-                await asyncio.sleep(0)
-        for model, key, predicate in (
+            orphan_queries.append((model, columns, key, orphan))
+
+        expired_queries = (
             (
                 IntegrationToken,
                 IntegrationToken.id,
@@ -307,9 +292,72 @@ class SessionService:
                 AuthSecurityEvent.timestamp < now - 90 * 86400,
             ),
             (LoginSession, LoginSession.id, LoginSession.expires_at < now - 90 * 86400),
-        ):
-            while True:
+        )
+
+        async with self.context.db.session_manager() as session:
+            initial_orphans = [
+                (
+                    model,
+                    columns,
+                    key,
+                    orphan,
+                    list(
+                        (
+                            await session.execute(
+                                select(*columns)
+                                .where(orphan)
+                                .order_by(*columns)
+                                .limit(250)
+                            )
+                        ).all()
+                    ),
+                )
+                for model, columns, key, orphan in orphan_queries
+            ]
+            initial_expired = [
+                (
+                    model,
+                    key,
+                    predicate,
+                    list(
+                        (
+                            await session.scalars(
+                                select(key).where(predicate).order_by(key).limit(250)
+                            )
+                        ).all()
+                    ),
+                )
+                for model, key, predicate in expired_queries
+            ]
+
+        for model, columns, key, orphan, rows in initial_orphans:
+            while rows:
+                ids = [row[0] for row in rows] if len(columns) == 1 else rows
                 async with self.context.storage.transaction() as session:
+                    await session.execute(delete(model).where(key.in_(ids), orphan))
+                if len(rows) < 250:
+                    break
+                await asyncio.sleep(0)
+                async with self.context.db.session_manager() as session:
+                    rows = list(
+                        (
+                            await session.execute(
+                                select(*columns)
+                                .where(orphan)
+                                .order_by(*columns)
+                                .limit(250)
+                            )
+                        ).all()
+                    )
+
+        for model, key, predicate, ids in initial_expired:
+            while ids:
+                async with self.context.storage.transaction() as session:
+                    await session.execute(delete(model).where(key.in_(ids), predicate))
+                if len(ids) < 250:
+                    break
+                await asyncio.sleep(0)
+                async with self.context.db.session_manager() as session:
                     ids = list(
                         (
                             await session.scalars(
@@ -317,13 +365,6 @@ class SessionService:
                             )
                         ).all()
                     )
-                    if ids:
-                        await session.execute(
-                            delete(model).where(key.in_(ids), predicate)
-                        )
-                if len(ids) < 250:
-                    break
-                await asyncio.sleep(0)
 
     @staticmethod
     async def advance_auth_revision(session, owner_id, keep_session_id=None):

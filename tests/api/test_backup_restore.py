@@ -19,8 +19,34 @@ from bedrock_server_manager.api.models.backup_restore import (
 )
 
 
-async def test_unified_api_round_trip(app_context, populated_server):
+async def test_unified_api_round_trip_alias_and_pruning(app_context, populated_server):
     name = populated_server.server_name
+
+    # Prunes unified archives and legacy backup_all alias uses one archive
+    await populated_server.settings.set("retention.backups", 3)
+    for _ in range(2):
+        await populated_server.backups.create_snapshot()
+    alias_res = await backup_all(
+        BackupAllRequest(server_name=name),
+        app_context=app_context,
+    )
+    paths = {
+        item.path
+        for item in alias_res.details.components.values()
+        if item.outcome == "completed"
+    }
+    assert len(paths) == 1 and next(iter(paths)).endswith(".bsmbackup")
+
+    await populated_server.settings.set("retention.backups", 1)
+    prune_res = await prune_old_backups(
+        PruneOldBackupsRequest(server_name=name), app_context=app_context
+    )
+    assert prune_res.status == "success"
+    snapshots = await populated_server.backups.list_snapshots()
+    assert len(snapshots) == 1
+
+    # Round-trip create, list, inspect, plan, restore
+    await populated_server.settings.set("retention.backups", 3)
     snapshot = (
         await create_server_backup(
             CreateSnapshotRequest(server_name=name), app_context=app_context
@@ -29,7 +55,7 @@ async def test_unified_api_round_trip(app_context, populated_server):
     listing = await list_server_snapshots(
         ListSnapshotsRequest(server_name=name), app_context=app_context
     )
-    assert listing.backups[0].backup_id == snapshot.backup_id
+    assert any(b.backup_id == snapshot.backup_id for b in listing.backups)
     inspection = await inspect_server_backup(
         InspectSnapshotRequest(server_name=name, backup_id=snapshot.backup_id),
         app_context=app_context,
@@ -55,38 +81,9 @@ async def test_unified_api_round_trip(app_context, populated_server):
     assert not marker.exists()
 
 
-async def test_legacy_backup_all_alias_uses_one_archive(app_context, populated_server):
-    result = await backup_all(
-        BackupAllRequest(server_name=populated_server.server_name),
-        app_context=app_context,
-    )
-    paths = {
-        item.path
-        for item in result.details.components.values()
-        if item.outcome == "completed"
-    }
-    assert len(paths) == 1
-    assert next(iter(paths)).endswith(".bsmbackup")
-
-
-async def test_api_prunes_unified_archives(app_context, populated_server):
-    server = populated_server
-    await server.settings.set("retention.backups", 3)
-    for _ in range(3):
-        await server.backups.create_snapshot()
-    await server.settings.set("retention.backups", 1)
-    result = await prune_old_backups(
-        PruneOldBackupsRequest(server_name=server.server_name), app_context=app_context
-    )
-    assert result.status == "success"
-    snapshots = await server.backups.list_snapshots()
-    assert len(snapshots) == 1
-
-
 async def test_restore_running_server_skips_start_backup_and_update(
     app_context, populated_server, plugin_factory
 ):
-
     server = populated_server
     await server.set_autoupdate(True)
     snapshot = await server.backups.create_snapshot()

@@ -1,4 +1,6 @@
+import asyncio
 import datetime
+from pathlib import Path
 
 from bedrock_server_manager.db.models import User
 from bedrock_server_manager.web.auth import (
@@ -11,137 +13,80 @@ from bedrock_server_manager.web.auth import (
 )
 
 
-async def test_get_jwt_secret_key_creates_if_missing(app_context):
-    from pathlib import Path
-
+async def test_jwt_secret_key_and_access_token_lifecycle(app_context):
+    """Test JWT secret key creation, persistence across reloads, and token generation."""
     key = await get_jwt_secret_key(app_context.settings)
     assert key
     assert (Path(app_context.config_dir) / "credentials" / "jwt.key").is_file()
     assert app_context.settings.get("web.jwt_secret_key") is None
-
-
-async def test_get_jwt_secret_key_returns_existing(app_context):
-    key = await get_jwt_secret_key(app_context.settings)
     assert await get_jwt_secret_key(app_context.settings) == key
 
-
-async def test_get_jwt_secret_key_persists_across_reloads(app_context):
-    initial_key = await get_jwt_secret_key(app_context.settings)
     await app_context.storage.load_state(app_context.state)
     app_context.settings._jwt_signing_credential = None
-    assert await get_jwt_secret_key(app_context.settings) == initial_key
+    assert await get_jwt_secret_key(app_context.settings) == key
 
-
-async def test_create_access_token(app_context):
-    """Test create_access_token successfully generates a valid JWT string."""
     token = await create_access_token(app_context, {"sub": "test_user"})
-    assert isinstance(token, str)
-    assert len(token) > 0
+    assert isinstance(token, str) and len(token) > 0
 
-
-async def test_create_access_token_with_custom_expiry(app_context):
-    """Test create_access_token handles custom expiration deltas correctly."""
-    expires = datetime.timedelta(minutes=15)
-    token = await create_access_token(
-        app_context, {"sub": "test_user"}, expires_delta=expires
+    custom_token = await create_access_token(
+        app_context,
+        {"sub": "test_user"},
+        expires_delta=datetime.timedelta(minutes=15),
     )
-    assert isinstance(token, str)
-    assert len(token) > 0
+    assert isinstance(custom_token, str) and len(custom_token) > 0
 
 
-async def test_resolve_session_token_success(app_context, db):
-    """Test resolve_session_token successfully retrieves an active user and authorization from the database."""
-    user = User(
-        username="test_token_user", hashed_password="pw", role="admin", is_active=True
-    )
-    async with db.session_manager() as session:
-        session.add(user)
-        await session.commit()
-
-    app_context._db = db
-
-    token = await create_access_token(app_context, {"sub": "test_token_user"})
-    session_info = await resolve_session_token(app_context, token)
-
-    assert session_info is not None
-    assert session_info.user.username == "test_token_user"
-    assert session_info.authorization.username == "test_token_user"
-
-
-async def test_resolve_session_token_invalid_token(app_context, db):
-    """Test resolve_session_token gracefully handles and returns None for invalid token strings."""
-    app_context._db = db
-    session_info = await resolve_session_token(app_context, "invalid_token_string")
-    assert session_info is None
-
-
-async def test_resolve_session_token_user_not_found(app_context, db):
-    """Test resolve_session_token returns None when the token payload references a missing user."""
-    app_context._db = db
-    token = await create_access_token(app_context, {"sub": "non_existent_user"})
-    session_info = await resolve_session_token(app_context, token)
-    assert session_info is None
-
-
-async def test_password_hashing():
-    """Test password hashing encrypts effectively and verification checks appropriately."""
+async def test_password_hashing_authentication_and_session_resolution(
+    app_context, db, password_hashes
+):
+    """Test password hashing, authenticate_user, and resolve_session_token scenarios."""
     password = "supersecretpassword"
     hashed = get_password_hash(password)
     assert hashed != password
     assert verify_password(password, hashed) is True
     assert verify_password("wrongpassword", hashed) is False
 
-
-async def test_authenticate_user_success(app_context, db):
-    """Test authenticate_user successfully logs in an active user."""
-    password = "mypassword"
-    hashed = get_password_hash(password)
-    user = User(
-        username="auth_user", hashed_password=hashed, role="admin", is_active=True
-    )
+    app_context._db = db
     async with db.session_manager() as session:
-        session.add(user)
+        session.add(
+            User(
+                username="auth_user",
+                hashed_password=password_hashes["user"],
+                role="admin",
+                is_active=True,
+            )
+        )
         await session.commit()
 
-    app_context._db = db
-
-    result = await authenticate_user(app_context, "auth_user", password)
-    assert result == "auth_user"
-
-
-async def test_authenticate_user_wrong_password(app_context, db):
-    """Test authenticate_user returns None upon incorrect password submission."""
-    password = "mypassword"
-    hashed = get_password_hash(password)
-    user = User(
-        username="auth_user_2", hashed_password=hashed, role="admin", is_active=True
+    # authenticate_user success, wrong password, missing user
+    assert (
+        await authenticate_user(app_context, "auth_user", "testpassword") == "auth_user"
     )
-    async with db.session_manager() as session:
-        session.add(user)
-        await session.commit()
+    assert await authenticate_user(app_context, "auth_user", "wrong_password") is None
+    assert await authenticate_user(app_context, "ghost_user", "password") is None
 
-    app_context._db = db
+    # resolve_session_token success, invalid token, missing user
+    token = await create_access_token(app_context, {"sub": "auth_user"})
+    session_info = await resolve_session_token(app_context, token)
+    assert session_info is not None
+    assert session_info.user.username == "auth_user"
+    assert session_info.authorization.username == "auth_user"
 
-    result = await authenticate_user(app_context, "auth_user_2", "wrong_password")
-    assert result is None
+    assert await resolve_session_token(app_context, "invalid_token_string") is None
+    missing_token = await create_access_token(app_context, {"sub": "non_existent_user"})
+    assert await resolve_session_token(app_context, missing_token) is None
 
-
-async def test_authenticate_user_not_found(app_context, db):
-    """Test authenticate_user returns None if the user does not exist in the database."""
-    app_context._db = db
-    result = await authenticate_user(app_context, "ghost_user", "password")
-    assert result is None
-
-
-async def test_token_resolution_does_not_publish_a_partial_cached_profile(app_context):
+    # Token resolution does not publish a partial cached profile
     async with app_context.storage.transaction() as session:
         user = await app_context.storage.user_repo.create_user(
             session, "profile", "hash", "user"
         )
         user.full_name = "Full Name"
         user.email = "user@example.com"
-    token = await create_access_token(data={"sub": "profile"}, app_context=app_context)
-    assert await resolve_session_token(app_context, token) is not None
+    profile_token = await create_access_token(
+        data={"sub": "profile"}, app_context=app_context
+    )
+    assert await resolve_session_token(app_context, profile_token) is not None
     assert app_context.state.users.get("profile") is None
     async with app_context.storage.transaction() as session:
         profile = await app_context.storage.user_repo.get_user_by_username(
@@ -153,8 +98,6 @@ async def test_token_resolution_does_not_publish_a_partial_cached_profile(app_co
 async def test_token_cache_fill_cannot_overwrite_concurrent_disable(
     app_context, monkeypatch
 ):
-    import asyncio
-
     async with app_context.storage.transaction() as session:
         user = await app_context.storage.user_repo.create_user(
             session, "racing", "hash", "user"

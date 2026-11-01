@@ -1,27 +1,34 @@
 from pathlib import Path
 
-import pytest
 
-
-@pytest.mark.parametrize(
-    "filename", ["../outside.properties", "/outside.properties", "missing.properties"]
-)
-async def test_restore_rejects_unsafe_or_missing_files(
-    admin_auth_client, real_bedrock_server, filename
+async def test_restore_rejects_unsafe_or_missing_files_and_enforces_roles(
+    auth_client, admin_auth_client, real_bedrock_server
 ):
-    response = await admin_auth_client.post(
-        f"/api/server/{real_bedrock_server.server_name}/restore/action",
-        json={"restore_type": "properties", "backup_file": filename},
-    )
-    assert response.status_code in {400, 404, 422}
+    name = real_bedrock_server.server_name
+    for filename in (
+        "../outside.properties",
+        "/outside.properties",
+        "missing.properties",
+    ):
+        response = await admin_auth_client.post(
+            f"/api/server/{name}/restore/action",
+            json={"restore_type": "properties", "backup_file": filename},
+        )
+        assert response.status_code in {400, 404, 422}
 
-
-async def test_backups_require_admin(auth_client, real_bedrock_server):
-    response = await auth_client.post(
-        f"/api/server/{real_bedrock_server.server_name}/backup/action",
-        json={"backup_type": "all"},
-    )
-    assert response.status_code == 403
+    assert (
+        await auth_client.post(
+            f"/api/server/{name}/backup/action",
+            json={"backup_type": "all"},
+        )
+    ).status_code == 403
+    assert (
+        await auth_client.post(f"/api/server/{name}/backups", json={})
+    ).status_code == 403
+    assert (await auth_client.get("/api/backups/keys")).status_code == 403
+    assert (
+        await auth_client.get(f"/api/server/{name}/backups/report")
+    ).status_code == 403
 
 
 """HTTP archive operations execute real background tasks and preserve credentials."""
@@ -119,14 +126,6 @@ async def test_recovery_key_is_not_in_tasks_or_diagnostics(
     assert kit.headers["cache-control"] == "no-store"
 
 
-async def test_snapshot_authorization(auth_client, real_bedrock_server):
-    response = await auth_client.post(
-        f"/api/server/{real_bedrock_server.server_name}/backups", json={}
-    )
-    assert response.status_code == 403
-    assert (await auth_client.get("/api/backups/keys")).status_code == 403
-
-
 async def test_http_recovery_inspection_and_retry(
     admin_auth_client, app_context, populated_server, wait_for_task, tmp_path
 ):
@@ -193,13 +192,6 @@ async def test_recovery_report_download_is_redacted_and_not_cached(
     assert snapshot.filename not in response.text
     assert populated_server.paths.server_dir not in response.text
     assert response.json()["report"]["report_version"] == 1
-
-
-async def test_recovery_report_requires_moderation(auth_client, real_bedrock_server):
-    response = await auth_client.get(
-        f"/api/server/{real_bedrock_server.server_name}/backups/report"
-    )
-    assert response.status_code == 403
 
 
 async def test_slow_drill_keeps_reads_responsive_and_mutations_serialized(

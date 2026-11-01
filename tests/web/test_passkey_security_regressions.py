@@ -2,7 +2,6 @@
 
 import asyncio
 
-import pytest
 from sqlalchemy import select, update
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -100,37 +99,49 @@ async def test_registration_requires_user_verification(auth_client):
     assert response.status_code == 400
 
 
-@pytest.mark.parametrize("step_up", [False, True])
 async def test_concurrent_zero_counter_challenge_is_consumed_once(
-    auth_client, unauth_client, monkeypatch, step_up
+    auth_client, unauth_client, monkeypatch
 ):
     device, _ = await enroll(auth_client)
-    client = auth_client if step_up else unauth_client
-    payload = await assertion(client, device, step_up=step_up)
     original = AsyncSession.get
-    both_read = asyncio.Event()
-    reads = 0
 
-    async def synchronized_get(self, entity, ident, *args, **kwargs):
-        nonlocal reads
-        row = await original(self, entity, ident, *args, **kwargs)
-        if entity is PasskeyChallenge and ident == payload["challenge_id"]:
-            reads += 1
-            if reads == 2:
-                both_read.set()
-            await asyncio.wait_for(both_read.wait(), 5)
-        return row
+    for step_up in (False, True):
+        client = auth_client if step_up else unauth_client
+        payload = await assertion(client, device, step_up=step_up)
+        both_read = asyncio.Event()
+        reads = 0
 
-    monkeypatch.setattr(AsyncSession, "get", synchronized_get)
-    path = (
-        "/api/account/security/passkeys/verify" if step_up else "/auth/passkey/verify"
-    )
-    responses = await asyncio.gather(
-        *[client.post(path, json=payload) for _ in range(2)]
-    )
-    assert sorted(r.status_code for r in responses) == [200, 401], [
-        r.text for r in responses
-    ]
+        async def synchronized_get(
+            self,
+            entity,
+            ident,
+            *args,
+            cid=payload["challenge_id"],
+            br=both_read,
+            **kwargs,
+        ):
+            nonlocal reads
+            row = await original(self, entity, ident, *args, **kwargs)
+            if entity is PasskeyChallenge and ident == cid:
+                reads += 1
+                if reads == 2:
+                    br.set()
+                await asyncio.wait_for(br.wait(), 5)
+            return row
+
+        with monkeypatch.context() as fault:
+            fault.setattr(AsyncSession, "get", synchronized_get)
+            path = (
+                "/api/account/security/passkeys/verify"
+                if step_up
+                else "/auth/passkey/verify"
+            )
+            responses = await asyncio.gather(
+                *[client.post(path, json=payload) for _ in range(2)]
+            )
+        assert sorted(r.status_code for r in responses) == [200, 401], [
+            r.text for r in responses
+        ]
 
 
 async def test_revoked_passkey_cannot_finish_new_login(
@@ -199,24 +210,22 @@ async def test_concurrent_counter_rejection_keeps_audit_event(
         assert event is not None
 
 
-@pytest.mark.parametrize("change", ["origin", "rp_id", "challenge"])
-async def test_assertion_must_match_origin_rp_and_challenge(
-    auth_client, unauth_client, change
-):
+async def test_assertion_must_match_origin_rp_and_challenge(auth_client, unauth_client):
     device, _ = await enroll(auth_client)
-    options = (await unauth_client.post("/auth/passkey/options", json={})).json()
-    args = {"challenge": options["public_key"]["challenge"], "increment": 0}
-    args[change] = (
-        "https://untrusted.example" if change == "origin" else "untrusted.example"
-    )
-    response = await unauth_client.post(
-        "/auth/passkey/verify",
-        json={
-            "challenge_id": options["challenge_id"],
-            "credential": device.get(**args),
-        },
-    )
-    assert response.status_code == 401
+    for change in ("origin", "rp_id", "challenge"):
+        options = (await unauth_client.post("/auth/passkey/options", json={})).json()
+        args = {"challenge": options["public_key"]["challenge"], "increment": 0}
+        args[change] = (
+            "https://untrusted.example" if change == "origin" else "untrusted.example"
+        )
+        response = await unauth_client.post(
+            "/auth/passkey/verify",
+            json={
+                "challenge_id": options["challenge_id"],
+                "credential": device.get(**args),
+            },
+        )
+        assert response.status_code == 401
 
 
 async def test_enrollment_revokes_other_password_sessions(

@@ -1,18 +1,17 @@
 from pathlib import Path
 
 
-async def test_custom_panorama_serves_real_file(unauth_client, app_context):
+async def test_panorama_custom_and_fallback_assets(
+    unauth_client, app_context, tmp_path, monkeypatch
+):
     panorama = Path(app_context.settings.config_dir) / "panorama.jpeg"
     panorama.write_bytes(b"custom image")
     response = await unauth_client.get("/api/panorama")
     assert response.status_code == 200
-    assert response.content == panorama.read_bytes()
+    assert response.content == b"custom image"
     assert response.headers["content-type"] == "image/jpeg"
+    panorama.unlink()
 
-
-async def test_panorama_falls_back_to_configured_assets(
-    unauth_client, tmp_path, monkeypatch
-):
     assets = tmp_path / "assets"
     image = assets / "image" / "panorama.png"
     image.parent.mkdir(parents=True)
@@ -22,7 +21,7 @@ async def test_panorama_falls_back_to_configured_assets(
     )
     response = await unauth_client.get("/api/panorama")
     assert response.status_code == 200
-    assert response.content == image.read_bytes()
+    assert response.content == b"default image"
     assert response.headers["content-type"] == "image/png"
     image.unlink()
     response = await unauth_client.get("/api/panorama")

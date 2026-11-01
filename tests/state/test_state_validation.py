@@ -20,9 +20,10 @@ from bedrock_server_manager.state.models import RuntimeState, ServerRuntimeInfo
 from bedrock_server_manager.state.settings import SettingsState
 
 
-@pytest.mark.parametrize(
-    "key,value",
-    [
+def test_invalid_settings_never_change_live_state():
+    state = SettingsState()
+    before = state.to_dict()
+    for key, value in (
         ("web.port", 0),
         ("web.port", 65536),
         ("web.port", "8080"),
@@ -34,15 +35,11 @@ from bedrock_server_manager.state.settings import SettingsState
         ("monitoring.process_interval_sec", 0),
         ("monitoring.player_interval_sec", -1),
         ("custom.value", float("nan")),
-    ],
-)
-def test_invalid_settings_never_change_live_state(key, value):
-    state = SettingsState()
-    before = state.to_dict()
-    with pytest.raises(ValidationError):
-        state.set(key, value)
-    assert state.to_dict() == before
-    assert not state.is_dirty
+    ):
+        with pytest.raises(ValidationError):
+            state.set(key, value)
+        assert state.to_dict() == before
+        assert not state.is_dirty
 
 
 def test_legacy_settings_migrate_without_weakening_new_writes():
@@ -97,10 +94,12 @@ def test_noop_detection_preserves_json_types_and_still_validates():
     assert not state.set("custom.value", True)
 
 
-@pytest.mark.parametrize("value", ["true", 1])
-def test_persistent_flags_are_strict(value):
-    with pytest.raises(ValidationError):
-        ServerConfigState.model_validate({"server_name": "example", "autostart": value})
+def test_persistent_flags_are_strict():
+    for value in ("true", 1):
+        with pytest.raises(ValidationError):
+            ServerConfigState.model_validate(
+                {"server_name": "example", "autostart": value}
+            )
 
 
 def test_entity_maps_do_not_expose_live_records():
@@ -138,24 +137,23 @@ async def test_plugin_updates_appear_in_bulk_settings(app_context):
     assert result.settings["plugin_settings"]["example"]["value"] == 42
 
 
-async def test_nullable_user_fields_can_be_cleared(storage):
+async def test_nullable_entity_fields_can_be_cleared(storage):
     state = await storage.load_state()
-    service = UserService(state, storage)
-    await service.register_or_update_user("example", email="example@example.com")
-    await service.register_or_update_user("example", theme="dark")
+    user_service = UserService(state, storage)
+    await user_service.register_or_update_user("example", email="example@example.com")
+    await user_service.register_or_update_user("example", theme="dark")
     assert state.users.get("example").email == "example@example.com"
-    await service.register_or_update_user("example", email=None)
-    assert (await storage.load_state()).users.get("example").email is None
+    await user_service.register_or_update_user("example", email=None)
 
-
-async def test_nullable_plugin_fields_can_be_cleared(storage):
-    state = await storage.load_state()
-    service = PluginService(state, storage)
-    await service.register_or_update_plugin("example", author="Author")
-    await service.register_or_update_plugin("example", enabled=False)
+    plugin_service = PluginService(state, storage)
+    await plugin_service.register_or_update_plugin("example", author="Author")
+    await plugin_service.register_or_update_plugin("example", enabled=False)
     assert state.plugins.get("example").author == "Author"
-    await service.register_or_update_plugin("example", author=None)
-    assert (await storage.load_state()).plugins.get("example").author is None
+    await plugin_service.register_or_update_plugin("example", author=None)
+
+    reloaded = await storage.load_state()
+    assert reloaded.users.get("example").email is None
+    assert reloaded.plugins.get("example").author is None
 
 
 async def test_deleting_dirty_server_cleans_up_after_commit(storage):
@@ -231,10 +229,7 @@ async def test_type_change_during_commit_is_not_acknowledged(storage, monkeypatc
     assert type(loaded.settings.get("custom.value")) is bool
 
 
-@pytest.mark.parametrize(
-    "value", [float("nan"), float("inf"), {"bad": object()}, {1: "bad"}]
-)
-async def test_task_validation_is_atomic(value):
+async def test_task_validation_is_atomic():
     manager = TaskManager(None)
 
     async def task():
@@ -242,19 +237,18 @@ async def test_task_validation_is_atomic(value):
 
     task_id = await manager.run_task(task)
     before = manager.tasks[task_id]
-    with pytest.raises(APIResponseValidationError):
-        await manager._update_task(task_id, "completed", "Done", value)
-    assert manager.tasks[task_id] == before
+    for value in (float("nan"), float("inf"), {"bad": object()}, {1: "bad"}):
+        with pytest.raises(APIResponseValidationError):
+            await manager._update_task(task_id, "completed", "Done", value)
+        assert manager.tasks[task_id] == before
     await manager.cancel_task(task_id)
     await manager.shutdown()
 
 
-@pytest.mark.parametrize(
-    "field,value", [("data_dir", 42), ("db_url", "invalid"), ("logging_level", "NOPE")]
-)
-def test_bootstrap_config_rejects_bad_resolved_values(
-    field, value, isolated_bcm_config, monkeypatch
-):
+def test_bootstrap_config_rejects_bad_resolved_values(isolated_bcm_config, monkeypatch):
+    import json
+    from pathlib import Path
+
     from bedrock_server_manager.error import ConfigurationError
 
     for name in ("BSM_DATA_DIR", "BSM_DB_URL", "BSM_LOG_LEVEL"):
@@ -262,13 +256,15 @@ def test_bootstrap_config_rejects_bad_resolved_values(
     bcm_config.set_custom_data_dir(None)
     bcm_config.set_custom_db_url(None)
     bcm_config.set_custom_log_level(None)
-    import json
-    from pathlib import Path
-
     Path(bcm_config.get_config_path()).parent.mkdir(parents=True, exist_ok=True)
-    Path(bcm_config.get_config_path()).write_text(json.dumps({field: value}))
-    with pytest.raises(ConfigurationError):
-        bcm_config.load_config()
+    for field, value in (
+        ("data_dir", 42),
+        ("db_url", "invalid"),
+        ("logging_level", "NOPE"),
+    ):
+        Path(bcm_config.get_config_path()).write_text(json.dumps({field: value}))
+        with pytest.raises(ConfigurationError):
+            bcm_config.load_config()
 
 
 def test_minecraft_extensions_are_preserved_and_known_fields_are_strict():
@@ -335,20 +331,17 @@ def test_removed_legacy_settings_are_ignored_on_load(layout, caplog):
     assert SettingsState.from_dict(settings.to_dict()).to_dict() == settings.to_dict()
 
 
-@pytest.mark.parametrize("key", ["paths.logs", "retention.logs", "web.threads"])
-def test_removed_settings_are_still_rejected_on_update(key):
+def test_removed_and_unknown_settings_are_rejected():
     settings = SettingsState()
     original = settings.to_dict()
-    with pytest.raises(ValidationError):
-        settings.set(key, 4)
-    assert settings.to_dict() == original
-    assert not settings.is_dirty
-
-
-@pytest.mark.parametrize("section", ["paths", "retention", "web"])
-def test_unknown_nested_settings_are_still_rejected_on_load(section):
-    with pytest.raises(ValidationError):
-        SettingsState.from_dict({section: {"unknown_field": 4}})
+    for key in ("paths.logs", "retention.logs", "web.threads"):
+        with pytest.raises(ValidationError):
+            settings.set(key, 4)
+        assert settings.to_dict() == original
+        assert not settings.is_dirty
+    for section in ("paths", "retention", "web"):
+        with pytest.raises(ValidationError):
+            SettingsState.from_dict({section: {"unknown_field": 4}})
 
 
 def test_application_timezone_is_validated_and_defaults_for_old_settings():

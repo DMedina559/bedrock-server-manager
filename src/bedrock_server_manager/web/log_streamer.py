@@ -44,6 +44,7 @@ class LogStreamer:
         self.log_dir = log_dir
         self.server_provider = server_provider
         self.running = False
+        self.poll_interval = 1.0
         self._task = None
         # Aliases may watch the same file, but each topic needs its own cursor.
         self.file_positions: Dict[tuple[str, str], int] = {}
@@ -119,7 +120,7 @@ class LogStreamer:
                     "log streaming", "Log streaming unavailable (%s): %s; retrying.", e
                 )
 
-            await asyncio.sleep(1.0)  # Check every second
+            await asyncio.sleep(self.poll_interval)  # Check every second
 
     async def _get_app_log_path(self) -> Optional[str]:
         log_dir = self.log_dir

@@ -7,7 +7,6 @@ import time
 from pathlib import Path
 from unittest.mock import AsyncMock, MagicMock
 
-import pytest
 from sqlalchemy import select, update
 
 from bedrock_server_manager.db.models import (
@@ -300,41 +299,42 @@ async def test_outbound_delivery_authorizes_once_under_lock_and_encodes_filtered
     assert result.sent == 0 and identifier not in manager.active_connections
 
 
-@pytest.mark.parametrize("revoke", [False, True])
-async def test_queued_http_work_rechecks_credential_at_start(
-    auth_client, app_context, revoke
-):
-    issued = await issue(auth_client, ["account:read"])
-    user, authorization = await app_context.access_service.authenticate(issued["token"])
-    manager = TaskManager(None, max_workers=1)
-    ran = []
-    await manager._execution_slots.acquire()
-
-    async def work(*, app_context):
-        ran.append(True)
-        return {"done": True}
-
-    ticket = current_authorization.set(authorization)
-    permission_ticket = operation_permissions.set(frozenset({"account:read"}))
-    try:
-        identifier = await manager.run_task(
-            work, username=user.username, app_context=app_context
-        )
-    finally:
-        current_authorization.reset(ticket)
-        operation_permissions.reset(permission_ticket)
-    await asyncio.sleep(0)
-    if revoke:
-        await app_context.access_service.revoke_token(
-            user, user.id, issued["credential"]["id"]
-        )
-    manager._execution_slots.release()
+async def test_queued_http_work_rechecks_credential_at_start(auth_client, app_context):
     from tests.services.test_task_service import finish_task
 
-    result = await finish_task(manager, identifier)
-    assert result.status == ("cancelled" if revoke else "completed")
-    assert bool(ran) is not revoke
-    await manager.shutdown()
+    for revoke in (False, True):
+        issued = await issue(auth_client, ["account:read"])
+        user, authorization = await app_context.access_service.authenticate(
+            issued["token"]
+        )
+        manager = TaskManager(None, max_workers=1)
+        ran = []
+        await manager._execution_slots.acquire()
+
+        async def work(*, app_context, r=ran):
+            r.append(True)
+            return {"done": True}
+
+        ticket = current_authorization.set(authorization)
+        permission_ticket = operation_permissions.set(frozenset({"account:read"}))
+        try:
+            identifier = await manager.run_task(
+                work, username=user.username, app_context=app_context
+            )
+        finally:
+            current_authorization.reset(ticket)
+            operation_permissions.reset(permission_ticket)
+        await asyncio.sleep(0)
+        if revoke:
+            await app_context.access_service.revoke_token(
+                user, user.id, issued["credential"]["id"]
+            )
+        manager._execution_slots.release()
+
+        result = await finish_task(manager, identifier)
+        assert result.status == ("cancelled" if revoke else "completed")
+        assert bool(ran) is not revoke
+        await manager.shutdown()
 
 
 async def test_backup_recovery_secret_requires_recent_interactive_auth(
@@ -359,9 +359,8 @@ async def test_backup_recovery_secret_requires_recent_interactive_auth(
     export.assert_not_awaited()
 
 
-@pytest.mark.parametrize("change", ["assignment", "server_identity", "session"])
 async def test_queued_work_cannot_outlive_assignment_resource_or_session(
-    auth_client, admin_auth_client, test_user, app_context, change
+    auth_client, admin_auth_client, test_user, app_context
 ):
     from types import SimpleNamespace
     from uuid import uuid4
@@ -374,50 +373,57 @@ async def test_queued_work_cannot_outlive_assignment_resource_or_session(
     )
     account = (await auth_client.get("/api/account")).json()
     user = UserResponse.model_validate(test_user, from_attributes=True)
-    authorization = await app_context.access_service.snapshot(
-        user, session_id=account["session_id"]
-    )
-    manager = TaskManager(None, max_workers=1)
-    await manager._execution_slots.acquire()
-    ran = []
 
-    async def work(*, request, app_context):
-        ran.append(request.server_name)
-
-    ticket = current_authorization.set(authorization)
-    scopes = operation_permissions.set(frozenset({"servers:read"}))
-    try:
-        identifier = await manager.run_task(
-            work,
-            username=user.username,
-            request=SimpleNamespace(server_name="alpha"),
-            app_context=app_context,
-        )
-    finally:
-        current_authorization.reset(ticket)
-        operation_permissions.reset(scopes)
-    await asyncio.sleep(0)
-    if change == "assignment":
-        response = await admin_auth_client.put(
-            f"/api/access/users/{user.id}/servers",
-            json={"mode": "assigned", "grants": []},
-        )
-        assert response.status_code == 200, response.text
-    elif change == "server_identity":
-        async with app_context.storage.transaction() as session:
-            await session.execute(
-                update(Server)
-                .where(Server.server_name == "alpha")
-                .values(access_id=uuid4().hex)
+    for change in ("assignment", "server_identity", "session"):
+        if change != "assignment":
+            await admin_auth_client.put(
+                f"/api/access/users/{user.id}/servers",
+                json={"mode": "all", "grants": []},
             )
-    else:
-        await app_context.session_service.revoke(
-            authorization.owner_id, identifier=authorization.session_id
+        authorization = await app_context.access_service.snapshot(
+            user, session_id=account["session_id"]
         )
-    manager._execution_slots.release()
-    result = await finish_task(manager, identifier)
-    assert result.status == "cancelled" and ran == []
-    await manager.shutdown()
+        manager = TaskManager(None, max_workers=1)
+        await manager._execution_slots.acquire()
+        ran = []
+
+        async def work(*, request, app_context, r=ran):
+            r.append(request.server_name)
+
+        ticket = current_authorization.set(authorization)
+        scopes = operation_permissions.set(frozenset({"servers:read"}))
+        try:
+            identifier = await manager.run_task(
+                work,
+                username=user.username,
+                request=SimpleNamespace(server_name="alpha"),
+                app_context=app_context,
+            )
+        finally:
+            current_authorization.reset(ticket)
+            operation_permissions.reset(scopes)
+        await asyncio.sleep(0)
+        if change == "assignment":
+            response = await admin_auth_client.put(
+                f"/api/access/users/{user.id}/servers",
+                json={"mode": "assigned", "grants": []},
+            )
+            assert response.status_code == 200, response.text
+        elif change == "server_identity":
+            async with app_context.storage.transaction() as session:
+                await session.execute(
+                    update(Server)
+                    .where(Server.server_name == "alpha")
+                    .values(access_id=uuid4().hex)
+                )
+        else:
+            await app_context.session_service.revoke(
+                authorization.owner_id, identifier=authorization.session_id
+            )
+        manager._execution_slots.release()
+        result = await finish_task(manager, identifier)
+        assert result.status == "cancelled" and ran == []
+        await manager.shutdown()
 
 
 async def test_revocation_does_not_interrupt_work_already_running(

@@ -22,6 +22,7 @@ from ..schemas.websocket import (
 
 router = APIRouter(prefix="/ws", tags=["WebSocket"])
 logger = logging.getLogger(__name__)
+AUTH_TIMEOUT_SECONDS = 5.0
 
 
 async def _call_data_provider(
@@ -72,7 +73,9 @@ async def websocket_endpoint(  # noqa: C901
 
     # Wait for the first message to authenticate
     try:
-        data = await asyncio.wait_for(websocket.receive_json(), timeout=5.0)
+        data = await asyncio.wait_for(
+            websocket.receive_json(), timeout=AUTH_TIMEOUT_SECONDS
+        )
         auth_frame = AuthenticationFrame.model_validate(data)
         action = auth_frame.action
 

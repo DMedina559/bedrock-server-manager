@@ -65,6 +65,15 @@ def _file_key(
     """Serialize initial publication across processes; never replace a live key."""
     with _LOCK:
         root = Path(config_dir)
+        candidate = root / CREDENTIALS_DIR_NAME / "jwt.key"
+        if (
+            not create
+            and legacy is None
+            and not initialized
+            and not candidate.exists()
+            and not candidate.is_symlink()
+        ):
+            return None
         directory = private_directory(root / CREDENTIALS_DIR_NAME)
         path = directory / "jwt.key"
         lock_path = directory / ".jwt.key.lock"
@@ -110,7 +119,7 @@ async def signing_key(settings: "Settings", *, create: bool = True) -> str | Non
         # Even a database from before the initialization marker must never silently
         # replace a missing credential while persisted session families exist.
         if not initialized and legacy is None:
-            async with settings.storage.transaction() as session:
+            async with settings.storage.db.session_manager() as session:
                 initialized = (
                     await session.scalar(select(LoginSession.id).limit(1)) is not None
                 )

@@ -7,16 +7,18 @@ from fastapi import FastAPI, Request
 from fastapi.openapi.docs import get_swagger_ui_html
 from fastapi.responses import HTMLResponse
 
+_ASSETS = Path(__file__).with_name("assets")
+_SWAGGER_PRESENTATION = (
+    "<style>"
+    + (_ASSETS / "swagger-access.css").read_text(encoding="utf-8")
+    + "</style><script>"
+    + (_ASSETS / "swagger-access.js").read_text(encoding="utf-8")
+    + "</script>"
+)
+
 
 def configure_swagger(app: FastAPI) -> None:
-    assets = Path(__file__).with_name("assets")
-    presentation = (
-        "<style>"
-        + (assets / "swagger-access.css").read_text(encoding="utf-8")
-        + "</style><script>"
-        + (assets / "swagger-access.js").read_text(encoding="utf-8")
-        + "</script>"
-    )
+    presentation = _SWAGGER_PRESENTATION
 
     @app.get("/docs", include_in_schema=False)
     async def swagger(request: Request) -> HTMLResponse:

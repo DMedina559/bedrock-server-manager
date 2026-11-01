@@ -27,7 +27,10 @@ async def test_websocket_missing_auth_action(websocket_client):
         assert failure.value.rcvd.code == 1008
 
 
-async def test_websocket_auth_timeout(websocket_client):
+async def test_websocket_auth_timeout(websocket_client, monkeypatch):
+    from bedrock_server_manager.web.routers import websocket as websocket_router
+
+    monkeypatch.setattr(websocket_router, "AUTH_TIMEOUT_SECONDS", 0.05)
     async with websocket_client() as socket:
         with pytest.raises(ConnectionClosed) as failure:
             await socket.recv()

@@ -1,30 +1,60 @@
 import asyncio
 import json
 
-import pytest
 
-
-async def test_http_lifecycle_controls_real_server(
-    admin_auth_client, real_bedrock_server
+async def test_http_lifecycle_summary_roles_and_oracle_prevention(
+    unauth_client, auth_client, admin_auth_client, real_bedrock_server
 ):
-    base = f"/api/server/{real_bedrock_server.server_name}"
+    name = real_bedrock_server.server_name
+    base = f"/api/server/{name}"
+
+    # Summary and missing server
+    summary = await admin_auth_client.get(base + "/summary")
+    assert summary.status_code == 200 and summary.json()["name"] == name
+    assert (
+        await admin_auth_client.post("/api/server/missing/start")
+    ).status_code == 404
+
+    # Blocked command
+    assert (
+        await admin_auth_client.post(base + "/send_command", json={"command": "stop"})
+    ).status_code == 403
+
+    # Role enforcement and server existence oracle prevention
+    for target in (name, "definitely_nonexistent_server"):
+        assert (
+            await unauth_client.get(f"/api/server/{target}/summary")
+        ).status_code == 401
+        for action in ("start", "stop", "restart", "send_command"):
+            payload = {"command": "list"} if action == "send_command" else {}
+            assert (
+                await unauth_client.post(f"/api/server/{target}/{action}", json=payload)
+            ).status_code == 401
+            assert (
+                await auth_client.post(f"/api/server/{target}/{action}", json=payload)
+            ).status_code == 403
+    assert not await real_bedrock_server.is_running()
+
+    # Lifecycle controls real server
     response = await admin_auth_client.post(base + "/start")
-    assert response.status_code == 200
-    assert response.json()["outcome"] == "started"
+    assert response.status_code == 200 and response.json()["outcome"] == "started"
     first_pid = real_bedrock_server.process._process.pid
     assert (await admin_auth_client.post(base + "/start")).json()[
         "outcome"
     ] == "already_running"
     assert real_bedrock_server.process._process.pid == first_pid
-    response = await admin_auth_client.post(
+
+    cmd_resp = await admin_auth_client.post(
         base + "/send_command", json={"command": "__DUMMY__ PLAYER_JOIN HTTPPlayer"}
     )
-    assert response.status_code == 200
-    response = await admin_auth_client.post(
+    assert cmd_resp.status_code == 200
+
+    restart_resp = await admin_auth_client.post(
         base + "/restart", json={"send_message": False}
     )
-    assert response.status_code == 200
+    assert restart_resp.status_code == 200
     assert real_bedrock_server.process._process.pid != first_pid
+
     assert (await admin_auth_client.post(base + "/stop")).json()["outcome"] == "stopped"
     assert not await real_bedrock_server.is_running()
     assert (await admin_auth_client.post(base + "/stop")).json()[
@@ -32,52 +62,20 @@ async def test_http_lifecycle_controls_real_server(
     ] == "already_stopped"
 
 
-async def test_summary_matches_actual_server(admin_auth_client, real_bedrock_server):
-    response = await admin_auth_client.get(
-        f"/api/server/{real_bedrock_server.server_name}/summary"
-    )
-    assert response.status_code == 200
-    assert response.json()["name"] == real_bedrock_server.server_name
-
-
-@pytest.mark.parametrize("action", ["start", "stop", "restart", "send_command"])
-@pytest.mark.parametrize("authenticated,expected", [(False, 401), (True, 403)])
-async def test_server_actions_enforce_roles(
-    unauth_client, auth_client, real_bedrock_server, action, authenticated, expected
-):
-    client = auth_client if authenticated else unauth_client
-    response = await client.post(
-        f"/api/server/{real_bedrock_server.server_name}/{action}",
-        json={"command": "list"} if action == "send_command" else {},
-    )
-    assert response.status_code == expected
-    assert not await real_bedrock_server.is_running()
-
-
-async def test_http_blocked_command_is_rejected(admin_auth_client, real_bedrock_server):
-    response = await admin_auth_client.post(
-        f"/api/server/{real_bedrock_server.server_name}/send_command",
-        json={"command": "stop"},
-    )
-    assert response.status_code == 403
-
-
-async def test_missing_server_is_not_found(admin_auth_client):
-    assert (
-        await admin_auth_client.post("/api/server/missing/start")
-    ).status_code == 404
-
-
-async def test_dummy_player_events_reach_runtime_and_websocket(
-    admin_auth_client, app_context, real_bedrock_server, subscribed_socket
+async def test_dummy_player_events_and_delete_task(
+    admin_auth_client,
+    app_context,
+    real_bedrock_server,
+    subscribed_socket,
+    wait_for_task,
 ):
     server = real_bedrock_server
+    name = server.server_name
     await app_context.settings.set("monitoring.process_interval_sec", 1)
     await app_context.settings.set("monitoring.player_interval_sec", 1)
-    base = f"/api/server/{server.server_name}"
+    base = f"/api/server/{name}"
     assert (await admin_auth_client.post(base + "/start")).status_code == 200
     manager = app_context.bedrock_process_manager
-    # Restart monitoring so its intervals come from this test's configuration.
     manager.monitoring_task.cancel()
     await asyncio.gather(manager.monitoring_task, return_exceptions=True)
     await manager.start()
@@ -93,7 +91,7 @@ async def test_dummy_player_events_reach_runtime_and_websocket(
                     message = json.loads(await socket.recv())
                 assert message["topic"] == "event:after_server_players_change"
                 result = message["data"]["result"]
-                assert result["server_name"] == server.server_name
+                assert result["server_name"] == name
                 assert result["player_count"] == expected_count
                 expected_players = (
                     [{"name": "IntegrationPlayer", "xuid": "2535413537906883"}]
@@ -105,37 +103,13 @@ async def test_dummy_player_events_reach_runtime_and_websocket(
                 assert server.player_count == expected_count
     finally:
         await manager.quiesce()
+        await server.stop()
 
-
-async def test_delete_task_retains_server_identity(
-    admin_auth_client, app_context, real_bedrock_server, wait_for_task
-):
-    name = real_bedrock_server.server_name
-    response = await admin_auth_client.delete(f"/api/server/{name}/delete")
-    assert response.status_code == 202
-    task = await wait_for_task(app_context, response.json()["task_id"])
+    # Delete task retains server identity
+    del_resp = await admin_auth_client.delete(f"/api/server/{name}/delete")
+    assert del_resp.status_code == 202
+    task = await wait_for_task(app_context, del_resp.json()["task_id"])
     assert task.status == "completed"
     assert task.result["server_name"] == name
     assert task.result["status"] == "success"
     assert name not in app_context._servers
-
-
-@pytest.mark.parametrize("target_type", ["real_server", "nonexistent_server"])
-async def test_server_existence_oracle_prevention(
-    unauth_client, auth_client, real_bedrock_server, target_type
-):
-    target = (
-        real_bedrock_server.server_name
-        if target_type == "real_server"
-        else "definitely_nonexistent_server"
-    )
-    # Unauthenticated requests receive 401 regardless of whether server exists
-    unauth_summary = await unauth_client.get(f"/api/server/{target}/summary")
-    assert unauth_summary.status_code == 401
-
-    unauth_start = await unauth_client.post(f"/api/server/{target}/start")
-    assert unauth_start.status_code == 401
-
-    # Unauthorized requests (standard user lacks servers:control) receive 403 regardless of server existence
-    user_start = await auth_client.post(f"/api/server/{target}/start")
-    assert user_start.status_code == 403

@@ -1,3 +1,5 @@
+import hashlib
+import hmac
 import json
 import os
 import shutil
@@ -9,6 +11,7 @@ from pathlib import Path
 import pytest
 import pytest_asyncio
 from httpx2 import ASGITransport, AsyncClient
+from jose import jwt
 
 from bedrock_server_manager.config import bcm_config
 from bedrock_server_manager.context import AppContext
@@ -18,7 +21,11 @@ from bedrock_server_manager.db.storage import Storage
 from bedrock_server_manager.state.app_state import AppState
 from bedrock_server_manager.utils.general import startup_checks
 from bedrock_server_manager.web.app import create_web_app
-from bedrock_server_manager.web.auth import create_access_token, get_password_hash
+from bedrock_server_manager.web.auth import (
+    create_access_token,
+    get_jwt_secret_key,
+    get_password_hash,
+)
 
 _SERVER_TEMPLATE_DIR: Path | None = None
 _SERVER_TEMPLATE_VERSION: str = "1.20.0.01"
@@ -125,7 +132,6 @@ async def app_context(db, isolated_bcm_config, tmp_path):
     await context.settings.set("paths.plugins", str(plugins_dir))
 
     context.plugin_manager.plugin_dirs = [plugins_dir]
-    await context.plugin_manager.load_plugins()
 
     yield context
 
@@ -236,31 +242,36 @@ async def settings(app_context):
     return app_context.settings
 
 
+def _csrf_for_token(token: str, secret: str) -> str:
+    sid = jwt.get_unverified_claims(token)["sid"]
+    return hmac.new(secret.encode(), f"csrf:{sid}".encode(), hashlib.sha256).hexdigest()
+
+
 @pytest_asyncio.fixture
 async def auth_client(running_app, app_context, test_user):
     token = await create_access_token(app_context, {"sub": test_user.username})
+    secret = await get_jwt_secret_key(app_context.settings)
     async with AsyncClient(
         transport=ASGITransport(app=running_app),
         base_url="http://testserver",
         follow_redirects=True,
         cookies={"access_token_cookie": token},
+        headers={"X-CSRF-Token": _csrf_for_token(token, secret)},
     ) as client:
-        account = await client.get("/api/account")
-        client.headers["X-CSRF-Token"] = account.headers["X-BSM-CSRF-Token"]
         yield client
 
 
 @pytest_asyncio.fixture
 async def admin_auth_client(running_app, app_context, test_admin_user):
     token = await create_access_token(app_context, {"sub": test_admin_user.username})
+    secret = await get_jwt_secret_key(app_context.settings)
     async with AsyncClient(
         transport=ASGITransport(app=running_app),
         base_url="http://testserver",
         follow_redirects=True,
         cookies={"access_token_cookie": token},
+        headers={"X-CSRF-Token": _csrf_for_token(token, secret)},
     ) as client:
-        account = await client.get("/api/account")
-        client.headers["X-CSRF-Token"] = account.headers["X-BSM-CSRF-Token"]
         yield client
 
 

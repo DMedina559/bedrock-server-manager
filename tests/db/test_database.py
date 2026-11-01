@@ -150,6 +150,16 @@ def test_access_migration_preserves_accounts_servers_and_identity(tmp_path):
                 "VALUES ('forever', 'owner', 'test', 'hash', '[]', 1, NULL)"
             )
         )
+        connection.execute(
+            text(
+                "INSERT INTO login_sessions (id, owner_id, name, user_agent, ip_address, created_at, last_seen_at, expires_at, verified_at) "
+                "VALUES (:id, :owner, 'old login', 'test', '127.0.0.1', 1, 1, 9999999999, 1)"
+            ),
+            {"id": "a" * 32, "owner": "b" * 32},
+        )
+        assert connection.execute(
+            text("SELECT authentication_method, factor_verified FROM login_sessions")
+        ).one() == ("unknown", 0)
         assert (
             connection.execute(
                 text("SELECT expires_at FROM integration_tokens WHERE id='forever'")
