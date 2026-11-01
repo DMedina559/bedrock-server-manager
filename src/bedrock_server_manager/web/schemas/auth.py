@@ -22,6 +22,11 @@ class TokenResponse(APIResponse):
     access_token: str = Field(
         description="Bearer JWT; empty in explicitly negotiated cookie mode, where the credential is HttpOnly"
     )
+    trusted_device_token: str | None = Field(
+        default=None,
+        description="One-time remembered-device credential; omitted in cookie mode. Store only when explicitly requested.",
+    )
+    trusted_device_expires_at: int | None = None
     token_type: Literal["bearer"] = "bearer"
     message: Optional[str] = None
 

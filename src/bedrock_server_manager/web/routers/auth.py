@@ -8,6 +8,7 @@ from fastapi import APIRouter, Depends, Form, HTTPException, Request, Response, 
 from fastapi.responses import JSONResponse
 from fastapi.security import OAuth2PasswordRequestForm
 from jose import jwt
+from pydantic import SecretStr
 
 from ...context import AppContext
 from ..access_metadata import describe_access
@@ -20,6 +21,7 @@ from ..authorization import assigned_session
 from ..cookies import clear_session_cookie, set_session_cookie
 from ..deps import get_app_context, get_current_user
 from ..schemas import TokenResponse, UserResponse
+from ..trusted_devices import deliver_device, device_token
 
 # bedrock_server_manager/web/routers/auth.py
 
@@ -41,6 +43,8 @@ async def api_login_for_access_token(
     response: Response,
     form_data: Annotated[OAuth2PasswordRequestForm, Depends()],
     remember_me: Annotated[bool, Form()] = False,
+    remember_device: Annotated[bool, Form()] = False,
+    trusted_device_token: Annotated[Optional[SecretStr], Form()] = None,
     otp: Annotated[str, Form(max_length=128)] = "",
     app_context: AppContext = Depends(get_app_context),
 ) -> TokenResponse:
@@ -65,23 +69,24 @@ async def api_login_for_access_token(
     authenticated_username = await authenticate_user(
         app_context, form_data.username, form_data.password
     )
-    if (
-        authenticated_username
-        and owner is not None
-        and owner.is_active
-        and not otp
-        and (await app_context.session_service.status(owner_id))["enabled"]
-    ):
-        raise HTTPException(
-            status_code=status.HTTP_401_UNAUTHORIZED,
-            detail="Authenticator or recovery code required",
-            headers={"WWW-Authenticate": "Bearer", "X-BSM-MFA": "required"},
+    proof = None
+    cookie_mode = request.headers.get("x-bsm-auth-mode") == "cookie"
+    if authenticated_username and owner is not None and owner.is_active:
+        proof = await app_context.trusted_device_service.verify_factor(
+            owner.access_id,
+            owner.auth_revision,
+            otp,
+            device_token(
+                request, owner.access_id, trusted_device_token, cookie_login=cookie_mode
+            ),
         )
-    if authenticated_username and (
-        owner is None
-        or not owner.is_active
-        or not await app_context.session_service.verify_factor(owner_id, otp)
-    ):
+        if proof is None and not otp:
+            raise HTTPException(
+                401,
+                "Authenticator or recovery code required",
+                headers={"WWW-Authenticate": "Bearer", "X-BSM-MFA": "required"},
+            )
+    if proof is None:
         authenticated_username = None
     if not authenticated_username and owner_user_id:
         await app_context.session_service.event(owner_user_id, "login_failed")
@@ -99,6 +104,13 @@ async def api_login_for_access_token(
         data={"sub": authenticated_username, "authv": auth_revision},
         app_context=app_context,
         expires_delta=expires_delta,
+        factor_proof=proof,
+    )
+
+    issued_device = (
+        await app_context.trusted_device_service.remember(proof, request)
+        if remember_device
+        else None
     )
 
     await app_context.session_service.annotate(
@@ -124,6 +136,9 @@ async def api_login_for_access_token(
         access_token="" if cookie_mode else access_token,
         token_type="bearer",
         message="Successfully authenticated.",
+        **deliver_device(
+            response, request, owner_id, issued_device, cookie_mode=cookie_mode
+        ),
     )
 
 

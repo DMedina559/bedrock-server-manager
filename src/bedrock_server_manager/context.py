@@ -95,6 +95,7 @@ class AppContext:
         self._user_service: Optional["UserService"] = None
         self._access_service = None
         self._session_service = None
+        self._trusted_device_service = None
 
     async def load(self):
         """Load the application context by initializing the settings, AppState, and
@@ -156,6 +157,7 @@ class AppContext:
         self._user_service = None
         self._access_service = None
         self._session_service = None
+        self._trusted_device_service = None
         legacy_web = self.pre_app_config.get("web")
         if isinstance(legacy_web, dict) and "cors_origins" in legacy_web:
             from .services.settings_service import migrate_bootstrap_cors
@@ -828,6 +830,14 @@ class AppContext:
 
             self._plugin_service = PluginService(state=self.state, storage=self.storage)
         return self._plugin_service
+
+    @property
+    def trusted_device_service(self):
+        if self._trusted_device_service is None:
+            from .services.trusted_device_service import TrustedDeviceService
+
+            self._trusted_device_service = TrustedDeviceService(self)
+        return self._trusted_device_service
 
     @property
     def session_service(self):

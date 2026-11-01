@@ -347,3 +347,47 @@ def test_registration_token_digest_migration_upgrades_plaintext_and_downgrades_s
             == 0
         )
     engine.dispose()
+
+
+def test_remembered_device_migration_downgrade_clears_only_derived_verification(
+    tmp_path,
+):
+    from importlib.resources import files
+
+    from alembic import command
+    from alembic.config import Config
+    from sqlalchemy import create_engine
+
+    config = Config(str(files("bedrock_server_manager").joinpath("db/alembic.ini")))
+    config.set_main_option("skip_logging_config", "true")
+    engine = create_engine(f"sqlite:///{tmp_path / 'remembered-devices.db'}")
+    try:
+        with engine.connect() as connection:
+            config.attributes["connection"] = connection
+            command.upgrade(config, "l38b267d94f5")
+            connection.execute(
+                text(
+                    "INSERT INTO login_sessions (id, owner_id, name, user_agent, ip_address, "
+                    "created_at, last_seen_at, expires_at, verified_at, verified_device_id) "
+                    "VALUES (:id, 'owner', 'test', '', '', 1, 1, 2000000000, 123, :device)"
+                ),
+                [
+                    {"id": "remembered", "device": "device"},
+                    {"id": "fresh-otp", "device": None},
+                ],
+            )
+            connection.commit()
+            command.downgrade(config, "k27a156c83e4")
+            assert dict(
+                connection.execute(
+                    text("SELECT id, verified_at FROM login_sessions")
+                ).all()
+            ) == {"remembered": 0, "fresh-otp": 123}
+            assert "trusted_devices" not in inspect(connection).get_table_names()
+            command.upgrade(config, "l38b267d94f5")
+            rows = connection.execute(
+                text("SELECT id, verified_device_id FROM login_sessions")
+            ).all()
+            assert dict(rows) == {"remembered": None, "fresh-otp": None}
+    finally:
+        engine.dispose()

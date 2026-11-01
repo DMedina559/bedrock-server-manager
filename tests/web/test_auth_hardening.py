@@ -122,15 +122,15 @@ async def test_mfa_enrollment_invalidates_inflight_password_only_proof(
     auth_client, app_context, monkeypatch, operation
 ):
     verified, release = asyncio.Event(), asyncio.Event()
-    original = app_context.session_service.verify_factor
+    original = app_context.trusted_device_service.verify_factor
 
-    async def pause(owner_id, code):
-        result = await original(owner_id, code)
+    async def pause(*args, **kwargs):
+        result = await original(*args, **kwargs)
         verified.set()
         await release.wait()
         return result
 
-    monkeypatch.setattr(app_context.session_service, "verify_factor", pause)
+    monkeypatch.setattr(app_context.trusted_device_service, "verify_factor", pause)
     if operation == "login":
         pending = asyncio.create_task(
             auth_client.post(

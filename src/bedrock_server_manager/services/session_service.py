@@ -29,6 +29,7 @@ from ..db.models import (
     AuthThrottle,
     IntegrationToken,
     LoginSession,
+    TrustedDevice,
     User,
 )
 from ..utils.threads import run_in_thread
@@ -53,6 +54,8 @@ class SessionService:
         """Deliver only fixed, non-secret security facts after their transaction commits."""
         if action not in {
             "login",
+            "trusted_device_remembered",
+            "trusted_devices_revoked",
             "role_changed",
             "account_disabled",
             "account_enabled",
@@ -222,6 +225,11 @@ class SessionService:
         """Delete expired metadata in bounded transactions, yielding between batches."""
         now = int(time.time())
         for model, key, predicate in (
+            (
+                TrustedDevice,
+                TrustedDevice.id,
+                TrustedDevice.expires_at < now - 90 * 86400,
+            ),
             (AuthThrottle, AuthThrottle.key, AuthThrottle.window < now - 86400),
             (
                 AuthSecurityEvent,
@@ -259,7 +267,9 @@ class SessionService:
             query = query.where(LoginSession.id != keep_session_id)
         await session.execute(query.values(verified_at=0))
 
-    async def create(self, owner_id, expires_at, expected_revision=None):
+    async def create(
+        self, owner_id, expires_at, expected_revision=None, factor_proof=None
+    ):
         now = int(time.time())
         maximum = (
             max(
@@ -283,6 +293,13 @@ class SessionService:
                 )
             ):
                 raise HTTPException(401, "Account credentials changed; sign in again")
+            verified_device_id = (
+                await self.context.trusted_device_service.session_proof(
+                    session, current, factor_proof
+                )
+                if factor_proof
+                else None
+            )
             count = await session.scalar(
                 select(func.count())
                 .select_from(LoginSession)
@@ -307,6 +324,7 @@ class SessionService:
                 last_seen_at=now,
                 expires_at=min(expires_at, now + maximum),
                 verified_at=now,
+                verified_device_id=verified_device_id,
             )
             session.add(record)
             self.add_event(session, owner_id, "login", {"session_id": record.id})
@@ -339,7 +357,8 @@ class SessionService:
                 )
             return record
 
-    async def annotate(self, identifier, request):
+    @staticmethod
+    def client_metadata(request):
         agent = request.headers.get("user-agent", "")[:512]
         name = request.headers.get("x-bsm-client", "")[:100].strip()
         if not name:
@@ -371,15 +390,18 @@ class SessionService:
                 "",
             )
             name = " · ".join(filter(None, (browser, platform)))
+        return {
+            "name": name,
+            "user_agent": agent,
+            "ip_address": (request.client.host if request.client else "")[:64],
+        }
+
+    async def annotate(self, identifier, request):
         async with self.context.storage.transaction() as session:
             await session.execute(
                 update(LoginSession)
                 .where(LoginSession.id == identifier)
-                .values(
-                    name=name,
-                    user_agent=agent,
-                    ip_address=(request.client.host if request.client else "")[:64],
-                )
+                .values(**self.client_metadata(request))
             )
 
     async def require_recent(self, user, identifier):
@@ -390,7 +412,14 @@ class SessionService:
             owner = await session.get(User, user.id)
             if owner is None or owner.access_id != record.owner_id:
                 raise HTTPException(403, "Session owner mismatch")
-        if record.verified_at < int(time.time()) - 300:
+            device_valid = (
+                record.verified_device_id is None
+                or await self.context.trusted_device_service.live_record(
+                    session, record.owner_id, record.verified_device_id
+                )
+                is not None
+            )
+        if not device_valid or record.verified_at < int(time.time()) - 300:
             raise HTTPException(
                 403,
                 "Verify your password and second factor to continue",
@@ -398,7 +427,9 @@ class SessionService:
             )
         return record
 
-    async def verify_recent(self, user, identifier, password, otp, peer):
+    async def verify_recent(
+        self, user, identifier, password, otp, peer, trusted_device_token=None
+    ):
         from ..web.auth import authenticate_user
 
         await self.throttle(user.username, peer, "verify")
@@ -409,8 +440,15 @@ class SessionService:
             owner_id, revision = owner.access_id, owner.auth_revision
         if await authenticate_user(self.context, user.username, password) is None:
             raise HTTPException(401, "Verification failed")
-        if not await self.verify_factor(owner_id, otp):
-            raise HTTPException(401, "Verification failed")
+        proof = await self.context.trusted_device_service.verify_factor(
+            owner_id, revision, otp, trusted_device_token
+        )
+        if proof is None:
+            raise HTTPException(
+                401,
+                "Authenticator or recovery code required",
+                headers={"X-BSM-MFA": "required"},
+            )
         now = int(time.time())
         async with self.context.storage.transaction() as session:
             current = await session.scalar(
@@ -422,6 +460,11 @@ class SessionService:
                 or current.auth_revision != revision
             ):
                 raise HTTPException(401, "Account security changed; verify again")
+            verified_device_id = (
+                await self.context.trusted_device_service.session_proof(
+                    session, current, proof
+                )
+            )
             result = await session.execute(
                 update(LoginSession)
                 .where(
@@ -431,7 +474,7 @@ class SessionService:
                     LoginSession.expires_at > now,
                     LoginSession.last_seen_at > now - self.idle_seconds(),
                 )
-                .values(verified_at=now)
+                .values(verified_at=now, verified_device_id=verified_device_id)
             )
             if result.rowcount != 1:
                 raise HTTPException(401, "Session no longer active")
@@ -439,7 +482,7 @@ class SessionService:
                 session, owner_id, "password_verified", {"session_id": identifier}
             )
         await self.authentication_succeeded(user.username, "verify")
-        return now
+        return now, proof
 
     async def revoke(
         self, owner_id, *, identifier=None, except_id=None, reason="session_revoked"
@@ -769,13 +812,37 @@ class SessionService:
         await self.publish(owner_id, "mfa_enabled")
         return {"recovery_codes": codes}
 
-    async def change_factor(self, owner_id, *, disable=False, keep_session_id=None):
+    async def change_factor(
+        self, owner_id, *, disable=False, keep_session_id=None, keep_trusted_device=None
+    ):
         codes, hashes = self.recovery_codes()
         async with self.context.storage.transaction() as session:
             row = await session.get(AccountSecurity, owner_id)
             if not row or not row.totp_secret:
                 raise HTTPException(400, "MFA is not enabled")
             await self.advance_auth_revision(session, owner_id, keep_session_id)
+            if (
+                not disable
+                and keep_trusted_device is not None
+                and keep_trusted_device.owner_id == owner_id
+            ):
+                # Keep this device's existing absolute deadline; never renew trust
+                # merely because an older remembered credential was presented.
+                revision = await session.scalar(
+                    select(User.auth_revision).where(User.access_id == owner_id)
+                )
+                await session.execute(
+                    update(TrustedDevice)
+                    .where(
+                        TrustedDevice.id == keep_trusted_device.id,
+                        TrustedDevice.owner_id == owner_id,
+                        TrustedDevice.auth_revision == revision - 1,
+                        TrustedDevice.revoked_at.is_(None),
+                        TrustedDevice.expires_at > int(time.time()),
+                    )
+                    .values(auth_revision=revision)
+                )
+
             row.recovery_hashes = [] if disable else hashes
             row.version += 1
             if disable:

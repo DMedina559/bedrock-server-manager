@@ -401,3 +401,39 @@ the identity-verification dialog; after verification, retry the original action.
 Ordinary permission/CSRF failures are not treated as a step-up challenge. Browser
 `ERR_CONNECTION_REFUSED` errors mean the configured backend is unreachable and
 are separate from a five-minute verification expiry.
+
+## Remembered second-factor devices
+
+After a successful authenticator or recovery-code check, an interactive login or
+password reauthentication can opt into `remember_device`. This issues a separate,
+revocable credential valid for **30 days**. It can replace the OTP check at login
+and during five-minute security reauthentication, including recovery-code
+replacement. The current password remains required. A remembered credential
+cannot authenticate by itself or extend its own expiry; renewal requires a fresh
+OTP or recovery code. An explicitly supplied incorrect OTP never falls back to
+remembered trust. Remember devices only on browsers or clients you control.
+
+Cookie-mode clients receive the proof in an HttpOnly, SameSite cookie using the
+existing HTTPS/ingress cookie policy, scoped per account. Bearer clients receive
+`trusted_device_token` and `trusted_device_expires_at` only when a fresh grant is
+issued. They must deliberately store the proof as a secret scoped to the backend
+and account, then supply it on password login or via
+`X-BSM-Trusted-Device-Token` on account-security requests. Bearer login does not
+implicitly consume ambient device cookies. Responses are not cacheable. Only a
+SHA-256 digest is stored on the server; device listings contain metadata only.
+
+Account Security → Sessions lists remembered devices separately from login
+sessions and supports forgetting one, others, or all devices. Forgetting trust
+does not sign out a session, but invalidates recent verification derived from that
+device. Independent fresh-OTP verification remains valid. Expired or revoked
+proofs are checked again at use, rather than cached as authorization decisions.
+Password, role, account-status and MFA changes invalidate device grants through
+the account security revision. Recovery-code replacement carries forward only
+the presented, valid current device with its original expiry and invalidates all
+other remembered devices. At most 20 current grants are retained; adding another
+replaces the oldest. Old metadata is bounded and expired records are eligible for
+the existing background retention process after 90 days.
+
+Migration `l38b267d94f5` adds the device table and recent-verification provenance.
+Downgrading removes device grants and clears verification derived from them;
+accounts, passwords and independent login sessions remain intact.

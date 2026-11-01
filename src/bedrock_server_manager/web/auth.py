@@ -73,6 +73,8 @@ async def create_access_token(
     app_context: AppContext,
     data: dict,
     expires_delta: Optional[datetime.timedelta] = None,
+    *,
+    factor_proof=None,
 ) -> str:
     """Encode a JWT with a user payload and UTC expiration.
 
@@ -114,6 +116,7 @@ async def create_access_token(
                 owner_id,
                 int(expire.timestamp()),
                 expected_revision=to_encode.get("authv"),
+                factor_proof=factor_proof,
             )
         to_encode["sid"] = identifier
         expire = datetime.datetime.fromtimestamp(

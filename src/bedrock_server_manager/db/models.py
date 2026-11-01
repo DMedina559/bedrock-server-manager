@@ -329,6 +329,7 @@ class LoginSession(Base):
     last_seen_at: Mapped[int] = mapped_column(Integer, nullable=False)
     expires_at: Mapped[int] = mapped_column(Integer, nullable=False)
     verified_at: Mapped[int] = mapped_column(Integer, nullable=False)
+    verified_device_id: Mapped[str | None] = mapped_column(String(32), nullable=True)
     revoked_at: Mapped[int | None] = mapped_column(Integer, nullable=True)
 
 
@@ -363,3 +364,20 @@ class AuthSecurityEvent(Base):
     action: Mapped[str] = mapped_column(String(64), nullable=False)
     timestamp: Mapped[int] = mapped_column(Integer, nullable=False)
     details: Mapped[dict] = mapped_column(JSON, nullable=False)
+
+
+class TrustedDevice(Base):
+    """Revocable remembered second factor; never a substitute for a password."""
+
+    __tablename__ = "trusted_devices"
+    id: Mapped[str] = mapped_column(String(32), primary_key=True)
+    owner_id: Mapped[str] = mapped_column(String(32), nullable=False, index=True)
+    token_digest: Mapped[str] = mapped_column(String(64), nullable=False)
+    auth_revision: Mapped[int] = mapped_column(Integer, nullable=False)
+    name: Mapped[str] = mapped_column(String(100), nullable=False)
+    user_agent: Mapped[str] = mapped_column(String(512), nullable=False)
+    ip_address: Mapped[str] = mapped_column(String(64), nullable=False)
+    created_at: Mapped[int] = mapped_column(Integer, nullable=False)
+    last_used_at: Mapped[int] = mapped_column(Integer, nullable=False)
+    expires_at: Mapped[int] = mapped_column(Integer, nullable=False, index=True)
+    revoked_at: Mapped[int | None] = mapped_column(Integer, nullable=True)
