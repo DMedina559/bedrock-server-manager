@@ -301,6 +301,7 @@ async def test_outstanding_workers_bound_queued_work_and_release_capacity(owner_
     await bus.drain_owner("plugin:bounded", 2)
     bus.open_owner("plugin:bounded")
     bus.activate_owner("plugin:bounded")
+    bus.options.listener_timeout_seconds = 1.0
     assert (await bus.emit("bounded")).status == "completed"
     assert bus.diagnostics().pending_workers == 0
     await bus.close()

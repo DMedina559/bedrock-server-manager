@@ -3,6 +3,7 @@
 import asyncio
 import json
 import socket
+from collections import deque
 from contextlib import asynccontextmanager
 
 import pytest_asyncio
@@ -69,15 +70,30 @@ async def subscribed_socket(websocket_client, app_context, test_admin_user):
             app_context, {"sub": test_admin_user.username}
         )
         async with websocket_client() as connection:
+            raw_recv = connection.recv
+            buffered = deque()
+
+            async def recv(*args, **kwargs):
+                if buffered:
+                    return buffered.popleft()
+                return await raw_recv(*args, **kwargs)
+
             await connection.send(
                 json.dumps({"action": "authenticate", "token": token})
             )
-            assert json.loads(await connection.recv())["status"] == "success"
+            assert json.loads(await raw_recv())["status"] == "success"
             for topic in topics:
                 await connection.send(
                     json.dumps({"action": "subscribe", "topic": topic})
                 )
-                assert json.loads(await connection.recv())["status"] == "success"
+                while True:
+                    raw = await raw_recv()
+                    msg = json.loads(raw)
+                    if "status" in msg:
+                        assert msg["status"] == "success"
+                        break
+                    buffered.append(raw)
+            connection.recv = recv
             yield connection
 
     return subscribe
