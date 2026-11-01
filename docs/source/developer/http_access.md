@@ -103,7 +103,7 @@ a successful login resets its account failure budget.
 Authenticator enrollment expires after ten minutes. TOTP codes cannot be replayed.
 Ten one-use recovery codes are displayed once; save them securely. Replacing them
 invalidates the old set. Enabling or disabling MFA revokes other login sessions.
-Back up the database together with `config/security/mfa.key` (relative to the
+Back up the database together with `credentials/mfa.key` (relative to the
 installation configuration directory). The key encrypts authenticator secrets;
 losing it requires recovery codes or an administrator MFA reset. Recovery codes
 are stored as hashes. Security activity is retained for 90 days with opportunistic
@@ -247,13 +247,12 @@ BSM application workers against the same SQLite database. A same-process
 concurrency test explicitly coordinates both requests past preliminary validation
 and proves that only one account is created.
 
-The follow-up registration-index migration repairs databases that already applied
-the digest migration and aligns the unique digest index with ORM-created schemas.
-Downgrading only this index migration preserves invitations. Downgrading past
-`j16f045b72d3` cannot reconstruct raw invitation secrets: existing invitations become
-unusable and must be reissued. Re-upgrading removes the unusable null-token rows;
-it does not restore old links. Take a database backup before schema changes, and
-protect older backups because they may still contain plaintext invitations.
+Migration `g83c712e49a0` hashes existing invitation secrets in place and creates
+the unique digest index. Downgrading past `g83c712e49a0` cannot reconstruct raw
+invitation secrets: existing invitations become unusable and must be reissued.
+Re-upgrading removes the unusable null-token rows; it does not restore old links.
+Take a database backup before schema changes, and protect older backups because
+they may still contain plaintext invitations.
 
 Invitation page/API responses use `Cache-Control: no-store` and
 `Referrer-Policy: no-referrer`, including registration throttling responses. BSM's
@@ -337,12 +336,11 @@ may choose a shorter prefix (48–128) to group addresses, accounting for shared
 networks; account budgets continue to apply across all addresses. Untrusted
 forwarding headers cannot select the ingress path or a different client budget.
 
-Backend responses set `X-Content-Type-Options: nosniff` and default to
+Backend responses set `X-Content-Type-Options: nosniff`,
+`Permissions-Policy: camera=(), microphone=(), geolocation=()`, and default to
 `Referrer-Policy: strict-origin-when-cross-origin`. Invitation routes retain the
-stricter `no-referrer` and `no-store` policy. `web.permissions_policy` defaults to
-`camera=(), microphone=(), geolocation=()`; clipboard and public-key credential
-features are not disabled. Operators hosting plugins that need those features
-can change or unset this policy.
+stricter `no-referrer` and `no-store` policy. Clipboard and public-key credential
+(WebAuthn) features remain enabled.
 
 No frame restriction is imposed by default, preserving cross-origin Home
 Assistant embedding. Configure `web.frame_ancestors` with explicit CSP sources,
@@ -434,9 +432,9 @@ other remembered devices. At most 20 current grants are retained; adding another
 replaces the oldest. Old metadata is bounded and expired records are eligible for
 the existing background retention process after 90 days.
 
-Migration `l38b267d94f5` adds the device table and recent-verification provenance.
-Downgrading removes device grants and clears verification derived from them;
-accounts, passwords and independent login sessions remain intact.
+Migration `g83c712e49a0` adds the trusted-device, passkey, and WebAuthn challenge
+tables along with recent-verification provenance. Downgrading removes device and
+passkey grants; accounts and passwords remain intact.
 
 
 ## Access previews, retention, and execution boundaries
@@ -558,28 +556,45 @@ budgets. SQLite is measured here; PostgreSQL/MySQL deployments require their own
 representative driver, contention and isolation measurements before making
 cross-process/concurrency claims.
 
-## Router audit follow-up and signing-key storage
+## Router audit follow-up, passkeys, and host credentials
 
-JWT signing material is stored in `<config_dir>/security/jwt-signing-key.json`,
-separate from application settings. The file and its containing directory use
-owner-only POSIX permissions or protected Windows ACLs, like MFA credentials.
-Private-path symlinks are rejected. The initial file is published atomically
-under an OS-held lock and read back before the legacy database value is removed.
-An existing database signing key is migrated unchanged, preserving valid login
-sessions. An initialized host with a missing/corrupt/unreadable key fails clearly;
-it never silently rotates the key. A conflicting legacy database and credential
-file also fail closed so operators can restore a matching pair. A failed database
-commit leaves the file reusable on the next attempt. The validated key is retained
+Host secret credentials live in `<config_dir>/credentials/` using the `.key`
+extension (`backup.key`, `jwt.key`, and `mfa.key`), separate from application
+settings. Each file and the containing directory use owner-only POSIX permissions
+or protected Windows ACLs. Private-path symlinks are rejected. The initial JWT
+signing key file (`<config_dir>/credentials/jwt.key`) is published atomically
+under an OS-held lock. An initialized host with a missing, corrupt, or unreadable
+key fails clearly; it never silently rotates the key. The validated key is retained
 in the owning Settings instance for the process lifetime; replacing files is not
 a supported live key-rotation interface.
 
-Keep this host credential with the configuration volume when moving/recovering an
-installation. Server backup archives do not carry installation signing or MFA
-keys. Restoring just the database does not restore host credentials. Stop the
-application before restoring a matching database/configuration pair. Generic
+Keep `<config_dir>/credentials/` with the configuration volume when moving or
+recovering an installation. Server backup archives do not carry installation JWT
+or MFA keys. Restoring just the database does not restore host credentials. Stop
+the application before restoring a matching database/configuration pair. Generic
 settings writes cannot change the signing key or its initialization marker, and
-HTTP settings reads/forms never expose either field. Existing login JWTs remain
-in their current cookie/bearer transport; only the signing key moves.
+HTTP settings reads/forms never expose either field.
+
+### WebAuthn passkeys
+
+Accounts can register up to 20 active WebAuthn passkeys (`POST /api/account/security/passkeys/register/options`
+and `POST /api/account/security/passkeys/register/verify`) after recent step-up
+verification. Passkeys support:
+
+- **Passwordless sign-in** (`POST /auth/passkey/options` and `POST /auth/passkey/verify`,
+  operation IDs `begin_passkey_login` and `complete_passkey_login`) with
+  `userVerification="required"`, satisfying both primary and second-factor
+  requirements (including `security.require_admin_mfa`) when the authenticator
+  asserts `UV`.
+- **Step-up reauthentication** (`POST /api/account/security/passkeys/verify/options`
+  and `POST /api/account/security/passkeys/verify`, operation IDs
+  `begin_passkey_step_up` and `verify_account_security_passkey`) for five-minute
+  sensitive account/admin operations.
+- **Self-service and admin management**: users can list (`list_passkeys`), rename
+  (`rename_passkey`), and revoke (`revoke_passkey`) their own passkeys;
+  administrators can inspect another user's passkeys (`list_account_passkeys` at
+  `GET /api/access/users/{user_id}/passkeys`) and clear them as part of
+  `reset_account_mfa`.
 
 Settings authorization follows the setting's storage scope, including fields
 introduced by plugins:
