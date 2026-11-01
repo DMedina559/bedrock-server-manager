@@ -340,16 +340,11 @@ class ConnectionManager:
     async def send_to_client(self, data: Any, client_id: str) -> DeliveryResult:
         """Bound concurrent sends per client and acknowledge only completed delivery."""
         encoded = json.dumps(json_payload(data).value, allow_nan=False)
-        if not self._accepting or not await self.refresh_authorization(client_id):
+        if not self._accepting:
             return DeliveryResult(targeted=1, unavailable=1)
         client = self.active_connections.get(client_id)
         if client is None:
             return DeliveryResult(targeted=1, unavailable=1)
-        if client.authorization is not None and self.message_filter is not None:
-            data = await self.message_filter(client.authorization, data)
-            if data is None:
-                return DeliveryResult(targeted=1, unavailable=1)
-            encoded = json.dumps(json_payload(data).value, allow_nan=False)
         if client.pending_sends >= self.outbound_queue_limit:
             self.dropped_messages += 1
             if self.record_failure is not None:
@@ -379,6 +374,9 @@ class ConnectionManager:
                             )
                             if permitted is None:
                                 return DeliveryResult(targeted=1, unavailable=1)
+                            encoded = json.dumps(
+                                json_payload(permitted).value, allow_nan=False
+                            )
                         revision = self.policy_revision_provider()
                         if client.policy_revision != revision:
                             await client.websocket.send_text(

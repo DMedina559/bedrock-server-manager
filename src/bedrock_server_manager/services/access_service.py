@@ -31,6 +31,7 @@ from ..web.authorization import (
 )
 from ..web.schemas import UserResponse
 from ..web.schemas.access import (
+    AccessPreview,
     AccountServerAccessInfo,
     CreatedIntegrationToken,
     IntegrationTokenInfo,
@@ -266,17 +267,105 @@ class AccessService:
         authorization = await self.snapshot(user, identifier)
         return (user, authorization) if authorization is not None else None
 
-    async def list_tokens(self, user_id):
+    async def list_tokens(self, user_id, *, limit=100, offset=0):
         async with self.context.storage.transaction() as session:
             user = await self._user(session, user_id)
             rows = (
                 await session.scalars(
                     select(IntegrationToken)
                     .where(IntegrationToken.owner_id == user.access_id)
-                    .order_by(IntegrationToken.created_at, IntegrationToken.id)
+                    .order_by(
+                        IntegrationToken.created_at.desc(), IntegrationToken.id.desc()
+                    )
+                    .limit(limit)
+                    .offset(offset)
                 )
             ).all()
             return [self.token_info(token) for token in rows]
+
+    async def preview_token(self, actor, payload) -> AccessPreview:
+        self.validate(payload.permissions)
+        requested = frozenset(payload.permissions)
+        async with self.context.storage.transaction() as session:
+            record = await self._user(session, actor.id)
+            user = UserResponse.model_validate(record, from_attributes=True)
+        authorization = await self.snapshot(user)
+        if authorization is None:
+            raise HTTPException(401, "Account authorization unavailable")
+        identities = await self.server_identities()
+        if payload.server_ids is not None and not set(payload.server_ids) <= set(
+            identities.values()
+        ):
+            raise HTTPException(422, "Unknown server identity")
+        available = requested & authorization.permissions - NON_DELEGATABLE
+        # Setting token server IDs makes global capabilities unavailable, even for admins.
+        if payload.server_ids is not None:
+            available &= SERVER_PERMISSIONS | PERSONAL_PERMISSIONS
+        server_permissions = {
+            identity: sorted(
+                permission
+                for permission in available & SERVER_PERMISSIONS
+                if authorization.allows(permission, name)
+            )
+            for name, identity in identities.items()
+            if (payload.server_ids is None or identity in payload.server_ids)
+            and authorization.allows("servers:read", name)
+        }
+        effective = {
+            permission
+            for permission in available
+            if authorization.allows(permission)
+            and (payload.server_ids is None or permission in PERSONAL_PERMISSIONS)
+        }
+        effective.update(
+            permission
+            for permissions in server_permissions.values()
+            for permission in permissions
+        )
+        return AccessPreview(
+            requested_permissions=sorted(requested),
+            effective_permissions=sorted(effective),
+            unavailable_permissions=sorted(requested - effective),
+            server_permissions=server_permissions,
+            policy_revision=authorization.revision,
+        )
+
+    async def preview_server_access(self, user_id, payload) -> AccessPreview:
+        self._validate_server_grants(payload)
+        async with self.context.storage.transaction() as session:
+            user = await self._user(session, user_id)
+            role_permissions = self.policy.resolve(user.role)
+            known = set((await session.scalars(select(Server.access_id))).all())
+            if not {grant.server_id for grant in payload.grants} <= known:
+                raise HTTPException(422, "Unknown server identity")
+            if user.role == "admin" and payload.mode == "assigned":
+                raise HTTPException(
+                    409, "Use a moderator or user account for server-specific access"
+                )
+            requested = set().union(
+                *(set(grant.permissions) for grant in payload.grants)
+            )
+            server_permissions = (
+                {
+                    grant.server_id: sorted(set(grant.permissions) & role_permissions)
+                    for grant in payload.grants
+                }
+                if payload.mode == "assigned"
+                else {
+                    identity: sorted(SERVER_PERMISSIONS & role_permissions)
+                    for identity in known
+                }
+            )
+            effective = set().union(
+                *(set(permissions) for permissions in server_permissions.values())
+            )
+            return AccessPreview(
+                requested_permissions=sorted(requested),
+                effective_permissions=sorted(effective),
+                unavailable_permissions=sorted(requested - effective),
+                server_permissions=server_permissions,
+                policy_revision=await self._revision(session),
+            )
 
     async def create_token(self, actor, payload) -> CreatedIntegrationToken:
         self.validate(payload.permissions)
@@ -466,7 +555,7 @@ class AccessService:
                 policy_revision=await self._revision(session),
             )
 
-    async def set_server_access(self, actor, user_id, payload):
+    def _validate_server_grants(self, payload):
         identities = [grant.server_id for grant in payload.grants]
         if len(identities) != len(set(identities)):
             raise HTTPException(422, "Duplicate server grants")
@@ -478,6 +567,10 @@ class AccessService:
                 raise HTTPException(
                     422, "Server grants may only contain server capabilities"
                 )
+
+    async def set_server_access(self, actor, user_id, payload):
+        self._validate_server_grants(payload)
+        identities = [grant.server_id for grant in payload.grants]
         async with self.context.storage.transaction() as session:
             user = await self._user(session, user_id)
             if actor.id == user.id:
@@ -541,8 +634,33 @@ class AccessService:
                 "Authorization change notification unavailable", exc_info=True
             )
 
+    async def task_start_authorization(
+        self, authorization, permissions, server_name, server_id
+    ):
+        """Queued HTTP work must still own its credential, capabilities and resource."""
+        async with self.context.storage.transaction() as session:
+            record = await session.get(User, authorization.user_id)
+            if record is None or record.access_id != authorization.owner_id:
+                return None
+            user = UserResponse.model_validate(record, from_attributes=True)
+        refreshed = await self.snapshot(
+            user, authorization.token_id, authorization.session_id
+        )
+        if refreshed is None or refreshed.mfa_enrollment_required:
+            return None
+        if (
+            server_id is not None
+            and await self.server_identity(server_name) != server_id
+        ):
+            return None
+        if not all(
+            refreshed.allows(permission, server_name) for permission in permissions
+        ):
+            return None
+        return refreshed
+
     async def task_allowed(self, authorization, task_id):
-        record = self.context.task_manager.tasks.get(task_id)
+        record = self.context.task_manager.task_access(task_id)
         if record is None or record.username != authorization.username:
             return False
         if (
@@ -641,7 +759,7 @@ class AccessService:
         if (
             topic.startswith("task:")
             and not authorization.restricted
-            and topic[5:] not in self.context.task_manager.tasks
+            and self.context.task_manager.task_access(topic[5:]) is None
         ):
             # Legacy trusted in-process task managers may publish to their owner
             # without using AppContext's TaskManager. Restricted principals cannot.

@@ -12,6 +12,7 @@ from fastapi import (
     File,
     Form,
     HTTPException,
+    Request,
     Security,
     UploadFile,
     status,
@@ -48,6 +49,7 @@ from ...api.models.backup_restore import (
 from ...backups import transfer as backup_transfer
 from ...backups.models import ConfigComponent
 from ...context import AppContext
+from ..access_metadata import describe_access
 from ..access_policy import Permission
 from ..deps import get_app_context, validate_server_exists
 from ..deps.auth import require_permissions
@@ -626,14 +628,26 @@ async def rotate_key(
     response_class=Response,
     responses={200: {"content": {"text/plain": {"schema": {"type": "string"}}}}},
 )
+@describe_access(
+    "permission",
+    additional_checks=[
+        "interactive-recent-verification-or-explicit-integration-key-grant"
+    ],
+)
 async def emergency_kit(
     key_id: str,
+    request: Request,
     current_user: UserResponse = Security(
         require_permissions, scopes=[Permission.BACKUPS_KEYS]
     ),
     app_context: AppContext = Depends(get_app_context),
 ) -> Response:
     """Export one recovery credential through a dedicated administrative route."""
+    authorization = getattr(request.state, "authorization", None)
+    if authorization is None or authorization.token_id is None:
+        await app_context.session_service.require_recent(
+            current_user, getattr(request.state, "session_id", None)
+        )
     kit = await backup_transfer.get_backup_emergency_kit(app_context, key_id)
     return Response(
         kit,

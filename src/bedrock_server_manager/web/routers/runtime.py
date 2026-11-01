@@ -20,6 +20,33 @@ from ..deps.auth import get_current_user_optional, require_permissions
 from ..runtime import RuntimeStatus, ShutdownRequest, ShutdownResponse, WebRuntime
 
 router = APIRouter(prefix="/api/runtime", tags=["Runtime"])
+HEALTH_PERMISSION = Permission.HEALTH_READ
+SHUTDOWN_PERMISSION = Permission.RUNTIME_SHUTDOWN
+ACCOUNT_SCHEMES = ["OAuth2PasswordBearer", "APIKeyCookie", "IntegrationToken"]
+HEALTH_ACCESS = [
+    {
+        "condition": "Account credential",
+        "schemes": ACCOUNT_SCHEMES,
+        "permissions": [HEALTH_PERMISSION],
+    },
+    {
+        "condition": "Loopback supervisor",
+        "schemes": ["LocalReadiness"],
+        "permissions": [],
+    },
+]
+SHUTDOWN_ACCESS = [
+    {
+        "condition": "Administrator credential",
+        "schemes": ACCOUNT_SCHEMES,
+        "permissions": [SHUTDOWN_PERMISSION],
+    },
+    {
+        "condition": "Local shutdown credential",
+        "schemes": ["APIKeyHeader"],
+        "permissions": [],
+    },
+]
 local_key = APIKeyHeader(name="X-BSM-Shutdown-Token", auto_error=False)
 readiness_key = APIKeyHeader(
     name="X-BSM-Readiness-Token", scheme_name="LocalReadiness", auto_error=False
@@ -52,7 +79,7 @@ async def shutdown_actor(
             headers={"WWW-Authenticate": "Bearer"},
         )
     authorization = getattr(request.state, "authorization", None)
-    if authorization is not None and not authorization.allows("runtime:shutdown"):
+    if authorization is not None and not authorization.allows(SHUTDOWN_PERMISSION):
         raise HTTPException(403, "Shutdown access denied")
     if user.role != "admin":
         raise HTTPException(status_code=403, detail="Administrator permission required")
@@ -82,6 +109,7 @@ async def runtime_status(
     authentication="required",
     additional_checks=["administrator-or-local-shutdown-token"],
     allowed_roles=["admin"],
+    credential_alternatives=SHUTDOWN_ACCESS,
 )
 async def shutdown_runtime(
     request: ShutdownRequest,
@@ -108,7 +136,7 @@ async def require_health_access(
                 headers={"WWW-Authenticate": "Bearer"},
             )
         authorization = getattr(request.state, "authorization", None)
-        if authorization is not None and not authorization.allows("health:read"):
+        if authorization is not None and not authorization.allows(HEALTH_PERMISSION):
             raise HTTPException(403, "Health access denied")
         return
     runtime = getattr(request.app.state, "web_runtime", None)

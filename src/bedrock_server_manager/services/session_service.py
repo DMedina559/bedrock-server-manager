@@ -20,15 +20,17 @@ import qrcode
 import qrcode.image.svg
 from cryptography.fernet import Fernet, InvalidToken
 from fastapi import HTTPException
-from sqlalchemy import case, delete, func, select, update
+from sqlalchemy import and_, case, delete, func, or_, select, tuple_, update
 from sqlalchemy.exc import IntegrityError
 
 from ..db.models import (
     AccountSecurity,
+    AccountServerAccess,
     AuthSecurityEvent,
     AuthThrottle,
     IntegrationToken,
     LoginSession,
+    ServerAccessGrant,
     TrustedDevice,
     User,
 )
@@ -224,7 +226,49 @@ class SessionService:
     async def cleanup(self):
         """Delete expired metadata in bounded transactions, yielding between batches."""
         now = int(time.time())
+        # Delete by primary key, rather than by owner, to bound even large histories.
+        for model in (
+            AccountSecurity,
+            AccountServerAccess,
+            IntegrationToken,
+            TrustedDevice,
+            ServerAccessGrant,
+        ):
+            columns = list(model.__table__.primary_key.columns)
+            key = columns[0] if len(columns) == 1 else tuple_(*columns)
+            orphan = (
+                ~select(User.access_id).where(User.access_id == model.owner_id).exists()
+            )
+            while True:
+                async with self.context.storage.transaction() as session:
+                    rows = list(
+                        (
+                            await session.execute(
+                                select(*columns)
+                                .where(orphan)
+                                .order_by(*columns)
+                                .limit(250)
+                            )
+                        ).all()
+                    )
+                    ids = [row[0] for row in rows] if len(columns) == 1 else rows
+                    if ids:
+                        await session.execute(delete(model).where(key.in_(ids), orphan))
+                if len(rows) < 250:
+                    break
+                await asyncio.sleep(0)
         for model, key, predicate in (
+            (
+                IntegrationToken,
+                IntegrationToken.id,
+                or_(
+                    IntegrationToken.revoked_at < now - 90 * 86400,
+                    and_(
+                        IntegrationToken.expires_at.is_not(None),
+                        IntegrationToken.expires_at < now - 90 * 86400,
+                    ),
+                ),
+            ),
             (
                 TrustedDevice,
                 TrustedDevice.id,
@@ -629,8 +673,10 @@ class SessionService:
 
     def _cipher(self, create=False):
         path = Path(self.context.config_dir) / "security" / "mfa.key"
+        from ..backups.credentials import private_directory, protect
+
         if create:
-            path.parent.mkdir(parents=True, exist_ok=True, mode=0o700)
+            private_directory(path.parent)
             try:
                 descriptor = os.open(path, os.O_CREAT | os.O_EXCL | os.O_WRONLY, 0o600)
             except FileExistsError:
@@ -639,6 +685,8 @@ class SessionService:
                 with os.fdopen(descriptor, "wb") as handle:
                     handle.write(Fernet.generate_key())
         try:
+            protect(path.parent, directory=True)
+            protect(path)
             return Fernet(path.read_bytes())
         except (OSError, ValueError) as error:
             raise HTTPException(

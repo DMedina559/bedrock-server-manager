@@ -75,6 +75,12 @@ function SwaggerAccessPlugin(system) {
               : "Not supported",
           ),
         checks.length > 0 && fact("Additional checks", chips(checks)),
+        Array.isArray(policy.credential_alternatives) && policy.credential_alternatives.length > 0 &&
+          fact("Credential alternatives", h("ul", null,
+            policy.credential_alternatives.map((alternative, index) =>
+              h("li", {key: index}, alternative.condition + ": " +
+                (strings(alternative.permissions).join(", ") || "Dedicated local credential"))),
+          )),
       ),
       h(
         "p",

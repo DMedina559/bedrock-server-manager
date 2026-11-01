@@ -1,6 +1,14 @@
 """Manage named credentials and explicit account/server restrictions."""
 
-from fastapi import APIRouter, Depends, HTTPException, Request, Response, Security
+from fastapi import (
+    APIRouter,
+    Depends,
+    HTTPException,
+    Query,
+    Request,
+    Response,
+    Security,
+)
 
 from ...context import AppContext
 from ..access_policy import ROLE_GRANTS, Permission, policy_for
@@ -15,6 +23,7 @@ from ..deps.auth import require_permissions
 from ..schemas import BaseApiResponse, UserResponse
 from ..schemas.access import (
     AccessPolicyInfo,
+    AccessPreview,
     AccessServerInfo,
     AccountServerAccessInfo,
     CreatedIntegrationToken,
@@ -97,12 +106,14 @@ async def list_access_servers(
     response_model=list[IntegrationTokenInfo],
 )
 async def list_tokens(
+    limit: int = Query(default=100, ge=1, le=500),
+    offset: int = Query(default=0, ge=0),
     user: UserResponse = Security(
         require_permissions, scopes=[Permission.TOKENS_MANAGE]
     ),
     context: AppContext = Depends(get_app_context),
 ):
-    return await context.access_service.list_tokens(user.id)
+    return await context.access_service.list_tokens(user.id, limit=limit, offset=offset)
 
 
 @router.post(
@@ -199,12 +210,14 @@ async def set_server_access(
 )
 async def list_user_tokens(
     user_id: int,
+    limit: int = Query(default=100, ge=1, le=500),
+    offset: int = Query(default=0, ge=0),
     user: UserResponse = Security(
         require_permissions, scopes=[Permission.ACCESS_MANAGE]
     ),
     context: AppContext = Depends(get_app_context),
 ):
-    return await context.access_service.list_tokens(user_id)
+    return await context.access_service.list_tokens(user_id, limit=limit, offset=offset)
 
 
 @router.delete(
@@ -222,3 +235,36 @@ async def revoke_user_token(
 ):
     await context.access_service.revoke_token(user, user_id, token_id)
     return BaseApiResponse(status="success", message="Credential revoked")
+
+
+@router.post(
+    "/api/account/tokens/preview",
+    operation_id="preview_integration_token",
+    response_model=AccessPreview,
+)
+async def preview_token(
+    payload: CreateIntegrationToken,
+    user: UserResponse = Security(
+        require_permissions, scopes=[Permission.TOKENS_MANAGE]
+    ),
+    context: AppContext = Depends(get_app_context),
+):
+    """Inspect effective capabilities without minting or changing a credential."""
+    return await context.access_service.preview_token(user, payload)
+
+
+@router.post(
+    "/api/access/users/{user_id}/servers/preview",
+    operation_id="preview_account_server_access",
+    response_model=AccessPreview,
+)
+async def preview_server_access(
+    user_id: int,
+    payload: SetServerAccess,
+    user: UserResponse = Security(
+        require_permissions, scopes=[Permission.ACCESS_MANAGE]
+    ),
+    context: AppContext = Depends(get_app_context),
+):
+    """Explain proposed grants against the target account's current role ceiling."""
+    return await context.access_service.preview_server_access(user_id, payload)

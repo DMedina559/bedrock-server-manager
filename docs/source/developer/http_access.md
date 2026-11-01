@@ -437,3 +437,55 @@ the existing background retention process after 90 days.
 Migration `l38b267d94f5` adds the device table and recent-verification provenance.
 Downgrading removes device grants and clears verification derived from them;
 accounts, passwords and independent login sessions remain intact.
+
+
+## Access previews, retention, and execution boundaries
+
+`POST /api/account/tokens/preview` accepts the same body as credential creation.
+It returns `requested_permissions`, `effective_permissions`,
+`unavailable_permissions`, `server_permissions` keyed by immutable server ID,
+and `policy_revision`. It creates no credential. The preview applies the current
+role, account assignments, non-delegatable permissions, and proposed server list.
+It can explain an unavailable permission that creation would reject. A preview
+is advisory; creation and every authenticated request still enforce current access.
+
+Administrators can preview proposed assignments with
+`POST /api/access/users/{user_id}/servers/preview`, using the same body as the
+assignment update. This shows which proposed grants the target role can actually
+exercise. Saving a grant never raises the account's role ceiling.
+
+Integration credential listings retain their array response and accept `limit`
+(default 100, maximum 500) and `offset` (default 0). The same pagination applies
+to administrators listing another account's credentials. Rows are ordered by
+creation time descending, then ID descending. Offset pages can shift when new
+credentials are created. Revoked or expired credentials become eligible for
+background removal after 90 days; active non-expiring credentials are retained.
+Deleting an account atomically removes its credentials, login sessions, MFA
+material, remembered devices and server assignments. Security and administrative
+audit events retain their existing history policy. Maintenance also removes
+historical orphaned secrets and grants in bounded batches.
+
+HTTP-submitted background work revalidates its credential, effective permissions,
+and original server identity immediately before execution, after waiting for a
+concurrency slot. Revoked credentials or removed capabilities cancel queued work.
+Server deletion and recreation under the same name cannot redirect an accepted
+task. Work already executing keeps the operation's existing safe cancellation and
+recovery behavior; an access change does not interrupt a restore midway.
+
+Application log history requires `logs:read_application`; server log history
+requires `logs:read` for the selected server. This matches socket topic access.
+The OpenAPI `x-bsm-access.credential_alternatives` field describes conditional
+capabilities and dedicated local credentials. Swagger displays these alternatives;
+OAuth security entries carry the capability required for each alternative.
+
+Interactive backup emergency-kit downloads require recent password/factor
+verification and use the existing `X-BSM-Recent-Auth` challenge. Integration tokens
+remain eligible only when explicitly delegated `backups:keys` with global access;
+this capability includes exporting secret recovery credentials. Server-restricted
+tokens cannot use global key routes.
+
+All authentication and setup responses use `Cache-Control: no-store` and
+`Pragma: no-cache`, including ordinary bearer login and failures. MFA key files
+use the same private-path policy as backup credentials: owner-only POSIX modes,
+or a protected Windows DACL for the service identity, administrators and SYSTEM.
+Existing key files are checked and protected when opened.

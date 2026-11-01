@@ -24,7 +24,7 @@ from ..deps import get_app_context
 from ..deps.auth import require_permissions
 from ..runtime import WebRuntime
 from ..schemas import AppInfoResponse, ThemeListResponse, UserResponse
-from .runtime import require_health_access
+from .runtime import HEALTH_ACCESS, require_health_access
 
 logger = logging.getLogger(__name__)
 
@@ -136,6 +136,8 @@ async def get_application_metrics(
     "custom",
     authentication="required",
     additional_checks=["local-readiness-or-account", "local-readiness-peer"],
+    allowed_roles=["user", "moderator", "admin"],
+    credential_alternatives=HEALTH_ACCESS,
 )
 async def get_application_health(
     request: Request,

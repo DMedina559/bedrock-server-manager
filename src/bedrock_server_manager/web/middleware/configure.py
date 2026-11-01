@@ -31,6 +31,9 @@ async def security_headers(request: Request, call_next):
     response = await call_next(request)
     response.headers.setdefault("X-Content-Type-Options", "nosniff")
     response.headers.setdefault("Referrer-Policy", "strict-origin-when-cross-origin")
+    if route_path(request.scope).startswith(("/auth/", "/api/setup/")):
+        response.headers["Cache-Control"] = "no-store"
+        response.headers["Pragma"] = "no-cache"
     settings = request.app.state.app_context.settings
     features = settings.get("web.permissions_policy")
     if features:

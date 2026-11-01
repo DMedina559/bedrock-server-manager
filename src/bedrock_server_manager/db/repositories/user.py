@@ -5,12 +5,21 @@ Repository for managing User and RegistrationToken database entity persistence.
 import hashlib
 from typing import List, Optional, cast
 
-from sqlalchemy import func
+from sqlalchemy import delete, func
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.future import select
 
 from ...state.models import UserInfoState
-from ..models import RegistrationToken, User
+from ..models import (
+    AccountSecurity,
+    AccountServerAccess,
+    IntegrationToken,
+    LoginSession,
+    RegistrationToken,
+    ServerAccessGrant,
+    TrustedDevice,
+    User,
+)
 
 
 class UserRepository:
@@ -72,6 +81,15 @@ class UserRepository:
 
     async def delete_user(self, session: AsyncSession, user: User) -> None:
         """Delete a User record from the database."""
+        for model in (
+            AccountSecurity,
+            AccountServerAccess,
+            IntegrationToken,
+            LoginSession,
+            ServerAccessGrant,
+            TrustedDevice,
+        ):
+            await session.execute(delete(model).where(model.owner_id == user.access_id))
         await session.delete(user)
 
     @staticmethod

@@ -42,6 +42,14 @@ class SetServerAccess(APIRequest):
     grants: list[ServerGrant] = Field(default_factory=list, max_length=1000)
 
 
+class AccessPreview(APIResponse):
+    requested_permissions: list[str]
+    effective_permissions: list[str]
+    unavailable_permissions: list[str]
+    server_permissions: dict[str, list[str]]
+    policy_revision: str
+
+
 class AccountServerAccessInfo(APIResponse):
     user_id: int
     mode: Literal["all", "assigned"]

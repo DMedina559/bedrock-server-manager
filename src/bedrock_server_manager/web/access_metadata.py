@@ -20,6 +20,7 @@ def describe_access(
     authentication: str = "required",
     additional_checks=(),
     allowed_roles=None,
+    credential_alternatives=(),
 ):
     """Explicitly describe public or contextual policies alongside enforcement."""
 
@@ -28,6 +29,7 @@ def describe_access(
             "classification": classification,
             "authentication": authentication,
             "additional_checks": list(additional_checks),
+            "credential_alternatives": list(credential_alternatives),
         }
         if allowed_roles is not None:
             endpoint.__bsm_access__["allowed_roles"] = list(allowed_roles)
@@ -139,6 +141,19 @@ def configure_access_schema(app: FastAPI, policy: AccessPolicy) -> None:
             for method in sorted(route.methods):
                 operation = document["paths"][route.path_format][method.lower()]
                 operation["x-bsm-access"] = metadata
+                alternatives = metadata.get("credential_alternatives", [])
+                if alternatives:
+                    operation["security"] = [
+                        {
+                            scheme: (
+                                alternative["permissions"]
+                                if scheme == "OAuth2PasswordBearer"
+                                else []
+                            )
+                        }
+                        for alternative in alternatives
+                        for scheme in alternative["schemes"]
+                    ]
                 # Cookie credentials authorize the same capabilities, but API keys
                 # cannot carry OAuth scopes. Preserve all alternative schemes.
                 if metadata["integration_tokens"] == "unsupported":
@@ -170,6 +185,8 @@ def validate_core_access(app: FastAPI, policy: AccessPolicy) -> None:
             continue
         metadata = access_for(route, policy)
         policy.validate(metadata["required_permissions"])
+        for alternative in metadata.get("credential_alternatives", []):
+            policy.validate(alternative["permissions"])
         if metadata["classification"] == "unknown":
             raise ValueError(
                 f"Core operation lacks access policy: {route.operation_id}"
