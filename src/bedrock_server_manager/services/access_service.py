@@ -267,14 +267,23 @@ class AccessService:
         authorization = await self.snapshot(user, identifier)
         return (user, authorization) if authorization is not None else None
 
-    async def list_tokens(self, user_id, *, limit=100, offset=0):
+    async def list_tokens(self, user_id, *, limit=100, offset=0, status="all"):
         async with self.context.storage.transaction() as session:
             user = await self._user(session, user_id)
+            query = select(IntegrationToken).where(
+                IntegrationToken.owner_id == user.access_id
+            )
+            active = IntegrationToken.revoked_at.is_(None) & (
+                IntegrationToken.expires_at.is_(None)
+                | (IntegrationToken.expires_at > int(time.time()))
+            )
+            if status == "active":
+                query = query.where(active)
+            elif status == "inactive":
+                query = query.where(~active)
             rows = (
                 await session.scalars(
-                    select(IntegrationToken)
-                    .where(IntegrationToken.owner_id == user.access_id)
-                    .order_by(
+                    query.order_by(
                         IntegrationToken.created_at.desc(), IntegrationToken.id.desc()
                     )
                     .limit(limit)

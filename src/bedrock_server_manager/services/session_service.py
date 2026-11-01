@@ -410,6 +410,8 @@ class SessionService:
                 (
                     label
                     for marker, label in (
+                        ("Electron/", "Electron"),
+                        ("Tauri/", "Tauri"),
                         ("Edg/", "Edge"),
                         ("Firefox/", "Firefox"),
                         ("Chrome/", "Chrome"),
@@ -618,7 +620,22 @@ class SessionService:
                         LoginSession.owner_id == owner_id,
                         LoginSession.expires_at > int(time.time()) - 90 * 86400,
                     )
-                    .order_by(LoginSession.created_at.desc())
+                    .order_by(
+                        case(
+                            (
+                                (LoginSession.revoked_at.is_(None))
+                                & (LoginSession.expires_at > int(time.time()))
+                                & (
+                                    LoginSession.last_seen_at
+                                    > int(time.time()) - self.idle_seconds()
+                                ),
+                                0,
+                            ),
+                            else_=1,
+                        ),
+                        LoginSession.created_at.desc(),
+                        LoginSession.id.desc(),
+                    )
                     .limit(200)
                 )
             ).all()
@@ -777,34 +794,48 @@ class SessionService:
     async def verify_factor(self, owner_id, code):
         async with self.context.storage.transaction() as session:
             row = await session.get(AccountSecurity, owner_id)
+            revision = await session.scalar(
+                select(User.auth_revision).where(
+                    User.access_id == owner_id, User.is_active.is_(True)
+                )
+            )
+            if revision is None:
+                return False
             if not row or not row.totp_secret:
                 return True
-            version = row.version
-            recovery = hashlib.sha256(str(code).strip().lower().encode()).hexdigest()
-            matched = next(
-                (
-                    value
-                    for value in row.recovery_hashes
-                    if hmac.compare_digest(value, recovery)
-                ),
-                None,
+            version, encrypted, last_counter = (
+                row.version,
+                row.totp_secret,
+                row.last_counter,
             )
-            if matched:
-                values = {
-                    "recovery_hashes": [
-                        value for value in row.recovery_hashes if value != matched
-                    ]
-                }
-            else:
-                counter = await self._counter(row.totp_secret, code)
-                if counter is None or counter <= row.last_counter:
-                    return False
-                values = {"last_counter": counter}
+            hashes = tuple(row.recovery_hashes)
+        recovery = hashlib.sha256(str(code).strip().lower().encode()).hexdigest()
+        matched = next(
+            (value for value in hashes if hmac.compare_digest(value, recovery)), None
+        )
+        if matched:
+            values = {
+                "recovery_hashes": [value for value in hashes if value != matched]
+            }
+        else:
+            counter = await self._counter(encrypted, code)
+            if counter is None or counter <= last_counter:
+                return False
+            values = {"last_counter": counter}
+        async with self.context.storage.transaction() as session:
             result = await session.execute(
                 update(AccountSecurity)
                 .where(
                     AccountSecurity.owner_id == owner_id,
                     AccountSecurity.version == version,
+                    AccountSecurity.totp_secret == encrypted,
+                    select(User.access_id)
+                    .where(
+                        User.access_id == owner_id,
+                        User.auth_revision == revision,
+                        User.is_active.is_(True),
+                    )
+                    .exists(),
                 )
                 .values(**values, version=version + 1)
             )
@@ -832,23 +863,44 @@ class SessionService:
                 or row.pending_until < int(time.time())
             ):
                 raise HTTPException(400, "Enrollment expired; start again")
-            counter = await self._counter(row.pending_secret, code)
-            if counter is None:
-                raise HTTPException(400, "Incorrect authenticator code")
+            version, pending, deadline = (
+                row.version,
+                row.pending_secret,
+                row.pending_until,
+            )
+            revision = await session.scalar(
+                select(User.auth_revision).where(
+                    User.access_id == owner_id, User.is_active.is_(True)
+                )
+            )
+        counter = await self._counter(pending, code)
+        if counter is None:
+            raise HTTPException(400, "Incorrect authenticator code")
+        async with self.context.storage.transaction() as session:
             result = await session.execute(
                 update(AccountSecurity)
                 .where(
                     AccountSecurity.owner_id == owner_id,
-                    AccountSecurity.version == row.version,
+                    AccountSecurity.version == version,
+                    AccountSecurity.pending_secret == pending,
+                    AccountSecurity.pending_until == deadline,
+                    AccountSecurity.pending_until >= int(time.time()),
+                    select(User.access_id)
+                    .where(
+                        User.access_id == owner_id,
+                        User.auth_revision == revision,
+                        User.is_active.is_(True),
+                    )
+                    .exists(),
                     AccountSecurity.totp_secret.is_(None),
                 )
                 .values(
-                    totp_secret=row.pending_secret,
+                    totp_secret=pending,
                     pending_secret=None,
                     pending_until=None,
                     recovery_hashes=hashes,
                     last_counter=counter,
-                    version=row.version + 1,
+                    version=version + 1,
                 )
             )
             if result.rowcount != 1:

@@ -1,3 +1,4 @@
+import json
 import logging
 import os
 import warnings
@@ -449,3 +450,25 @@ def test_factor_material_is_redacted_from_text_logs():
     assert "123456" not in rendered
     assert "private-code" not in rendered
     assert "otpauth://private" not in rendered
+
+
+@pytest.mark.parametrize("kind", ["it", "td"])
+@pytest.mark.parametrize(
+    "representation", ["bare", "json", "cookie", "header", "exception"]
+)
+def test_opaque_credential_redaction_covers_device_and_integration_proofs(
+    kind, representation
+):
+    secret = f"bsm_{kind}_" + "a" * 32 + "." + "s" * 43
+    messages = {
+        "bare": secret,
+        "json": json.dumps({"trusted_device_token": secret}),
+        "cookie": "Cookie: bsm_trusted_device_" + "a" * 32 + "=" + secret,
+        "header": "X-BSM-Trusted-Device-Token: " + secret,
+        "exception": "Verification failed: " + secret,
+    }
+    record = logging.LogRecord(
+        "security", logging.ERROR, __file__, 1, "%s", (messages[representation],), None
+    )
+    rendered = bsm_logging.ApplicationFormatter("%(message)s").format(record)
+    assert secret not in rendered and "[redacted]" in rendered

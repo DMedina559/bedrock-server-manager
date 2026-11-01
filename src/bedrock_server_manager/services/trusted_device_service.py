@@ -8,7 +8,7 @@ from dataclasses import dataclass
 from uuid import uuid4
 
 from fastapi import HTTPException
-from sqlalchemy import select, update
+from sqlalchemy import case, select, update
 
 from ..db.models import AccountSecurity, LoginSession, TrustedDevice, User
 
@@ -198,7 +198,7 @@ class TrustedDeviceService:
                     session,
                     proof.owner_id,
                     "trusted_device_remembered",
-                    {"device_id": identifier},
+                    {"device_id": identifier, "replaced_device_ids": revoked_ids},
                 )
         await self.context.session_service.publish(
             proof.owner_id, "trusted_device_remembered"
@@ -216,7 +216,19 @@ class TrustedDeviceService:
                 await session.scalars(
                     select(TrustedDevice)
                     .where(TrustedDevice.owner_id == owner_id)
-                    .order_by(TrustedDevice.created_at.desc(), TrustedDevice.id.desc())
+                    .order_by(
+                        case(
+                            (
+                                (TrustedDevice.revoked_at.is_(None))
+                                & (TrustedDevice.expires_at > now)
+                                & (TrustedDevice.auth_revision == revision),
+                                0,
+                            ),
+                            else_=1,
+                        ),
+                        TrustedDevice.created_at.desc(),
+                        TrustedDevice.id.desc(),
+                    )
                     .limit(100)
                 )
             )
@@ -278,7 +290,14 @@ class TrustedDeviceService:
             )
             result = await session.execute(query.values(revoked_at=now))
             self.context.session_service.add_event(
-                session, owner_id, "trusted_devices_revoked", {"count": result.rowcount}
+                session,
+                owner_id,
+                "trusted_devices_revoked",
+                {
+                    "count": result.rowcount,
+                    "device_id": identifier,
+                    "mode": "one" if identifier else "others" if except_id else "all",
+                },
             )
         await self.context.session_service.publish(owner_id, "trusted_devices_revoked")
         return result.rowcount

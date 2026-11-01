@@ -1,5 +1,6 @@
 """Transport-independent validated data shared by application layers."""
 
+from importlib.resources import files
 from typing import Annotated, Literal, Self
 
 from pydantic import (
@@ -53,6 +54,15 @@ COMMON_PASSWORDS = frozenset(
         "minecraftminecraft",
         "changemechangeme",
     }
+)
+# Immutable packaged public data, not an authorization or user-credential cache.
+COMMON_PASSWORDS = COMMON_PASSWORDS | frozenset(
+    line.casefold()
+    for line in files("bedrock_server_manager")
+    .joinpath("data/common-passwords.txt")
+    .read_text(encoding="utf-8")
+    .splitlines()
+    if line
 )
 
 

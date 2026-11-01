@@ -489,3 +489,71 @@ All authentication and setup responses use `Cache-Control: no-store` and
 use the same private-path policy as backup credentials: owner-only POSIX modes,
 or a protected Windows DACL for the service identity, administrators and SYSTEM.
 Existing key files are checked and protected when opened.
+
+## Auth audit follow-ups: management and verification
+
+Integration credential lists accept bounded `limit` (1–500), `offset` and `status`
+(`all`, `active`, `inactive`) queries. The API keeps its array response and its
+`all` default; the account UI defaults to Active and pages 50 records at a time.
+Expired and revoked history is separate, so an old active credential remains
+individually discoverable. CLI users can use `auth tokens list --status inactive
+--limit 50 --offset 50`. Offset pages may shift during concurrent changes.
+Session and remembered-device metadata prioritize active entries before applying
+their existing history bounds.
+
+Credential creation and account server-assignment forms show an advisory preview
+of effective capabilities, unavailable capabilities, affected servers and policy
+revision. Invalidated/obsolete preview requests are aborted. The write always
+checks current permissions again; the preview is not a saved authorization grant.
+Server-assignment previews use the same recent-verification requirement as their
+administrative permission. API Explorer displays conditional credential rules,
+including server/application logs and dedicated supervisor credentials.
+
+MFA verification reads a versioned factor snapshot in a short transaction, does
+key-file protection/read/decryption outside it, then conditionally commits using
+the factor version, encrypted secret and active owner's security revision.
+Enrollment also rechecks its pending secret and deadline at commit. Concurrent
+TOTP or recovery-code use has at most one winner. This deliberately preserves
+security checks even if it increases a SQL statement count; it does not promise
+an exclusive-write-lock duration or immediate cancellation of already-running work.
+
+New and reset passwords keep the eight-character minimum. The packaged offline
+SecLists common-password dataset supplements the local application-specific
+rejections. Password checks never send passwords to SecLists or another service.
+The dataset, MIT license, immutable upstream commit, entry count and SHA-256 are
+under `bedrock_server_manager/data/common-passwords*` and included in distributions.
+Maintainers should review the list before security releases and periodically
+against upstream. Run `python scripts/update_password_blocklist.py --check` to
+verify bundled provenance without network access. To refresh, review upstream
+licensing and a specific commit, run the script with `--revision <40-character
+commit>`, review the diff, and commit all data/license/provenance files together.
+This is a common-password screen, not a complete breached-password database or an
+entropy estimate. Existing login passwords are not revalidated against a new list.
+
+Remembered-device events refresh account security views and have fixed, non-secret
+notification messages. Revocation records contain the affected device ID/mode and
+count; replacement records identify replaced grants. SDK/CLI requests have distinct
+client hints, which are descriptive metadata and never proof of hardware identity.
+`auth devices list` and `auth devices forget <id>`, `--others` or `--all` manage this
+trust independently of login sessions. CLI setup stores the new account label;
+remembering reauthentication resolves the authenticated account before saving the
+proof. Environment credential overrides do not implicitly reuse a saved owner's
+remembered proof. The frontend offers a fresh-authenticator choice for deliberate
+renewal; trust alone never renews the original deadline.
+
+Recovery codes can be copied explicitly with inline success/failure feedback and
+a manual-selection fallback, alongside file download. Clipboard actions never run
+automatically or store codes in notification history. Automated picker/fallback
+tests do not certify native Windows Save As behavior: verify save/cancel, slow
+destinations and ingress/fallback on the affected Windows/browser installation.
+
+The opt-in workload test now includes successful TOTP/recovery-code login,
+remembered-device creation/login/password step-up, invalid/expired/revoked trust,
+and mixed concurrent login/reauthentication. `BSM_AUTH_BENCHMARK_SAMPLES` selects
+1–5 samples per repeatable workflow (default 3); one-use TOTP/grant setup and socket
+cases are measured once. Output includes raw count/timing samples and diagnostic
+median/p95 summaries, never credentials or SQL parameters. Small-sample quantiles
+are not production p95 estimates. The fixture raises only its own test throttle
+budgets. SQLite is measured here; PostgreSQL/MySQL deployments require their own
+representative driver, contention and isolation measurements before making
+cross-process/concurrency claims.

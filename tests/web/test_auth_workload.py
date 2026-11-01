@@ -6,7 +6,9 @@ wall time separately; they are evidence, not fixed cross-platform latency budget
 """
 
 import json
+import math
 import os
+import statistics
 import time
 
 import pyotp
@@ -38,6 +40,11 @@ async def test_auth_workloads(auth_client, app_context, websocket_client):
     integration = await app_context.access_service.create_token(
         user, CreateIntegrationToken(name="Benchmark", permissions=["account:read"])
     )
+    sample_count = max(
+        1, min(int(os.environ.get("BSM_AUTH_BENCHMARK_SAMPLES", "3")), 5)
+    )
+    await app_context.settings.set("security.auth_peer_attempts", 1000)
+    await app_context.settings.set("security.auth_account_attempts", 100)
     samples = []
     counts = {}
     engine = app_context._db.engine.sync_engine
@@ -58,7 +65,7 @@ async def test_auth_workloads(auth_client, app_context, websocket_client):
     event.listen(engine, "before_cursor_execute", statement)
     event.listen(engine, "begin", begin)
 
-    async def measure(name, action, status=200):
+    async def one_sample(name, action, status=200):
         counts.update(statements=0, writes=0, transactions=0)
         lock_before = app_context.storage.diagnostic_snapshot().total_lock_wait_ms
         started = time.perf_counter()
@@ -78,6 +85,14 @@ async def test_auth_workloads(auth_client, app_context, websocket_client):
                 ),
             }
         )
+
+        return response
+
+    async def measure(name, action, status=200, *, repeat=None):
+        response = None
+        for _ in range(sample_count if repeat is None else repeat):
+            response = await one_sample(name, action, status)
+        return response
 
     try:
         await measure(
@@ -103,13 +118,70 @@ async def test_auth_workloads(auth_client, app_context, websocket_client):
             401,
         )
         enrolled = await app_context.session_service.enrollment(owner_id, "testuser")
-        await app_context.session_service.confirm_enrollment(
+        confirmed = await app_context.session_service.confirm_enrollment(
             owner_id, pyotp.TOTP(enrolled["secret"]).now()
         )
         await measure(
             "login_mfa_challenge",
             lambda: auth_client.post(
                 "/auth/token", data={"username": "testuser", "password": "testpassword"}
+            ),
+            401,
+        )
+        credentials = {"username": "testuser", "password": "testpassword"}
+        future_code = pyotp.TOTP(enrolled["secret"]).at(
+            (int(time.time()) // 30 + 1) * 30
+        )
+        await measure(
+            "login_mfa_totp",
+            lambda: auth_client.post(
+                "/auth/token", data={**credentials, "otp": future_code}
+            ),
+            repeat=1,
+        )
+        codes = iter(confirmed["recovery_codes"][1:])
+        await measure(
+            "login_mfa_recovery",
+            lambda: auth_client.post(
+                "/auth/token", data={**credentials, "otp": next(codes)}
+            ),
+        )
+        remembered = await measure(
+            "remembered_device_create",
+            lambda: auth_client.post(
+                "/auth/token",
+                data={
+                    **credentials,
+                    "otp": confirmed["recovery_codes"][0],
+                    "remember_device": "true",
+                },
+            ),
+            repeat=1,
+        )
+        proof = remembered.json()["trusted_device_token"]
+        trusted_headers = {
+            "Authorization": "Bearer " + remembered.json()["access_token"],
+            "X-BSM-Trusted-Device-Token": proof,
+        }
+        await measure(
+            "remembered_login",
+            lambda: auth_client.post(
+                "/auth/token", data={**credentials, "trusted_device_token": proof}
+            ),
+        )
+        await measure(
+            "remembered_password_step_up",
+            lambda: auth_client.post(
+                "/api/account/security/verify",
+                headers=trusted_headers,
+                json={"password": "testpassword"},
+            ),
+        )
+        await measure(
+            "remembered_invalid",
+            lambda: auth_client.post(
+                "/auth/token",
+                data={**credentials, "trusted_device_token": proof + "invalid"},
             ),
             401,
         )
@@ -126,7 +198,7 @@ async def test_auth_workloads(auth_client, app_context, websocket_client):
                 )
                 assert json.loads(await socket.recv())["status"] == "success"
 
-            await measure("websocket_receive_reply", frame)
+            await measure("websocket_receive_reply", frame, repeat=1)
 
             async def delivery():
                 await app_context.connection_manager.send_to_client(
@@ -134,7 +206,7 @@ async def test_auth_workloads(auth_client, app_context, websocket_client):
                 )
                 assert json.loads(await socket.recv())["benchmark"] is True
 
-            await measure("websocket_delivery", delivery)
+            await measure("websocket_delivery", delivery, repeat=1)
 
         async def concurrent():
             responses = await asyncio.gather(
@@ -148,7 +220,70 @@ async def test_auth_workloads(auth_client, app_context, websocket_client):
             assert all(response.status_code == 200 for response in responses)
 
         await measure("jwt_concurrent_8", concurrent)
+
+        async def mixed():
+            responses = await asyncio.gather(
+                auth_client.get("/api/account", headers=trusted_headers),
+                auth_client.post(
+                    "/auth/token", data={**credentials, "trusted_device_token": proof}
+                ),
+                auth_client.post(
+                    "/api/account/security/verify",
+                    headers=trusted_headers,
+                    json={"password": "testpassword"},
+                ),
+            )
+            assert all(response.status_code == 200 for response in responses)
+
+        await measure("mixed_login_and_step_up", mixed)
+        from sqlalchemy import update
+
+        from bedrock_server_manager.db.models import TrustedDevice
+
+        async with app_context.storage.transaction() as session:
+            await session.execute(
+                update(TrustedDevice)
+                .where(TrustedDevice.owner_id == owner_id)
+                .values(expires_at=int(time.time()) - 1)
+            )
+        await measure(
+            "remembered_expired",
+            lambda: auth_client.post(
+                "/auth/token", data={**credentials, "trusted_device_token": proof}
+            ),
+            401,
+        )
+        async with app_context.storage.transaction() as session:
+            await session.execute(
+                update(TrustedDevice)
+                .where(TrustedDevice.owner_id == owner_id)
+                .values(expires_at=int(time.time()) + 86400)
+            )
+        await app_context.trusted_device_service.revoke(owner_id)
+        await measure(
+            "remembered_revoked",
+            lambda: auth_client.post(
+                "/auth/token", data={**credentials, "trusted_device_token": proof}
+            ),
+            401,
+        )
+
     finally:
         event.remove(engine, "before_cursor_execute", statement)
         event.remove(engine, "begin", begin)
     print("AUTH_WORKLOAD " + json.dumps(samples, sort_keys=True))
+
+    summaries = []
+    for name in sorted({item["workload"] for item in samples}):
+        timings = sorted(
+            item["elapsed_ms"] for item in samples if item["workload"] == name
+        )
+        summaries.append(
+            {
+                "workload": name,
+                "samples": len(timings),
+                "median_ms": round(statistics.median(timings), 3),
+                "p95_ms": timings[math.ceil(len(timings) * 0.95) - 1],
+            }
+        )
+    print("AUTH_WORKLOAD_SUMMARY " + json.dumps(summaries, sort_keys=True))

@@ -1,5 +1,7 @@
 """Manage named credentials and explicit account/server restrictions."""
 
+from typing import Literal
+
 from fastapi import (
     APIRouter,
     Depends,
@@ -108,12 +110,15 @@ async def list_access_servers(
 async def list_tokens(
     limit: int = Query(default=100, ge=1, le=500),
     offset: int = Query(default=0, ge=0),
+    status: Literal["all", "active", "inactive"] = Query(default="all"),
     user: UserResponse = Security(
         require_permissions, scopes=[Permission.TOKENS_MANAGE]
     ),
     context: AppContext = Depends(get_app_context),
 ):
-    return await context.access_service.list_tokens(user.id, limit=limit, offset=offset)
+    return await context.access_service.list_tokens(
+        user.id, limit=limit, offset=offset, status=status
+    )
 
 
 @router.post(
@@ -212,12 +217,15 @@ async def list_user_tokens(
     user_id: int,
     limit: int = Query(default=100, ge=1, le=500),
     offset: int = Query(default=0, ge=0),
+    status: Literal["all", "active", "inactive"] = Query(default="all"),
     user: UserResponse = Security(
         require_permissions, scopes=[Permission.ACCESS_MANAGE]
     ),
     context: AppContext = Depends(get_app_context),
 ):
-    return await context.access_service.list_tokens(user_id, limit=limit, offset=offset)
+    return await context.access_service.list_tokens(
+        user_id, limit=limit, offset=offset, status=status
+    )
 
 
 @router.delete(
