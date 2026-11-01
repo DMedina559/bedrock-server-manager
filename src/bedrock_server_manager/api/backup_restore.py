@@ -32,6 +32,7 @@ from .models.backup_restore import (
     CleanupBackupDestinationResponse,
     CreateSnapshotRequest,
     CreateSnapshotResponse,
+    DeleteSnapshotRequest,
     InspectSnapshotRequest,
     InspectSnapshotResponse,
     ListBackupFilesRequest,
@@ -689,6 +690,21 @@ async def get_backup_health(
     """Report durable backup health without opening secret archive contents."""
     server = app_context.get_server(request.server_name, require_installation=False)
     return BackupHealthResponse(health=await server.backups.backup_health())
+
+
+@api_method("delete_server_backup")
+async def delete_server_backup(
+    request: DeleteSnapshotRequest, *, app_context: AppContext
+) -> ManageSnapshotResponse:
+    """Delete an unprotected local backup archive for a server."""
+    from ..utils.progress import report_stage
+
+    await report_stage("Deleting backup")
+    backups = app_context.get_server(
+        request.server_name, require_installation=False
+    ).backups
+    await backups.delete_snapshot(request.backup_id)
+    return ManageSnapshotResponse(message=f"Deleted backup '{request.backup_id}'.")
 
 
 @api_method("manage_server_snapshot")

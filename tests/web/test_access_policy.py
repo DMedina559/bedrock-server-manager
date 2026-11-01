@@ -250,6 +250,7 @@ ROLE_BASELINE = {
     "restore_backup": ["moderator", "admin"],
     "list_server_snapshots": ["moderator", "admin"],
     "create_server_snapshot": ["moderator", "admin"],
+    "delete_server_snapshot": ["moderator", "admin"],
     "inspect_server_snapshot": ["moderator", "admin"],
     "plan_snapshot_restore": ["moderator", "admin"],
     "restore_server_snapshot": ["moderator", "admin"],
@@ -311,6 +312,9 @@ ROLE_BASELINE = {
     "shutdown_web_runtime": ["admin"],
     "verify_account_security": ["user", "moderator", "admin"],
     "verify_account_security_passkey": ["user", "moderator", "admin"],
+    "upload_content_file": ["admin"],
+    "download_content_file": ["moderator", "admin"],
+    "delete_content_file": ["admin"],
 }
 
 

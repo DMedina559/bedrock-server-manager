@@ -40,6 +40,7 @@ _OPERATION_STAGES = {
     "restore_world": "Restoring world",
     "restore_config_file": "Restoring configuration",
     "create_server_backup": "Preparing backup",
+    "delete_server_backup": "Deleting backup",
     "restore_server_snapshot": "Preparing restore",
     "manage_server_snapshot": "Managing backup",
     "recover_server_backup": "Recovering interrupted restore",
