@@ -494,8 +494,6 @@ async def test_builtin_tasks_registered_via_unified_registry_with_schemas(
         "backup:create",
         "backup:verify",
         "backup:prune",
-        "backup:world",
-        "backup:all",
         "server:start",
         "server:stop",
         "server:restart",

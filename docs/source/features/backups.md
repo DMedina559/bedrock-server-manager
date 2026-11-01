@@ -148,8 +148,6 @@ Built-in application task types include:
   configured `minimum_age_hours` (default 168 hours). Does not create backups or
   run Minecraft.
 - **`backup:prune`** — Prune old backups for the server according to retention policies.
-- **`backup:world`** — Back up the server world directory.
-- **`backup:all`** — Back up the server world and configuration files.
 - **`server:start`**, **`server:stop`**, **`server:restart`** — Start, stop, or
   restart the Bedrock server on schedule.
 - **`server:send_command`** — Send a console command (`command`) to a running

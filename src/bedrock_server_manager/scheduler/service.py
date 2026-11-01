@@ -570,24 +570,6 @@ class Scheduler:
             description="Prune old backups according to server retention policies.",
         )
         self.register_api_task(
-            "backup:world",
-            "backup_restore.backup_world",
-            owner="application",
-            timeout_seconds=None,
-            requires_server_lock=True,
-            manage_server_lock=False,
-            description="Back up the server world directory.",
-        )
-        self.register_api_task(
-            "backup:all",
-            "backup_restore.backup_all",
-            owner="application",
-            timeout_seconds=None,
-            requires_server_lock=True,
-            manage_server_lock=False,
-            description="Back up server world and configuration files.",
-        )
-        self.register_api_task(
             "server:start",
             "server.start",
             owner="application",
