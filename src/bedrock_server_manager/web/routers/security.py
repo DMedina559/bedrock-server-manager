@@ -4,6 +4,7 @@ from fastapi import APIRouter, Depends, HTTPException, Request, Response, Securi
 
 from ...context import AppContext
 from ...db.models import LoginSession, User
+from ..access_metadata import describe_access
 from ..access_policy import Permission
 from ..authorization import current_authorization
 from ..deps import get_app_context
@@ -73,6 +74,7 @@ async def sessions(
     operation_id="rename_login_session",
     response_model=BaseApiResponse,
 )
+@describe_access("permission", additional_checks=["session-owner"])
 async def rename(
     session_id: str,
     payload: RenameSession,
@@ -95,6 +97,10 @@ async def rename(
     operation_id="revoke_login_session",
     response_model=BaseApiResponse,
 )
+@describe_access(
+    "permission",
+    additional_checks=["session-owner", "recent-verification-unless-current-session"],
+)
 async def revoke(
     session_id: str,
     request: Request,
@@ -113,6 +119,9 @@ async def revoke(
     "/api/account/sessions/revoke",
     operation_id="revoke_login_sessions",
     response_model=BaseApiResponse,
+)
+@describe_access(
+    "permission", additional_checks=["account-owner", "recent-interactive-verification"]
 )
 async def revoke_many(
     payload: RevokeSessions,
@@ -226,6 +235,9 @@ async def activity(
     operation_id="enroll_account_mfa",
     response_model=FactorEnrollment,
 )
+@describe_access(
+    "permission", additional_checks=["account-owner", "recent-interactive-verification"]
+)
 async def enroll(
     request: Request,
     user: UserResponse = Security(
@@ -241,6 +253,9 @@ async def enroll(
     "/api/account/security/mfa/confirm",
     operation_id="confirm_account_mfa",
     response_model=RecoveryCodes,
+)
+@describe_access(
+    "permission", additional_checks=["account-owner", "recent-interactive-verification"]
 )
 async def confirm(
     payload: FactorCode,
@@ -266,6 +281,9 @@ async def confirm(
     operation_id="rotate_account_recovery_codes",
     response_model=RecoveryCodes,
 )
+@describe_access(
+    "permission", additional_checks=["account-owner", "recent-interactive-verification"]
+)
 async def recovery(
     request: Request,
     user: UserResponse = Security(
@@ -288,6 +306,14 @@ async def recovery(
     "/api/account/security/mfa",
     operation_id="disable_account_mfa",
     response_model=BaseApiResponse,
+)
+@describe_access(
+    "permission",
+    additional_checks=[
+        "account-owner",
+        "recent-interactive-verification",
+        "administrator-mfa-policy",
+    ],
 )
 async def disable(
     request: Request,
@@ -315,6 +341,10 @@ async def disable(
     "/api/account/tokens/revoke-all",
     operation_id="revoke_all_integration_tokens",
     response_model=BaseApiResponse,
+)
+@describe_access(
+    "permission",
+    additional_checks=["credential-owner", "recent-interactive-verification"],
 )
 async def revoke_credentials(
     request: Request,

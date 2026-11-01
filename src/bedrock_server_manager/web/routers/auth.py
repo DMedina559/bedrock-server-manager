@@ -20,7 +20,7 @@ from ..auth import (
 from ..authorization import assigned_session
 from ..cookies import clear_session_cookie, set_session_cookie
 from ..deps import get_app_context, get_current_user
-from ..schemas import TokenResponse, UserResponse
+from ..schemas import BaseApiResponse, TokenResponse, UserResponse
 from ..trusted_devices import deliver_device, device_token
 
 # bedrock_server_manager/web/routers/auth.py
@@ -219,7 +219,7 @@ async def reauth(
 
 
 # --- Logout Route ---
-@router.post("/logout", operation_id="logout")
+@router.post("/logout", operation_id="logout", response_model=BaseApiResponse)
 @router.get(
     "/logout", operation_id="logout_legacy", deprecated=True, include_in_schema=False
 )

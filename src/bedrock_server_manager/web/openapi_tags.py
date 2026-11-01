@@ -9,6 +9,17 @@ OPENAPI_TAGS = [
         ("Authentication", "Sign in, reauthenticate, and sign out."),
         ("Registration", "Registration tokens and account creation."),
         ("Account Management", "Your profile, password, and appearance preferences."),
+        (
+            "Access Management",
+            "Effective access, integration credentials, and server grants.",
+        ),
+        (
+            "Account Security",
+            "Login sessions, recent verification, MFA, and remembered devices.",
+        ),
+        ("Scheduler", "Scheduled work and run history."),
+        ("Diagnostics", "Sanitized application observations and support reports."),
+        ("Application Events", "Event catalog and activity diagnostics."),
         ("User Management", "Administrative account and role management."),
         (
             "Server Management",

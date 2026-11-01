@@ -505,8 +505,8 @@ Credential creation and account server-assignment forms show an advisory preview
 of effective capabilities, unavailable capabilities, affected servers and policy
 revision. Invalidated/obsolete preview requests are aborted. The write always
 checks current permissions again; the preview is not a saved authorization grant.
-Server-assignment previews use the same recent-verification requirement as their
-administrative permission. API Explorer displays conditional credential rules,
+Server-assignment previews are explicitly read-only; saving administrative grants
+still requires recent verification. API Explorer displays conditional credential rules,
 including server/application logs and dedicated supervisor credentials.
 
 MFA verification reads a versioned factor snapshot in a short transaction, does
@@ -557,3 +557,62 @@ are not production p95 estimates. The fixture raises only its own test throttle
 budgets. SQLite is measured here; PostgreSQL/MySQL deployments require their own
 representative driver, contention and isolation measurements before making
 cross-process/concurrency claims.
+
+## Router audit follow-up and signing-key storage
+
+JWT signing material is stored in `<config_dir>/security/jwt-signing-key.json`,
+separate from application settings. The file and its containing directory use
+owner-only POSIX permissions or protected Windows ACLs, like MFA credentials.
+Private-path symlinks are rejected. The initial file is published atomically
+under an OS-held lock and read back before the legacy database value is removed.
+An existing database signing key is migrated unchanged, preserving valid login
+sessions. An initialized host with a missing/corrupt/unreadable key fails clearly;
+it never silently rotates the key. A conflicting legacy database and credential
+file also fail closed so operators can restore a matching pair. A failed database
+commit leaves the file reusable on the next attempt. The validated key is retained
+in the owning Settings instance for the process lifetime; replacing files is not
+a supported live key-rotation interface.
+
+Keep this host credential with the configuration volume when moving/recovering an
+installation. Server backup archives do not carry installation signing or MFA
+keys. Restoring just the database does not restore host credentials. Stop the
+application before restoring a matching database/configuration pair. Generic
+settings writes cannot change the signing key or its initialization marker, and
+HTTP settings reads/forms never expose either field. Existing login JWTs remain
+in their current cookie/bearer transport; only the signing key moves.
+
+Settings authorization follows the setting's storage scope, including fields
+introduced by plugins:
+
+| Scope | Read | Write |
+| --- | --- | --- |
+| Plugin-owned settings table | `plugins:read` | `plugins:manage` |
+| Installation/global settings and `custom.<plugin>` | `settings:read` | `settings:manage` |
+| Server settings and `custom.<plugin>` | `servers:read` for that server | `servers:configure` for that server |
+
+Generic global HTTP settings exclude the separate plugin-settings table and reject
+writes to that table, including legacy aliases. Plugin-owned values remain available
+through the plugin endpoint. Scoped plugin GET/PUT endpoints use the same permissions
+as their corresponding global/server settings; selecting a server never bypasses
+its assignment or token boundary. Plugin-defined server/global namespaces are not
+classified as private merely because a plugin declares them. Plugins must not place
+secret credentials into an ordinary readable field; use protected plugin files or
+an explicitly designed secret-field interface when confidentiality is required.
+
+Addon inventory reads use `content:read`, while mutations retain `content:manage`.
+Read-only inventory consumers receive icon availability without absolute host paths;
+existing management consumers retain their full inventory. Bundled global content
+uploads require `content:manage`; bundled download pages/files select `backups:read`
+with server checks or global `content:read` according to their validated request.
+The development event-sender and dynamic-page plugins require `plugins:manage`.
+Legacy third-party role dependencies retain their compatibility behavior.
+
+All core tags are declared in the central catalog. Access metadata includes recent
+verification and ownership conditions; administrative advisory previews are explicitly
+marked read-only and do not consume mutation step-up. Actual mutations still require
+recent verification. Plugin registration preflights duplicate operation IDs and
+normalized method/path bindings before mounting; existing generated plugin IDs are
+frozen verbatim, and new IDs should use stable namespaced snake_case. The legacy
+GET logout operation remains hidden and unchanged. Registration/logout/key-info and
+panorama responses have concrete success or binary content declarations. Client
+contracts are regenerated without renaming existing core operation IDs.

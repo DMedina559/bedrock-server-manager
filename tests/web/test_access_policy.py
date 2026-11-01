@@ -157,8 +157,9 @@ async def test_swagger_transport_and_ingress(unauth_client):
     assert "bsm-doc-access" in response.text
 
 
-# Static role baseline captured before route migration. Contextual restrictions
-# are tested separately; these are only the dependency-level role grants.
+# Expected static role metadata, including the deliberate addon read expansion.
+# Contextual plugin settings advertise the union of their scope-specific roles;
+# runtime scope/resource restrictions are tested separately.
 ROLE_BASELINE = {
     "reauthenticate": ["user", "moderator", "admin"],
     "logout": ["user", "moderator", "admin"],
@@ -192,7 +193,7 @@ ROLE_BASELINE = {
     "get_allowlist": ["moderator", "admin"],
     "remove_allowlist_players": ["moderator", "admin"],
     "list_available_addons": ["moderator", "admin"],
-    "list_server_addons": ["admin"],
+    "list_server_addons": ["moderator", "admin"],
     "enable_addon": ["admin"],
     "disable_addon": ["admin"],
     "update_addon_subpack": ["admin"],
@@ -240,7 +241,7 @@ ROLE_BASELINE = {
     "set_plugin_status": ["admin"],
     "reload_plugin": ["admin"],
     "reload_plugins": ["admin"],
-    "get_plugin_settings": ["admin"],
+    "get_plugin_settings": ["user", "moderator", "admin"],
     "update_plugin_settings": ["admin"],
     "set_properties": ["moderator", "admin"],
     "get_properties": ["moderator", "admin"],

@@ -3,7 +3,6 @@ from __future__ import annotations
 import asyncio
 import datetime
 import logging
-import secrets
 from dataclasses import dataclass
 from typing import TYPE_CHECKING, Optional
 from uuid import uuid4
@@ -30,26 +29,14 @@ logger = logging.getLogger(__name__)
 ALGORITHM = "HS256"
 
 
-# --- JWT Configuration ---
-_jwt_key_lock = asyncio.Lock()
-
-
 async def get_jwt_secret_key(settings: Settings) -> str:
-    """Return the JWT secret key from the database, or creates one if it doesn't exist."""
-    jwt_secret_key = settings.get("web.jwt_secret_key")
+    """Return the protected signing credential, migrating legacy storage once."""
+    from ..services.jwt_credentials import signing_key
 
-    if not jwt_secret_key:
-        async with _jwt_key_lock:
-            # Re-check inside lock
-            jwt_secret_key = settings.get("web.jwt_secret_key")
-            if not jwt_secret_key:
-                jwt_secret_key = secrets.token_urlsafe(32)
-                await settings.set("web.jwt_secret_key", jwt_secret_key)
-                logger.info(
-                    "JWT secret key not found in settings, generating a new one"
-                )
-
-    return str(jwt_secret_key)
+    key = await signing_key(settings)
+    if key is None:
+        raise HTTPException(503, "Signing credential unavailable")
+    return key
 
 
 def token_lifetime(settings, *, remember_me=True) -> datetime.timedelta:

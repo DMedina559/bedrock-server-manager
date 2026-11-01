@@ -66,6 +66,7 @@ from ..schemas import (
     SnapshotRestorePayload,
     UserResponse,
 )
+from ..schemas.backup import BackupKeyInfo, BackupKeysInfo
 from ..schemas.base import BackupFilesResponse, TaskAcceptedResponse
 
 # bedrock_server_manager/web/routers/backup_restore.py
@@ -600,7 +601,9 @@ async def export_snapshot(
     )
 
 
-@router.get("/api/backups/keys", operation_id="list_backup_keys")
+@router.get(
+    "/api/backups/keys", operation_id="list_backup_keys", response_model=BackupKeysInfo
+)
 async def list_keys(
     current_user: UserResponse = Security(
         require_permissions, scopes=[Permission.BACKUPS_KEYS]
@@ -611,7 +614,9 @@ async def list_keys(
     return await backup_transfer.list_backup_keys(app_context)
 
 
-@router.post("/api/backups/keys", operation_id="rotate_backup_key")
+@router.post(
+    "/api/backups/keys", operation_id="rotate_backup_key", response_model=BackupKeyInfo
+)
 async def rotate_key(
     current_user: UserResponse = Security(
         require_permissions, scopes=[Permission.BACKUPS_KEYS]

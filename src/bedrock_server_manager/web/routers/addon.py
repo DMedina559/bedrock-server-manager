@@ -26,6 +26,7 @@ from ...api import addon as addon_api
 from ...context import AppContext
 from ...error import AppFileNotFoundError
 from ..access_policy import Permission
+from ..authorization import current_authorization
 from ..deps import get_app_context, validate_server_exists
 from ..deps.auth import require_permissions
 from ..schemas.addon import (
@@ -72,7 +73,7 @@ async def get_addons(
 )
 async def get_server_addons(
     current_user: UserResponse = Security(
-        require_permissions, scopes=[Permission.CONTENT_MANAGE]
+        require_permissions, scopes=[Permission.CONTENT_READ]
     ),
     server_name: str = Depends(validate_server_exists),
     app_context: AppContext = Depends(get_app_context),
@@ -86,7 +87,27 @@ async def get_server_addons(
         request=ListInstalledAddonsRequest.model_validate({"server_name": server_name}),
         app_context=app_context,
     )
-    return AddonListResponse(status="success", addons=result.addons)
+    authorization = current_authorization.get()
+    addons = result.addons
+    if authorization is not None and not authorization.allows(
+        "content:manage", server_name
+    ):
+        # Read-only consumers need inventory and icon availability, not host paths.
+        addons = addons.model_copy(
+            update={
+                group: [
+                    pack.model_copy(
+                        update={
+                            "path": None,
+                            "icon": "pack_icon.png" if pack.icon else None,
+                        }
+                    )
+                    for pack in getattr(addons, group)
+                ]
+                for group in ("behavior_packs", "resource_packs")
+            }
+        )
+    return AddonListResponse(status="success", addons=addons)
 
 
 @router.post(

@@ -3,7 +3,7 @@
 import logging
 from typing import Literal
 
-from fastapi import APIRouter, Depends, Security
+from fastapi import APIRouter, Depends, Request, Security
 
 from bedrock_server_manager.api.models import (
     GetPluginStatusesRequest,
@@ -16,9 +16,11 @@ from bedrock_server_manager.api.models import (
 from ...api import plugins as plugins_api
 from ...api.models.plugins import PluginSettingsPayload
 from ...context import AppContext
+from ..access_metadata import describe_access
 from ..access_policy import Permission
+from ..authorization import server_collection
 from ..deps import get_app_context
-from ..deps.auth import require_permissions
+from ..deps.auth import require_context_permission, require_permissions
 from ..schemas import (
     ActionResponse,
     PluginPagesResponse,
@@ -35,6 +37,24 @@ from ..schemas import (
 logger = logging.getLogger(__name__)
 
 router = APIRouter(tags=["Plugin Management"])
+
+
+SETTINGS_PERMISSIONS = {
+    "plugin": (Permission.PLUGINS_READ, Permission.PLUGINS_MANAGE),
+    "global": (Permission.SETTINGS_READ, Permission.SETTINGS_MANAGE),
+    "server": (Permission.SERVERS_READ, Permission.SERVERS_CONFIGURE),
+}
+
+
+def settings_alternatives(index):
+    return [
+        {
+            "condition": f"scope={scope}",
+            "schemes": ["OAuth2PasswordBearer", "APIKeyCookie", "IntegrationToken"],
+            "permissions": [permissions[index]],
+        }
+        for scope, permissions in SETTINGS_PERMISSIONS.items()
+    ]
 
 
 # --- API Route ---
@@ -188,15 +208,24 @@ async def put_reload_plugins(
     operation_id="get_plugin_settings",
     response_model=plugins_api.GetPluginSettingsResponse,
 )
+@describe_access(
+    "custom",
+    additional_checks=["settings-scope", "query-server-access"],
+    allowed_roles=["user", "moderator", "admin"],
+    credential_alternatives=settings_alternatives(0),
+)
+@server_collection
 async def get_plugin_settings(
+    request: Request,
     plugin_name: str,
     scope: Literal["plugin", "global", "server"] = "plugin",
     server_name: str | None = None,
-    current_user: UserResponse = Security(
-        require_permissions, scopes=[Permission.PLUGINS_READ]
-    ),
+    current_user: UserResponse = Security(require_permissions, scopes=[]),
     app_context: AppContext = Depends(get_app_context),
 ):
+    await require_context_permission(
+        request, current_user, SETTINGS_PERMISSIONS[scope][0], server_name
+    )
     return await plugins_api.get_plugin_settings(
         plugins_api.GetPluginSettingsRequest(
             target_plugin_name=plugin_name, scope=scope, server_name=server_name
@@ -210,14 +239,26 @@ async def get_plugin_settings(
     operation_id="update_plugin_settings",
     response_model=plugins_api.SetPluginSettingResponse,
 )
+@describe_access(
+    "custom",
+    additional_checks=["settings-scope", "body-server-access"],
+    allowed_roles=["admin"],
+    credential_alternatives=settings_alternatives(1),
+)
+@server_collection
 async def update_plugin_settings(
+    request: Request,
     plugin_name: str,
     payload: PluginSettingsPayload,
-    current_user: UserResponse = Security(
-        require_permissions, scopes=[Permission.PLUGINS_MANAGE]
-    ),
+    current_user: UserResponse = Security(require_permissions, scopes=[]),
     app_context: AppContext = Depends(get_app_context),
 ):
+    await require_context_permission(
+        request,
+        current_user,
+        SETTINGS_PERMISSIONS[payload.scope][1],
+        payload.server_name,
+    )
     return await plugins_api.update_plugin_settings(
         plugins_api.UpdatePluginSettingsRequest(
             target_plugin_name=plugin_name,

@@ -130,3 +130,9 @@ SERVER_EVENTS = frozenset(
 operation_permissions: ContextVar[frozenset[str]] = ContextVar(
     "http_operation_permissions", default=frozenset()
 )
+
+
+def read_only_preview(endpoint):
+    """Exempt only explicitly marked advisory previews from mutation step-up."""
+    endpoint.__bsm_read_only_preview__ = True
+    return endpoint

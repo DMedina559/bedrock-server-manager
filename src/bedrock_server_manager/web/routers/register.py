@@ -19,7 +19,7 @@ from ..access_policy import Permission
 from ..auth import get_password_hash_async
 from ..deps import get_app_context
 from ..deps.auth import require_permissions
-from ..schemas import GenerateTokenPayload, UserLoginPayload
+from ..schemas import BaseApiResponse, GenerateTokenPayload, UserLoginPayload
 from ..schemas import UserResponse as UserSchema
 from ..schemas.base import RegistrationResponse
 
@@ -68,6 +68,7 @@ async def generate_token(
 @router.get(
     "/validate/{token}",
     operation_id="validate_registration_token",
+    response_model=BaseApiResponse,
 )
 @describe_access(
     "custom", authentication="none", additional_checks=["registration-token"]
@@ -92,6 +93,7 @@ async def validate_token(
 @router.post(
     "/{token}",
     operation_id="register_user",
+    response_model=BaseApiResponse,
 )
 @describe_access(
     "custom", authentication="none", additional_checks=["registration-token"]

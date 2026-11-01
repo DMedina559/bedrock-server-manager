@@ -13,6 +13,7 @@ from fastapi.responses import JSONResponse
 
 from ...context import AppContext
 from ...state.updates import AccountPatch
+from ..access_metadata import describe_access
 from ..access_policy import Permission, policy_for
 from ..deps import get_app_context
 from ..deps.auth import require_permissions
@@ -126,6 +127,14 @@ async def post_update_profile(
     "/api/account/change-password",
     operation_id="change_password",
     response_model=BaseApiResponse,
+)
+@describe_access(
+    "permission",
+    additional_checks=[
+        "account-owner",
+        "recent-interactive-verification",
+        "current-password",
+    ],
 )
 async def post_change_password(
     request: Request,

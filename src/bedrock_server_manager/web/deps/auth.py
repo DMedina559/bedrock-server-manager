@@ -187,6 +187,11 @@ async def require_permissions(
         authorization is not None
         and required & {"users:manage", "access:manage", "sessions:admin"}
         and request.method not in {"GET", "HEAD", "OPTIONS"}
+        and not getattr(
+            getattr(request.scope.get("route"), "endpoint", None),
+            "__bsm_read_only_preview__",
+            False,
+        )
     ):
         await request.app.state.app_context.session_service.require_recent(
             user, getattr(request.state, "session_id", None)
@@ -194,4 +199,13 @@ async def require_permissions(
     from ..authorization import operation_permissions
 
     operation_permissions.set(operation_permissions.get() | frozenset(required))
+    return user
+
+
+async def require_context_permission(request, user, permission, server_name=None):
+    """Authorize a capability selected from validated query/body context."""
+    await require_permissions(request, SecurityScopes(scopes=[permission]), user)
+    authorization = getattr(request.state, "authorization", None)
+    if authorization is None or not authorization.allows(permission, server_name):
+        raise HTTPException(403, "Permission denied for this credential or server")
     return user

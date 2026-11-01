@@ -43,9 +43,17 @@ async def get_all_settings(
     result = await settings_api.get_all_global_settings(
         request=GetAllGlobalSettingsRequest(), app_context=app_context
     )
+    public = dict(result.settings)
+    public.pop("plugin_settings", None)
+    web = public.get("web", {})
+    public["web"] = {
+        k: v
+        for k, v in (web.items() if isinstance(web, dict) else [])
+        if k not in {"jwt_secret_key", "jwt_key_initialized"}
+    }
     return SettingsResponse(
         status="success",
-        settings=result.settings,
+        settings=public,
         message=result.message,
     )
 
@@ -74,6 +82,21 @@ async def post_set_setting(
             detail="Setting 'key' cannot be empty.",
         )
 
+    root = payload.key.split(".")[0]
+    state = app_context.state.settings
+    plugin_alias = (
+        root not in type(state).model_fields
+        and root not in state.custom
+        and root in state.plugin_settings
+    )
+    if (
+        payload.key == "plugin_settings"
+        or payload.key.startswith("plugin_settings.")
+        or plugin_alias
+    ):
+        raise HTTPException(
+            403, "Use the plugin settings endpoint for plugin-owned settings."
+        )
     result = await settings_api.set_global_setting(
         request=SetGlobalSettingRequest(key=payload.key, value=payload.value),
         app_context=app_context,

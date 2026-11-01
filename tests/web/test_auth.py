@@ -16,32 +16,26 @@ from bedrock_server_manager.web.auth import (
 
 
 async def test_get_jwt_secret_key_creates_if_missing(app_context):
-    """Test get_jwt_secret_key creates and sets a new key if one is missing in settings."""
-    await app_context.settings.set("web.jwt_secret_key", None)
+    from pathlib import Path
+
     key = await get_jwt_secret_key(app_context.settings)
-    assert key is not None
-    assert len(key) > 0
-    assert app_context.settings.get("web.jwt_secret_key") == key
+    assert key
+    assert (
+        Path(app_context.config_dir) / "security" / "jwt-signing-key.json"
+    ).is_file()
+    assert app_context.settings.get("web.jwt_secret_key") is None
 
 
 async def test_get_jwt_secret_key_returns_existing(app_context):
-    """Test get_jwt_secret_key returns the existing key from settings."""
-    await app_context.settings.set("web.jwt_secret_key", "my_secret_key")
     key = await get_jwt_secret_key(app_context.settings)
-    assert key == "my_secret_key"
+    assert await get_jwt_secret_key(app_context.settings) == key
 
 
 async def test_get_jwt_secret_key_persists_across_reloads(app_context):
-    """Test get_jwt_secret_key persists its generated key and retrieves it after reload."""
-    await app_context.settings.set("web.jwt_secret_key", None)
     initial_key = await get_jwt_secret_key(app_context.settings)
-    assert initial_key is not None
-
-    # Reload storage state into AppState
     await app_context.storage.load_state(app_context.state)
-    reloaded_key = await get_jwt_secret_key(app_context.settings)
-
-    assert reloaded_key == initial_key
+    app_context.settings._jwt_signing_credential = None
+    assert await get_jwt_secret_key(app_context.settings) == initial_key
 
 
 async def test_create_access_token(app_context):

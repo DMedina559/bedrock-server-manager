@@ -13,11 +13,13 @@ from fastapi import (
 )
 
 from ...context import AppContext
+from ..access_metadata import describe_access
 from ..access_policy import ROLE_GRANTS, Permission, policy_for
 from ..authorization import (
     NON_DELEGATABLE,
     SERVER_PERMISSIONS,
     current_authorization,
+    read_only_preview,
     server_collection,
 )
 from ..deps import get_app_context
@@ -107,6 +109,7 @@ async def list_access_servers(
     operation_id="list_integration_tokens",
     response_model=list[IntegrationTokenInfo],
 )
+@describe_access("permission", additional_checks=["credential-owner"])
 async def list_tokens(
     limit: int = Query(default=100, ge=1, le=500),
     offset: int = Query(default=0, ge=0),
@@ -127,6 +130,10 @@ async def list_tokens(
     response_model=CreatedIntegrationToken,
     status_code=201,
 )
+@describe_access(
+    "permission",
+    additional_checks=["credential-owner", "recent-interactive-verification"],
+)
 async def create_token(
     request: Request,
     payload: CreateIntegrationToken,
@@ -145,6 +152,10 @@ async def create_token(
     "/api/account/tokens/{token_id}/rotate",
     operation_id="rotate_integration_token",
     response_model=CreatedIntegrationToken,
+)
+@describe_access(
+    "permission",
+    additional_checks=["credential-owner", "recent-interactive-verification"],
 )
 async def rotate_token(
     token_id: str,
@@ -165,6 +176,7 @@ async def rotate_token(
     operation_id="revoke_integration_token",
     response_model=BaseApiResponse,
 )
+@describe_access("permission", additional_checks=["credential-owner"])
 async def revoke_token(
     token_id: str,
     user: UserResponse = Security(
@@ -250,6 +262,10 @@ async def revoke_user_token(
     operation_id="preview_integration_token",
     response_model=AccessPreview,
 )
+@describe_access(
+    "permission", additional_checks=["credential-owner", "read-only-preview"]
+)
+@read_only_preview
 async def preview_token(
     payload: CreateIntegrationToken,
     user: UserResponse = Security(
@@ -266,6 +282,8 @@ async def preview_token(
     operation_id="preview_account_server_access",
     response_model=AccessPreview,
 )
+@describe_access("permission", additional_checks=["read-only-preview"])
+@read_only_preview
 async def preview_server_access(
     user_id: int,
     payload: SetServerAccess,

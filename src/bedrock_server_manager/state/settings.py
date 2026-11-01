@@ -116,7 +116,8 @@ class WebSettings(SettingsRecord):
     host: str = "127.0.0.1"
     port: int = Field(default=11325, ge=1, le=65535)
     token_expires_weeks: int = Field(default=4, gt=0)
-    jwt_secret_key: Optional[str] = None
+    jwt_secret_key: Optional[str] = Field(default=None, repr=False)
+    jwt_key_initialized: bool = False
     frame_ancestors: Optional[str] = Field(
         default=None,
         description="Optional CSP frame-ancestors sources. Leave unset for cross-origin Home Assistant embedding.",

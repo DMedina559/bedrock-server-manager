@@ -7,7 +7,7 @@ from pathlib import Path
 from typing import Literal
 from zipfile import BadZipFile, ZipFile
 
-from fastapi import APIRouter, Depends, File, Request, UploadFile
+from fastapi import APIRouter, File, Request, Security, UploadFile
 from fastapi.responses import JSONResponse
 
 from bedrock_server_manager import PluginBase, app_event
@@ -16,7 +16,8 @@ from bedrock_server_manager.core.files import atomic_stream_file, validate_archi
 from bedrock_server_manager.error import DependencyUnavailableError, UserInputError
 from bedrock_server_manager.logging import log_operation_error
 from bedrock_server_manager.utils.threads import run_in_thread
-from bedrock_server_manager.web import get_admin_user
+from bedrock_server_manager.web.access_policy import Permission
+from bedrock_server_manager.web.deps.auth import require_permissions
 from bedrock_server_manager.web.schemas import UserResponse
 
 # Define allowed extensions
@@ -67,13 +68,17 @@ class ContentUploaderPlugin(PluginBase):
     def _define_routes(self):  # noqa: C901
         @self.router.get(
             "/content/upload/ui",
+            operation_id="Content_Upload_UI_content_upload_ui_get",
             response_class=JSONResponse,
             name="Content Upload UI",
             summary="Upload Content UI",
             tags=["plugin-json-ui"],
         )
         async def get_upload_json_ui(
-            request: Request, current_user: UserResponse = Depends(get_admin_user)
+            request: Request,
+            current_user: UserResponse = Security(
+                require_permissions, scopes=[Permission.CONTENT_MANAGE]
+            ),
         ):
             return JSONResponse(
                 content={
@@ -116,13 +121,16 @@ class ContentUploaderPlugin(PluginBase):
 
         @self.router.post(
             "/api/content/upload",
+            operation_id="handle_file_upload_api_content_upload_post",
             name="handle_file_upload",
             response_model=UploadResult,
         )
         async def handle_file_upload_method(
             request: Request,
             file: UploadFile = File(...),
-            current_user: UserResponse = Depends(get_admin_user),
+            current_user: UserResponse = Security(
+                require_permissions, scopes=[Permission.CONTENT_MANAGE]
+            ),
         ) -> UploadResult:
             filename = file.filename
             destination: Path | None = None

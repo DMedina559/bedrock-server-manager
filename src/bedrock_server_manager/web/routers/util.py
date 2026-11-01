@@ -37,6 +37,14 @@ router = APIRouter(tags=["Appearance"])
     "/api/panorama",
     operation_id="get_panorama",
     response_class=FileResponse,
+    responses={
+        200: {
+            "content": {
+                media: {"schema": {"type": "string", "format": "binary"}}
+                for media in ("image/jpeg", "image/png", "image/webp")
+            }
+        }
+    },
 )
 @describe_access("public", authentication="none", additional_checks=[])
 async def serve_custom_panorama_api(

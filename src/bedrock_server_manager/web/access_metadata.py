@@ -94,7 +94,7 @@ def access_for(route: APIRoute, policy: AccessPolicy) -> dict:
         roles = list(ROLE_GRANTS)
     if legacy_roles is not None:
         roles = [role for role in roles if role in legacy_roles]
-    metadata = {
+    metadata: dict = {
         "version": 1,
         "classification": classification,
         "authentication": authentication,
@@ -103,6 +103,13 @@ def access_for(route: APIRoute, policy: AccessPolicy) -> dict:
         "additional_checks": [],
     }
     metadata.update(getattr(route.endpoint, "__bsm_access__", {}))
+    metadata["additional_checks"] = list(metadata["additional_checks"])
+    if (
+        set(required) & {"users:manage", "access:manage", "sessions:admin"}
+        and (route.methods or set()) - {"GET", "HEAD", "OPTIONS"}
+        and not getattr(route.endpoint, "__bsm_read_only_preview__", False)
+    ):
+        metadata["additional_checks"].append("recent-interactive-verification")
     metadata["integration_tokens"] = (
         "supported"
         if (require_permissions in calls and not (set(required) & NON_DELEGATABLE))
@@ -180,9 +187,18 @@ def configure_access_schema(app: FastAPI, policy: AccessPolicy) -> None:
 
 def validate_core_access(app: FastAPI, policy: AccessPolicy) -> None:
     """Reject unknown core scopes and missing classifications during construction."""
+    from .openapi_tags import OPENAPI_TAGS
+    from .router_validation import validate_route_contract
+
+    validate_route_contract(app)
+    tags = {item["name"] for item in OPENAPI_TAGS}
     for route in api_routes(app):
         if not route.include_in_schema:
             continue
+        if not route.tags or not set(route.tags) <= tags:
+            raise ValueError(
+                f"Core operation has undeclared tags: {route.operation_id}"
+            )
         metadata = access_for(route, policy)
         policy.validate(metadata["required_permissions"])
         for alternative in metadata.get("credential_alternatives", []):

@@ -175,6 +175,10 @@ class AppContext:
             )
         await self._settings.load()
 
+        from .services.jwt_credentials import signing_key
+
+        await signing_key(self._settings, create=False)
+
         from .diagnostics.composition import configure_diagnostics
 
         if self._diagnostics is not None:
