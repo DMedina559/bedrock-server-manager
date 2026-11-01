@@ -121,16 +121,12 @@ class WebSettings(SettingsRecord):
         default=None,
         description="Optional CSP frame-ancestors sources. Leave unset for cross-origin Home Assistant embedding.",
     )
-    permissions_policy: Optional[str] = Field(
-        default="camera=(), microphone=(), geolocation=()",
-        description="Browser feature policy; clipboard and future passkey features remain available unless explicitly restricted.",
-    )
     csp_report_only: Optional[str] = Field(
         default=None,
         description="Optional Content-Security-Policy-Report-Only header; test integrations before enforcement.",
     )
 
-    @field_validator("frame_ancestors", "csp_report_only", "permissions_policy")
+    @field_validator("frame_ancestors", "csp_report_only")
     @classmethod
     def validate_policy_header(cls, value):
         if value is not None and (

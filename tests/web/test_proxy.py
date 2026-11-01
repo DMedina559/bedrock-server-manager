@@ -312,9 +312,7 @@ async def test_security_headers_allow_ingress_and_optional_report_policy(
     )
 
 
-@pytest.mark.parametrize(
-    "field", ["web.frame_ancestors", "web.csp_report_only", "web.permissions_policy"]
-)
+@pytest.mark.parametrize("field", ["web.frame_ancestors", "web.csp_report_only"])
 async def test_security_policy_headers_reject_control_characters(app_context, field):
     with pytest.raises(ValidationError):
         await app_context.settings.set(field, "'self'\r\nX-Injected: yes")

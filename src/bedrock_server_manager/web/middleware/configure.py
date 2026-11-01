@@ -34,10 +34,10 @@ async def security_headers(request: Request, call_next):
     if route_path(request.scope).startswith(("/auth/", "/api/setup/")):
         response.headers["Cache-Control"] = "no-store"
         response.headers["Pragma"] = "no-cache"
+    response.headers.setdefault(
+        "Permissions-Policy", "camera=(), microphone=(), geolocation=()"
+    )
     settings = request.app.state.app_context.settings
-    features = settings.get("web.permissions_policy")
-    if features:
-        response.headers.setdefault("Permissions-Policy", features)
     frames = settings.get("web.frame_ancestors")
     report = settings.get("web.csp_report_only")
     if frames:
