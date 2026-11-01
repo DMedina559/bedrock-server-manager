@@ -109,12 +109,21 @@ class DiagnosticHistoryStore:
 
     async def _run(self) -> None:
         while True:
-            record = await self.queue.get()
+            first = await self.queue.get()
+            batch = [first]
+            while len(batch) < 64:
+                try:
+                    batch.append(self.queue.get_nowait())
+                except asyncio.QueueEmpty:
+                    break
+            payload: DiagnosticRecord | list[DiagnosticRecord] = (
+                batch[0] if len(batch) == 1 else batch
+            )
             try:
                 for attempt in range(WRITE_ATTEMPTS):
                     try:
                         async with asyncio.timeout(WRITE_TIMEOUT_SECONDS):
-                            await self._write(record)
+                            await self._write(payload)
                         self.last_error_type = None
                         self._log_failures.recover("history-write")
                         break
@@ -135,31 +144,34 @@ class DiagnosticHistoryStore:
                         self._log_failures.report(
                             "history-write", "Diagnostic %s failed: %s", error
                         )
-                        self.dropped += 1
+                        self.dropped += len(batch)
                         break
             except asyncio.CancelledError:
-                self.dropped += 1
+                self.dropped += len(batch)
                 raise
             finally:
-                self.queue.task_done()
+                for _ in batch:
+                    self.queue.task_done()
 
-    async def _write(self, record: DiagnosticRecord) -> None:
+    async def _write(self, record: DiagnosticRecord | list[DiagnosticRecord]) -> None:
+        records = [record] if isinstance(record, DiagnosticRecord) else record
         async with self.database.session_manager() as session:
             # A deadline may expire after commit; retries of the same ID are idempotent.
-            await session.merge(
-                DiagnosticHistoryRow(
-                    id=record.id,
-                    instance_id=record.instance_id,
-                    timestamp=record.timestamp,
-                    subsystem=record.subsystem,
-                    correlation_id=record.correlation_id,
-                    owner=record.owner,
-                    code=record.code,
-                    outcome=record.outcome,
-                    operation_id=record.operation_id,
-                    record=record.model_dump(mode="json"),
+            for item in records:
+                await session.merge(
+                    DiagnosticHistoryRow(
+                        id=item.id,
+                        instance_id=item.instance_id,
+                        timestamp=item.timestamp,
+                        subsystem=item.subsystem,
+                        correlation_id=item.correlation_id,
+                        owner=item.owner,
+                        code=item.code,
+                        outcome=item.outcome,
+                        operation_id=item.operation_id,
+                        record=item.model_dump(mode="json"),
+                    )
                 )
-            )
             await session.flush()
             await session.execute(
                 delete(DiagnosticHistoryRow).where(

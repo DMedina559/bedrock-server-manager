@@ -1,3 +1,4 @@
+import json
 import logging
 import os
 import warnings
@@ -186,25 +187,85 @@ def test_error_output_keeps_diagnostics_in_file(
     assert "\\x0aINFO: forged line\\x1b[31m" in content
 
 
-@pytest.mark.parametrize(
-    "message,secret",
-    [
+def test_formatter_redacts_credentials_and_controls_without_changing_record():
+    formatter = bsm_logging.ApplicationFormatter("%(message)s")
+    for message, secret in (
         ("URL https://user:my-password@example.com/path", "my-password"),
         ("GET /register?token=private-token&role=admin", "private-token"),
         ('{"password": "two secret words"}', "two secret words"),
         ("Authorization: Bearer private-bearer", "private-bearer"),
         ("access_token='private-token'", "private-token"),
         ("GET /app/register/private-link-token", "private-link-token"),
-    ],
-)
-def test_formatter_redacts_credentials_without_changing_record(message, secret):
-    record = logging.LogRecord(
-        "example", logging.WARNING, __file__, 1, "%s", (message,), None
+        ("GET /api/register/validate/private-invite", "private-invite"),
+        ("POST /api/register/private-post-invite", "private-post-invite"),
+        (
+            "POST /ingress/test/api/register/private-prefixed-invite",
+            "private-prefixed-invite",
+        ),
+    ):
+        record = logging.LogRecord(
+            "example", logging.WARNING, __file__, 1, "%s", (message,), None
+        )
+        rendered = formatter.format(record)
+        assert secret not in rendered
+        assert "[redacted]" in rendered
+        assert record.getMessage() == message
+
+    control_record = logging.LogRecord(
+        "plugin\nINFO: forged\u2028",
+        logging.INFO,
+        __file__,
+        1,
+        '{"password":"first\\"second secret", "jwt_secret_key":"jwt-secret"}',
+        (),
+        None,
     )
-    formatter = bsm_logging.ApplicationFormatter("%(message)s")
-    assert secret not in formatter.format(record)
-    assert "[redacted]" in formatter.format(record)
-    assert record.getMessage() == message
+    output = bsm_logging.ApplicationFormatter("%(name)s: %(message)s").format(
+        control_record
+    )
+    assert "second secret" not in output
+    assert "jwt-secret" not in output
+    assert "\n" not in output
+    assert "\u2028" not in output
+    assert "\\x0a" in output
+
+    utc_record = logging.LogRecord(
+        "example", logging.INFO, __file__, 1, "example", (), None
+    )
+    utc_record.created = 0
+    assert (
+        bsm_logging.ApplicationFormatter("%(asctime)s %(message)s").format(utc_record)
+        == "1970-01-01T00:00:00.000+00:00 example"
+    )
+
+    factor_record = logging.LogRecord(
+        "security",
+        logging.INFO,
+        __file__,
+        1,
+        'otp=123456 recovery_codes=["private-code-one", "private-code-two"] provisioning_uri="otpauth://private"',
+        (),
+        None,
+    )
+    factor_rendered = formatter.format(factor_record)
+    assert "123456" not in factor_rendered
+    assert "private-code" not in factor_rendered
+    assert "otpauth://private" not in factor_rendered
+
+    for kind in ("it", "td"):
+        secret = f"bsm_{kind}_" + "a" * 32 + "." + "s" * 43
+        for text_msg in (
+            secret,
+            json.dumps({"trusted_device_token": secret}),
+            "Cookie: bsm_trusted_device_" + "a" * 32 + "=" + secret,
+            "X-BSM-Trusted-Device-Token: " + secret,
+            "Verification failed: " + secret,
+        ):
+            rec = logging.LogRecord(
+                "security", logging.ERROR, __file__, 1, "%s", (text_msg,), None
+            )
+            out = formatter.format(rec)
+            assert secret not in out and "[redacted]" in out
 
 
 def test_retry_failure_reporting_and_recovery(caplog, monkeypatch):
@@ -384,24 +445,6 @@ def test_missing_essential_file_is_an_operational_error(caplog):
     assert caplog.records[-1].levelno == logging.ERROR
 
 
-def test_escaped_quoted_credentials_and_logger_controls_are_safe():
-    record = logging.LogRecord(
-        "plugin\nINFO: forged\u2028",
-        logging.INFO,
-        __file__,
-        1,
-        '{"password":"first\\"second secret", "jwt_secret_key":"jwt-secret"}',
-        (),
-        None,
-    )
-    output = bsm_logging.ApplicationFormatter("%(name)s: %(message)s").format(record)
-    assert "second secret" not in output
-    assert "jwt-secret" not in output
-    assert "\n" not in output
-    assert "\u2028" not in output
-    assert "\\x0a" in output
-
-
 def test_rotating_session_logs_and_retention(isolated_bcm_config, monkeypatch):
     monkeypatch.setattr(bsm_logging, "MAX_LOG_BYTES", 256)
     logger = setup_logging(log_level="INFO")
@@ -418,12 +461,3 @@ def test_rotating_session_logs_and_retention(isolated_bcm_config, monkeypatch):
         handler.close()
     _prune_old_logs(str(log_dir), keep=1)
     assert not list(log_dir.glob("*.log*"))
-
-
-def test_log_timestamps_identify_utc():
-    record = logging.LogRecord(
-        "example", logging.INFO, __file__, 1, "example", (), None
-    )
-    record.created = 0
-    formatter = bsm_logging.ApplicationFormatter("%(asctime)s %(message)s")
-    assert formatter.format(record) == "1970-01-01T00:00:00.000+00:00 example"

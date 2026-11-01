@@ -1,7 +1,9 @@
 from typing import Optional
 
+from pydantic import Field
+
 from ...api.models.common import APIRequest, APIResponse
-from ...contracts import Password
+from ...contracts import NewPassword, Password
 from ...state.models import UserRole
 
 
@@ -14,6 +16,20 @@ class UserResponse(APIResponse):
     role: UserRole
     is_active: bool
     theme: str = "default"
+
+
+class CurrentAccountResponse(UserResponse):
+    """Current account with sorted role-derived HTTP capabilities."""
+
+    permissions: list[str] = Field(default_factory=list)
+    policy_revision: str | None = None
+    server_access: str = "all"
+    credential_id: str | None = None
+    credential_name: str | None = None
+    credential_expires_at: int | None = None
+    session_id: str | None = None
+    mfa_enrollment_required: bool = False
+    server_permissions: dict[str, list[str]] = Field(default_factory=dict)
 
 
 class UpdateUserRolePayload(APIRequest):
@@ -55,4 +71,4 @@ class ChangePasswordPayload(APIRequest):
     """
 
     current_password: Password
-    new_password: Password
+    new_password: NewPassword

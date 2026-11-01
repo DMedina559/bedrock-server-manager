@@ -114,6 +114,9 @@ class PluginManager:
         ) = None,
     ):
         """Initialize the PluginManager with explicit required dependencies."""
+        from ..web.access_policy import AccessPolicy
+
+        self.access_policy = AccessPolicy()
         self.diagnostic_failure = diagnostic_failure
         self._plugin_observations: dict[str, dict[str, Any]] = {}
         self._unloading: set[str] = set()
@@ -989,7 +992,23 @@ class PluginManager:
                 if owner.task.done():
                     self._router_lifespans.pop(name, None)
 
+    def _validate_web_routers(self, extra=()):
+        from ..web.router_validation import validate_plugin_routes
+
+        mounted = {
+            id(route) for routes in self._mounted_routes.values() for route in routes
+        }
+        base = (
+            [route for route in self._web_app.routes if id(route) not in mounted]
+            if self._web_app
+            else []
+        )
+        validate_plugin_routes(
+            base, [*self.plugin_fastapi_routers, *extra], self.access_policy
+        )
+
     async def _register_routers(self, name: str, routers: list[APIRouter]) -> None:
+        self._validate_web_routers(routers)
         self._router_owners.setdefault(name, []).extend(routers)
         self.plugin_fastapi_routers.extend(routers)
         if self._web_started:
@@ -1012,6 +1031,7 @@ class PluginManager:
     def _sync_web_routes(self, name: str) -> None:
         if self._web_app is None:
             return
+        self._validate_web_routers()
         for owner in list(self._mounted_routes):
             self._remove_web_routes(owner)
         self._web_app.router.lifespan_context = self._web_lifespan
@@ -1041,6 +1061,7 @@ class PluginManager:
         observation = self._plugin_observations.setdefault(plugin_name, {})
         observation["last_transition_at"] = time.time()
         if status == "ERROR" and plugin_name not in self._unloading:
+            self.access_policy.remove_owner(plugin_name)
             observation["load_failures"] = observation.get("load_failures", 0) + 1
             if self.diagnostic_failure is not None:
                 self.diagnostic_failure(plugin_name, "load", None)
@@ -1225,6 +1246,7 @@ class PluginManager:
                 self.events.owner_pending(owner) for owner in owners
             ):
                 self._draining_plugins[plugin_key] = owners
+            self.access_policy.remove_owner(plugin_key)
             self._pending_plugins.pop(plugin_key, None)
             if target_instance in self.plugins:
                 self.plugins.remove(target_instance)

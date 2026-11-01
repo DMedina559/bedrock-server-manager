@@ -2,7 +2,7 @@
 
 import logging
 
-from fastapi import APIRouter, Depends
+from fastapi import APIRouter, Depends, Security
 
 from bedrock_server_manager.api.models import (
     AddPlayersManuallyRequest,
@@ -12,7 +12,9 @@ from bedrock_server_manager.api.models import (
 
 from ...api import player as player_api
 from ...context import AppContext
-from ..deps import get_app_context, get_moderator_user
+from ..access_policy import Permission
+from ..deps import get_app_context
+from ..deps.auth import require_permissions
 from ..schemas import (
     AddPlayersPayload,
     AddPlayersResponse,
@@ -32,7 +34,9 @@ router = APIRouter()
     response_model=AddPlayersResponse,
 )
 async def put_scan_players(
-    current_user: UserResponse = Depends(get_moderator_user),
+    current_user: UserResponse = Security(
+        require_permissions, scopes=[Permission.PLAYERS_MANAGE]
+    ),
     app_context: AppContext = Depends(get_app_context),
 ) -> AddPlayersResponse:
     """
@@ -57,7 +61,9 @@ async def put_scan_players(
     response_model=PlayerListResponse,
 )
 async def get_all_players(
-    current_user: UserResponse = Depends(get_moderator_user),
+    current_user: UserResponse = Security(
+        require_permissions, scopes=[Permission.PLAYERS_READ]
+    ),
     app_context: AppContext = Depends(get_app_context),
 ) -> PlayerListResponse:
     """Return the list of all known players from the central player database."""
@@ -87,7 +93,9 @@ async def get_all_players(
 )
 async def post_add_players(
     payload: AddPlayersPayload,
-    current_user: UserResponse = Depends(get_moderator_user),
+    current_user: UserResponse = Security(
+        require_permissions, scopes=[Permission.PLAYERS_MANAGE]
+    ),
     app_context: AppContext = Depends(get_app_context),
 ) -> AddPlayersResponse:
     """

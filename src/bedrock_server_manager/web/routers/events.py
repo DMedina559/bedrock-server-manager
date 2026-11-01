@@ -1,13 +1,17 @@
 """Administrative event catalog and metadata-only runtime diagnostics."""
 
-from fastapi import APIRouter, Depends
+from fastapi import APIRouter, Depends, Security
 
 from ...events import EventBus
 from ...events.models import EventActivityQuery, EventCatalog, EventDiagnostics
-from ..deps import get_admin_user
+from ..access_policy import Permission
+from ..deps.auth import require_permissions
 from ..deps.context import get_event_bus
 
-router = APIRouter(tags=["Application Events"], dependencies=[Depends(get_admin_user)])
+router = APIRouter(
+    tags=["Application Events"],
+    dependencies=[Security(require_permissions, scopes=[Permission.DIAGNOSTICS_READ])],
+)
 
 
 @router.get(

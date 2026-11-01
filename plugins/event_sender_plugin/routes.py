@@ -1,10 +1,11 @@
 import json
 
-from fastapi import APIRouter, Depends, Request
+from fastapi import APIRouter, Request, Security
 from fastapi.responses import JSONResponse
 from pydantic import BaseModel, ConfigDict, Field, JsonValue
 
-from bedrock_server_manager.web import get_admin_user
+from bedrock_server_manager.web.access_policy import Permission
+from bedrock_server_manager.web.deps.auth import require_permissions
 
 
 class CustomPayload(BaseModel):
@@ -29,7 +30,9 @@ def define_routes(router: APIRouter, plugin_instance):
         "/ui",
         response_class=JSONResponse,
         operation_id="event_sender_ui",
-        dependencies=[Depends(get_admin_user)],
+        dependencies=[
+            Security(require_permissions, scopes=[Permission.PLUGINS_MANAGE])
+        ],
         name="Event Sender",
         tags=["plugin-json-ui"],
     )
@@ -117,7 +120,9 @@ def define_routes(router: APIRouter, plugin_instance):
     @router.post(
         "/trigger",
         operation_id="event_sender_trigger",
-        dependencies=[Depends(get_admin_user)],
+        dependencies=[
+            Security(require_permissions, scopes=[Permission.PLUGINS_MANAGE])
+        ],
     )
     async def trigger_event(payload: EventPayload):
         plugin_instance.logger.debug(

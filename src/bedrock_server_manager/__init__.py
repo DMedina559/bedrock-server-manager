@@ -32,6 +32,7 @@ if TYPE_CHECKING:
     from .web.deps.auth import get_current_user as get_current_user
     from .web.deps.auth import get_current_user_optional as get_current_user_optional
     from .web.deps.auth import get_moderator_user as get_moderator_user
+    from .web.deps.auth import require_permissions as require_permissions
     from .web.schemas import BaseApiResponse as BaseApiResponse
     from .web.schemas import TaskAcceptedResponse as TaskAcceptedResponse
     from .web.schemas import UserResponse as UserResponse
@@ -65,6 +66,7 @@ _EXPORTS = {
     "get_current_user": ("web.deps.auth", "get_current_user"),
     "get_current_user_optional": ("web.deps.auth", "get_current_user_optional"),
     "get_moderator_user": ("web.deps.auth", "get_moderator_user"),
+    "require_permissions": ("web.deps.auth", "require_permissions"),
     "BaseApiResponse": ("web.schemas", "BaseApiResponse"),
     "TaskAcceptedResponse": ("web.schemas", "TaskAcceptedResponse"),
     "UserResponse": ("web.schemas", "UserResponse"),
@@ -111,6 +113,7 @@ __all__ = [
     "get_current_user",
     "get_current_user_optional",
     "get_moderator_user",
+    "require_permissions",
     "BaseApiResponse",
     "TaskAcceptedResponse",
     "UserResponse",

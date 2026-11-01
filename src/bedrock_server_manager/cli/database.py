@@ -203,8 +203,14 @@ def upgrade(ctx: click.Context, yes: bool):  # noqa: C901
     default="-1",
     help="The revision to downgrade to (e.g., -1 for previous, or a specific revision ID).",
 )
+@click.option(
+    "--yes",
+    "-y",
+    is_flag=True,
+    help="Skip confirmation prompts.",
+)
 @click.pass_context
-def downgrade(ctx: click.Context, revision: str):
+def downgrade(ctx: click.Context, revision: str, yes: bool = False):
     """Downgrades the database to a previous version."""
     app_context: AppContext = ctx.obj["app_context"]
     alembic_ini_path = files("bedrock_server_manager").joinpath("db/alembic.ini")
@@ -219,7 +225,9 @@ def downgrade(ctx: click.Context, revision: str):
         fg="yellow",
         bold=True,
     )
-    if not click.confirm("Are you sure you want to proceed?", default=False):
+    if not yes and not click.confirm(
+        "Are you sure you want to proceed?", default=False
+    ):
         raise click.Abort()
 
     # --- Backup Database ---

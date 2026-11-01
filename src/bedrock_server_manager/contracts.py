@@ -1,5 +1,6 @@
 """Transport-independent validated data shared by application layers."""
 
+from importlib.resources import files
 from typing import Annotated, Literal, Self
 
 from pydantic import (
@@ -21,13 +22,65 @@ ServerName = Annotated[
 
 
 def validate_password_size(value: SecretStr) -> SecretStr:
-    if len(value.get_secret_value().encode("utf-8")) > 72:
-        raise ValueError("Password must be at most 72 UTF-8 bytes.")
+    if len(value.get_secret_value().encode("utf-8")) > 1024:
+        raise ValueError("Password must be at most 1024 UTF-8 bytes.")
     return value
 
 
 Password = Annotated[
     SecretStr, Field(min_length=1), AfterValidator(validate_password_size)
+]
+
+
+COMMON_PASSWORDS = frozenset(
+    {
+        "password",
+        "password1",
+        "password123",
+        "12345678",
+        "123456789",
+        "qwerty123",
+        "abcdefgh",
+        "letmein123",
+        "minecraft",
+        "changeme",
+        "passwordpassword",
+        "password123456789",
+        "123456789012345",
+        "12345678901234567890",
+        "qwertyuiopasdfgh",
+        "letmeinletmeinletmein",
+        "bedrockservermanager",
+        "minecraftminecraft",
+        "changemechangeme",
+    }
+)
+# Immutable packaged public data, not an authorization or user-credential cache.
+COMMON_PASSWORDS = COMMON_PASSWORDS | frozenset(
+    line.casefold()
+    for line in files("bedrock_server_manager")
+    .joinpath("data/common-passwords.txt")
+    .read_text(encoding="utf-8")
+    .splitlines()
+    if line
+)
+
+
+def validate_new_password(value: SecretStr) -> SecretStr:
+    text = value.get_secret_value()
+    if len(text) < 8:
+        raise ValueError(
+            "Use at least 8 characters; a memorable passphrase works well."
+        )
+    if text.casefold() in COMMON_PASSWORDS or len(set(text)) < 4:
+        raise ValueError("Choose a less common password or passphrase.")
+    return validate_password_size(value)
+
+
+NewPassword = Annotated[
+    SecretStr,
+    Field(min_length=8, max_length=1024),
+    AfterValidator(validate_new_password),
 ]
 
 

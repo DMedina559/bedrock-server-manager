@@ -173,6 +173,7 @@ def create_app_api(
         if app_context is None:
             raise RuntimeError("Runtime capabilities require application context")
         functions: dict[str, Callable[..., Any]] = {
+            "register_http_permission": runtime_capabilities.register_http_permission,
             "register_diagnostic_provider": runtime_capabilities.register_diagnostic_provider,
             "report_task_progress": runtime_capabilities.report_task_progress,
             "report_task_stage": runtime_capabilities.report_task_stage,
@@ -191,6 +192,7 @@ def create_app_api(
                 "read_plugin_file",
                 "write_plugin_file",
                 "register_scheduled_task",
+                "register_http_permission",
             }:
                 if file_bus is None:
                     raise RuntimeError("Plugin file capabilities are unavailable")
@@ -334,6 +336,7 @@ class CapabilityNamespace:
                 "report_task_stage": "report_task_stage",
                 "run_task": "run_task",
                 "register_scheduled_task": "register_scheduled_task",
+                "register_http_permission": "register_http_permission",
                 "read_plugin_file": "read_plugin_file",
                 "write_plugin_file": "write_plugin_file",
                 "server_lifecycle_manager": "server_lifecycle_manager",

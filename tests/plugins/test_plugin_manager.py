@@ -57,16 +57,13 @@ async def test_synchronize_config_preserves_app_state(db, app_context):
     """Test disk sync and _load_config do NOT reload or wipe AppState settings or user auth state."""
     from bedrock_server_manager.web.auth import get_jwt_secret_key
 
-    # Set up a secret key in settings
-    await app_context.settings.set("web.jwt_secret_key", "persistent_secret_key_123")
     key_before = await get_jwt_secret_key(app_context.settings)
-    assert key_before == "persistent_secret_key_123"
 
     pm = app_context.plugin_manager
     await pm._synchronize_config_with_disk()
 
     key_after = await get_jwt_secret_key(app_context.settings)
-    assert key_after == "persistent_secret_key_123"
+    assert key_after == key_before
 
 
 EVENT_PLUGIN = """

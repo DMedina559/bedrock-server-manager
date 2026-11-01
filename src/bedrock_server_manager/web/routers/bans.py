@@ -1,4 +1,4 @@
-from fastapi import APIRouter, Depends
+from fastapi import APIRouter, Depends, Security
 
 from bedrock_server_manager.api.models import (
     AddServerBanRequest,
@@ -13,12 +13,14 @@ from ...api.ban import add_server_ban
 from ...api.ban import get_server_bans as get_server_bans_api
 from ...api.ban import remove_server_ban
 from ...context import AppContext
-from ..deps import get_admin_user, get_app_context, validate_server_exists
+from ..access_policy import Permission
+from ..deps import get_app_context, validate_server_exists
+from ..deps.auth import require_permissions
+from ..schemas import UserResponse
 from ..schemas.ban import BanAddRequest, BanRemoveRequest
 
 router = APIRouter(
     prefix="/api/server/{server_name}/bans",
-    dependencies=[Depends(get_admin_user), Depends(validate_server_exists)],
     tags=["Server Access"],
 )
 
@@ -27,6 +29,7 @@ router = APIRouter(
     "/get", operation_id="get_server_bans", response_model=GetServerBansResponse
 )
 async def get_server_bans(
+    user: UserResponse = Security(require_permissions, scopes=[Permission.BANS_READ]),
     server_name: str = Depends(validate_server_exists),
     app_context: AppContext = Depends(get_app_context),
 ) -> GetServerBansResponse:
@@ -41,6 +44,7 @@ async def get_server_bans(
 @router.post("/add", operation_id="add_server_ban", response_model=AddServerBanResponse)
 async def post_add_server_ban(
     payload: BanAddRequest,
+    user: UserResponse = Security(require_permissions, scopes=[Permission.BANS_MANAGE]),
     server_name: str = Depends(validate_server_exists),
     app_context: AppContext = Depends(get_app_context),
 ) -> AddServerBanResponse:
@@ -62,6 +66,7 @@ async def post_add_server_ban(
 )
 async def delete_remove_server_ban(
     payload: BanRemoveRequest,
+    user: UserResponse = Security(require_permissions, scopes=[Permission.BANS_MANAGE]),
     server_name: str = Depends(validate_server_exists),
     app_context: AppContext = Depends(get_app_context),
 ) -> RemoveServerBanResponse:

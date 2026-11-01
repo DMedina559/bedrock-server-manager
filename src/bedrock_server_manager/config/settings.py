@@ -29,6 +29,7 @@ class Settings:
         self.data_dir = data_dir
         self.config_dir = config_dir
         self.app_context = app_context
+        self._jwt_signing_credential: Optional[str] = None
 
     @property
     def _settings(self) -> Dict[str, Any]:

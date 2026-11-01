@@ -2,7 +2,7 @@ from typing import Literal, Optional
 
 from pydantic import Field, SecretStr, model_validator
 
-from ...api.models.common import APIRequest
+from ...api.models.common import APIRequest, APIResponse
 from ...backups.contents import BackupComponents
 from ...backups.models import Component, validate_selection_options
 
@@ -70,3 +70,13 @@ class SnapshotCopyPayload(SnapshotInspectPayload):
 
 class DestinationCleanupPayload(APIRequest):
     token: str | None = None
+
+
+class BackupKeyInfo(APIResponse):
+    key_id: str
+    created_at: str
+
+
+class BackupKeysInfo(APIResponse):
+    active: str | None
+    keys: list[BackupKeyInfo]

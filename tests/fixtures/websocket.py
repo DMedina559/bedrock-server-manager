@@ -3,6 +3,7 @@
 import asyncio
 import json
 import socket
+from collections import deque
 from contextlib import asynccontextmanager
 
 import pytest_asyncio
@@ -44,6 +45,7 @@ async def websocket_client(running_app, unauth_client):
             headers = dict(additional_headers or {})
             if cookies:
                 headers["Cookie"] = cookies
+                headers.setdefault("Origin", f"http://127.0.0.1:{port}")
             async with connect(
                 f"ws://127.0.0.1:{port}{path}", additional_headers=headers
             ) as connection:
@@ -62,19 +64,36 @@ async def websocket_client(running_app, unauth_client):
 async def subscribed_socket(websocket_client, app_context, test_admin_user):
     @asynccontextmanager
     async def subscribe(*topics):
+        # Prepare the database-backed credential before the server starts its
+        # first-frame authentication deadline, matching a real signed-in client.
+        token = await create_access_token(
+            app_context, {"sub": test_admin_user.username}
+        )
         async with websocket_client() as connection:
-            token = await create_access_token(
-                app_context, {"sub": test_admin_user.username}
-            )
+            raw_recv = connection.recv
+            buffered = deque()
+
+            async def recv(*args, **kwargs):
+                if buffered:
+                    return buffered.popleft()
+                return await raw_recv(*args, **kwargs)
+
             await connection.send(
                 json.dumps({"action": "authenticate", "token": token})
             )
-            assert json.loads(await connection.recv())["status"] == "success"
+            assert json.loads(await raw_recv())["status"] == "success"
             for topic in topics:
                 await connection.send(
                     json.dumps({"action": "subscribe", "topic": topic})
                 )
-                assert json.loads(await connection.recv())["status"] == "success"
+                while True:
+                    raw = await raw_recv()
+                    msg = json.loads(raw)
+                    if "status" in msg:
+                        assert msg["status"] == "success"
+                        break
+                    buffered.append(raw)
+            connection.recv = recv
             yield connection
 
     return subscribe

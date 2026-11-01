@@ -40,8 +40,17 @@ def normalize_contract(schema: dict[str, Any]) -> dict[str, Any]:
     return result
 
 
+_CONTRACT_CACHE: tuple[tuple[object, ...], dict[str, Any]] | None = None
+
+
 def export_contract() -> dict[str, Any]:
     """Build registered core routers with no database, plugins, or lifespan."""
+    global _CONTRACT_CACHE
+    from . import routers
+
+    signature = tuple(routers.all_routers)
+    if _CONTRACT_CACHE is not None and _CONTRACT_CACHE[0] == signature:
+        return copy.deepcopy(_CONTRACT_CACHE[1])
     with tempfile.TemporaryDirectory(prefix="bsm-contract-") as directory:
         context = SimpleNamespace(
             settings={"paths.themes": directory},
@@ -58,7 +67,8 @@ def export_contract() -> dict[str, Any]:
             if not identifier or identifier in operation_ids:
                 raise ValueError(f"Missing or duplicate operationId: {method} {path}")
             operation_ids.add(identifier)
-    return schema
+    _CONTRACT_CACHE = (signature, schema)
+    return copy.deepcopy(schema)
 
 
 def contract_changes(

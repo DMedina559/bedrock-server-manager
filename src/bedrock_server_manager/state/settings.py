@@ -23,7 +23,6 @@ from pydantic import (
 
 from ..backups.contents import (
     DEFAULT_COMPONENTS,
-    SERVER_PACK_COMPONENTS,
     BackupComponents,
     BackupMode,
 )
@@ -90,6 +89,25 @@ class MonitoringSettings(SettingsRecord):
 DEFAULT_CORS_ORIGINS: tuple[str, ...] = ()
 
 
+class SecuritySettings(SettingsRecord):
+    require_admin_mfa: bool = Field(
+        default=False,
+        title="Require MFA for administrators",
+        description="Unenrolled administrator logins can only enroll MFA; integration credentials are independent.",
+    )
+    auth_account_attempts: int = Field(default=10, ge=3, le=100)
+    auth_peer_attempts: int = Field(default=60, ge=10, le=10000)
+    auth_window_seconds: int = Field(default=300, ge=30, le=3600)
+    auth_ipv6_prefix: int = Field(
+        default=128,
+        ge=48,
+        le=128,
+        description="IPv6 prefix for authentication peer budgets; 128 keeps each address separate.",
+    )
+    session_idle_hours: int = Field(default=24, ge=1, le=672)
+    session_max_days: int = Field(default=28, ge=1, le=90)
+
+
 class WebSettings(SettingsRecord):
     cors_origins: tuple[str, ...] = DEFAULT_CORS_ORIGINS
     outbound_queue_limit: int = Field(default=64, ge=1, le=10000)
@@ -97,7 +115,25 @@ class WebSettings(SettingsRecord):
     host: str = "127.0.0.1"
     port: int = Field(default=11325, ge=1, le=65535)
     token_expires_weeks: int = Field(default=4, gt=0)
-    jwt_secret_key: Optional[str] = None
+    jwt_secret_key: Optional[str] = Field(default=None, repr=False)
+    jwt_key_initialized: bool = False
+    frame_ancestors: Optional[str] = Field(
+        default=None,
+        description="Optional CSP frame-ancestors sources. Leave unset for cross-origin Home Assistant embedding.",
+    )
+    csp_report_only: Optional[str] = Field(
+        default=None,
+        description="Optional Content-Security-Policy-Report-Only header; test integrations before enforcement.",
+    )
+
+    @field_validator("frame_ancestors", "csp_report_only")
+    @classmethod
+    def validate_policy_header(cls, value):
+        if value is not None and (
+            any(ord(c) < 32 or ord(c) == 127 for c in value) or len(value) > 8192
+        ):
+            raise ValueError("Invalid security policy header")
+        return value
 
     @field_validator("cors_origins", mode="before")
     @classmethod
@@ -236,6 +272,7 @@ class SettingsState(BaseModel):
     backups: BackupSettings = Field(default_factory=BackupSettings)
     monitoring: MonitoringSettings = Field(default_factory=MonitoringSettings)
     web: WebSettings = Field(default_factory=WebSettings)
+    security: SecuritySettings = Field(default_factory=SecuritySettings)
     lifecycle: LifecycleSettings = Field(default_factory=LifecycleSettings)
     diagnostics: DiagnosticOptions = Field(default_factory=DiagnosticOptions)
     events: EventOptions = Field(default_factory=EventOptions)
@@ -416,6 +453,7 @@ class SettingsState(BaseModel):
             "backups": self.backups.model_dump(),
             "monitoring": self.monitoring.model_dump(),
             "web": self.web.model_dump(mode="json", exclude_none=True),
+            "security": self.security.model_dump(),
             "lifecycle": self.lifecycle.model_dump(),
             "diagnostics": self.diagnostics.model_dump(),
             "custom": copy.deepcopy(self.custom),
@@ -484,22 +522,6 @@ class SettingsState(BaseModel):
                         logger.warning(
                             "Ignoring removed legacy setting %s.%s", section, name
                         )
-
-        # Retired pack toggle is migrated only when reading saved settings.
-        # Current writes and schema expose components as the single source of truth.
-        backups = merged.get("backups", {})
-        if isinstance(backups, dict) and "include_server_packs" in backups:
-            include = backups.pop("include_server_packs")
-            if type(include) is not bool:
-                raise ValueError("Saved include_server_packs must be a boolean")
-            if include:
-                chosen = backups.get("components", list(DEFAULT_COMPONENTS))
-                if not isinstance(chosen, list):
-                    raise ValueError("Saved backup components must be a list")
-                backups["components"] = [
-                    *chosen,
-                    *(name for name in SERVER_PACK_COMPONENTS if name not in chosen),
-                ]
 
         monitoring = merged.get("monitoring", {})
         if "max_retiries" in monitoring:

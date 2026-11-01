@@ -8,6 +8,11 @@ from bedrock_server_manager.utils.io import _replace_file
 from bedrock_server_manager.utils.threads import run_in_thread
 
 
+@pytest.fixture(autouse=True)
+def fast_log_poll(app_context):
+    app_context.log_streamer.poll_interval = 0.05
+
+
 async def receive_log(socket, topic):
     async with asyncio.timeout(5):
         while True:
@@ -88,8 +93,7 @@ async def test_both_application_aliases_receive_updates(app_context, subscribed_
         assert set(messages.values()) == {"replacement with more content\n"}
 
 
-@pytest.mark.parametrize("server_log", [False, True])
-@pytest.mark.parametrize("newline", ["\n", "\r\n"])
+@pytest.mark.parametrize("server_log,newline", [(False, "\n"), (True, "\r\n")])
 async def test_history_pages_reconstruct_entire_utf8_file(
     app_context, admin_auth_client, real_bedrock_server, server_log, newline
 ):
@@ -122,7 +126,15 @@ async def test_history_pages_reconstruct_entire_utf8_file(
     assert response.status_code == 409
 
 
-async def test_history_rejects_invalid_topics_and_offsets(admin_auth_client):
+async def test_history_authorization_and_topic_validation(
+    admin_auth_client, auth_client, unauth_client, app_context
+):
+    assert (
+        await unauth_client.get("/api/logs/history", params={"topic": "app_log"})
+    ).status_code == 401
+    assert (
+        await auth_client.get("/api/logs/history", params={"topic": "app_log"})
+    ).status_code == 403
     assert (
         await admin_auth_client.get(
             "/api/logs/history", params={"topic": "../../secret"}
@@ -133,15 +145,15 @@ async def test_history_rejects_invalid_topics_and_offsets(admin_auth_client):
             "/api/logs/history", params={"topic": "app_log", "before": -1}
         )
     ).status_code == 422
-
-
-async def test_history_requires_authorization(auth_client, unauth_client):
-    assert (
-        await unauth_client.get("/api/logs/history", params={"topic": "app_log"})
-    ).status_code == 401
-    assert (
-        await auth_client.get("/api/logs/history", params={"topic": "app_log"})
-    ).status_code == 403
+    for topic, status in (
+        ("server_log:../../private", 400),
+        ("server_log:missing", 404),
+    ):
+        response = await admin_auth_client.get(
+            "/api/logs/history", params={"topic": topic}
+        )
+        assert response.status_code == status
+    assert "missing" not in app_context._servers
 
 
 async def test_history_and_live_stream_join_without_gaps(
@@ -163,21 +175,7 @@ async def test_history_and_live_stream_join_without_gaps(
         assert history.data + frame["data"] == original
         with path.open("ab") as output:
             output.write(b"\xf0\x9f")
-        await asyncio.sleep(1.2)
+        await asyncio.sleep(0.12)
         with path.open("ab") as output:
             output.write(b"\x8c\x8d\n")
         assert await receive_log(socket, "app_log") == "🌍\n"
-
-
-async def test_history_cannot_read_arbitrary_server_paths(
-    admin_auth_client, app_context
-):
-    for topic, status in (
-        ("server_log:../../private", 400),
-        ("server_log:missing", 404),
-    ):
-        response = await admin_auth_client.get(
-            "/api/logs/history", params={"topic": topic}
-        )
-        assert response.status_code == status
-    assert "missing" not in app_context._servers

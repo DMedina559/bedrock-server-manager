@@ -1,6 +1,6 @@
 import logging
 
-from fastapi import APIRouter, Depends, status
+from fastapi import APIRouter, Depends, Security, status
 
 from bedrock_server_manager.api.models import (
     AddToAllowlistRequest,
@@ -12,7 +12,9 @@ from bedrock_server_manager.api.models import (
 
 from ...api import allowlist as allowlist_api
 from ...context import AppContext
-from ..deps import get_app_context, get_moderator_user, validate_server_exists
+from ..access_policy import Permission
+from ..deps import get_app_context, validate_server_exists
+from ..deps.auth import require_permissions
 from ..schemas import (
     AllowlistAddPayload,
     AllowlistGetResponse,
@@ -32,8 +34,10 @@ router = APIRouter(tags=["Server Access"])
 )
 async def post_allowlist(
     payload: AllowlistAddPayload,
+    current_user: UserResponse = Security(
+        require_permissions, scopes=[Permission.ALLOWLIST_MANAGE]
+    ),
     server_name: str = Depends(validate_server_exists),
-    current_user: UserResponse = Depends(get_moderator_user),
     app_context: AppContext = Depends(get_app_context),
 ) -> AddToAllowlistResponse:
     identity = current_user.username
@@ -62,8 +66,10 @@ async def post_allowlist(
     response_model=AllowlistGetResponse,
 )
 async def get_allowlist(
+    current_user: UserResponse = Security(
+        require_permissions, scopes=[Permission.ALLOWLIST_READ]
+    ),
     server_name: str = Depends(validate_server_exists),
-    current_user: UserResponse = Depends(get_moderator_user),
     app_context: AppContext = Depends(get_app_context),
 ) -> AllowlistGetResponse:
     result = await allowlist_api.get_allowlist(
@@ -81,8 +87,10 @@ async def get_allowlist(
 )
 async def delete_allowlist(
     payload: AllowlistRemovePayload,
+    current_user: UserResponse = Security(
+        require_permissions, scopes=[Permission.ALLOWLIST_MANAGE]
+    ),
     server_name: str = Depends(validate_server_exists),
-    current_user: UserResponse = Depends(get_moderator_user),
     app_context: AppContext = Depends(get_app_context),
 ) -> RemoveFromAllowlistResponse:
     result = await allowlist_api.remove_from_allowlist(

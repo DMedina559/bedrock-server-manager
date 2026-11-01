@@ -14,10 +14,39 @@ from fastapi import (
 from fastapi.security import APIKeyHeader
 
 from ...error import DependencyUnavailableError
-from ..deps.auth import get_admin_user, get_current_user_optional
+from ..access_metadata import describe_access
+from ..access_policy import Permission, policy_for
+from ..deps.auth import get_current_user_optional, require_permissions
 from ..runtime import RuntimeStatus, ShutdownRequest, ShutdownResponse, WebRuntime
 
 router = APIRouter(prefix="/api/runtime", tags=["Runtime"])
+HEALTH_PERMISSION = Permission.HEALTH_READ
+SHUTDOWN_PERMISSION = Permission.RUNTIME_SHUTDOWN
+ACCOUNT_SCHEMES = ["OAuth2PasswordBearer", "APIKeyCookie", "IntegrationToken"]
+HEALTH_ACCESS = [
+    {
+        "condition": "Account credential",
+        "schemes": ACCOUNT_SCHEMES,
+        "permissions": [HEALTH_PERMISSION],
+    },
+    {
+        "condition": "Loopback supervisor",
+        "schemes": ["LocalReadiness"],
+        "permissions": [],
+    },
+]
+SHUTDOWN_ACCESS = [
+    {
+        "condition": "Administrator credential",
+        "schemes": ACCOUNT_SCHEMES,
+        "permissions": [SHUTDOWN_PERMISSION],
+    },
+    {
+        "condition": "Local shutdown credential",
+        "schemes": ["APIKeyHeader"],
+        "permissions": [],
+    },
+]
 local_key = APIKeyHeader(name="X-BSM-Shutdown-Token", auto_error=False)
 readiness_key = APIKeyHeader(
     name="X-BSM-Readiness-Token", scheme_name="LocalReadiness", auto_error=False
@@ -49,7 +78,11 @@ async def shutdown_actor(
             detail="Not authenticated",
             headers={"WWW-Authenticate": "Bearer"},
         )
-    if user.role != "admin":
+    authorization = getattr(request.state, "authorization", None)
+    if authorization is not None and not authorization.allows(SHUTDOWN_PERMISSION):
+        raise HTTPException(403, "Shutdown access denied")
+    policy = policy_for(request)
+    if SHUTDOWN_PERMISSION not in policy.resolve(user.role):
         raise HTTPException(status_code=403, detail="Administrator permission required")
     return "administrator"
 
@@ -58,7 +91,7 @@ async def shutdown_actor(
     "",
     operation_id="get_web_runtime",
     response_model=RuntimeStatus,
-    dependencies=[Depends(get_admin_user)],
+    dependencies=[Security(require_permissions, scopes=[Permission.RUNTIME_READ])],
 )
 async def runtime_status(
     runtime: WebRuntime = Depends(get_web_runtime),
@@ -71,6 +104,13 @@ async def runtime_status(
     operation_id="shutdown_web_runtime",
     status_code=202,
     response_model=ShutdownResponse,
+)
+@describe_access(
+    "custom",
+    authentication="required",
+    additional_checks=["administrator-or-local-shutdown-token"],
+    allowed_roles=["admin"],
+    credential_alternatives=SHUTDOWN_ACCESS,
 )
 async def shutdown_runtime(
     request: ShutdownRequest,
@@ -96,6 +136,12 @@ async def require_health_access(
                 detail="Not authenticated",
                 headers={"WWW-Authenticate": "Bearer"},
             )
+        authorization = getattr(request.state, "authorization", None)
+        if authorization is not None and not authorization.allows(HEALTH_PERMISSION):
+            raise HTTPException(403, "Health access denied")
+        policy = policy_for(request)
+        if HEALTH_PERMISSION not in policy.resolve(user.role):
+            raise HTTPException(403, "Health access denied")
         return
     runtime = getattr(request.app.state, "web_runtime", None)
     if not isinstance(runtime, WebRuntime):
@@ -114,3 +160,6 @@ async def require_health_access(
         raise HTTPException(status_code=403, detail="Local readiness access required")
     if not runtime.authenticate_readiness(token):
         raise HTTPException(status_code=401, detail="Invalid readiness credential")
+
+
+setattr(shutdown_runtime, "__bsm_token_policy__", True)

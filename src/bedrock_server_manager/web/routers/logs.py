@@ -1,27 +1,76 @@
 """Bounded history pages for the live application and server log viewers."""
 
-from fastapi import APIRouter, Depends, HTTPException, Query
+from fastapi import APIRouter, Depends, HTTPException, Query, Request, Security
+from fastapi.security import SecurityScopes
 
 from ...context import AppContext
 from ...error import InvalidServerNameError
 from ...utils.server import core_validate_server_name_format
-from ..deps import get_app_context, get_moderator_user
+from ..access_metadata import describe_access
+from ..access_policy import Permission
+from ..authorization import current_authorization, server_collection
+from ..deps import get_app_context
+from ..deps.auth import require_permissions
 from ..log_streamer import LogHistoryPage
 from ..schemas import UserResponse
 
 router = APIRouter(prefix="/api/logs", tags=["Logs"])
+LOG_ACCESS = [
+    {
+        "condition": "topic=server_log:<server>",
+        "schemes": ["OAuth2PasswordBearer", "APIKeyCookie", "IntegrationToken"],
+        "permissions": [Permission.LOGS_READ],
+    },
+    {
+        "condition": "topic=app_log or app_logs",
+        "schemes": ["OAuth2PasswordBearer", "APIKeyCookie", "IntegrationToken"],
+        "permissions": [Permission.LOGS_READ_APPLICATION],
+    },
+]
+
+
+async def log_reader(
+    request: Request,
+    topic: str = Query(min_length=1, max_length=256),
+    user: UserResponse = Security(require_permissions, scopes=[]),
+):
+    if topic in ("app_log", "app_logs"):
+        permission = LOG_ACCESS[1]["permissions"]
+    elif topic.startswith("server_log:"):
+        permission = LOG_ACCESS[0]["permissions"]
+    else:
+        raise HTTPException(400, "Invalid log topic.")
+    return await require_permissions(
+        request, SecurityScopes(scopes=list(permission)), user
+    )
 
 
 @router.get("/history", response_model=LogHistoryPage, operation_id="get_log_history")
+@describe_access(
+    "custom",
+    authentication="required",
+    additional_checks=["application-log-admin", "topic-server-access"],
+    allowed_roles=["moderator", "admin"],
+    credential_alternatives=LOG_ACCESS,
+)
+@server_collection
 async def get_log_history(
     topic: str = Query(min_length=1, max_length=256),
     before: int | None = Query(default=None, ge=0),
     file_id: str | None = Query(default=None, max_length=64),
-    current_user: UserResponse = Depends(get_moderator_user),
+    current_user: UserResponse = Depends(log_reader),
     app_context: AppContext = Depends(get_app_context),
 ) -> LogHistoryPage:
-    if topic in ("app_log", "app_logs") and current_user.role != "admin":
-        raise HTTPException(status_code=403, detail="Administrator access required.")
+    authorization = current_authorization.get()
+    if authorization is not None:
+        if topic.startswith("server_log:"):
+            permitted = authorization.allows("logs:read", topic.split(":", 1)[1])
+        else:
+            permitted = not authorization.resource_restricted and authorization.allows(
+                "logs:read_application"
+            )
+        if not permitted:
+            raise HTTPException(403, "Log access denied")
     if topic not in ("app_log", "app_logs") and not topic.startswith("server_log:"):
         raise HTTPException(status_code=400, detail="Invalid log topic.")
     if topic.startswith("server_log:"):

@@ -3,18 +3,51 @@
 import logging
 from typing import Any
 
-from fastapi import FastAPI
+from fastapi import FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
 
 from ...state.settings import DEFAULT_CORS_ORIGINS
 from .auth import add_user_to_request
+from .auth_body import AuthBodyLimit
 from .backup_upload import BackupUploadLimit
-from .ingress import IngressMiddleware
+from .ingress import IngressMiddleware, route_path
 from .lifecycle import reject_new_mutations
 from .setup import setup_check_middleware
 
 logger = logging.getLogger(__name__)
 DEFAULT_ORIGINS = list(DEFAULT_CORS_ORIGINS)
+
+
+async def registration_privacy(request: Request, call_next):
+    """Keep invitation URLs and secret-bearing responses out of caches/referrers."""
+    response = await call_next(request)
+    if route_path(request.scope).startswith(("/api/register/", "/app/register/")):
+        response.headers["Cache-Control"] = "no-store"
+        response.headers["Referrer-Policy"] = "no-referrer"
+    return response
+
+
+async def security_headers(request: Request, call_next):
+    """Compatible defaults; deployment-specific CSP starts in report-only mode."""
+    response = await call_next(request)
+    response.headers.setdefault("X-Content-Type-Options", "nosniff")
+    response.headers.setdefault("Referrer-Policy", "strict-origin-when-cross-origin")
+    if route_path(request.scope).startswith(("/auth/", "/api/setup/")):
+        response.headers["Cache-Control"] = "no-store"
+        response.headers["Pragma"] = "no-cache"
+    response.headers.setdefault(
+        "Permissions-Policy", "camera=(), microphone=(), geolocation=()"
+    )
+    settings = request.app.state.app_context.settings
+    frames = settings.get("web.frame_ancestors")
+    report = settings.get("web.csp_report_only")
+    if frames:
+        response.headers.setdefault(
+            "Content-Security-Policy", f"frame-ancestors {frames}"
+        )
+    if report:
+        response.headers.setdefault("Content-Security-Policy-Report-Only", report)
+    return response
 
 
 def configure_middleware(
@@ -43,13 +76,25 @@ def configure_middleware(
     app.middleware("http")(setup_check_middleware)
     app.middleware("http")(add_user_to_request)
 
+    app.middleware("http")(registration_privacy)
+    app.middleware("http")(security_headers)
+
     app.add_middleware(BackupUploadLimit)
+    app.add_middleware(AuthBodyLimit)
 
     # Add CORS Middleware
     cors_kwargs: dict[str, Any] = {
         "allow_credentials": True,
         "allow_methods": ["*"],
         "allow_headers": ["*"],
+        "expose_headers": [
+            "X-BSM-Policy-Revision",
+            "X-BSM-CSRF-Token",
+            "X-BSM-Session-Invalid",
+            "X-BSM-Recent-Auth",
+            "X-BSM-MFA",
+            "X-BSM-MFA-Enrollment",
+        ],
     }
 
     if allow_all_origins:

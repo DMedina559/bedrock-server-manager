@@ -141,6 +141,7 @@ def create_cli_app():
         cli.add_command(cleanup.cleanup)
         cli.add_command(setup.setup)
         cli.add_command(reset_password.reset_password_command)
+        cli.add_command(reset_password.reset_mfa_command)
         cli.add_command(service.service)
         cli.add_command(database.database)
         from .cli.backup import backup

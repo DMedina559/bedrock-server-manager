@@ -27,19 +27,13 @@ from bedrock_server_manager.error import (
     SystemError,
 )
 
-# --- PID File Path Tests ---
 
-
-async def test_get_pid_file_path(tmp_path: Path):
-    """Test get_pid_file_path with valid inputs."""
+async def test_pid_file_paths_and_io(tmp_path: Path):
+    """Test PID path resolution and PID file read/write/remove operations."""
     config_dir = str(tmp_path)
-    pid_filename = "test.pid"
-    expected = os.path.join(config_dir, pid_filename)
-    assert await get_pid_file_path(config_dir, pid_filename) == expected
+    expected = os.path.join(config_dir, "test.pid")
+    assert await get_pid_file_path(config_dir, "test.pid") == expected
 
-
-async def test_get_pid_file_path_invalid():
-    """Test get_pid_file_path with invalid inputs."""
     with pytest.raises(AppFileNotFoundError):
         await get_pid_file_path("", "test.pid")
     with pytest.raises(AppFileNotFoundError):
@@ -47,23 +41,18 @@ async def test_get_pid_file_path_invalid():
     with pytest.raises(MissingArgumentError):
         await get_pid_file_path(str(Path.cwd()), "")
 
-
-async def test_get_bedrock_server_pid_file_path(tmp_path: Path):
-    """Test get_bedrock_server_pid_file_path with valid inputs."""
-    config_dir = tmp_path / "config"
-    config_dir.mkdir()
+    srv_cfg_root = tmp_path / "config"
+    srv_cfg_root.mkdir()
     server_name = "myserver"
-    server_config_dir = config_dir / server_name
+    with pytest.raises(AppFileNotFoundError):
+        await get_bedrock_server_pid_file_path(server_name, str(srv_cfg_root))
+
+    server_config_dir = srv_cfg_root / server_name
     server_config_dir.mkdir()
+    assert await get_bedrock_server_pid_file_path(
+        server_name, str(srv_cfg_root)
+    ) == os.path.join(str(server_config_dir), f"bedrock_{server_name}.pid")
 
-    expected = os.path.join(str(server_config_dir), f"bedrock_{server_name}.pid")
-    assert (
-        await get_bedrock_server_pid_file_path(server_name, str(config_dir)) == expected
-    )
-
-
-async def test_get_bedrock_server_pid_file_path_invalid(tmp_path: Path):
-    """Test get_bedrock_server_pid_file_path with invalid inputs."""
     with pytest.raises(MissingArgumentError):
         await get_bedrock_server_pid_file_path("", str(tmp_path))
     with pytest.raises(MissingArgumentError):
@@ -71,201 +60,90 @@ async def test_get_bedrock_server_pid_file_path_invalid(tmp_path: Path):
     with pytest.raises(AppFileNotFoundError):
         await get_bedrock_server_pid_file_path("server", "/nonexistent/config")
 
-    config_dir = tmp_path / "config"
-    config_dir.mkdir()
-    with pytest.raises(AppFileNotFoundError):
-        # Server subfolder doesn't exist
-        await get_bedrock_server_pid_file_path("server", str(config_dir))
-
-
-# --- PID File I/O Tests ---
-
-
-async def test_read_pid_from_file_success(tmp_path: Path):
-    """Test reading a valid PID from file."""
     pid_file = tmp_path / "test.pid"
+    assert await read_pid_from_file(str(tmp_path / "nonexistent.pid")) is None
     pid_file.write_text("1234")
     assert await read_pid_from_file(str(pid_file)) == 1234
-
     pid_file.write_text("  5678  \n")
     assert await read_pid_from_file(str(pid_file)) == 5678
-
-
-async def test_read_pid_from_file_not_found(tmp_path: Path):
-    """Test reading from non-existent PID file."""
-    pid_file = tmp_path / "nonexistent.pid"
-    assert await read_pid_from_file(str(pid_file)) is None
-
-
-async def test_read_pid_from_file_invalid(tmp_path: Path):
-    """Test reading invalid data from PID file."""
-    pid_file = tmp_path / "test.pid"
     pid_file.write_text("not_a_pid")
-    # Returns None now instead of raising
     assert await read_pid_from_file(str(pid_file)) is None
-
-
-async def test_read_pid_from_file_missing_arg():
-    """Test read_pid_from_file with missing argument."""
     with pytest.raises(MissingArgumentError):
         await read_pid_from_file("")
 
-
-async def test_write_pid_to_file(tmp_path: Path):
-    """Test writing PID to file."""
-    pid_file = tmp_path / "nested" / "test.pid"
-    await write_pid_to_file(str(pid_file), 9999)
-    assert pid_file.read_text().strip() == "9999"
-
-
-async def test_write_pid_to_file_invalid(tmp_path: Path):
-    """Test write_pid_to_file with invalid inputs."""
+    nested_pid = tmp_path / "nested" / "test.pid"
+    await write_pid_to_file(str(nested_pid), 9999)
+    assert nested_pid.read_text().strip() == "9999"
     with pytest.raises(MissingArgumentError):
         await write_pid_to_file("", 1234)
     with pytest.raises(MissingArgumentError):
-        await write_pid_to_file(str(tmp_path / "test.pid"), "1234")  # type: ignore
+        await write_pid_to_file(str(pid_file), "1234")  # type: ignore
 
-
-async def test_remove_pid_file_if_exists(tmp_path: Path):
-    """Test removing an existing PID file."""
-    pid_file = tmp_path / "test.pid"
-    pid_file.write_text("1234")
     assert await remove_pid_file_if_exists(str(pid_file)) is True
     assert not pid_file.exists()
-
-
-async def test_remove_pid_file_not_exists(tmp_path: Path):
-    """Test removing a non-existent PID file."""
-    pid_file = tmp_path / "nonexistent.pid"
     assert await remove_pid_file_if_exists(str(pid_file)) is True
-
-
-async def test_remove_pid_file_missing_arg():
-    """Test remove_pid_file_if_exists missing argument."""
     with pytest.raises(MissingArgumentError):
         await remove_pid_file_if_exists("")
 
 
-# --- Process Execution Tests ---
-
-
-async def test_guarded_process():
-    """Test GuardedProcess environment injection."""
+async def test_guarded_process_and_psutil_edge_cases():
+    """Test GuardedProcess and mocked psutil error branches."""
     cmd = ["echo", "test"]
     guarded = GuardedProcess(cmd)
     assert guarded.command == cmd
-    assert GUARD_VARIABLE in guarded.guard_env
-    assert guarded.guard_env[GUARD_VARIABLE] == "1"
+    assert guarded.guard_env.get(GUARD_VARIABLE) == "1"
 
+    with (
+        patch("bedrock_server_manager.core.system.process.PSUTIL_AVAILABLE", True),
+        patch("psutil.pid_exists", return_value=True) as mock_exists,
+    ):
+        assert await is_process_running(1234) is True
+        mock_exists.assert_called_once_with(1234)
 
-# --- Process Status & Verification Tests ---
+    with (
+        patch("bedrock_server_manager.core.system.process.PSUTIL_AVAILABLE", True),
+        patch("psutil.pid_exists", return_value=False) as mock_exists,
+    ):
+        assert await is_process_running(1234) is False
+        mock_exists.assert_called_once_with(1234)
 
+    with patch("bedrock_server_manager.core.system.process.PSUTIL_AVAILABLE", False):
+        with pytest.raises(SystemError):
+            await is_process_running(1234)
+        with pytest.raises(SystemError):
+            await verify_process_identity(1234, expected_executable_path="/app")
+        assert (
+            await get_verified_bedrock_process("myserver", "/server/dir", "/config")
+            is None
+        )
 
-@patch("bedrock_server_manager.core.system.process.PSUTIL_AVAILABLE", True)
-@patch("psutil.pid_exists", return_value=True)
-async def test_is_process_running_true(mock_pid_exists):
-    """Test is_process_running when process exists."""
-    assert await is_process_running(1234) is True
-    mock_pid_exists.assert_called_once_with(1234)
+    with (
+        patch("bedrock_server_manager.core.system.process.PSUTIL_AVAILABLE", True),
+        patch("psutil.Process", side_effect=psutil.NoSuchProcess(1234)),
+    ):
+        with pytest.raises(ServerProcessError):
+            await verify_process_identity(1234, expected_executable_path="/app")
 
+    with (
+        patch("bedrock_server_manager.core.system.process.PSUTIL_AVAILABLE", True),
+        patch("psutil.Process", side_effect=psutil.AccessDenied(1234)),
+    ):
+        with pytest.raises(PermissionsError):
+            await verify_process_identity(1234, expected_executable_path="/app")
 
-@patch("bedrock_server_manager.core.system.process.PSUTIL_AVAILABLE", True)
-@patch("psutil.pid_exists", return_value=False)
-async def test_is_process_running_false(mock_pid_exists):
-    """Test is_process_running when process does not exist."""
-    assert await is_process_running(1234) is False
-    mock_pid_exists.assert_called_once_with(1234)
-
-
-@patch("bedrock_server_manager.core.system.process.PSUTIL_AVAILABLE", False)
-async def test_is_process_running_no_psutil():
-    """Test is_process_running when psutil is not available."""
-    with pytest.raises(SystemError):
-        await is_process_running(1234)
-
-
-async def test_verify_process_identity_success(real_bedrock_server):
-    server = real_bedrock_server
-    await server.start()
-    await verify_process_identity(
-        server.process._process.pid,
-        expected_executable_path=server.paths.bedrock_executable_path,
-        expected_cwd=server.paths.server_dir,
-    )
-
-
-@pytest.mark.parametrize("criterion", ["executable", "cwd", "arguments"])
-async def test_verify_process_identity_mismatch(
-    real_bedrock_server, tmp_path, criterion
-):
-    server = real_bedrock_server
-    await server.start()
-    criteria = {
-        "executable": (
-            "expected_executable_path",
-            str(tmp_path / "other"),
-            "Executable path mismatch",
-        ),
-        "cwd": ("expected_cwd", str(tmp_path), "CWD mismatch"),
-        "arguments": (
-            "expected_command_args",
-            ["--not-a-server-argument"],
-            "Argument mismatch",
-        ),
-    }
-    key, value, message = criteria[criterion]
-    with pytest.raises(ServerProcessError, match=message):
-        await verify_process_identity(server.process._process.pid, **{key: value})
-    assert await server.is_running()
-
-
-@patch("bedrock_server_manager.core.system.process.PSUTIL_AVAILABLE", True)
-@patch("psutil.Process")
-async def test_verify_process_identity_no_such_process(mock_process_class):
-    """Test verify_process_identity when process does not exist."""
-    mock_process_class.side_effect = psutil.NoSuchProcess(1234)
-    with pytest.raises(ServerProcessError):
-        await verify_process_identity(1234, expected_executable_path="/app")
-
-
-@patch("bedrock_server_manager.core.system.process.PSUTIL_AVAILABLE", True)
-@patch("psutil.Process")
-async def test_verify_process_identity_access_denied(mock_process_class):
-    """Test verify_process_identity when access is denied."""
-    mock_process_class.side_effect = psutil.AccessDenied(1234)
-    with pytest.raises(PermissionsError):
-        await verify_process_identity(1234, expected_executable_path="/app")
-
-
-@patch("bedrock_server_manager.core.system.process.PSUTIL_AVAILABLE", False)
-async def test_verify_process_identity_no_psutil():
-    """Test verify_process_identity when psutil is not available."""
-    with pytest.raises(SystemError):
-        await verify_process_identity(1234, expected_executable_path="/app")
-
-
-async def test_verify_process_identity_missing_args():
-    """Test verify_process_identity with missing arguments."""
     with pytest.raises(MissingArgumentError):
         await verify_process_identity("1234", expected_executable_path="/app")  # type: ignore
     with pytest.raises(MissingArgumentError):
-        await verify_process_identity(1234)  # No criteria provided
+        await verify_process_identity(1234)
+
+    assert await get_verified_bedrock_process("", "/server/dir", "/config") is None
+    assert await get_verified_bedrock_process("server", "", "/config") is None
+    assert await get_verified_bedrock_process("server", "/server/dir", "") is None
 
 
-# --- High Level Verification Tests ---
-
-
-async def test_get_verified_bedrock_process_success(real_bedrock_server):
-    server = real_bedrock_server
-    await server.start()
-    process = await get_verified_bedrock_process(
-        server.server_name, server.paths.server_dir, server.paths.app_config_dir
-    )
-    assert process.pid == server.process._process.pid
-    assert process.is_running()
-
-
-async def test_get_verified_bedrock_process_no_pid(real_bedrock_server):
+async def test_verify_and_get_bedrock_process_with_real_server(
+    real_bedrock_server, tmp_path
+):
     server = real_bedrock_server
     assert not Path(server.get_pid_file_path()).exists()
     assert (
@@ -275,11 +153,32 @@ async def test_get_verified_bedrock_process_no_pid(real_bedrock_server):
         is None
     )
 
-
-async def test_get_verified_bedrock_process_stale_pid(real_bedrock_server):
-    server = real_bedrock_server
     await server.start()
     pid = server.process._process.pid
+    await verify_process_identity(
+        pid,
+        expected_executable_path=server.paths.bedrock_executable_path,
+        expected_cwd=server.paths.server_dir,
+    )
+    for key, value, message in (
+        (
+            "expected_executable_path",
+            str(tmp_path / "other"),
+            "Executable path mismatch",
+        ),
+        ("expected_cwd", str(tmp_path), "CWD mismatch"),
+        ("expected_command_args", ["--not-a-server-argument"], "Argument mismatch"),
+    ):
+        with pytest.raises(ServerProcessError, match=message):
+            await verify_process_identity(pid, **{key: value})
+    assert await server.is_running()
+
+    process = await get_verified_bedrock_process(
+        server.server_name, server.paths.server_dir, server.paths.app_config_dir
+    )
+    assert process.pid == pid
+    assert process.is_running()
+
     await server.stop()
     path = server.get_pid_file_path()
     await write_pid_to_file(path, pid)
@@ -290,18 +189,3 @@ async def test_get_verified_bedrock_process_stale_pid(real_bedrock_server):
         is None
     )
     assert not Path(path).exists()
-
-
-@patch("bedrock_server_manager.core.system.process.PSUTIL_AVAILABLE", False)
-async def test_get_verified_bedrock_process_no_psutil():
-    """Test get_verified_bedrock_process when psutil is unavailable."""
-    assert (
-        await get_verified_bedrock_process("myserver", "/server/dir", "/config") is None
-    )
-
-
-async def test_get_verified_bedrock_process_invalid_args():
-    """Test get_verified_bedrock_process with invalid arguments."""
-    assert await get_verified_bedrock_process("", "/server/dir", "/config") is None
-    assert await get_verified_bedrock_process("server", "", "/config") is None
-    assert await get_verified_bedrock_process("server", "/server/dir", "") is None

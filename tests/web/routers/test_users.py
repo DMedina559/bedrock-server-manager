@@ -1,6 +1,4 @@
-"""
-Integration tests for the users router endpoints.
-"""
+"""Integration tests for the users router endpoints."""
 
 from httpx2 import AsyncClient
 from sqlalchemy import select
@@ -8,144 +6,89 @@ from sqlalchemy import select
 from bedrock_server_manager.db.models import User
 
 
-async def test_list_users_unauthorized(unauth_client: AsyncClient):
-    response = await unauth_client.get("/api/users/list")
-    assert response.status_code == 401
+async def test_users_router_crud_and_last_admin_guards(
+    unauth_client: AsyncClient,
+    auth_client: AsyncClient,
+    admin_auth_client: AsyncClient,
+    app_context,
+):
+    # Authorization checks
+    assert (await unauth_client.get("/api/users/list")).status_code == 401
+    assert (await auth_client.get("/api/users/list")).status_code == 403
 
+    list_resp = await admin_auth_client.get("/api/users/list")
+    assert list_resp.status_code == 200
+    data = list_resp.json()
+    assert len(data) >= 1 and any(u["role"] == "admin" for u in data)
 
-async def test_list_users_forbidden(auth_client: AsyncClient):
-    response = await auth_client.get("/api/users/list")
-    assert response.status_code == 403
-
-
-async def test_list_users_success(admin_auth_client: AsyncClient):
-    response = await admin_auth_client.get("/api/users/list")
-    assert response.status_code == 200
-    data = response.json()
-    assert len(data) >= 1
-    assert any(u["role"] == "admin" for u in data)
-
-
-async def test_delete_user_success(admin_auth_client: AsyncClient, app_context):
+    # Create target user and find admin id
     async with app_context.db.session_manager() as db:
-        user = User(username="to_delete", hashed_password="pw", role="user")
-        db.add(user)
-        await db.commit()
-        await db.refresh(user)
-        user_id = user.id
-
-    response = await admin_auth_client.post(f"/api/users/{user_id}/delete")
-    assert response.status_code == 200
-    assert response.json()["status"] == "success"
-
-    async with app_context.db.session_manager() as db:
-        res = await db.execute(select(User).filter(User.id == user_id))
-        user = res.scalar_one_or_none()
-        assert user is None
-
-
-async def test_delete_user_last_admin(admin_auth_client: AsyncClient, app_context):
-    async with app_context.db.session_manager() as db:
-        res = await db.execute(
-            select(User).filter(User.role == "admin", User.is_active.is_(True))
+        admin = (
+            (
+                await db.execute(
+                    select(User).filter(User.role == "admin", User.is_active.is_(True))
+                )
+            )
+            .scalars()
+            .first()
         )
-        admin = res.scalars().first()
         admin_id = admin.id
 
-    response = await admin_auth_client.post(f"/api/users/{admin_id}/delete")
-    assert response.status_code == 400
-    assert "Cannot delete the last active admin" in response.json()["error"]["message"]
-
-
-async def test_delete_user_not_found(admin_auth_client: AsyncClient):
-    response = await admin_auth_client.post("/api/users/9999/delete")
-    assert response.status_code == 404
-    assert "not found" in response.json()["error"]["message"].lower()
-
-
-async def test_disable_user_success(admin_auth_client: AsyncClient, app_context):
-    async with app_context.db.session_manager() as db:
         user = User(
-            username="to_disable", hashed_password="pw", role="user", is_active=True
+            username="managed_user", hashed_password="pw", role="user", is_active=True
         )
         db.add(user)
         await db.commit()
         await db.refresh(user)
         user_id = user.id
 
-    response = await admin_auth_client.post(f"/api/users/{user_id}/disable")
-    assert response.status_code == 200
+    # Last admin guards (delete, disable, role change)
+    del_admin = await admin_auth_client.post(f"/api/users/{admin_id}/delete")
+    assert del_admin.status_code == 400
+    assert "Cannot delete the last active admin" in del_admin.json()["error"]["message"]
 
-    async with app_context.db.session_manager() as db:
-        res = await db.execute(select(User).filter(User.id == user_id))
-        user = res.scalar_one_or_none()
-        assert user.is_active is False
-
-
-async def test_disable_user_last_admin(admin_auth_client: AsyncClient, app_context):
-    async with app_context.db.session_manager() as db:
-        res = await db.execute(
-            select(User).filter(User.role == "admin", User.is_active.is_(True))
-        )
-        admin = res.scalars().first()
-        admin_id = admin.id
-
-    response = await admin_auth_client.post(f"/api/users/{admin_id}/disable")
-    assert response.status_code == 400
-    assert "Cannot disable the last active admin" in response.json()["error"]["message"]
-
-
-async def test_enable_user_success(admin_auth_client: AsyncClient, app_context):
-    async with app_context.db.session_manager() as db:
-        user = User(
-            username="to_enable", hashed_password="pw", role="user", is_active=False
-        )
-        db.add(user)
-        await db.commit()
-        await db.refresh(user)
-        user_id = user.id
-
-    response = await admin_auth_client.post(f"/api/users/{user_id}/enable")
-    assert response.status_code == 200
-
-    async with app_context.db.session_manager() as db:
-        res = await db.execute(select(User).filter(User.id == user_id))
-        user = res.scalar_one_or_none()
-        assert user.is_active is True
-
-
-async def test_update_user_role_success(admin_auth_client: AsyncClient, app_context):
-    async with app_context.db.session_manager() as db:
-        user = User(username="to_update", hashed_password="pw", role="user")
-        db.add(user)
-        await db.commit()
-        await db.refresh(user)
-        user_id = user.id
-
-    response = await admin_auth_client.post(
-        f"/api/users/{user_id}/role", json={"role": "moderator"}
+    dis_admin = await admin_auth_client.post(f"/api/users/{admin_id}/disable")
+    assert dis_admin.status_code == 400
+    assert (
+        "Cannot disable the last active admin" in dis_admin.json()["error"]["message"]
     )
-    assert response.status_code == 200
 
-    async with app_context.db.session_manager() as db:
-        res = await db.execute(select(User).filter(User.id == user_id))
-        user = res.scalar_one_or_none()
-        assert user.role == "moderator"
-
-
-async def test_update_user_role_last_admin(admin_auth_client: AsyncClient, app_context):
-    async with app_context.db.session_manager() as db:
-        res = await db.execute(
-            select(User).filter(User.role == "admin", User.is_active.is_(True))
-        )
-        admin = res.scalars().first()
-        admin_id = admin.id
-
-    response = await admin_auth_client.post(
+    role_admin = await admin_auth_client.post(
         f"/api/users/{admin_id}/role", json={"role": "user"}
     )
-    assert response.status_code == 400
+    assert role_admin.status_code == 400
     assert (
         "Cannot change the role of the last active admin"
-        in response.json()["error"]["message"]
+        in role_admin.json()["error"]["message"]
     )
+
+    # Disable, enable, update role, and delete user
+    assert (
+        await admin_auth_client.post(f"/api/users/{user_id}/disable")
+    ).status_code == 200
+    async with app_context.db.session_manager() as db:
+        assert (await db.get(User, user_id)).is_active is False
+
+    assert (
+        await admin_auth_client.post(f"/api/users/{user_id}/enable")
+    ).status_code == 200
+    async with app_context.db.session_manager() as db:
+        assert (await db.get(User, user_id)).is_active is True
+
+    assert (
+        await admin_auth_client.post(
+            f"/api/users/{user_id}/role", json={"role": "moderator"}
+        )
+    ).status_code == 200
+    async with app_context.db.session_manager() as db:
+        assert (await db.get(User, user_id)).role == "moderator"
+
+    del_resp = await admin_auth_client.post(f"/api/users/{user_id}/delete")
+    assert del_resp.status_code == 200 and del_resp.json()["status"] == "success"
+    async with app_context.db.session_manager() as db:
+        assert await db.get(User, user_id) is None
+
+    # Delete non-existent user
+    not_found = await admin_auth_client.post("/api/users/9999/delete")
+    assert not_found.status_code == 404
+    assert "not found" in not_found.json()["error"]["message"].lower()

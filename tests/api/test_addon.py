@@ -25,10 +25,55 @@ from bedrock_server_manager.api.models import (
 from bedrock_server_manager.error import BSMError
 
 
-async def test_addon_lifecycle_persists_world_activation(
-    app_context, populated_server, valid_behavior_pack_zip
+async def test_addon_api_lifecycle_and_error_preservation(
+    app_context, populated_server, valid_behavior_pack_zip, tmp_path
 ):
     name = populated_server.server_name
+
+    # Invalid archive and unknown pack preserve existing addons
+    before = await list_installed_addons(
+        ListInstalledAddonsRequest(server_name=name),
+        app_context=app_context,
+    )
+    archive = tmp_path / "broken.mcpack"
+    archive.write_bytes(b"not an archive")
+    with pytest.raises(BSMError):
+        await import_addon(
+            ImportAddonRequest(
+                server_name=name,
+                addon_file_path=str(archive),
+                stop_start_server=False,
+            ),
+            app_context=app_context,
+        )
+    assert (
+        await list_installed_addons(
+            ListInstalledAddonsRequest(server_name=name),
+            app_context=app_context,
+        )
+        == before
+    )
+    assert not populated_server.operation_lock.locked()
+
+    with pytest.raises(BSMError):
+        await update_subpack(
+            UpdateSubpackRequest(
+                server_name=name,
+                pack_uuid="missing-pack",
+                pack_type="resource",
+                subpack_name="missing",
+            ),
+            app_context=app_context,
+        )
+    assert (
+        await list_installed_addons(
+            ListInstalledAddonsRequest(server_name=name),
+            app_context=app_context,
+        )
+        == before
+    )
+
+    # Full lifecycle
     await import_addon(
         ImportAddonRequest(
             server_name=name,
@@ -81,59 +126,9 @@ async def test_addon_lifecycle_persists_world_activation(
     assert addon.uuid not in {pack.uuid for pack in await packs()}
 
 
-async def test_invalid_archive_preserves_installed_addons(
-    app_context, populated_server, tmp_path
-):
-    before = await list_installed_addons(
-        ListInstalledAddonsRequest(server_name=populated_server.server_name),
-        app_context=app_context,
-    )
-    archive = tmp_path / "broken.mcpack"
-    archive.write_bytes(b"not an archive")
-    with pytest.raises(BSMError):
-        await import_addon(
-            ImportAddonRequest(
-                server_name=populated_server.server_name,
-                addon_file_path=str(archive),
-                stop_start_server=False,
-            ),
-            app_context=app_context,
-        )
-    after = await list_installed_addons(
-        ListInstalledAddonsRequest(server_name=populated_server.server_name),
-        app_context=app_context,
-    )
-    assert after == before
-    assert not populated_server.operation_lock.locked()
-
-
-async def test_unknown_pack_preserves_activation(app_context, populated_server):
-    before = await list_installed_addons(
-        ListInstalledAddonsRequest(server_name=populated_server.server_name),
-        app_context=app_context,
-    )
-    with pytest.raises(BSMError):
-        await update_subpack(
-            UpdateSubpackRequest(
-                server_name=populated_server.server_name,
-                pack_uuid="missing-pack",
-                pack_type="resource",
-                subpack_name="missing",
-            ),
-            app_context=app_context,
-        )
-    assert (
-        await list_installed_addons(
-            ListInstalledAddonsRequest(server_name=populated_server.server_name),
-            app_context=app_context,
-        )
-        == before
-    )
-
-
-@pytest.mark.parametrize("pack_type", ["invalid", "", "behavior_packs"])
-def test_addon_requests_reject_invalid_pack_type(pack_type):
-    with pytest.raises(ValidationError):
-        EnableAddonRequest(
-            server_name="test_server", pack_uuid="uuid", pack_type=pack_type
-        )
+def test_addon_requests_reject_invalid_pack_type():
+    for pack_type in ("invalid", "", "behavior_packs"):
+        with pytest.raises(ValidationError):
+            EnableAddonRequest(
+                server_name="test_server", pack_uuid="uuid", pack_type=pack_type
+            )

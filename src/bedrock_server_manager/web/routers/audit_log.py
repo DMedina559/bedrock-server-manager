@@ -1,16 +1,20 @@
-# bedrock_server_manager/web/routers/audit_log.py
 """
 FastAPI router for viewing audit logs.
 """
 
 import logging
-from typing import List
+from typing import Annotated, List
 
-from fastapi import APIRouter, Depends
+from fastapi import APIRouter, Depends, Query, Security
 
 from ...context import AppContext
-from ..deps import get_admin_user, get_app_context
+from ..access_policy import Permission
+from ..deps import get_app_context
+from ..deps.auth import require_permissions
 from ..schemas import AuditLogResponse, UserResponse
+
+# bedrock_server_manager/web/routers/audit_log.py
+
 
 logger = logging.getLogger(__name__)
 
@@ -21,12 +25,22 @@ router = APIRouter(prefix="/audit-log", tags=["Audit Logs"])
     "/list", operation_id="list_audit_logs", response_model=List[AuditLogResponse]
 )
 async def list_audit_logs_api(
-    current_user: UserResponse = Depends(get_admin_user),
+    current_user: UserResponse = Security(
+        require_permissions, scopes=[Permission.AUDIT_READ]
+    ),
+    limit: Annotated[int, Query(ge=1, le=500)] = 100,
+    offset: Annotated[int, Query(ge=0)] = 0,
     app_context: AppContext = Depends(get_app_context),
 ) -> List[AuditLogResponse]:
-    """Return audit logs as JSON."""
+    """Return a bounded page of audit logs, newest first.
+
+    Defaults to 100 records; request subsequent pages with offset. Ordering uses
+    timestamp and ID descending. Concurrent new entries can shift offset pages.
+    """
     async with app_context.storage.transaction() as session:
-        logs = await app_context.storage.audit_log_repo.get_all_logs(session)
+        logs = await app_context.storage.audit_log_repo.get_all_logs(
+            session, limit=limit, offset=offset
+        )
         return [
             AuditLogResponse.model_validate(log, from_attributes=True) for log in logs
         ]

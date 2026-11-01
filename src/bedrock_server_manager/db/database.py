@@ -118,8 +118,16 @@ class Database:
                 ):
                     open_cursors: weakref.WeakSet[sqlite3.Cursor] = weakref.WeakSet()
 
+                    def _active_connection():
+                        # aiosqlite clears the connection before calling stop().
+                        # Its _conn property raises rather than returning None.
+                        try:
+                            return raw_conn._conn
+                        except ValueError:
+                            return None
+
                     def _cleanup_conn() -> None:
-                        conn = getattr(raw_conn, "_conn", None)
+                        conn = _active_connection()
                         for cur in list(open_cursors):
                             try:
                                 cur.close()
@@ -133,7 +141,7 @@ class Database:
                                 pass
 
                     def _clean_close() -> None:
-                        conn = getattr(raw_conn, "_conn", None)
+                        conn = _active_connection()
                         _cleanup_conn()
                         if conn is not None:
                             conn.close()
@@ -159,7 +167,7 @@ class Database:
                     orig_execute = raw_conn._execute
 
                     async def _interruptible_execute(fn, *args, **kwargs):
-                        conn = getattr(raw_conn, "_conn", None)
+                        conn = _active_connection()
                         is_close = conn is not None and fn == conn.close
                         if is_close:
                             fn = _clean_close
@@ -173,7 +181,7 @@ class Database:
                                 open_cursors.add(res)
                             return res
                         except asyncio.CancelledError:
-                            conn = getattr(raw_conn, "_conn", None)
+                            conn = _active_connection()
                             if conn is not None and not is_close:
                                 try:
                                     conn.interrupt()

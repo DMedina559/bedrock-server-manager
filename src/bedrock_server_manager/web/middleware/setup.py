@@ -12,13 +12,18 @@ async def setup_check_middleware(request: Request, call_next):
     """
     # Paths that should be accessible even if setup is not complete
     allowed_paths = [
-        "/setup/status",  # API status check
-        "/setup/create-first-user",  # API create user
+        "/api/setup/status",  # API status check
+        "/api/setup/create-first-user",  # API create user
+        "/setup/status",
+        "/setup/create-first-user",
         "/app",  # The SPA itself
         "/themes",
         "/favicon.ico",
         "/site.webmanifest",
         "/auth/token",
+        "/auth/passkey/options",
+        "/auth/passkey/verify",
+        "/audit-log",
         "/docs",
         "/openapi.json",
     ]

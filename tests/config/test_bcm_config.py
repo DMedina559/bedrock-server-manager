@@ -28,33 +28,26 @@ def clean_env(monkeypatch):
     bcm_config.set_custom_log_level(None)
 
 
-def test_get_config_dir_cli_override(clean_env):
-    """Test get_config_dir returns the CLI override if set."""
+def test_get_config_dir_and_path(isolated_bcm_config, monkeypatch):
+    """Test get_config_dir priority (CLI override, env var, default) and get_config_path."""
+    expected = os.path.join(
+        str(isolated_bcm_config), "config", "bedrock_server_manager.json"
+    )
+    assert bcm_config.get_config_path() == expected
+
     bcm_config.set_custom_config_dir("/cli/config")
     assert bcm_config.get_config_dir() == "/cli/config"
+    bcm_config.set_custom_config_dir(None)
 
-
-def test_get_config_dir_env_var(clean_env, monkeypatch):
-    """Test get_config_dir returns the env var if set."""
     monkeypatch.setenv("BSM_CONFIG_DIR", "/env/config")
     assert bcm_config.get_config_dir() == "/env/config"
+    monkeypatch.delenv("BSM_CONFIG_DIR", raising=False)
 
-
-def test_get_config_dir_default(clean_env, monkeypatch):
-    """Test get_config_dir returns the user config dir default."""
     mock_user_config_dir = MagicMock(return_value="/default/config")
     monkeypatch.setattr(
         "bedrock_server_manager.config.bcm_config.user_config_dir", mock_user_config_dir
     )
     assert bcm_config.get_config_dir() == "/default/config"
-
-
-def test_get_config_path(isolated_bcm_config):
-    """Test get_config_path returns the full path to json file."""
-    expected = os.path.join(
-        str(isolated_bcm_config), "config", "bedrock_server_manager.json"
-    )
-    assert bcm_config.get_config_path() == expected
 
 
 def test_load_config_priority(clean_env, monkeypatch, tmp_path):
@@ -208,36 +201,24 @@ async def test_needs_setup(app_context):
     assert app_context.needs_setup is False
 
 
-@pytest.mark.parametrize(
-    "data",
-    [
-        {"logging_level": "BAD"},
-        {"db_url": "invalid"},
-        {"custom": float("nan")},
-        {"custom": object()},
-    ],
-)
-def test_invalid_save_preserves_existing_file(data, isolated_bcm_config):
-    from pathlib import Path
-
+def test_invalid_save_and_replace_failure_preserve_existing_file(
+    isolated_bcm_config, monkeypatch
+):
     from bedrock_server_manager.error import ConfigurationError
 
     bcm_config.save_config({"custom": "valid"})
     path = Path(bcm_config.get_config_path())
     before = path.read_bytes()
-    with pytest.raises(ConfigurationError):
-        bcm_config.save_config(data)
-    assert path.read_bytes() == before
+    for data in (
+        {"logging_level": "BAD"},
+        {"db_url": "invalid"},
+        {"custom": float("nan")},
+        {"custom": object()},
+    ):
+        with pytest.raises(ConfigurationError):
+            bcm_config.save_config(data)
+        assert path.read_bytes() == before
 
-
-def test_replace_failure_preserves_previous_file(isolated_bcm_config, monkeypatch):
-    from pathlib import Path
-
-    from bedrock_server_manager.error import ConfigurationError
-
-    bcm_config.save_config({"custom": "old"})
-    path = Path(bcm_config.get_config_path())
-    before = path.read_bytes()
     monkeypatch.setattr(
         bcm_config.os, "replace", lambda *args: (_ for _ in ()).throw(OSError("fail"))
     )
@@ -245,9 +226,8 @@ def test_replace_failure_preserves_previous_file(isolated_bcm_config, monkeypatc
         bcm_config.save_config({"custom": "new"})
     assert path.read_bytes() == before
     assert not list(path.parent.glob(".bsm-config-*"))
+    monkeypatch.undo()
 
-
-def test_set_config_value_supports_nested_paths(isolated_bcm_config):
     bcm_config.set_config_value("extension.nested.value", 42)
     assert bcm_config.get_config_value("extension.nested.value") == 42
 

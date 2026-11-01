@@ -13,11 +13,26 @@ from bedrock_server_manager.api.world import export_world, import_world, reset_w
 from bedrock_server_manager.error import BSMError
 
 
-async def test_world_api_exports_imports_and_resets_actual_world(
+async def test_world_api_exports_imports_resets_and_preserves_on_error(
     app_context, populated_server, tmp_path
 ):
     server = populated_server
     world = Path(server.paths.server_dir) / "worlds" / await server.get_world_name()
+    original = (world / "level.dat").read_bytes()
+
+    # Invalid world import preserves live content
+    broken = tmp_path / "broken.mcworld"
+    broken.write_bytes(b"not an archive")
+    with pytest.raises(BSMError):
+        await import_world(
+            ImportWorldRequest(
+                server_name=server.server_name, selected_file_path=str(broken)
+            ),
+            app_context=app_context,
+        )
+    assert (world / "level.dat").read_bytes() == original
+
+    # Export, import, and reset
     marker = world / "integration.txt"
     marker.write_text("saved world")
     exported = await export_world(
@@ -45,32 +60,11 @@ async def test_world_api_exports_imports_and_resets_actual_world(
     assert not world.exists()
 
 
-async def test_invalid_world_import_preserves_live_content(
-    app_context, populated_server, tmp_path
-):
-    server = populated_server
-    world = Path(server.paths.server_dir) / "worlds" / await server.get_world_name()
-    original = (world / "level.dat").read_bytes()
-    broken = tmp_path / "broken.mcworld"
-    broken.write_bytes(b"not an archive")
-    with pytest.raises(BSMError):
-        await import_world(
-            ImportWorldRequest(
-                server_name=server.server_name, selected_file_path=str(broken)
-            ),
-            app_context=app_context,
-        )
-    assert (world / "level.dat").read_bytes() == original
-
-
-@pytest.mark.parametrize(
-    "model,payload",
-    [
+def test_world_request_rejects_missing_inputs():
+    for model, payload in (
         (ExportWorldRequest, {"server_name": ""}),
         (ImportWorldRequest, {"server_name": "test_server", "selected_file_path": ""}),
         (ResetWorldRequest, {"server_name": ""}),
-    ],
-)
-def test_world_request_rejects_missing_inputs(model, payload):
-    with pytest.raises(ValidationError):
-        model.model_validate(payload)
+    ):
+        with pytest.raises(ValidationError):
+            model.model_validate(payload)

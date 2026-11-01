@@ -201,3 +201,10 @@ and operation correlation ID. A manual run has its own slot. Execution is
 at-least-once across a crash; database claims and completed-run reconciliation do
 not replace idempotency for external effects. Disabled or unloaded plugin owners
 cannot run registered handlers.
+
+
+HTTP permissions follow the selected storage scope: plugin-local GET/PUT require
+`plugins:read`/`plugins:manage`; global GET/PUT require `settings:read`/`settings:manage`;
+server GET/PUT require `servers:read`/`servers:configure` on the selected server.
+The ordinary global settings endpoint does not include the separate plugin-owned
+table. Global/server custom fields remain part of their own setting scope.

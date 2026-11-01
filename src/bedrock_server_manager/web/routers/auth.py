@@ -1,4 +1,3 @@
-# bedrock_server_manager/web/routers/auth.py
 """FastAPI router for user authentication and session management."""
 
 import datetime
@@ -8,15 +7,26 @@ from typing import Annotated, Optional
 from fastapi import APIRouter, Depends, Form, HTTPException, Request, Response, status
 from fastapi.responses import JSONResponse
 from fastapi.security import OAuth2PasswordRequestForm
+from jose import jwt
+from pydantic import SecretStr
 
 from ...context import AppContext
+from ..access_metadata import describe_access
 from ..auth import (
     authenticate_user,
     create_access_token,
+    token_lifetime,
 )
+from ..authorization import assigned_session
 from ..cookies import clear_session_cookie, set_session_cookie
 from ..deps import get_app_context, get_current_user
-from ..schemas import TokenResponse, UserResponse
+from ..schemas import BaseApiResponse, TokenResponse, UserResponse
+from ..schemas.auth import PasskeyLoginOptionsRequest, PasskeyLoginVerifyRequest
+from ..schemas.security import PasskeyOptionsResponse
+from ..trusted_devices import deliver_device, device_token
+
+# bedrock_server_manager/web/routers/auth.py
+
 
 logger = logging.getLogger(__name__)
 
@@ -29,11 +39,15 @@ router = APIRouter(prefix="/auth", tags=["Authentication"])
     operation_id="login",
     response_model=TokenResponse,
 )
+@describe_access("public", authentication="none", additional_checks=[])
 async def api_login_for_access_token(
     request: Request,
     response: Response,
     form_data: Annotated[OAuth2PasswordRequestForm, Depends()],
     remember_me: Annotated[bool, Form()] = False,
+    remember_device: Annotated[bool, Form()] = False,
+    trusted_device_token: Annotated[Optional[SecretStr], Form()] = None,
+    otp: Annotated[str, Form(max_length=128)] = "",
     app_context: AppContext = Depends(get_app_context),
 ) -> TokenResponse:
     """Handle API user login and return a JWT access token."""
@@ -43,44 +57,160 @@ async def api_login_for_access_token(
             detail="Username and password cannot be empty.",
         )
 
-    logger.debug("API login attempt for '%s'", form_data.username)
+    await app_context.session_service.throttle(
+        form_data.username, request.client.host if request.client else ""
+    )
+    logger.debug("API login attempt received")
+    async with app_context.storage.transaction() as session:
+        owner = await app_context.storage.user_repo.get_user_by_username(
+            session, form_data.username
+        )
+        owner_id = owner.access_id if owner else None
+        owner_user_id = owner.id if owner else None
+        auth_revision = owner.auth_revision if owner else None
     authenticated_username = await authenticate_user(
         app_context, form_data.username, form_data.password
     )
-
+    proof = None
+    cookie_mode = request.headers.get("x-bsm-auth-mode") == "cookie"
+    if authenticated_username and owner is not None and owner.is_active:
+        proof = await app_context.trusted_device_service.verify_factor(
+            owner.access_id,
+            owner.auth_revision,
+            otp,
+            device_token(
+                request, owner.access_id, trusted_device_token, cookie_login=cookie_mode
+            ),
+        )
+        if proof is None and not otp:
+            raise HTTPException(
+                401,
+                "Authenticator or recovery code required",
+                headers={"WWW-Authenticate": "Bearer", "X-BSM-MFA": "required"},
+            )
+    if proof is None:
+        authenticated_username = None
+    if not authenticated_username and owner_user_id:
+        await app_context.session_service.event(owner_user_id, "login_failed")
     if not authenticated_username:
-        logger.warning("Invalid API login attempt for '%s'.", form_data.username)
+        logger.warning("Invalid API login attempt")
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
             detail="Incorrect username or password",
             headers={"WWW-Authenticate": "Bearer"},
         )
     settings = app_context.settings
-    if remember_me:
-        try:
-            jwt_expires_weeks = float(settings.get("web.token_expires_weeks", 4.0))
-        except (ValueError, TypeError):
-            jwt_expires_weeks = 4.0
-        access_token_expire_minutes = jwt_expires_weeks * 7 * 24 * 60
-        expires_delta = datetime.timedelta(minutes=access_token_expire_minutes)
-    else:
-        expires_delta = datetime.timedelta(hours=24)
+    expires_delta = token_lifetime(settings, remember_me=remember_me)
 
     access_token = await create_access_token(
-        data={"sub": authenticated_username},
+        data={"sub": authenticated_username, "authv": auth_revision},
         app_context=app_context,
         expires_delta=expires_delta,
+        factor_proof=proof,
     )
 
-    logger.info("User '%s' signed in.", form_data.username)
-    set_session_cookie(
-        response,
-        request,
-        access_token,
-        max_age=int(expires_delta.total_seconds()),
+    issued_device = (
+        await app_context.trusted_device_service.remember(proof, request)
+        if remember_device
+        else None
     )
+
+    await app_context.session_service.annotate(
+        jwt.get_unverified_claims(access_token)["sid"], request
+    )
+    await app_context.session_service.authentication_succeeded(form_data.username)
+    await app_context.session_service.publish(owner_id, "login")
+    logger.info("User '%s' signed in.", form_data.username)
+    cookie_mode = request.headers.get("x-bsm-auth-mode") == "cookie"
+    if cookie_mode:
+        request.state.issued_session_id = jwt.get_unverified_claims(access_token)["sid"]
+        set_session_cookie(
+            response,
+            request,
+            access_token,
+            max_age=max(
+                0,
+                jwt.get_unverified_claims(access_token)["exp"]
+                - int(datetime.datetime.now(datetime.timezone.utc).timestamp()),
+            ),
+        )
     return TokenResponse(
-        access_token=access_token,
+        access_token="" if cookie_mode else access_token,
+        token_type="bearer",
+        message="Successfully authenticated.",
+        **deliver_device(
+            response, request, owner_id, issued_device, cookie_mode=cookie_mode
+        ),
+    )
+
+
+@router.post(
+    "/passkey/options",
+    operation_id="begin_passkey_login",
+    response_model=PasskeyOptionsResponse,
+)
+@describe_access("public", authentication="none", additional_checks=[])
+async def passkey_login_options(
+    request: Request,
+    payload: Optional[PasskeyLoginOptionsRequest] = None,
+    app_context: AppContext = Depends(get_app_context),
+) -> PasskeyOptionsResponse:
+    """Issue a single-use WebAuthn authentication challenge for passkey sign-in."""
+    username = payload.username if payload else None
+    await app_context.session_service.throttle(
+        username or "",
+        request.client.host if request.client else "",
+        "passkey_login",
+    )
+    options = await app_context.session_service.begin_passkey_authentication(
+        request, username=username, purpose="login"
+    )
+    return PasskeyOptionsResponse(**options)
+
+
+@router.post(
+    "/passkey/verify",
+    operation_id="complete_passkey_login",
+    response_model=TokenResponse,
+)
+@describe_access("public", authentication="none", additional_checks=[])
+async def passkey_login_verify(
+    request: Request,
+    response: Response,
+    payload: PasskeyLoginVerifyRequest,
+    app_context: AppContext = Depends(get_app_context),
+) -> TokenResponse:
+    """Verify a WebAuthn passkey assertion and establish an authenticated session."""
+    username, proof = await app_context.session_service.complete_passkey_login(
+        payload, request
+    )
+    expires_delta = token_lifetime(
+        app_context.settings, remember_me=payload.remember_me
+    )
+    access_token = await create_access_token(
+        data={"sub": username, "authv": proof.auth_revision},
+        app_context=app_context,
+        expires_delta=expires_delta,
+        factor_proof=proof,
+    )
+    session_id = jwt.get_unverified_claims(access_token)["sid"]
+    await app_context.session_service.annotate(session_id, request)
+    logger.info("User '%s' signed in with passkey.", username)
+    cookie_mode = request.headers.get("x-bsm-auth-mode") == "cookie"
+    if cookie_mode:
+        request.state.issued_session_id = session_id
+        set_session_cookie(
+            response,
+            request,
+            access_token,
+            max_age=max(
+                0,
+                jwt.get_unverified_claims(access_token)["exp"]
+                - int(datetime.datetime.now(datetime.timezone.utc).timestamp()),
+            ),
+        )
+    return TokenResponse(
+        access_token="" if cookie_mode else access_token,
         token_type="bearer",
         message="Successfully authenticated.",
     )
@@ -91,6 +221,7 @@ async def api_login_for_access_token(
     operation_id="reauthenticate",
     response_model=TokenResponse,
 )
+@assigned_session
 async def reauth(
     request: Request,
     response: Response,
@@ -126,38 +257,47 @@ async def reauth(
         remember_me = False
 
     settings = app_context.settings
-    if remember_me:
-        try:
-            jwt_expires_weeks = float(settings.get("web.token_expires_weeks", 4.0))
-        except (ValueError, TypeError):
-            jwt_expires_weeks = 4.0
-        access_token_expire_minutes = jwt_expires_weeks * 7 * 24 * 60
-        expires_delta = datetime.timedelta(minutes=access_token_expire_minutes)
-    else:
-        expires_delta = datetime.timedelta(hours=24)
+    expires_delta = token_lifetime(settings, remember_me=remember_me)
 
     access_token = await create_access_token(
-        data={"sub": current_user.username},
+        data={
+            "sub": current_user.username,
+            "sid": getattr(request.state, "session_id", None),
+        },
         app_context=app_context,
         expires_delta=expires_delta,
     )
 
     logger.debug("Token refreshed for '%s'.", current_user.username)
-    set_session_cookie(
-        response,
-        request,
-        access_token,
-        max_age=int(expires_delta.total_seconds()),
+    cookie_mode = request.headers.get("x-bsm-auth-mode") == "cookie" or (
+        request.headers.get("x-bsm-auth-mode") is None
+        and getattr(request.state, "credential_source", None) == "cookie"
     )
+    if cookie_mode:
+        request.state.issued_session_id = jwt.get_unverified_claims(access_token)["sid"]
+        set_session_cookie(
+            response,
+            request,
+            access_token,
+            max_age=max(
+                0,
+                jwt.get_unverified_claims(access_token)["exp"]
+                - int(datetime.datetime.now(datetime.timezone.utc).timestamp()),
+            ),
+        )
     return TokenResponse(
-        access_token=access_token,
+        access_token="" if cookie_mode else access_token,
         token_type="bearer",
         message="Successfully refreshed token.",
     )
 
 
 # --- Logout Route ---
-@router.get("/logout", operation_id="logout")
+@router.post("/logout", operation_id="logout", response_model=BaseApiResponse)
+@router.get(
+    "/logout", operation_id="logout_legacy", deprecated=True, include_in_schema=False
+)
+@assigned_session
 async def logout(
     request: Request,
     current_user: UserResponse = Depends(get_current_user),
@@ -168,11 +308,17 @@ async def logout(
     This endpoint serves as an explicit logout action for auditing purposes.
     """
     username = current_user.username
+    authorization = getattr(request.state, "authorization", None)
+    if authorization and authorization.session_id:
+        await request.app.state.app_context.session_service.revoke(
+            authorization.owner_id, identifier=authorization.session_id, reason="logout"
+        )
     logger.info("User '%s' explicitly logged out.", username)
 
     response = JSONResponse(
         content={"status": "success", "message": "Successfully logged out."},
         status_code=status.HTTP_200_OK,
     )
-    clear_session_cookie(response, request)
+    if getattr(request.state, "credential_source", None) == "cookie":
+        clear_session_cookie(response, request)
     return response

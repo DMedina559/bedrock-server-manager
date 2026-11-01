@@ -1,4 +1,3 @@
-# bedrock_server_manager/web/routers/util.py
 """
 Utility and miscellaneous web server routes for the Bedrock Server Manager.
 
@@ -18,7 +17,11 @@ from fastapi import APIRouter, Depends, HTTPException, status
 from fastapi.responses import FileResponse
 
 from ...context import AppContext
+from ..access_metadata import describe_access
 from ..deps import get_app_context
+
+# bedrock_server_manager/web/routers/util.py
+
 
 STATIC_DIR = bsm_frontend.get_static_dir()
 
@@ -34,7 +37,16 @@ router = APIRouter(tags=["Appearance"])
     "/api/panorama",
     operation_id="get_panorama",
     response_class=FileResponse,
+    responses={
+        200: {
+            "content": {
+                media: {"schema": {"type": "string", "format": "binary"}}
+                for media in ("image/jpeg", "image/png", "image/webp")
+            }
+        }
+    },
 )
+@describe_access("public", authentication="none", additional_checks=[])
 async def serve_custom_panorama_api(
     app_context: AppContext = Depends(get_app_context),
 ):

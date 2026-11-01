@@ -3,7 +3,7 @@ import os
 
 import aiofiles.ospath
 import bsm_frontend
-from fastapi import APIRouter, Depends, HTTPException, status
+from fastapi import APIRouter, Depends, HTTPException, Security, status
 from fastapi.responses import FileResponse
 
 from bedrock_server_manager.api.models import (
@@ -20,12 +20,9 @@ from ...error import (
     AppFileNotFoundError,
 )
 from ...logging import log_operation_error
-from ..deps import (
-    get_admin_user,
-    get_app_context,
-    get_moderator_user,
-    validate_server_exists,
-)
+from ..access_policy import Permission
+from ..deps import get_app_context, validate_server_exists
+from ..deps.auth import require_permissions
 from ..schemas import ContentListResponse, FileNamePayload, UserResponse
 from ..schemas.base import TaskAcceptedResponse
 
@@ -42,7 +39,9 @@ STATIC_DIR = bsm_frontend.get_static_dir()
     response_model=ContentListResponse,
 )
 async def get_worlds_list(
-    current_user: UserResponse = Depends(get_moderator_user),
+    current_user: UserResponse = Security(
+        require_permissions, scopes=[Permission.CONTENT_READ]
+    ),
     app_context: AppContext = Depends(get_app_context),
 ) -> ContentListResponse:
     """Return a list of available .mcworld template files."""
@@ -66,8 +65,10 @@ async def get_worlds_list(
 )
 async def post_world_install(
     payload: FileNamePayload,
+    current_user: UserResponse = Security(
+        require_permissions, scopes=[Permission.CONTENT_MANAGE]
+    ),
     server_name: str = Depends(validate_server_exists),
-    current_user: UserResponse = Depends(get_admin_user),
     app_context: AppContext = Depends(get_app_context),
 ) -> TaskAcceptedResponse:
     """
@@ -135,8 +136,10 @@ async def post_world_install(
     status_code=status.HTTP_202_ACCEPTED,
 )
 async def post_world_export(
+    current_user: UserResponse = Security(
+        require_permissions, scopes=[Permission.CONTENT_MANAGE]
+    ),
     server_name: str = Depends(validate_server_exists),
-    current_user: UserResponse = Depends(get_admin_user),
     app_context: AppContext = Depends(get_app_context),
 ) -> TaskAcceptedResponse:
     """
@@ -166,8 +169,10 @@ async def post_world_export(
     status_code=status.HTTP_202_ACCEPTED,
 )
 async def delete_world_reset(
+    current_user: UserResponse = Security(
+        require_permissions, scopes=[Permission.CONTENT_MANAGE]
+    ),
     server_name: str = Depends(validate_server_exists),
-    current_user: UserResponse = Depends(get_admin_user),
     app_context: AppContext = Depends(get_app_context),
 ) -> TaskAcceptedResponse:
     """
@@ -193,9 +198,20 @@ async def delete_world_reset(
 @router.get(
     "/api/server/{server_name}/world/icon",
     operation_id="get_world_icon",
+    responses={
+        200: {
+            "content": {
+                media: {"schema": {"type": "string", "format": "binary"}}
+                for media in ("image/png", "image/jpeg", "image/vnd.microsoft.icon")
+            }
+        }
+    },
     response_class=FileResponse,
 )
 async def get_world_icon(
+    current_user: UserResponse = Security(
+        require_permissions, scopes=[Permission.SERVERS_READ]
+    ),
     server_name: str = Depends(validate_server_exists),
     app_context: AppContext = Depends(get_app_context),
 ):
@@ -213,7 +229,11 @@ async def get_world_icon(
             and await aiofiles.ospath.isfile(icon_path)
         ):
             logger.debug("Serving world icon from path: %s", icon_path)
-            return FileResponse(icon_path, media_type="image/jpeg")
+            return FileResponse(
+                icon_path,
+                media_type="image/jpeg",
+                headers={"Cache-Control": "private, no-store"},
+            )
         else:
 
             logger.debug(
@@ -229,7 +249,11 @@ async def get_world_icon(
         )
         if await aiofiles.ospath.isfile(default_icon_path):
             logger.debug("Serving default world icon from: %s", default_icon_path)
-            return FileResponse(default_icon_path, media_type="image/png")
+            return FileResponse(
+                default_icon_path,
+                media_type="image/png",
+                headers={"Cache-Control": "private, no-store"},
+            )
         else:
             log_operation_error(
                 logger,

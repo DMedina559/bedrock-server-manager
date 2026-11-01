@@ -1,7 +1,7 @@
 import logging
 from typing import Dict
 
-from fastapi import APIRouter, Depends, status
+from fastapi import APIRouter, Depends, Security, status
 from fastapi.responses import JSONResponse
 
 from bedrock_server_manager.api.models import (
@@ -15,7 +15,9 @@ from ...context import AppContext
 from ...contracts import CompletedItem, FailedItem, ItemResult, SkippedItem
 from ...failures import classify_failure
 from ...logging import log_operation_error
-from ..deps import get_app_context, get_moderator_user, validate_server_exists
+from ..access_policy import Permission
+from ..deps import get_app_context, validate_server_exists
+from ..deps.auth import require_permissions
 from ..schemas import (
     PermissionsGetResponse,
     PermissionsSetPayload,
@@ -35,8 +37,10 @@ router = APIRouter(tags=["Server Access"])
 )
 async def post_permissions_set(
     payload: PermissionsSetPayload,
+    current_user: UserResponse = Security(
+        require_permissions, scopes=[Permission.PERMISSIONS_MANAGE]
+    ),
     server_name: str = Depends(validate_server_exists),
-    current_user: UserResponse = Depends(get_moderator_user),
     app_context: AppContext = Depends(get_app_context),
 ) -> PermissionsUpdateResponse | JSONResponse:
     permission_entries = payload.permissions
@@ -124,8 +128,10 @@ async def post_permissions_set(
     response_model=PermissionsGetResponse,
 )
 async def get_permissions(
+    current_user: UserResponse = Security(
+        require_permissions, scopes=[Permission.PERMISSIONS_READ]
+    ),
     server_name: str = Depends(validate_server_exists),
-    current_user: UserResponse = Depends(get_moderator_user),
     app_context: AppContext = Depends(get_app_context),
 ) -> PermissionsGetResponse:
     result = await permissions_api.get_permissions(

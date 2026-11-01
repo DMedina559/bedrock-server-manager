@@ -13,9 +13,8 @@ from bedrock_server_manager.error import BackupRestoreError
 from bedrock_server_manager.plugins.files import read_plugin_json, write_plugin_json
 
 
-@pytest.mark.parametrize(
-    "name",
-    [
+def test_portable_paths_reject_unsafe_names():
+    for name in (
         "../escape",
         "/absolute",
         "C:/absolute",
@@ -25,11 +24,9 @@ from bedrock_server_manager.plugins.files import read_plugin_json, write_plugin_
         "world/a:b",
         "world//file",
         "world/./file",
-    ],
-)
-def test_portable_paths_reject_unsafe_names(name):
-    with pytest.raises(BackupRestoreError):
-        safe_name(name)
+    ):
+        with pytest.raises(BackupRestoreError):
+            safe_name(name)
 
 
 async def test_offline_encrypted_extraction_requires_no_database(
@@ -117,9 +114,7 @@ def test_plugin_files_are_owner_scoped(tmp_path):
     with pytest.raises(BackupRestoreError):
         read_plugin_json(str(tmp_path), "first", "../second/settings.json")
     with pytest.raises(BackupRestoreError):
-        read_plugin_json(
-            str(tmp_path), "first", "../../../credentials/backup-keys.json"
-        )
+        read_plugin_json(str(tmp_path), "first", "../../../credentials/backup.key")
 
 
 async def test_restore_preview_redacts_secrets_and_retains_safety_backup(
@@ -474,14 +469,14 @@ async def test_capture_and_restore_flush_writable_file_handles(
     assert len(flushed) >= 3
 
 
-@pytest.mark.parametrize("compression", ["fast", "balanced", "small"])
-async def test_compression_profiles_preserve_recovery(populated_server, compression):
+async def test_compression_profiles_preserve_recovery(populated_server):
     server = populated_server
-    await server.settings.set("backups.compression", compression)
-    backup = await server.backups.create_snapshot(mode="world")
-    verified = await server.backups.verify_snapshot(backup.backup_id)
-    assert verified.status == "verified"
-    inspected = await server.backups.inspect_snapshot(backup.backup_id)
-    assert inspected.manifest.mode == "world"
-    assert "Compressing backup" in backup.stage_durations_ms
-    assert "Recording archive integrity" in backup.stage_durations_ms
+    for compression in ("fast", "balanced", "small"):
+        await server.settings.set("backups.compression", compression)
+        backup = await server.backups.create_snapshot(mode="world")
+        verified = await server.backups.verify_snapshot(backup.backup_id)
+        assert verified.status == "verified"
+        inspected = await server.backups.inspect_snapshot(backup.backup_id)
+        assert inspected.manifest.mode == "world"
+        assert "Compressing backup" in backup.stage_durations_ms
+        assert "Recording archive integrity" in backup.stage_durations_ms

@@ -2,7 +2,7 @@
 
 from typing import Annotated, Literal
 
-from fastapi import APIRouter, Depends, HTTPException, Query, Response
+from fastapi import APIRouter, Depends, HTTPException, Query, Response, Security
 from pydantic import Field
 
 from ...api.models.diagnostics import (
@@ -21,13 +21,14 @@ from ...diagnostics.models import (
     DiagnosticTrace,
 )
 from ...diagnostics.service import Diagnostics
-from ..deps import get_admin_user
+from ..access_policy import Permission
+from ..deps.auth import require_permissions
 from ..deps.context import get_app_context
 
 router = APIRouter(
     prefix="/api/diagnostics",
     tags=["Diagnostics"],
-    dependencies=[Depends(get_admin_user)],
+    dependencies=[Security(require_permissions, scopes=[Permission.DIAGNOSTICS_READ])],
 )
 
 

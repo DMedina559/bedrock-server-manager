@@ -61,7 +61,10 @@ async def test_post_change_password_success(
     """Test changing user password successfully."""
     response = await auth_client.post(
         "/api/account/change-password",
-        json={"current_password": "testpassword", "new_password": "newpassword123"},
+        json={
+            "current_password": "testpassword",
+            "new_password": "new secure passphrase",
+        },
     )
     assert response.status_code == 200
     assert response.json()["status"] == "success"
@@ -69,7 +72,7 @@ async def test_post_change_password_success(
     from bedrock_server_manager.web.auth import verify_password
 
     await db_session.refresh(test_user)
-    assert verify_password("newpassword123", str(test_user.hashed_password))
+    assert verify_password("new secure passphrase", str(test_user.hashed_password))
 
 
 async def test_post_change_password_incorrect_current(
@@ -78,7 +81,10 @@ async def test_post_change_password_incorrect_current(
     """Test changing password with incorrect current password."""
     response = await auth_client.post(
         "/api/account/change-password",
-        json={"current_password": "wrongpassword", "new_password": "newpassword123"},
+        json={
+            "current_password": "wrongpassword",
+            "new_password": "new secure passphrase",
+        },
     )
     assert response.status_code == 400
     assert "Incorrect current password" in response.json()["error"]["message"]

@@ -1,6 +1,6 @@
 """Administrator scheduler configuration and status endpoints."""
 
-from fastapi import APIRouter, Depends, Response
+from fastapi import APIRouter, Depends, Response, Security
 
 from ...api import scheduler as api
 from ...api.models.common import SuccessResponse
@@ -14,10 +14,14 @@ from ...api.models.scheduler import (
 )
 from ...context import AppContext
 from ...state.settings import ScheduledTask
-from ..deps import get_admin_user, get_app_context
+from ..access_policy import Permission
+from ..deps import get_app_context
+from ..deps.auth import require_permissions
+from ..schemas import UserResponse
 
 router = APIRouter(
-    prefix="/api/scheduler", tags=["Scheduler"], dependencies=[Depends(get_admin_user)]
+    prefix="/api/scheduler",
+    tags=["Scheduler"],
 )
 
 
@@ -27,8 +31,17 @@ router = APIRouter(
 async def list_schedules(
     response: Response,
     server_name: str | None = None,
+    user: UserResponse = Security(
+        require_permissions, scopes=[Permission.SCHEDULER_READ]
+    ),
     context: AppContext = Depends(get_app_context),
 ) -> ListSchedulesResponse:
+    """List scheduled tasks.
+
+    Requires unrestricted resource access and the ``scheduler:read`` capability.
+    Principals restricted to specific servers cannot query or inspect schedules,
+    even when filtering by an assigned server name.
+    """
     response.headers["Cache-Control"] = "no-store"
     return await api.list_schedules(
         ListSchedulesRequest(server_name=server_name), app_context=context
@@ -43,6 +56,9 @@ async def list_schedules(
 async def save_schedule(
     schedule_id: str,
     configuration: ScheduledTask,
+    user: UserResponse = Security(
+        require_permissions, scopes=[Permission.SCHEDULER_MANAGE]
+    ),
     context: AppContext = Depends(get_app_context),
 ) -> SuccessResponse:
     return await api.save_schedule(
@@ -57,7 +73,11 @@ async def save_schedule(
     response_model=SuccessResponse,
 )
 async def delete_schedule(
-    schedule_id: str, context: AppContext = Depends(get_app_context)
+    schedule_id: str,
+    user: UserResponse = Security(
+        require_permissions, scopes=[Permission.SCHEDULER_MANAGE]
+    ),
+    context: AppContext = Depends(get_app_context),
 ) -> SuccessResponse:
     return await api.delete_schedule(
         DeleteScheduleRequest(schedule_id=schedule_id), app_context=context
@@ -72,6 +92,9 @@ async def delete_schedule(
 async def control_schedule(
     schedule_id: str,
     payload: ControlSchedulePayload,
+    user: UserResponse = Security(
+        require_permissions, scopes=[Permission.SCHEDULER_MANAGE]
+    ),
     context: AppContext = Depends(get_app_context),
 ) -> SuccessResponse:
     return await api.control_schedule(

@@ -15,23 +15,27 @@ from bedrock_server_manager.api.models import (
 )
 
 
-async def test_available_worlds_are_actual_content_files(
-    app_context, valid_mcworld_zip
+async def test_application_api_worlds_servers_and_system_info(
+    app_context, real_bedrock_server, valid_mcworld_zip
 ):
+    # System info
+    sys_info = get_system_and_app_info(
+        GetSystemAndAppInfoRequest(), app_context=app_context
+    )
+    assert sys_info.os_type and sys_info.app_version and sys_info.splash_text
+
+    # Available worlds
     content = Path(app_context.settings.get("paths.content")) / "worlds"
     content.mkdir(parents=True, exist_ok=True)
     archive = content / "integration.mcworld"
     shutil.copyfile(valid_mcworld_zip, archive)
     (content / "ignored.txt").write_text("ignored")
-    response = await list_available_worlds(
+    worlds_resp = await list_available_worlds(
         ListAvailableWorldsRequest(), app_context=app_context
     )
-    assert response.files == [str(archive)]
+    assert worlds_resp.files == [str(archive)]
 
-
-async def test_server_listing_and_status_follow_actual_lifecycle(
-    app_context, real_bedrock_server
-):
+    # Server listing and statuses
     response = await get_all_servers_data(
         GetAllServersDataRequest(), app_context=app_context
     )
@@ -42,8 +46,7 @@ async def test_server_listing_and_status_follow_actual_lifecycle(
     result = await update_server_statuses(
         UpdateServerStatusesRequest(), app_context=app_context
     )
-    assert result.updated_servers_count == 1
-    assert result.errors == []
+    assert result.updated_servers_count == 1 and result.errors == []
     response = await get_all_servers_data(
         GetAllServersDataRequest(), app_context=app_context
     )
@@ -54,12 +57,3 @@ async def test_server_listing_and_status_follow_actual_lifecycle(
         GetAllServersDataRequest(), app_context=app_context
     )
     assert response.servers[0].status == "STOPPED"
-
-
-async def test_system_info_reports_real_application(app_context):
-    response = get_system_and_app_info(
-        GetSystemAndAppInfoRequest(), app_context=app_context
-    )
-    assert response.os_type
-    assert response.app_version
-    assert response.splash_text

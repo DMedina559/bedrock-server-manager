@@ -1539,6 +1539,20 @@ async def some_function(self, request, server_name, event, **kwargs):
 ---
 
 
+## `on_account_security`
+**Description:** Committed account security changes without credentials or factor secrets.
+- **Cancellable:** No
+
+### Listener Signature:
+```python
+@app_event("on_account_security")
+async def some_function(self, **kwargs):
+    pass
+```
+
+---
+
+
 ## `on_load`
 **Description:** Application lifecycle notification.
 - **Cancellable:** No

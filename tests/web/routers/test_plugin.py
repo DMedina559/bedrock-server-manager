@@ -1,6 +1,3 @@
-import pytest
-
-
 async def test_http_plugin_lifecycle_persists_configuration(
     admin_auth_client, app_context, plugin_factory
 ):
@@ -77,17 +74,11 @@ async def test_http_external_event_reaches_real_plugin(
     assert received[0][1]["value"] == 7
 
 
-@pytest.mark.parametrize(
-    "client_name,code", [("unauth_client", 401), ("auth_client", 403)]
-)
-async def test_plugin_management_requires_admin(
-    unauth_client, auth_client, client_name, code
+async def test_plugin_management_requires_admin_and_rejects_unknown(
+    unauth_client, auth_client, admin_auth_client
 ):
-    client = {"unauth_client": unauth_client, "auth_client": auth_client}[client_name]
-    assert (await client.get("/api/plugins")).status_code == code
-
-
-async def test_unknown_plugin_is_rejected(admin_auth_client):
+    assert (await unauth_client.get("/api/plugins")).status_code == 401
+    assert (await auth_client.get("/api/plugins")).status_code == 403
     assert (
         await admin_auth_client.post("/api/plugins/missing", json={"enabled": True})
     ).status_code == 400
@@ -172,9 +163,12 @@ async def test_settings_availability_for_untyped_plugins(
     assert response.json()["plugins"]["no_settings"]["has_settings"] is True
 
 
-@pytest.mark.parametrize(
-    "filename,values",
-    [
+async def test_bundled_notification_settings(admin_auth_client, plugin_factory):
+    from pathlib import Path
+
+    import bedrock_server_manager.plugins.default as bundled
+
+    for filename, values in [
         (
             "server_lifecycle_notifications",
             {
@@ -188,38 +182,30 @@ async def test_settings_availability_for_untyped_plugins(
             "world_operation_notifications",
             {"notify_export": False, "notify_import": False, "notify_reset": False},
         ),
-    ],
-)
-async def test_bundled_notification_settings(
-    admin_auth_client, plugin_factory, filename, values
-):
-    from pathlib import Path
-
-    import bedrock_server_manager.plugins.default as bundled
-
-    plugin = await plugin_factory(
-        filename, (Path(bundled.__file__).parent / (filename + ".py")).read_text()
-    )
-    path = f"/api/plugins/{filename}/settings"
-    response = await admin_auth_client.get(path)
-    assert response.status_code == 200
-    assert response.json()["settings_schema"]["additionalProperties"] is False
-    assert (
-        await admin_auth_client.put(path, json={"settings": values})
-    ).status_code == 200
-    for key, value in values.items():
-        assert await plugin.get_plugin_setting(key) == value
-    if filename == "server_lifecycle_notifications":
+    ]:
+        plugin = await plugin_factory(
+            filename, (Path(bundled.__file__).parent / (filename + ".py")).read_text()
+        )
+        path = f"/api/plugins/{filename}/settings"
+        response = await admin_auth_client.get(path)
+        assert response.status_code == 200
+        assert response.json()["settings_schema"]["additionalProperties"] is False
         assert (
-            await admin_auth_client.put(
-                path, json={"settings": {"stop_warning_delay": -1}}
-            )
-        ).status_code == 400
-        await plugin._send_ingame_message("missing", "test", "test")
-    else:
-        await plugin.send_export_warning(server_name="missing")
-        await plugin.send_import_warning(server_name="missing")
-        await plugin.send_reset_warning(server_name="missing")
+            await admin_auth_client.put(path, json={"settings": values})
+        ).status_code == 200
+        for key, value in values.items():
+            assert await plugin.get_plugin_setting(key) == value
+        if filename == "server_lifecycle_notifications":
+            assert (
+                await admin_auth_client.put(
+                    path, json={"settings": {"stop_warning_delay": -1}}
+                )
+            ).status_code == 400
+            await plugin._send_ingame_message("missing", "test", "test")
+        else:
+            await plugin.send_export_warning(server_name="missing")
+            await plugin.send_import_warning(server_name="missing")
+            await plugin.send_reset_warning(server_name="missing")
 
 
 async def test_backup_settings_use_live_valid_server_choices(

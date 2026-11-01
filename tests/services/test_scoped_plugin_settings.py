@@ -4,10 +4,6 @@ import asyncio
 
 import pytest
 
-from bedrock_server_manager.backups.contents import (
-    DEFAULT_COMPONENTS,
-    SERVER_PACK_COMPONENTS,
-)
 from bedrock_server_manager.error import UserInputError
 from bedrock_server_manager.state.settings import BackupSettings, SettingsState
 
@@ -113,17 +109,9 @@ async def test_unregistered_scopes_are_rejected_and_models_survive_disable(
     assert "missing" not in app_context.state.settings.custom
 
 
-def test_pack_flag_migration_is_persistent_and_idempotent():
-    old = SettingsState.from_dict({"backups": {"include_server_packs": True}})
-    assert set(old.backups.components) == set(
-        DEFAULT_COMPONENTS + SERVER_PACK_COMPONENTS
-    )
-    assert "include_server_packs" not in old.to_dict()["backups"]
-    again = SettingsState.from_dict(old.to_dict())
-    assert again.backups.components == old.backups.components
-    assert again.get("backups.include_server_packs") is None
+def test_backup_components_reject_retired_pack_flag():
     with pytest.raises(ValueError):
-        again.set("backups.include_server_packs", False)
+        SettingsState.from_dict({"backups": {"include_server_packs": True}})
     assert (
         "include_server_packs" not in BackupSettings.model_json_schema()["properties"]
     )

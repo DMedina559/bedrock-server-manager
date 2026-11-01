@@ -210,3 +210,36 @@ async def test_stalled_websocket_send_disconnects():
     await asyncio.wait_for(manager.send_to_client({"value": 1}, client_id), 0.5)
     assert client_id not in manager.active_connections
     assert "updates" not in manager.subscriptions
+
+
+async def test_each_received_frame_refreshes_once_and_never_reuses_another_frame(
+    test_user, mock_websocket
+):
+    from bedrock_server_manager.web.authorization import Authorization
+
+    authorization = Authorization(
+        user_id=test_user.id,
+        username=test_user.username,
+        owner_id="owner",
+        permissions=frozenset({"account:read"}),
+        servers={},
+        grants=None,
+    )
+    resolver = AsyncMock(return_value=authorization)
+    authorizer = AsyncMock(return_value=True)
+    manager = ConnectionManager(
+        authorization_resolver=resolver, topic_authorizer=authorizer
+    )
+    client_id = await manager.connect(
+        mock_websocket, test_user, authorization=authorization
+    )
+    assert await manager.authorize_frame(client_id, "access-policy")
+    resolver.assert_awaited_once()
+    authorizer.assert_awaited_once_with(authorization, "access-policy")
+    assert await manager.authorize_frame(client_id, None)  # Unsubscribe/invalid frame.
+    assert resolver.await_count == 2
+    assert authorizer.await_count == 1
+    resolver.return_value = None
+    assert not await manager.authorize_frame(client_id, "access-policy")
+    assert resolver.await_count == 3
+    assert client_id not in manager.active_connections

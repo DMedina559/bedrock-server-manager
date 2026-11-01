@@ -5,7 +5,7 @@ from pathlib import Path
 from typing import Annotated, Any, List, Literal, Optional
 from urllib.parse import quote
 
-from fastapi import APIRouter, Depends, HTTPException, Query, Request
+from fastapi import APIRouter, HTTPException, Query, Request, Security
 from fastapi.responses import FileResponse, JSONResponse, RedirectResponse
 from pydantic import BaseModel, ConfigDict, Field
 
@@ -13,7 +13,13 @@ from bedrock_server_manager import PluginBase, app_event
 from bedrock_server_manager.error import InvalidServerNameError
 from bedrock_server_manager.logging import log_operation_error
 from bedrock_server_manager.utils.server import core_validate_server_name_format
-from bedrock_server_manager.web import get_admin_user
+from bedrock_server_manager.web.access_metadata import describe_access
+from bedrock_server_manager.web.access_policy import Permission
+from bedrock_server_manager.web.authorization import server_collection
+from bedrock_server_manager.web.deps.auth import (
+    require_context_permission,
+    require_permissions,
+)
 from bedrock_server_manager.web.schemas import UserResponse
 
 
@@ -61,12 +67,49 @@ class DownloadPagePlugin(PluginBase):
             summary="Download Page UI",
             tags=["plugin-json-ui"],
         )
+        @describe_access(
+            "custom",
+            additional_checks=["download-kind", "query-server-access"],
+            allowed_roles=["moderator", "admin"],
+            credential_alternatives=[
+                {
+                    "condition": "type=backups",
+                    "schemes": [
+                        "OAuth2PasswordBearer",
+                        "APIKeyCookie",
+                        "IntegrationToken",
+                    ],
+                    "permissions": ["backups:read"],
+                },
+                {
+                    "condition": "type=content",
+                    "schemes": [
+                        "OAuth2PasswordBearer",
+                        "APIKeyCookie",
+                        "IntegrationToken",
+                    ],
+                    "permissions": ["content:read"],
+                },
+            ],
+        )
+        @server_collection
         async def get_download_page_ui(
+            request: Request,
             query: Annotated[DownloadPageQuery, Query()],
-            current_user: UserResponse = Depends(get_admin_user),
+            current_user: UserResponse = Security(require_permissions, scopes=[]),
         ):
             server = query.server
             type = query.type
+            await require_context_permission(
+                request,
+                current_user,
+                (
+                    Permission.BACKUPS_READ
+                    if type == "backups"
+                    else Permission.CONTENT_READ
+                ),
+                server if type == "backups" else None,
+            )
             if not server:
                 return JSONResponse(
                     content={
@@ -285,14 +328,50 @@ class DownloadPagePlugin(PluginBase):
         @self.router.get(
             "/api/download_page/download", operation_id="download_page_file"
         )
+        @describe_access(
+            "custom",
+            additional_checks=["download-kind", "query-server-access"],
+            allowed_roles=["moderator", "admin"],
+            credential_alternatives=[
+                {
+                    "condition": "file_type=backup_snapshot,backup_world,backup_config",
+                    "schemes": [
+                        "OAuth2PasswordBearer",
+                        "APIKeyCookie",
+                        "IntegrationToken",
+                    ],
+                    "permissions": ["backups:read"],
+                },
+                {
+                    "condition": "file_type=content_world,content_addon",
+                    "schemes": [
+                        "OAuth2PasswordBearer",
+                        "APIKeyCookie",
+                        "IntegrationToken",
+                    ],
+                    "permissions": ["content:read"],
+                },
+            ],
+        )
+        @server_collection
         async def download_file(
             query: Annotated[DownloadFileQuery, Query()],
             request: Request,
-            current_user: UserResponse = Depends(get_admin_user),
+            current_user: UserResponse = Security(require_permissions, scopes=[]),
         ):
             file_type = query.file_type
             filename = query.filename
             server = query.server
+            await require_context_permission(
+                request,
+                current_user,
+                (
+                    Permission.BACKUPS_READ
+                    if file_type.startswith("backup_")
+                    else Permission.CONTENT_READ
+                ),
+                server if file_type.startswith("backup_") else None,
+            )
             # Strict validation of user-controlled inputs to avoid path traversal
             # Allow alphanumeric, dot, underscore, dash, and space
             safe_name_pattern = re.compile(r"^[A-Za-z0-9._\- ]+$")

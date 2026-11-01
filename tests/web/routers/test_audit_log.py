@@ -57,3 +57,75 @@ async def test_list_audit_logs_success(
     action_2_index = actions.index("TEST_ACTION_2")
     # 2 was created after 1, so it should be earlier in the list (lower index)
     assert action_2_index < action_1_index
+
+
+async def test_list_audit_logs_pagination(
+    admin_auth_client: AsyncClient, app_context: AppContext, test_admin_user: UserModel
+):
+    """Test pagination with limit and offset query parameters."""
+    async with app_context.storage.transaction() as session:
+        for i in range(5):
+            await app_context.storage.audit_log_repo.create_audit_log(
+                session, int(test_admin_user.id), f"PAGED_ACTION_{i}"
+            )
+
+    # Test limit=2
+    res_limit = await admin_auth_client.get("/audit-log/list?limit=2&offset=0")
+    assert res_limit.status_code == 200
+    page_1 = res_limit.json()
+    assert len(page_1) == 2
+
+    # Test offset=2
+    res_offset = await admin_auth_client.get("/audit-log/list?limit=2&offset=2")
+    assert res_offset.status_code == 200
+    page_2 = res_offset.json()
+    assert len(page_2) == 2
+
+    # Pages must not overlap
+    page_1_ids = {entry["id"] for entry in page_1}
+    page_2_ids = {entry["id"] for entry in page_2}
+    assert page_1_ids.isdisjoint(page_2_ids)
+
+    # Test invalid limit constraint (> 500)
+    res_invalid = await admin_auth_client.get("/audit-log/list?limit=501")
+    assert res_invalid.status_code == 422
+
+
+async def test_audit_pages_are_bounded_and_ties_have_stable_order(
+    admin_auth_client, app_context, test_admin_user
+):
+    from datetime import datetime, timezone
+
+    from sqlalchemy import delete
+
+    from bedrock_server_manager.db.models import AuditLog
+
+    stamp = datetime.now(timezone.utc)
+    async with app_context.storage.transaction() as session:
+        await session.execute(delete(AuditLog))
+        session.add_all(
+            [
+                AuditLog(
+                    timestamp=stamp,
+                    user_id=test_admin_user.id,
+                    action=f"event-{i}",
+                    details={},
+                )
+                for i in range(505)
+            ]
+        )
+    default = await admin_auth_client.get("/audit-log/list")
+    assert len(default.json()) == 100
+    first = (await admin_auth_client.get("/audit-log/list?limit=500&offset=0")).json()
+    last = (await admin_auth_client.get("/audit-log/list?limit=500&offset=500")).json()
+    assert len(first) == 500 and len(last) == 5
+    ids = [row["id"] for row in first + last]
+    assert len(set(ids)) == 505
+    assert ids == sorted(ids, reverse=True)
+    assert (
+        await admin_auth_client.get("/audit-log/list?limit=100&offset=505")
+    ).json() == []
+    for query in ("limit=0", "limit=501", "offset=-1"):
+        assert (
+            await admin_auth_client.get(f"/audit-log/list?{query}")
+        ).status_code == 422

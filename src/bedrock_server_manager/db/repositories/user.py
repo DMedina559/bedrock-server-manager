@@ -2,14 +2,26 @@
 Repository for managing User and RegistrationToken database entity persistence.
 """
 
+import hashlib
 from typing import List, Optional, cast
 
-from sqlalchemy import func
+from sqlalchemy import delete, func
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.future import select
 
 from ...state.models import UserInfoState
-from ..models import RegistrationToken, User
+from ..models import (
+    AccountSecurity,
+    AccountServerAccess,
+    IntegrationToken,
+    LoginSession,
+    PasskeyChallenge,
+    PasskeyCredential,
+    RegistrationToken,
+    ServerAccessGrant,
+    TrustedDevice,
+    User,
+)
 
 
 class UserRepository:
@@ -71,22 +83,59 @@ class UserRepository:
 
     async def delete_user(self, session: AsyncSession, user: User) -> None:
         """Delete a User record from the database."""
+        for model in (
+            AccountSecurity,
+            AccountServerAccess,
+            IntegrationToken,
+            LoginSession,
+            PasskeyChallenge,
+            PasskeyCredential,
+            ServerAccessGrant,
+            TrustedDevice,
+        ):
+            await session.execute(delete(model).where(model.owner_id == user.access_id))
         await session.delete(user)
+
+    @staticmethod
+    def digest_token(token: str) -> str:
+        """Compute the SHA-256 hex digest of a raw token."""
+        return hashlib.sha256(token.encode("utf-8")).hexdigest()
 
     async def get_registration_token(
         self, session: AsyncSession, token: str
     ) -> Optional[RegistrationToken]:
-        """Return a RegistrationToken record by token string."""
+        """Return a RegistrationToken record by token string (matching its SHA-256 digest)."""
+        digest = self.digest_token(token)
         result = await session.execute(
-            select(RegistrationToken).filter(RegistrationToken.token == token)
+            select(RegistrationToken).filter(RegistrationToken.token_digest == digest)
+        )
+        return cast(Optional[RegistrationToken], result.scalar_one_or_none())
+
+    async def get_registration_token_for_update(
+        self, session: AsyncSession, token: str
+    ) -> Optional[RegistrationToken]:
+        """Lock the invitation row on databases supporting SELECT FOR UPDATE.
+
+        SQLite ignores row locks; create_account also holds Storage.write_lock
+        through validation, account creation and invitation deletion. That lock
+        coordinates writers in one application process, not multiple workers.
+        """
+        digest = self.digest_token(token)
+        result = await session.execute(
+            select(RegistrationToken)
+            .filter(RegistrationToken.token_digest == digest)
+            .with_for_update()
         )
         return cast(Optional[RegistrationToken], result.scalar_one_or_none())
 
     async def create_registration_token(
         self, session: AsyncSession, token: str, role: str, expires: int
     ) -> RegistrationToken:
-        """Create and adds a new RegistrationToken record."""
-        token_record = RegistrationToken(token=token, role=role, expires=expires)
+        """Create and add a new RegistrationToken record using its SHA-256 digest."""
+        digest = self.digest_token(token)
+        token_record = RegistrationToken(
+            token_digest=digest, role=role, expires=expires
+        )
         session.add(token_record)
         return token_record
 

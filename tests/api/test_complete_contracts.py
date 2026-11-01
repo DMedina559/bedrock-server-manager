@@ -101,34 +101,58 @@ async def test_unknown_fields_fail_before_runtime_access():
     assert not failures, "\n".join(failures)
 
 
-def test_config_values_reject_non_json_runtime_objects():
+def test_json_contracts_and_defaults_validation():
+    from bedrock_server_manager.api.models import UpdateServerPlayerStatsRequest
+    from bedrock_server_manager.api.models.common import ServerSummary
+    from bedrock_server_manager.api.models.settings import GetGlobalSettingResponse
+    from bedrock_server_manager.contracts import PlayerScanDetails
+
     with pytest.raises(ValidationError):
         SetGlobalSettingRequest(key="runtime", value=lambda: None)
     with pytest.raises(ValidationError):
         SetGlobalSettingRequest(key="runtime", value=object())
 
+    for value in (float("nan"), float("inf"), float("-inf")):
+        for nested in (False, True):
+            payload = {"items": [value]} if nested else value
+            for model, data in (
+                (SetGlobalSettingRequest, {"key": "example", "value": payload}),
+                (GetGlobalSettingResponse, {"value": payload}),
+            ):
+                with pytest.raises(ValidationError):
+                    model.model_validate(data)
 
-@pytest.mark.parametrize("value", [float("nan"), float("inf"), float("-inf")])
-@pytest.mark.parametrize("nested", [False, True])
-def test_json_contracts_reject_non_finite_numbers(value, nested):
-    from bedrock_server_manager.api.models.settings import GetGlobalSettingResponse
+    for base in (APIRequest, APIResponse):
 
-    payload = {"items": [value]} if nested else value
-    for model, data in (
-        (SetGlobalSettingRequest, {"key": "example", "value": payload}),
-        (GetGlobalSettingResponse, {"value": payload}),
-    ):
+        class InvalidDefault(base):  # type: ignore[valid-type, misc]
+            count: int = "1"  # type: ignore[assignment]
+
         with pytest.raises(ValidationError):
-            model.model_validate(data)
+            InvalidDefault()
 
+    for bad_count in (True, "3", -1):
+        with pytest.raises(ValidationError):
+            UpdateServerPlayerStatsRequest.model_validate(
+                {"server_name": "example", "player_count": bad_count, "players": []}
+            )
 
-@pytest.mark.parametrize("base", [APIRequest, APIResponse])
-def test_contract_defaults_are_validated(base: type) -> None:
-    class InvalidDefault(base):  # type: ignore[valid-type, misc]
-        count: int = "1"  # type: ignore[assignment]
+    for count in (0, 2):
+        with pytest.raises(ValidationError):
+            ServerSummary(
+                name="example",
+                status="RUNNING",
+                version="1",
+                player_count=count,
+                players=[{"name": "Alex", "xuid": "1"}],
+            )
 
-    with pytest.raises(ValidationError):
-        InvalidDefault()
+    for counts in ((0, 1, 0), (1, 1, 2)):
+        with pytest.raises(ValidationError):
+            PlayerScanDetails(
+                total_entries_in_logs=counts[0],
+                unique_players_submitted_for_saving=counts[1],
+                actually_saved_or_updated_in_db=counts[2],
+            )
 
 
 def test_json_contract_round_trip_preserves_scalar_types():
@@ -184,16 +208,6 @@ async def test_runtime_provider_registration_and_unload(app_context, plugin_fact
     assert "topic" not in app_context.connection_manager.data_providers
 
 
-@pytest.mark.parametrize("bad_count", [True, "3", -1])
-def test_numeric_request_fields_do_not_coerce_invalid_values(bad_count):
-    from bedrock_server_manager.api.models import UpdateServerPlayerStatsRequest
-
-    with pytest.raises(ValidationError):
-        UpdateServerPlayerStatsRequest.model_validate(
-            {"server_name": "example", "player_count": bad_count, "players": []}
-        )
-
-
 def test_success_data_requirements_are_reflected_in_schema():
     from bedrock_server_manager.api.models import ExportWorldResponse
 
@@ -235,29 +249,3 @@ async def test_plugin_target_event_retains_listener_fields_and_identity(
     assert app_context.events.registry.definition(
         "before_set_plugin_status"
     ).identity_keys == ("plugin_name", "enabled")
-
-
-@pytest.mark.parametrize("count", [0, 2])
-def test_server_summary_rejects_inconsistent_players(count):
-    from bedrock_server_manager.api.models.common import ServerSummary
-
-    with pytest.raises(ValidationError):
-        ServerSummary(
-            name="example",
-            status="RUNNING",
-            version="1",
-            player_count=count,
-            players=[{"name": "Alex", "xuid": "1"}],
-        )
-
-
-@pytest.mark.parametrize("counts", [(0, 1, 0), (1, 1, 2)])
-def test_player_scan_rejects_inconsistent_counts(counts):
-    from bedrock_server_manager.contracts import PlayerScanDetails
-
-    with pytest.raises(ValidationError):
-        PlayerScanDetails(
-            total_entries_in_logs=counts[0],
-            unique_players_submitted_for_saving=counts[1],
-            actually_saved_or_updated_in_db=counts[2],
-        )

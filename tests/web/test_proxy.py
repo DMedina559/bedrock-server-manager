@@ -6,6 +6,7 @@ from urllib.parse import urlsplit
 import bsm_frontend
 import pytest
 from httpx2 import ASGITransport, AsyncClient
+from pydantic import ValidationError
 
 from bedrock_server_manager.web.app import create_web_app
 
@@ -26,36 +27,39 @@ class AssetParser(HTMLParser):
                 self.assets.append(url)
 
 
-@pytest.mark.parametrize(
-    "prefix",
-    ["", "/api/hassio_ingress/token", "/app", "/proxy/app/token", "/proxy/%C3%A9"],
-)
-async def test_frontend_assets_through_proxy(app_context, prefix):
+async def test_frontend_assets_through_proxy(app_context):
     app = create_web_app(app_context)
-    headers = {"X-Ingress-Path": prefix, "X-Forwarded-Proto": "https"}
     async with AsyncClient(
         transport=ASGITransport(app=app), base_url="http://bsm.test"
     ) as client:
-        response = await client.get("/app/settings/account", headers=headers)
-        assert response.status_code == 200
-        assert response.headers["cache-control"] == "no-store"
-        parser = AssetParser()
-        parser.feed(response.text)
-        assert len(parser.bases) == 1
-        assert parser.bases[0]["href"] == prefix + "/app/"
-        assert parser.bases[0]["data-api-base"] == prefix
-        assert parser.assets
-        for asset in parser.assets:
-            # Emulate the gateway removing its external prefix.
-            result = await client.get(
-                "/app/" + asset.removeprefix("./"), headers=headers
-            )
-            assert result.status_code == 200, asset
-            assert "text/html" not in result.headers.get("content-type", "")
-        redirect = await client.get("/", headers=headers, follow_redirects=False)
-        location = urlsplit(redirect.headers["location"])
-        assert location.scheme == "https"
-        assert location.path == prefix + "/app"
+        for prefix in (
+            "",
+            "/api/hassio_ingress/token",
+            "/app",
+            "/proxy/app/token",
+            "/proxy/%C3%A9",
+        ):
+            headers = {"X-Ingress-Path": prefix, "X-Forwarded-Proto": "https"}
+            response = await client.get("/app/settings/account", headers=headers)
+            assert response.status_code == 200
+            assert response.headers["cache-control"] == "no-store"
+            parser = AssetParser()
+            parser.feed(response.text)
+            assert len(parser.bases) == 1
+            assert parser.bases[0]["href"] == prefix + "/app/"
+            assert parser.bases[0]["data-api-base"] == prefix
+            assert parser.assets
+            for asset in parser.assets:
+                # Emulate the gateway removing its external prefix.
+                result = await client.get(
+                    "/app/" + asset.removeprefix("./"), headers=headers
+                )
+                assert result.status_code == 200, asset
+                assert "text/html" not in result.headers.get("content-type", "")
+            redirect = await client.get("/", headers=headers, follow_redirects=False)
+            location = urlsplit(redirect.headers["location"])
+            assert location.scheme == "https"
+            assert location.path == prefix + "/app"
 
 
 async def test_static_cache_policy(app_context, tmp_path, monkeypatch):
@@ -87,24 +91,21 @@ async def test_static_cache_policy(app_context, tmp_path, monkeypatch):
         assert cached.headers["cache-control"] == bundle.headers["cache-control"]
 
 
-@pytest.mark.parametrize(
-    "prefix",
-    [
-        "//evil.test",
-        "https://evil.test",
-        "/../escape",
-        "/%2e%2e/escape",
-        "/prefix?x=1",
-        "/prefix%5cescape",
-    ],
-)
-async def test_reject_invalid_trusted_ingress(app_context, prefix):
+async def test_reject_invalid_trusted_ingress(app_context):
     async with AsyncClient(
         transport=ASGITransport(app=create_web_app(app_context)),
         base_url="http://bsm.test",
     ) as client:
-        response = await client.get("/app/", headers={"X-Ingress-Path": prefix})
-        assert response.status_code == 400
+        for prefix in (
+            "//evil.test",
+            "https://evil.test",
+            "/../escape",
+            "/%2e%2e/escape",
+            "/prefix?x=1",
+            "/prefix%5cescape",
+        ):
+            response = await client.get("/app/", headers={"X-Ingress-Path": prefix})
+            assert response.status_code == 400
 
 
 async def test_untrusted_headers_do_not_change_urls(app_context):
@@ -127,11 +128,12 @@ async def test_setup_https_cookie_policy(app_context, trusted):
     async with AsyncClient(transport=transport, base_url="http://bsm.test") as client:
         response = await client.post(
             "/api/setup/create-first-user",
-            json={"username": "admin", "password": "securepassword"},
+            json={"username": "admin", "password": "secure setup passphrase"},
             headers={
                 "X-Ingress-Path": "/ingress/token",
                 "X-Forwarded-Proto": "https",
                 "X-Forwarded-For": "203.0.113.5",
+                "X-BSM-Auth-Mode": "cookie",
             },
         )
         assert response.status_code == 200
@@ -144,7 +146,11 @@ async def test_setup_https_cookie_policy(app_context, trusted):
 
 async def test_login_refresh_logout_proxy_cookie_policy(app_context, test_user):
     transport = ASGITransport(app=create_web_app(app_context))
-    headers = {"X-Ingress-Path": "/ingress/token", "X-Forwarded-Proto": "https"}
+    headers = {
+        "X-Ingress-Path": "/ingress/token",
+        "X-Forwarded-Proto": "https",
+        "X-BSM-Auth-Mode": "cookie",
+    }
     async with AsyncClient(transport=transport, base_url="http://bsm.test") as client:
         login = await client.post(
             "/auth/token",
@@ -152,7 +158,12 @@ async def test_login_refresh_logout_proxy_cookie_policy(app_context, test_user):
             headers=headers,
         )
         assert login.status_code == 200
-        headers["Authorization"] = "Bearer " + login.json()["access_token"]
+        # Preserve secure ingress cookie path in this direct ASGI test, where the gateway normally strips the prefix.
+
+        token = login.cookies.get("access_token_cookie")
+        client.cookies.clear()
+        client.cookies.set("access_token_cookie", token)
+        headers["X-CSRF-Token"] = login.headers["X-BSM-CSRF-Token"]
         refresh = await client.post("/auth/reauth", headers=headers)
         logout = await client.get("/auth/logout", headers=headers)
         for response in (login, refresh, logout):
@@ -195,6 +206,7 @@ async def test_configured_proxy_network(app_context):
                 "X-Ingress-Path": "/prefix/",
                 "X-Forwarded-Proto": "https",
                 "X-Forwarded-For": "203.0.113.5",
+                "X-BSM-Auth-Mode": "cookie",
             },
             follow_redirects=False,
         )
@@ -225,37 +237,34 @@ async def test_registration_links_use_external_https_prefix(
         )
 
 
-@pytest.mark.parametrize(
-    "origins,allowed",
-    [
+async def test_cors_policy_comes_from_database(app_context):
+    app_context.pre_app_config["web"] = {"cors_origins": ["https://bootstrap.example"]}
+    for origins, allowed in (
         (["https://dashboard.example"], "https://dashboard.example"),
         (["*"], "https://any.example"),
         ([], None),
-    ],
-)
-async def test_cors_policy_comes_from_database(app_context, origins, allowed):
-    app_context.pre_app_config["web"] = {"cors_origins": ["https://bootstrap.example"]}
-    await app_context.settings.set("web.cors_origins", origins)
-    async with AsyncClient(
-        transport=ASGITransport(app=create_web_app(app_context)),
-        base_url="http://bsm.test",
-    ) as client:
-        origin = allowed or "http://localhost:5173"
-        response = await client.options(
-            "/api/setup/status",
-            headers={"Origin": origin, "Access-Control-Request-Method": "GET"},
-        )
-        assert response.status_code == (200 if allowed else 400)
-        assert response.headers.get("access-control-allow-origin") == allowed
-        if "*" not in origins:
-            legacy = await client.options(
+    ):
+        await app_context.settings.set("web.cors_origins", origins)
+        async with AsyncClient(
+            transport=ASGITransport(app=create_web_app(app_context)),
+            base_url="http://bsm.test",
+        ) as client:
+            origin = allowed or "http://localhost:5173"
+            response = await client.options(
                 "/api/setup/status",
-                headers={
-                    "Origin": "https://bootstrap.example",
-                    "Access-Control-Request-Method": "GET",
-                },
+                headers={"Origin": origin, "Access-Control-Request-Method": "GET"},
             )
-            assert legacy.status_code == 400
+            assert response.status_code == (200 if allowed else 400)
+            assert response.headers.get("access-control-allow-origin") == allowed
+            if "*" not in origins:
+                legacy = await client.options(
+                    "/api/setup/status",
+                    headers={
+                        "Origin": "https://bootstrap.example",
+                        "Access-Control-Request-Method": "GET",
+                    },
+                )
+                assert legacy.status_code == 400
 
 
 async def test_cors_setting_available_through_admin_api(admin_auth_client):
@@ -268,3 +277,37 @@ async def test_cors_setting_available_through_admin_api(admin_auth_client):
     assert settings.json()["settings"]["web"]["cors_origins"] == [
         "https://dashboard.example"
     ]
+
+
+async def test_security_headers_allow_ingress_and_optional_report_policy(
+    unauth_client, app_context
+):
+    response = await unauth_client.get("/docs")
+    assert response.headers["X-Content-Type-Options"] == "nosniff"
+    assert response.headers["Referrer-Policy"] == "strict-origin-when-cross-origin"
+    assert "Content-Security-Policy" not in response.headers
+    assert "X-Frame-Options" not in response.headers
+    assert (
+        response.headers["Permissions-Policy"]
+        == "camera=(), microphone=(), geolocation=()"
+    )
+    assert "clipboard" not in response.headers["Permissions-Policy"]
+    await app_context.settings.set("web.frame_ancestors", "'self' https://home.example")
+    await app_context.settings.set(
+        "web.csp_report_only", "default-src 'self'; connect-src 'self' wss: https:"
+    )
+    response = await unauth_client.get(
+        "/app/login", headers={"X-Ingress-Path": "/api/hassio_ingress/test"}
+    )
+    assert response.status_code == 200
+    assert (
+        response.headers["Content-Security-Policy"]
+        == "frame-ancestors 'self' https://home.example"
+    )
+    assert response.headers["Content-Security-Policy-Report-Only"].startswith(
+        "default-src"
+    )
+
+    for field in ("web.frame_ancestors", "web.csp_report_only"):
+        with pytest.raises(ValidationError):
+            await app_context.settings.set(field, "'self'\r\nX-Injected: yes")

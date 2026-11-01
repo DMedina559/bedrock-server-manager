@@ -10,6 +10,7 @@ import math
 import time
 import uuid
 from contextvars import ContextVar
+from dataclasses import dataclass
 from typing import TYPE_CHECKING, Any, Callable, Dict, Optional
 
 if TYPE_CHECKING:
@@ -38,6 +39,10 @@ _current_task_id: ContextVar[str | None] = ContextVar("managed_task_id", default
 
 class TaskRecord(TaskState, StateRevision):
     username: str | None = None
+    access_server_id: str | None = None
+    access_token_id: str | None = None
+    access_owner_id: str | None = None
+    access_permissions: list[str] = []
 
     def __getitem__(self, key: str) -> Any:
         """Preserve read access for existing task-manager consumers."""
@@ -47,6 +52,15 @@ class TaskRecord(TaskState, StateRevision):
 
     def get(self, key: str, default: Any = None) -> Any:
         return self[key] if key in type(self).model_fields else default
+
+
+@dataclass(frozen=True)
+class TaskAccess:
+    username: str | None
+    access_server_id: str | None
+    access_token_id: str | None
+    access_owner_id: str | None
+    access_permissions: frozenset[str]
 
 
 class TaskManager:
@@ -97,6 +111,19 @@ class TaskManager:
         return {
             name: record.model_copy(deep=True) for name, record in self._tasks.items()
         }
+
+    def task_access(self, task_id: str) -> TaskAccess | None:
+        """Read only authorization metadata for one task; never copy result payloads."""
+        record = self._tasks.get(task_id)
+        if record is None:
+            return None
+        return TaskAccess(
+            record.username,
+            record.access_server_id,
+            record.access_token_id,
+            record.access_owner_id,
+            frozenset(record.access_permissions),
+        )
 
     async def _notify_client_of_update(self, task_id: str):
         """Sends a WebSocket notification to the user associated with the task."""
@@ -262,10 +289,28 @@ class TaskManager:
         if _plugin_owner in self._blocked_plugins:
             raise RuntimeError("Cannot submit work for an unloading plugin.")
 
+        from ..web.authorization import current_authorization, operation_permissions
+
+        authorization = current_authorization.get()
+        resource_name = getattr(
+            kwargs.get("request"), "server_name", None
+        ) or kwargs.get("server_name")
+        context = kwargs.get("app_context")
+        resource_id = None
+        if authorization and isinstance(resource_name, str):
+            resource_id = authorization.servers.get(resource_name)
+            if resource_id is None and context is not None:
+                resource_id = await context.access_service.server_identity(
+                    resource_name
+                )
         candidate = TaskRecord(
             status="queued",
             message="Task is queued.",
             username=username,
+            access_server_id=resource_id,
+            access_token_id=authorization.token_id if authorization else None,
+            access_owner_id=authorization.owner_id if authorization else None,
+            access_permissions=sorted(operation_permissions.get()),
             **revision_clock.capture(),
         )
         task_id = str(uuid.uuid4())
@@ -326,6 +371,20 @@ class TaskManager:
                 ):
 
                     async def execute():
+                        if authorization is not None and context is not None:
+                            refreshed = (
+                                await context.access_service.task_start_authorization(
+                                    authorization,
+                                    candidate.access_permissions,
+                                    resource_name,
+                                    resource_id,
+                                )
+                            )
+                            if refreshed is None:
+                                raise APICancelledError(
+                                    "Authorization changed before the task started."
+                                )
+                            current_authorization.set(refreshed)
                         await self._update_task(task_id, "running", "Task is running.")
                         if inspect.iscoroutinefunction(target_function):
                             return await target_function(*args, **call_kwargs)

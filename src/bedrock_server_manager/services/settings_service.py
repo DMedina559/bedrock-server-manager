@@ -57,8 +57,25 @@ class SettingsService:
     async def update_setting(self, key: str, value: Any) -> None:
         """Updates a setting value in AppState and registers dirty state for persistence."""
 
+        from ..error import UserInputError
+        from .jwt_credentials import PRIVATE_FIELDS
+
+        if key in {f"web.{name}" for name in PRIVATE_FIELDS} or (
+            key == "web"
+            and isinstance(value, dict)
+            and PRIVATE_FIELDS.intersection(value)
+        ):
+            raise UserInputError(
+                "Signing credentials cannot be changed through settings."
+            )
+
         def mutate(candidate):
             local_key, local_value = key, value
+            if key == "web" and isinstance(value, dict):
+                local_value = {
+                    **value,
+                    **{name: getattr(candidate.web, name) for name in PRIVATE_FIELDS},
+                }
             if (
                 key == "plugin_settings" or key.startswith("plugin_settings.")
             ) and self.plugin_service is not None:

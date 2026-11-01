@@ -93,6 +93,9 @@ class AppContext:
         self._server_service: Optional["ServerService"] = None
         self._plugin_service: Optional["PluginService"] = None
         self._user_service: Optional["UserService"] = None
+        self._access_service = None
+        self._session_service = None
+        self._trusted_device_service = None
 
     async def load(self):
         """Load the application context by initializing the settings, AppState, and
@@ -152,13 +155,14 @@ class AppContext:
         self._server_service = None
         self._plugin_service = None
         self._user_service = None
+        self._access_service = None
+        self._session_service = None
+        self._trusted_device_service = None
         legacy_web = self.pre_app_config.get("web")
         if isinstance(legacy_web, dict) and "cors_origins" in legacy_web:
             from .services.settings_service import migrate_bootstrap_cors
 
             await migrate_bootstrap_cors(self._storage, legacy_web["cors_origins"])
-        await self._storage.load_state(self._state)
-
         if self._settings is not None:
             self._settings.app_context = self
         else:
@@ -168,6 +172,10 @@ class AppContext:
                 app_context=self,
             )
         await self._settings.load()
+
+        from .services.jwt_credentials import signing_key
+
+        await signing_key(self._settings, create=False)
 
         from .diagnostics.composition import configure_diagnostics
 
@@ -191,9 +199,6 @@ class AppContext:
         self._db_url = None
         self._log_level = None
         self._log_dir = None
-
-        if self._storage and self._state:
-            await self._storage.load_state(self._state)
 
         await self.settings.reload()
 
@@ -261,6 +266,7 @@ class AppContext:
                     )
 
         steps = (
+            ("authentication retention", lambda: self.session_service.start()),
             ("backup recovery", recover_backups),
             ("plugins", lambda: self.plugin_manager.load_plugins()),
             ("servers", lambda: self.bedrock_process_manager.start()),
@@ -386,6 +392,7 @@ class AppContext:
             self._task_manager.begin_shutdown()
         # Observers release process and websocket dependencies before teardown.
         for name, component in (
+            ("authentication retention", self._session_service),
             ("scheduler", self.scheduler),
             ("metrics", self._metrics_service),
             ("resources", self._resource_monitor),
@@ -731,6 +738,10 @@ class AppContext:
 
             self._connection_manager = ConnectionManager(
                 user_provider=self.state.users.get,
+                authorization_resolver=self.access_service.snapshot,
+                topic_authorizer=self.access_service.topic_allowed,
+                message_filter=self.access_service.filter_message,
+                policy_revision_provider=lambda: self.plugin_manager.access_policy.revision,
                 outbound_queue_limit=self.settings.get("web.outbound_queue_limit", 64),
                 record_failure=(
                     self._diagnostics.record_transport_failure
@@ -820,6 +831,31 @@ class AppContext:
         return self._plugin_service
 
     @property
+    def trusted_device_service(self):
+        if self._trusted_device_service is None:
+            from .services.trusted_device_service import TrustedDeviceService
+
+            self._trusted_device_service = TrustedDeviceService(self)
+        return self._trusted_device_service
+
+    @property
+    def session_service(self):
+        if self._session_service is None:
+            from .services.session_service import SessionService
+
+            self._session_service = SessionService(self)
+        return self._session_service
+
+    @property
+    def access_service(self):
+        """Persisted credential and server authorization service."""
+        if self._access_service is None:
+            from .services.access_service import AccessService
+
+            self._access_service = AccessService(self)
+        return self._access_service
+
+    @property
     def user_service(self) -> "UserService":
         """Return the UserService instance."""
         if self._user_service is None:
@@ -829,10 +865,16 @@ class AppContext:
                 state=self.state,
                 storage=self.storage,
                 revoke_connections=self._revoke_user_connections,
+                credentials_changed=self.session_service.close_revoked,
+                security_event=self.session_service.publish,
             )
         return self._user_service
 
     async def _revoke_user_connections(self, username: str) -> None:
+        record = self.state.users.get(username)
+        if record is not None and not record.is_active:
+            await self.session_service.revoke_owner(username, "account_disabled")
+        await self.access_service.notify(username)
         if self._connection_manager is not None:
             await self._connection_manager.revoke_user(username)
 

@@ -87,6 +87,7 @@ documentation matching your installed release.
    developer/runtime.md
    developer/contracts.md
    developer/web_architecture.md
+   developer/http_access.md
    developer/api/api
    developer/classes/classes
    developer/core/core

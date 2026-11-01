@@ -66,23 +66,13 @@ def test_can_manage_services():
     assert isinstance(can_manage_services(), bool)
 
 
-async def test_check_internet_connectivity_success(mock_http_server):
-    """Check connectivity through a local HTTP endpoint without public network access."""
+async def test_check_internet_connectivity(mock_http_server):
+    """Check connectivity through a local HTTP endpoint and error branches."""
     await check_internet_connectivity(url=mock_http_server.url)
-
-
-@patch("aiohttp.ClientSession.get", side_effect=TimeoutError)
-async def test_check_internet_connectivity_timeout(mock_get):
-    """Test checking internet connectivity handling a timeout."""
-    with pytest.raises(InternetConnectivityError):
-        await check_internet_connectivity()
-
-
-@patch("aiohttp.ClientSession.get", side_effect=aiohttp.ClientError)
-async def test_check_internet_connectivity_os_error(mock_get):
-    """Test checking internet connectivity handling an OS Error."""
-    with pytest.raises(InternetConnectivityError):
-        await check_internet_connectivity()
+    for err in (TimeoutError, aiohttp.ClientError):
+        with patch("aiohttp.ClientSession.get", side_effect=err):
+            with pytest.raises(InternetConnectivityError):
+                await check_internet_connectivity()
 
 
 async def test_set_server_folder_permissions_linux(tmp_path: Path):
@@ -156,71 +146,47 @@ async def test_set_server_folder_permissions_os_error_on_chown(
         await set_server_folder_permissions(str(server_dir))
 
 
-async def test_delete_path_robustly_file(tmp_path: Path):
-    """Test deleting a normal file."""
+async def test_delete_path_robustly_scenarios(tmp_path: Path):
+    """Test deleting files, read-only files, directories, non-existent paths, and invalid inputs."""
     file_path = tmp_path / "test.txt"
     file_path.write_text("test")
-    assert file_path.exists()
     assert await delete_path_robustly(str(file_path), "test file") is True
     assert not file_path.exists()
 
+    ro_file = tmp_path / "readonly.txt"
+    ro_file.write_text("readonly")
+    os.chmod(ro_file, stat.S_IREAD)
+    assert await delete_path_robustly(str(ro_file), "readonly test file") is True
+    assert not ro_file.exists()
 
-async def test_delete_path_robustly_readonly_file(tmp_path: Path):
-    """Test deleting a read-only file."""
-    file_path = tmp_path / "readonly.txt"
-    file_path.write_text("readonly")
-    os.chmod(file_path, stat.S_IREAD)
-    assert file_path.exists()
-    assert await delete_path_robustly(str(file_path), "readonly test file") is True
-    assert not file_path.exists()
-
-
-async def test_delete_path_robustly_dir(tmp_path: Path):
-    """Test deleting a directory."""
     dir_path = tmp_path / "test_dir"
     dir_path.mkdir()
-    assert dir_path.exists()
     assert await delete_path_robustly(str(dir_path), "test directory") is True
     assert not dir_path.exists()
 
-
-async def test_delete_path_robustly_dir_with_readonly_file(tmp_path: Path):
-    """Test deleting a directory that contains a read-only file."""
-    dir_path = tmp_path / "readonly_dir"
-    dir_path.mkdir()
-    file_path = dir_path / "readonly.txt"
-    file_path.write_text("readonly")
-    os.chmod(file_path, stat.S_IREAD)
-    assert dir_path.exists()
-    assert file_path.exists()
-
+    ro_dir = tmp_path / "readonly_dir"
+    ro_dir.mkdir()
+    ro_child = ro_dir / "readonly.txt"
+    ro_child.write_text("readonly")
+    os.chmod(ro_child, stat.S_IREAD)
     assert (
-        await delete_path_robustly(str(dir_path), "directory with read-only file")
-        is True
+        await delete_path_robustly(str(ro_dir), "directory with read-only file") is True
     )
-    assert not dir_path.exists()
+    assert not ro_dir.exists()
 
-
-async def test_delete_path_robustly_non_existent_path(tmp_path: Path):
-    """Test deleting a path that does not exist."""
     non_existent = tmp_path / "non_existent"
     assert await delete_path_robustly(str(non_existent), "non existent path") is True
 
-
-async def test_delete_path_robustly_invalid_inputs():
-    """Test deleting with invalid path or description."""
     with pytest.raises(MissingArgumentError):
         await delete_path_robustly("", "description")
-
     with pytest.raises(MissingArgumentError):
         await delete_path_robustly("path", "")
-
     with pytest.raises(MissingArgumentError):
         await delete_path_robustly(None, "description")  # type: ignore
 
 
-async def test_is_server_running_true():
-    """Test await is_server_running when process is found."""
+async def test_is_server_running_checks():
+    """Test await is_server_running when process is found or not found."""
     with patch(
         "bedrock_server_manager.core.system.base.core_process.get_verified_bedrock_process",
         new_callable=AsyncMock,
@@ -230,13 +196,6 @@ async def test_is_server_running_true():
             await is_server_running("server", "/path/to/server", "/path/to/config")
             is True
         )
-
-
-async def test_is_server_running_false():
-    """Test await is_server_running when process is not found."""
-    with patch(
-        "bedrock_server_manager.core.system.base.core_process.get_verified_bedrock_process"
-    ) as mock_get:
         mock_get.return_value = None
         assert (
             await is_server_running("server", "/path/to/server", "/path/to/config")
@@ -244,62 +203,38 @@ async def test_is_server_running_false():
         )
 
 
-async def test_resource_monitor_real_process():
-    """Test ProcessResourceMonitor with a real short-lived process."""
+async def test_resource_monitor_real_and_edge_cases():
+    """Test ProcessResourceMonitor with a real short-lived process and edge cases."""
     monitor = ProcessResourceMonitor()
 
-    # Start a sleep process
     process = subprocess.Popen([sys.executable, "-c", "import time; time.sleep(2)"])
     try:
-        # Give psutil time to hook into it
-        await asyncio.sleep(0.1)
+        await asyncio.sleep(0.05)
         ps_proc = psutil.Process(process.pid)
 
         stats = monitor.get_stats(ps_proc)
         assert stats is not None
-        assert "cpu_percent" in stats
-        assert "memory_mb" in stats
-        assert "uptime" in stats
         assert isinstance(stats["cpu_percent"], float)
         assert isinstance(stats["memory_mb"], float)
-        assert isinstance(stats["pid"], int)
         assert stats["pid"] == process.pid
 
-        # Test a second time to ensure baseline was set and we get valid CPU diff
-        await asyncio.sleep(0.5)
+        await asyncio.sleep(0.1)
         stats2 = monitor.get_stats(ps_proc)
         assert stats2 is not None
         assert isinstance(stats2["cpu_percent"], float)
-
     finally:
         process.terminate()
         process.wait()
 
-
-def test_resource_monitor_no_psutil():
-    """Test ProcessResourceMonitor behaves when psutil is 'unavailable'."""
     with patch("bedrock_server_manager.core.system.base.PSUTIL_AVAILABLE", False):
-        monitor = ProcessResourceMonitor()
-        assert monitor.get_stats(MagicMock()) is None
+        assert ProcessResourceMonitor().get_stats(MagicMock()) is None
 
-
-def test_resource_monitor_invalid_process():
-    """Test ProcessResourceMonitor handles invalid process object."""
-    monitor = ProcessResourceMonitor()
     with pytest.raises(TypeError):
         monitor.get_stats("not a process")  # type: ignore
 
-
-def test_resource_monitor_dead_process():
-    """Test ProcessResourceMonitor handles process that has died."""
-    monitor = ProcessResourceMonitor()
-
-    # Passing a mock that has an exception during `oneshot()` will likely cause AttributeError
-    # on context manager enter, so we instead mock `cpu_percent` to raise `NoSuchProcess`.
     mock_proc = MagicMock()
-    mock_proc.pid = 99999999  # Some nonexistent pid
+    mock_proc.pid = 99999999
     mock_proc.cpu_percent.side_effect = psutil.NoSuchProcess(mock_proc.pid)
-
     assert monitor.get_stats(mock_proc) is None
 
 

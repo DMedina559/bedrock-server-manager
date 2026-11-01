@@ -1,3 +1,5 @@
+import hashlib
+
 from sqlalchemy import select
 from sqlalchemy.orm import selectinload
 
@@ -115,11 +117,14 @@ async def test_plugin_model(db_session):
 
 async def test_registration_token_model(db_session):
     """Test RegistrationToken model CRUD."""
-    token = RegistrationToken(token="abc-123", role="user", expires=1234567890)
+    digest = hashlib.sha256(b"abc-123").hexdigest()
+    token = RegistrationToken(token_digest=digest, role="user", expires=1234567890)
     db_session.add(token)
     await db_session.commit()
 
-    res = await db_session.execute(select(RegistrationToken).filter_by(token="abc-123"))
+    res = await db_session.execute(
+        select(RegistrationToken).filter_by(token_digest=digest)
+    )
     fetched = res.scalars().first()
     assert fetched.role == "user"
 

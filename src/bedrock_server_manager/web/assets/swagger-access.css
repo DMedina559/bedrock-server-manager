@@ -1,0 +1,125 @@
+.swagger-ui .bsm-doc-access {
+  margin: 20px;
+  padding: 0;
+  overflow: hidden;
+  border: 1px solid #c4d1dd;
+  border-radius: 8px;
+  background: #fff;
+  color: #263747;
+  font-size: 13px;
+}
+.swagger-ui .bsm-doc-access-heading {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  padding: 12px 16px;
+  background: #f3f7fa;
+  border-bottom: 1px solid #dbe3ea;
+}
+.swagger-ui .bsm-doc-access h4 {
+  margin: 0;
+  font-size: 14px;
+}
+.swagger-ui .bsm-doc-kind {
+  border: 1px solid #c4d1dd;
+  border-radius: 5px;
+  padding: 3px 8px;
+  color: #40566c;
+  font-size: 11px;
+  font-weight: 600;
+}
+.swagger-ui .bsm-doc-access dl {
+  margin: 0;
+  padding: 8px 16px;
+}
+.swagger-ui .bsm-doc-access dl > div {
+  display: grid;
+  grid-template-columns: minmax(120px, 190px) minmax(0, 1fr);
+  gap: 16px;
+  padding: 8px 0;
+  align-items: start;
+}
+.swagger-ui .bsm-doc-access dt {
+  color: #526579;
+  font-size: 12px;
+}
+.swagger-ui .bsm-doc-access dd {
+  margin: 0;
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+.swagger-ui .bsm-doc-chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  list-style: none;
+  padding: 0;
+  margin: 0;
+}
+.swagger-ui .bsm-doc-chips li {
+  max-width: 100%;
+  border: 1px solid #dbe3ea;
+  border-radius: 5px;
+  padding: 3px 7px;
+  background: #f3f7fa;
+}
+.swagger-ui .bsm-doc-chips code {
+  background: none;
+  padding: 0;
+  color: #263747;
+  font-size: 11px;
+  overflow-wrap: anywhere;
+}
+.swagger-ui .bsm-doc-note {
+  margin: 0;
+  padding: 4px 16px 14px;
+  color: #526579;
+  font-size: 12px;
+  line-height: 1.6;
+}
+.swagger-ui .bsm-doc-access details {
+  border-top: 1px solid #dbe3ea;
+}
+.swagger-ui .bsm-doc-access summary {
+  cursor: pointer;
+  padding: 12px 16px;
+  color: #526579;
+  font-size: 12px;
+}
+.swagger-ui .bsm-doc-access pre {
+  margin: 0;
+  padding: 16px;
+  max-height: 280px;
+  overflow: auto;
+  background: #f3f7fa;
+  color: #263747;
+  font-size: 11px;
+  line-height: 1.6;
+}
+@media (max-width: 600px) {
+  .swagger-ui .bsm-doc-access {
+    margin: 12px;
+  }
+  .swagger-ui .bsm-doc-access dl > div {
+    grid-template-columns: minmax(0, 1fr);
+    gap: 6px;
+  }
+}
+
+.swagger-ui .bsm-doc-factor {
+  display: grid;
+  gap: 8px;
+  margin: 12px 20px 20px;
+  color: #526579;
+  font-size: 12px;
+}
+.swagger-ui .bsm-doc-factor input {
+  width: 100%;
+  min-width: 0;
+  padding: 8px 10px;
+  border: 1px solid #c4d1dd;
+  border-radius: 5px;
+  font: inherit;
+}

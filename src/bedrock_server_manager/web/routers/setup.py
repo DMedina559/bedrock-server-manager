@@ -1,4 +1,3 @@
-# bedrock_server_manager/web/routers/setup.py
 """
 FastAPI router for the initial setup of the application.
 
@@ -6,12 +5,15 @@ This module provides endpoints for:
 - Handling the creation of the first user (System Admin).
 """
 
+import datetime
 import logging
 
 from fastapi import APIRouter, Depends, HTTPException, Request, status
 from fastapi.responses import JSONResponse
+from jose import jwt
 
 from ...context import AppContext
+from ..access_metadata import describe_access
 from ..auth import (
     create_access_token,
     get_password_hash_async,
@@ -20,6 +22,9 @@ from ..cookies import set_session_cookie
 from ..deps import get_app_context
 from ..schemas import SetupStatusResponse, UserLoginPayload
 from ..schemas.auth import SetupAccountResponse
+
+# bedrock_server_manager/web/routers/setup.py
+
 
 logger = logging.getLogger(__name__)
 
@@ -31,6 +36,7 @@ router = APIRouter(prefix="/api/setup", tags=["Application Setup"])
     operation_id="get_setup_status",
     response_model=SetupStatusResponse,
 )
+@describe_access("public", authentication="none", additional_checks=[])
 async def get_setup_status(
     app_context: AppContext = Depends(get_app_context),
 ) -> SetupStatusResponse:
@@ -43,12 +49,20 @@ async def get_setup_status(
     operation_id="create_first_user",
     response_model=SetupAccountResponse,
 )
+@describe_access(
+    "custom", authentication="none", additional_checks=["first-account-only"]
+)
 async def create_first_user(
     request: Request,
     data: UserLoginPayload,
     app_context: AppContext = Depends(get_app_context),
 ):
     """Create the first user (admin) in the database."""
+    await app_context.session_service.throttle(
+        username=data.username,
+        peer=request.client.host if request.client else "",
+        operation="setup",
+    )
     if not await app_context.check_setup():
         # If an admin user already exists, prevent creating another first user
         raise HTTPException(
@@ -69,12 +83,28 @@ async def create_first_user(
     access_token = await create_access_token(
         data={"sub": record.username}, app_context=app_context
     )
+    await app_context.session_service.annotate(
+        jwt.get_unverified_claims(access_token)["sid"], request
+    )
+    cookie_mode = request.headers.get("x-bsm-auth-mode") == "cookie"
     response = JSONResponse(
         content=SetupAccountResponse(
             message="Admin account created and logged in successfully.",
-            access_token=access_token,
+            access_token="" if cookie_mode else access_token,
             token_type="bearer",
         ).model_dump(mode="json")
     )
-    set_session_cookie(response, request, access_token)
+    if cookie_mode:
+        claims = jwt.get_unverified_claims(access_token)
+        request.state.issued_session_id = claims["sid"]
+        set_session_cookie(
+            response,
+            request,
+            access_token,
+            max_age=max(
+                0,
+                claims["exp"]
+                - int(datetime.datetime.now(datetime.timezone.utc).timestamp()),
+            ),
+        )
     return response
