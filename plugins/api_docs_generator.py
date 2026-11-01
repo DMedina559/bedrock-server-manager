@@ -32,12 +32,7 @@ class APIDocsGenerator(PluginBase):
         self.logger.info("Generating API and Event documentation...")
 
         try:
-            backup_dir = (
-                await self.api.settings.get_global_setting({"key": "paths.backups"})
-            ).value
-            if not isinstance(backup_dir, str):
-                raise ValueError("Backup path must be a string")
-            output = Path(backup_dir) / "plugin-reference"
+            output = await self.api.runtime.get_plugin_data_path("plugin-reference")
             references = self.format_reference_files(self.api.list_available_apis())
             await asyncio.to_thread(self.write_reference_files, output, references)
             self.logger.info("Generated plugin reference at %s", output)

@@ -181,6 +181,7 @@ def create_app_api(
             "register_scheduled_task": runtime_capabilities.register_scheduled_task,
             "read_plugin_file": runtime_capabilities.read_plugin_file,
             "write_plugin_file": runtime_capabilities.write_plugin_file,
+            "get_plugin_data_path": runtime_capabilities.get_plugin_data_path,
             "server_lifecycle_manager": server_lifecycle_manager,
             "websocket_register_data_provider": runtime_capabilities.register_data_provider,
         }
@@ -191,6 +192,7 @@ def create_app_api(
             if name in {
                 "read_plugin_file",
                 "write_plugin_file",
+                "get_plugin_data_path",
                 "register_scheduled_task",
                 "register_http_permission",
             }:
@@ -339,6 +341,7 @@ class CapabilityNamespace:
                 "register_http_permission": "register_http_permission",
                 "read_plugin_file": "read_plugin_file",
                 "write_plugin_file": "write_plugin_file",
+                "get_plugin_data_path": "get_plugin_data_path",
                 "server_lifecycle_manager": "server_lifecycle_manager",
                 "register_data_provider": "websocket_register_data_provider",
             }

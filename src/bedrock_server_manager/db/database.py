@@ -94,6 +94,13 @@ class Database:
         connect_args = {}
         if db_url.startswith("sqlite"):
             connect_args["timeout"] = 20.0
+            from pathlib import Path
+
+            from sqlalchemy.engine import make_url
+
+            db_file = make_url(self._get_sync_db_url()).database
+            if db_file and db_file != ":memory:":
+                Path(db_file).parent.mkdir(parents=True, exist_ok=True)
 
         self.engine = create_async_engine(
             db_url,

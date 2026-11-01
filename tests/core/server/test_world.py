@@ -73,7 +73,8 @@ async def test_live_export_world_and_error_handling(
     with open(icon_file, "wb") as f:
         f.write(b"Z" * 30)
 
-    log_file = os.path.join(server.paths.server_dir, "server_output.txt")
+    log_file = server.paths.server_log_path
+    os.makedirs(os.path.dirname(log_file), exist_ok=True)
     sent_commands = []
 
     async def mock_send_command(cmd):

@@ -109,7 +109,7 @@ class GuardedProcess:
 
 
 async def get_pid_file_path(config_dir: str, pid_filename: str) -> str:
-    """Return an absolute PID-file path below the configuration directory."""
+    """Return an absolute PID-file path below the configuration runtime directory."""
     if (
         not isinstance(config_dir, str)
         or not config_dir
@@ -118,7 +118,7 @@ async def get_pid_file_path(config_dir: str, pid_filename: str) -> str:
         raise AppFileNotFoundError(str(config_dir), "Configuration directory")
     if not pid_filename:
         raise MissingArgumentError("PID filename cannot be empty.")
-    return os.path.join(config_dir, pid_filename)
+    return os.path.join(config_dir, "runtime", pid_filename)
 
 
 async def get_bedrock_server_pid_file_path(server_name: str, config_dir: str) -> str:
@@ -135,7 +135,7 @@ async def get_bedrock_server_pid_file_path(server_name: str, config_dir: str) ->
     if not config_dir:
         raise MissingArgumentError("Configuration directory cannot be empty.")
 
-    server_config_path = os.path.join(config_dir, server_name)
+    server_config_path = os.path.join(config_dir, "runtime", "servers", server_name)
     if not await aiofiles.ospath.isdir(server_config_path):
         raise AppFileNotFoundError(
             server_config_path, f"Configuration directory for server '{server_name}'"

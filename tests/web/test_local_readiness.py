@@ -149,7 +149,7 @@ def test_control_record_publishes_distinct_private_rotating_capabilities(tmp_pat
         assert not runtime.authenticate_readiness("é")
     finally:
         files.close()
-    assert not (tmp_path / "web_server.control.json").exists()
+    assert not (tmp_path / "runtime" / "web_server.control.json").exists()
 
 
 async def test_user_authentication_still_works_and_bad_local_header_is_rejected(

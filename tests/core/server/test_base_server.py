@@ -27,8 +27,11 @@ def test_initialization_paths_and_immutability(real_bedrock_server):
     assert server.paths.bedrock_executable_path == os.path.join(
         server.paths.server_dir, server.paths.bedrock_executable_name
     )
+    assert server.paths.server_log_dir == os.path.join(
+        server.paths.app_config_dir, "logs", "servers", "test_server"
+    )
     assert server.paths.server_log_path == os.path.join(
-        server.paths.server_dir, "server_output.txt"
+        server.paths.server_log_dir, "server_output.log"
     )
     assert server.paths.server_properties_path == os.path.join(
         server.paths.server_dir, "server.properties"
@@ -40,7 +43,7 @@ def test_initialization_paths_and_immutability(real_bedrock_server):
         server.paths.server_dir, "permissions.json"
     )
     assert server.paths.server_config_dir == os.path.join(
-        server.paths.app_config_dir, "test_server"
+        server.paths.app_config_dir, "runtime", "servers", "test_server"
     )
     assert server.get_pid_file_path() == os.path.join(
         server.paths.server_config_dir, "bedrock_test_server.pid"

@@ -19,6 +19,29 @@ async def test_plugin_api_calls_real_settings_and_persistence(app_context):
     )
     assert response.value == {"saved": True}
 
+    with pytest.raises(PermissionError):
+        await api.settings.get_global_setting(
+            GetGlobalSettingRequest(key="paths.servers")
+        )
+    all_settings = await api.settings.get_all_global_settings({})
+    assert "paths" not in all_settings.settings
+
+    await api.runtime.write_plugin_file("private.json", {"owner": "test_plugin"})
+    assert await api.runtime.read_plugin_file("private.json") == {
+        "owner": "test_plugin"
+    }
+    await api.runtime.write_plugin_file("shared.json", {"shared": 1}, scope="public")
+    other_api = create_app_api("other_plugin", app_context)
+    assert await other_api.runtime.read_plugin_file("shared.json", scope="public") == {
+        "shared": 1
+    }
+    private_dir = await api.runtime.get_plugin_data_path()
+    public_dir = await api.runtime.get_plugin_data_path(scope="public")
+    assert private_dir.name == "test_plugin"
+    assert private_dir.parent.name == "plugins"
+    assert public_dir.name == "public"
+    assert public_dir.parent.name == "plugins"
+
 
 async def test_plugin_api_delivers_actual_events(app_context, plugin_factory):
     plugin = await plugin_factory(

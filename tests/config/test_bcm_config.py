@@ -31,7 +31,7 @@ def clean_env(monkeypatch):
 def test_get_config_dir_and_path(isolated_bcm_config, monkeypatch):
     """Test get_config_dir priority (CLI override, env var, default) and get_config_path."""
     expected = os.path.join(
-        str(isolated_bcm_config), "config", "bedrock_server_manager.json"
+        str(isolated_bcm_config), "bootstrap", "bedrock_server_manager.json"
     )
     assert bcm_config.get_config_path() == expected
 
@@ -109,10 +109,14 @@ def test_load_config_defaults(clean_env, monkeypatch, tmp_path):
     assert "db_url" in config
     assert "logging_level" in config
     assert config["data_dir"] == os.path.join(str(mock_config_dir), "data")
+    assert (
+        config["db_url"]
+        == f"sqlite:///{os.path.join(str(mock_config_dir), 'db', 'bedrock-server-manager.db')}"
+    )
     assert config["logging_level"] == "INFO"
     # Ensure config file is not implicitly written by load_config
     assert not os.path.exists(
-        os.path.join(str(mock_config_dir), "bedrock_server_manager.json")
+        os.path.join(str(mock_config_dir), "bootstrap", "bedrock_server_manager.json")
     )
 
 
@@ -160,7 +164,7 @@ def test_save_config_creates_dir(clean_env, tmp_path):
     bcm_config.save_config({"key": "value"})
 
     assert new_dir.exists()
-    assert (new_dir / "config" / "bedrock_server_manager.json").exists()
+    assert (new_dir / "bootstrap" / "bedrock_server_manager.json").exists()
 
 
 def test_save_config_error(isolated_bcm_config, monkeypatch, caplog):
@@ -237,7 +241,7 @@ def test_bootstrap_migration_preserves_unknown_files(isolated_bcm_config):
     unknown = root / "custom.json"
     unknown.write_text("keep")
     migrated = Path(bcm_config.get_config_path())
-    assert migrated.parent == root / "config"
+    assert migrated.parent == root / "bootstrap"
     assert migrated.is_file()
     assert not (root / "bedrock_server_manager.json").exists()
     assert unknown.read_text() == "keep"
@@ -248,8 +252,8 @@ def test_bootstrap_migration_rejects_conflicts(isolated_bcm_config):
     from bedrock_server_manager.error import ConfigurationError
 
     root = Path(isolated_bcm_config)
-    (root / "config").mkdir()
-    (root / "config" / "bedrock_server_manager.json").write_text("{}")
+    (root / "bootstrap").mkdir()
+    (root / "bootstrap" / "bedrock_server_manager.json").write_text("{}")
     with pytest.raises(ConfigurationError, match="Conflicting"):
         bcm_config.get_config_path()
     assert (root / "bedrock_server_manager.json").exists()

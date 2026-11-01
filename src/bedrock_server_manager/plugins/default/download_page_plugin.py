@@ -423,56 +423,38 @@ class DownloadPagePlugin(PluginBase):
                         for path in paths
                     ]
                 )
-                if filename not in {os.path.basename(path) for path in allowed}:
-                    raise HTTPException(404, "Legacy backup file not found")
-                result = await self.api.settings.get_global_setting(
-                    request={"key": "paths.backups"}
+                matched = next(
+                    (
+                        Path(path)
+                        for path in allowed
+                        if os.path.basename(path) == filename
+                    ),
+                    None,
                 )
-                backup_dir_str = result.value if result.status == "success" else None
-                if not isinstance(backup_dir_str, str) or not backup_dir_str:
-                    raise HTTPException(500, "Backup directory not configured")
-
-                def _resolve_backup_base() -> Path:
-                    backup_root = Path(backup_dir_str).resolve()
-                    if not backup_root.exists():
-                        raise HTTPException(500, "Backup root directory does not exist")
-                    assert server is not None
-                    resolved_base = (backup_root / server).resolve()
-                    try:
-                        resolved_base.relative_to(backup_root)
-                    except ValueError:
-                        raise HTTPException(403, "Access denied: Invalid server path")
-                    return resolved_base
-
-                base_path = await asyncio.to_thread(_resolve_backup_base)
+                if matched is None:
+                    raise HTTPException(404, "Legacy backup file not found")
+                base_path = await asyncio.to_thread(matched.parent.resolve)
 
             elif file_type in ("content_world", "content_addon"):
-                result = await self.api.settings.get_global_setting(
-                    request={"key": "paths.content"}
+                if file_type == "content_world":
+                    listing_files = (
+                        await self.api.application.list_available_worlds(request={})
+                    ).files
+                else:
+                    listing_files = (
+                        await self.api.addon.list_available_addons(request={})
+                    ).files
+                matched = next(
+                    (
+                        Path(path)
+                        for path in listing_files
+                        if os.path.basename(path) == filename
+                    ),
+                    None,
                 )
-                content_dir_str = result.value if result.status == "success" else None
-                if not isinstance(content_dir_str, str) or not content_dir_str:
-                    raise HTTPException(500, "Content directory not configured")
-
-                def _resolve_content_base() -> Path:
-                    content_root = Path(content_dir_str).resolve()
-                    if not content_root.exists():
-                        raise HTTPException(
-                            500, "Content root directory does not exist"
-                        )
-                    if file_type == "content_world":
-                        resolved_base = (content_root / "worlds").resolve()
-                    else:
-                        resolved_base = (content_root / "addons").resolve()
-                    try:
-                        resolved_base.relative_to(content_root)
-                    except ValueError:
-                        raise HTTPException(
-                            500, "Content subdirectory is outside content root"
-                        )
-                    return resolved_base
-
-                base_path = await asyncio.to_thread(_resolve_content_base)
+                if matched is None:
+                    raise HTTPException(404, "File not found")
+                base_path = await asyncio.to_thread(matched.parent.resolve)
             else:
                 raise HTTPException(400, "Invalid file type")
 

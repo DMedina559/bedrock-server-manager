@@ -204,6 +204,36 @@ def _prune_old_logs(
         )
 
 
+def prepare_server_log_path(
+    log_dir: str, server_name: str, keep: int = DEFAULT_LOG_KEEP
+) -> str:
+    """Prune old server logs and return a new timestamped log file path."""
+    os.makedirs(log_dir, exist_ok=True)
+    for legacy_name in ("server_output.log", "server_output.txt"):
+        legacy_path = os.path.join(log_dir, legacy_name)
+        if os.path.isfile(legacy_path):
+            try:
+                if os.path.getsize(legacy_path) > 0:
+                    mtime = datetime.fromtimestamp(
+                        os.path.getmtime(legacy_path), timezone.utc
+                    ).strftime("%Y%m%d_%H%M%S_%f")
+                    archived = os.path.join(
+                        log_dir,
+                        f"{server_name}_{mtime}_{os.getpid()}_{uuid4().hex}.log",
+                    )
+                    os.replace(legacy_path, archived)
+                else:
+                    os.remove(legacy_path)
+            except OSError:
+                pass
+    _prune_old_logs(log_dir, base_name=server_name, keep=keep)
+    timestamp = datetime.now(timezone.utc).strftime("%Y%m%d_%H%M%S_%f")
+    return os.path.join(
+        log_dir,
+        f"{server_name}_{timestamp}_{os.getpid()}_{uuid4().hex}.log",
+    )
+
+
 def _configure_handler(handler: logging.Handler, level: int, *, console: bool) -> None:
     setattr(handler, _HANDLER_MARKER, True)
     handler.setLevel(level)

@@ -57,14 +57,6 @@ class ContentUploaderPlugin(PluginBase):
             "ContentUploaderPlugin v%s initialized with routes.", self.version
         )
 
-        result = await self.api.settings.get_global_setting(
-            request={"key": "paths.content"}
-        )
-        if not isinstance(result.value, str) or not result.value:
-            raise DependencyUnavailableError("Content directory is not configured.")
-        self.content_directory = Path(result.value)
-        await run_in_thread(self.content_directory.mkdir, parents=True, exist_ok=True)
-
     def _define_routes(self):  # noqa: C901
         @self.router.get(
             "/content/upload/ui",
@@ -146,7 +138,14 @@ class ContentUploaderPlugin(PluginBase):
                         "Upload must be a .mcworld, .mcpack, or .mcaddon file."
                     )
                 directory = "worlds" if extension == ".mcworld" else "addons"
-                destination = self.content_directory / directory / safe_filename
+                content_dir_val = request.app.state.app_context.settings.get(
+                    "paths.content"
+                )
+                if not isinstance(content_dir_val, str) or not content_dir_val:
+                    raise DependencyUnavailableError(
+                        "Content directory is not configured."
+                    )
+                destination = Path(content_dir_val) / directory / safe_filename
                 await run_in_thread(
                     atomic_stream_file, file.file, destination, validate=validate_upload
                 )

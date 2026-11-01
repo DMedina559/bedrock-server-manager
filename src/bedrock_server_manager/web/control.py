@@ -33,7 +33,8 @@ class ControlRecord(BaseModel):
 
 class ControlFiles:
     def __init__(self, config_dir: str | Path, runtime: WebRuntime):
-        self.directory = Path(config_dir)
+        self.config_dir = Path(config_dir)
+        self.directory = self.config_dir / "runtime"
         self.runtime = runtime
         self._file: Any = None
 
@@ -62,21 +63,24 @@ class ControlFiles:
                 "A web runtime already owns this configuration"
             ) from error
 
-        legacy_pid = self.directory / "web_server.pid"
-        if (
-            legacy_pid.exists()
-            and not (self.directory / "web_server.control.json").exists()
+        for legacy_pid in (
+            self.directory / "web_server.pid",
+            self.config_dir / "web_server.pid",
         ):
-            try:
-                pid = int(legacy_pid.read_text().strip())
-            except ValueError:
-                pid = 0
-            if pid > 0 and psutil.pid_exists(pid):
-                self._file.close()
-                self._file = None
-                raise OperationConflictError(
-                    "A legacy web PID record is still live; stop it before starting a new runtime"
-                )
+            if (
+                legacy_pid.exists()
+                and not (self.directory / "web_server.control.json").exists()
+            ):
+                try:
+                    pid = int(legacy_pid.read_text().strip())
+                except ValueError:
+                    pid = 0
+                if pid > 0 and psutil.pid_exists(pid):
+                    self._file.close()
+                    self._file = None
+                    raise OperationConflictError(
+                        "A legacy web PID record is still live; stop it before starting a new runtime"
+                    )
 
     def publish(self, host: str, port: int) -> None:
         try:
@@ -88,7 +92,7 @@ class ControlFiles:
         record = ControlRecord(
             instance_id=self.runtime.instance_id,
             pid=os.getpid(),
-            config_dir=str(self.directory.resolve()),
+            config_dir=str(self.config_dir.resolve()),
             created_at=created_at,
             host="127.0.0.1" if host == "0.0.0.0" else "::1" if host == "::" else host,
             port=port,

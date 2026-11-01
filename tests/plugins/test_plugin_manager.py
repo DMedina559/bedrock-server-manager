@@ -108,12 +108,43 @@ async def test_reload_plugins(app_context, plugin_factory):
 
 def test_path_traversal_rejection(app_context):
     """Test PluginManager rejects path traversal and unsafe names in plugin discovery."""
+    from pathlib import Path
+
     pm = app_context.plugin_manager
 
     assert pm._find_plugin_path("../secret") is None
     assert pm._find_plugin_path("../../etc/passwd") is None
     assert pm._find_plugin_path("foo/bar") is None
     assert pm._find_plugin_path("..") is None
+    assert pm._find_plugin_path("public") is None
+    assert pm._find_plugin_path("shared") is None
+    assert pm._find_plugin_path("private") is None
+
+    plugin_root = pm.plugin_dirs[0]
+    own_pkg = plugin_root / "alpha" / "static"
+    other_pkg = plugin_root / "beta" / "static"
+    own_data = Path(app_context.config_dir) / "plugins" / "alpha" / "static"
+    other_data = Path(app_context.config_dir) / "plugins" / "beta" / "static"
+    public_data = Path(app_context.config_dir) / "plugins" / "public" / "static"
+    for d in (own_pkg, other_pkg, own_data, other_data, public_data):
+        d.mkdir(parents=True, exist_ok=True)
+
+    mounts = pm._validate_static_mounts(
+        "alpha",
+        [
+            ("/alpha/pkg", own_pkg, "alpha_pkg"),
+            ("/alpha/private", own_data, "alpha_private"),
+            ("/alpha/public", public_data, "alpha_public"),
+            ("/alpha/other_pkg", other_pkg, "alpha_other_pkg"),
+            ("/alpha/other_data", other_data, "alpha_other_data"),
+            ("/alpha/root", plugin_root, "alpha_root"),
+        ],
+    )
+    assert [m[0] for m in mounts] == [
+        "/alpha/pkg",
+        "/alpha/private",
+        "/alpha/public",
+    ]
 
 
 async def test_event_dispatch_app_context_sanitization(app_context, plugin_factory):
