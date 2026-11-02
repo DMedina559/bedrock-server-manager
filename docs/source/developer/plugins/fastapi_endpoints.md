@@ -56,13 +56,20 @@ Enable the plugin to register its routes in the running web server. The example
 adds `GET /my_web_plugin/info`. It also appears in the application's OpenAPI
 schema and API documentation.
 
-Declare custom HTTP permissions with `http_permissions = [(name, description, roles)]`
-on the plugin class or instance; omitting `plugin:` automatically prefixes
-`plugin:<plugin_name>:`. Declare static asset directories with
-`static_mounts = [("/my_web_plugin/static", Path(__file__).parent / "static", "my_web_plugin_static")]`.
-The legacy imperative methods `get_fastapi_routers()`, `get_static_mounts()`, and
-`self.api.runtime.register_http_permission()` remain supported for compatibility
-but log deprecation warnings.
+Declare custom HTTP permissions with `http_permissions` on the plugin class or instance, using either 2/3-tuples `(permission, description[, default_roles])` or dictionaries `{"permission": ..., "description": ..., "default_roles": [...]}`. Omitting the `plugin:` prefix automatically prefixes `plugin:<plugin_name>:`. Permission names must match `^plugin:[a-z0-9_]+:[a-z0-9_]+$`, and `default_roles` may only include `"user"`, `"moderator"`, and `"admin"` (defaulting to `["admin"]`).
+
+## Static asset mounts (`static_mounts`)
+
+Declare static asset directories with `static_mounts = [(mount_prefix, local_dir_path, route_name)]`. BSM validates each mount before exposing it over HTTP:
+
+- **`mount_prefix`:** Must start with `/<plugin_name>` or `/api/plugins/<plugin_name>` and cannot contain `..` or `//`.
+- **Allowed directory roots (`local_dir_path`):** Static mounts may **only** serve directories located inside one of these three roots:
+  1. `<plugin_dir>/<plugin_name>/...` — requires your plugin to be structured as a **package directory** (`<data_dir>/plugins/<plugin_name>/__init__.py`) so `Path(__file__).parent / "static"` resolves inside `<plugin_dir>/<plugin_name>/static`. A single-file plugin (`<data_dir>/plugins/my_plugin.py`) cannot mount `Path(__file__).parent / "static"` because that points outside `<plugin_dir>/<plugin_name>/`.
+  2. `<config_dir>/plugins/<plugin_name>/...` — your plugin's private data directory (resolved via `await self.api.runtime.get_plugin_data_path(..., scope="private")`).
+  3. `<config_dir>/plugins/public/...` — the shared public plugin data directory (resolved via `await self.api.runtime.get_plugin_data_path(..., scope="public")`).
+- **No symlinks:** Symbolic links anywhere in the mounted directory chain are rejected.
+
+The legacy imperative methods `get_fastapi_routers()`, `get_static_mounts()`, and `self.api.runtime.register_http_permission()` remain supported for compatibility but log deprecation warnings.
 
 Use `self.api` inside route closures for supported server operations. Do not
 reach into application context or database sessions.

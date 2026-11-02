@@ -52,10 +52,17 @@ needed.
 
 | Setting | Default | Purpose |
 |---|---|---|
-| `backups.mode` | `selected` | World only, selected components, or full directory |
+| `backups.mode` | `selected` | World only (`world`), selected components (`selected`), or full directory (`full`) |
 | `backups.components` | World, properties, allowlist, permissions, script configuration and BSM server settings | Contents used in selected mode |
+| `backups.compression` | `balanced` | Archive compression profile: `fast` (gzip level 1), `balanced` (level 6), or `small` (level 9) |
 | `backups.encryption` | `false` | Encryption default, overridable for an individual capture |
-| `backups.verify_after_create` | `false` | Optional full readback after creation |
+| `backups.verify_after_create` | `false` | Optional full readback immediately after creation |
+| `retention.backups` | `3` | Per-server count of recent recovery points to retain (`0` disables automatic pruning) |
+| `backups.keep_daily` | `7` | Daily retention buckets (`0`–`365`) |
+| `backups.keep_weekly` | `4` | Weekly retention buckets (`0`–`104`) |
+| `backups.keep_monthly` | `3` | Monthly retention buckets (`0`–`120`) |
+| `backups.storage_budget_bytes` | `0` | Optional local per-server archive storage budget in bytes (`0` disables budget trimming) |
+| `backups.destinations` | `[]` | Off-host copy destinations (`id`, `name`, `path`, `enabled`, `keep_count`, `storage_budget_bytes`, `min_free_bytes`) |
 
 A full-directory default also requires servers to be stopped for captures. For
 frequent pre-start protection, world only avoids copying binaries and bundled
@@ -152,11 +159,13 @@ packs. Leave its server selection empty to cover all valid servers.
 | Plugin setting | Default | Behavior |
 |---|---|---|
 | `enable_backup_on_start` | `true` | Back up before starting selected servers |
+| `servers` | `[]` (all servers) | List of servers to back up before start; an empty list covers every valid server |
 | `backup_mode` | `world` | Choose `world`, `selected`, `full`, or `default` to use global contents |
 | `components` | The six standard data/settings components | Used only in selected mode |
 | `encryption` | `default` | Inherit global encryption, or force `on` or `off` |
 | `reuse_sequence_backup` | `true` | Reuse an eligible backup from the same operation sequence |
 | `require_complete_backup` | `false` | Cancel startup if the requested backup cannot complete |
+| `timeout_seconds` | `300` | Maximum time in seconds (`1`–`3600`) allowed for the pre-start backup |
 
 Update Before Start runs first. Backup on Start can reuse a valid, completed
 pre-update capture for the same server if it covers the currently requested

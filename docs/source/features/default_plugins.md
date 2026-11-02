@@ -43,3 +43,51 @@ qualifying backup is reused.
 
 See [the backup and restore guide](backups.md#back-up-before-starting-minecraft)
 for content modes, encryption overrides and pre-start timing.
+
+## Bundled plugin settings reference
+
+Configure these plugins under **Plugins → Plugin Settings** in the Web UI.
+
+### `server_lifecycle_notifications`
+
+Broadcasts in-game `say` warnings before stopping, restarting, updating, or deleting a running server, and announces when a server starts or finishes updating.
+
+| Setting | Default | Range | Description |
+|---|---|---|---|
+| `enable_notifications` | `true` | `bool` | Master switch for all lifecycle in-game announcements |
+| `notify_on_start` | `true` | `bool` | Send an in-game message after a server starts |
+| `notify_before_stop` | `true` | `bool` | Warn players and wait `stop_countdown_seconds` before stopping |
+| `stop_countdown_seconds` | `10` | `0`–`300` | Delay in seconds after the stop warning before stopping |
+| `notify_before_restart` | `true` | `bool` | Warn players and wait `restart_countdown_seconds` before restarting |
+| `restart_countdown_seconds` | `10` | `0`–`300` | Delay in seconds after the restart warning before restarting |
+| `notify_on_update` | `true` | `bool` | Announce before and after server updates |
+| `update_countdown_seconds` | `10` | `0`–`300` | Delay in seconds before stopping a running server for an update |
+| `notify_before_delete` | `true` | `bool` | Warn players before a running server is stopped for deletion |
+| `delete_countdown_seconds` | `10` | `0`–`300` | Delay in seconds before stopping a server for deletion |
+
+### `world_operation_notifications`
+
+Broadcasts in-game announcements and countdowns around world exports, imports, and resets.
+
+| Setting | Default | Range | Description |
+|---|---|---|---|
+| `enable_world_notifications` | `true` | `bool` | Master switch for world-operation announcements |
+| `notify_on_export` | `true` | `bool` | Announce when a world export starts and finishes |
+| `notify_on_import` | `true` | `bool` | Warn players before importing a world and announce completion |
+| `import_countdown_seconds` | `10` | `0`–`300` | Countdown in seconds before stopping the server for a world import |
+| `notify_on_reset` | `true` | `bool` | Warn players before resetting a world and announce completion |
+| `reset_countdown_seconds` | `15` | `0`–`300` | Countdown in seconds before stopping the server for a world reset |
+
+### `auto_reload_config`
+
+Automatically sends Bedrock console reload commands to running servers after configuration or addon changes.
+
+| Setting | Default | Description |
+|---|---|---|
+| `reload_on_allowlist_change` | `true` | Send `allowlist reload` after allowlist edits |
+| `reload_on_permissions_change` | `true` | Send `permission reload` after `permissions.json` edits |
+| `reload_on_addon_change` | `false` | Send `reload` after addon changes |
+
+### `autostart_plugin` and `update_before_start`
+
+`autostart_plugin` and `update_before_start` do not use plugin-wide settings tables; instead, they read each server's per-server **Autostart** (`server_info.autostart`) and **Autoupdate** (`server_info.autoupdate`) toggles configured on the server's settings page.

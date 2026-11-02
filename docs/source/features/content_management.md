@@ -45,3 +45,13 @@ Some resource packs declare multiple subpacks. In **Manage Installed Addons**, o
 
 Choose a declared subpack from the installed resource pack's selector.
 ```
+
+## Content library management, icons, and archive safety
+
+Manage staged files in `<data_dir>/content/worlds/` and `<data_dir>/content/addons/` through the **Content Library** page or API:
+
+- **List & download:** List staged worlds (`GET /api/content/worlds`) and addons (`GET /api/content/addons`), or download staged files (`GET /api/content/worlds/{filename}/download` and `GET /api/content/addons/{filename}/download`, requires `content:download`).
+- **Upload:** Upload `.mcworld`, `.mcpack`, `.mcaddon`, or `.zip` packages (`POST /api/content/upload`, requires `content:upload`). Passing `overwrite=true` replaces an existing file of the same name; otherwise conflicts return `409 Conflict`.
+- **Delete:** Remove staged files from the content library (`DELETE /api/content/{category}/{filename}` where `category` is `worlds` or `addons`, requires `content:delete`).
+- **World & addon icons:** Authenticated endpoints serve the active world's icon (`GET /api/server/{server_name}/world/icon`, fallback `/image/icon.png`) and installed pack icons (`GET /api/server/{server_name}/addons/{pack_type}/{pack_uuid}/icon`).
+- **Archive & filename validation:** Filenames are restricted to `[a-zA-Z0-9_.\- ()\[\]]+` (up to 200 characters) with no leading dot or trailing space/dot. Uploaded archives are inspected before extraction to reject path traversal, absolute paths, symlinks, encrypted ZIP entries, nested ZIP bombs, excessive entry counts (>100,000 entries), excessive expansion (>10 GiB), or extreme compression ratios.

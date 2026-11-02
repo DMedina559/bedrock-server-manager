@@ -98,15 +98,25 @@ JSON values. See [Custom events](custom_events.md) and
 Runtime helpers, plugin-owned files, dynamic API task registration, and lifecycle context managers use `self.api.runtime`:
 
 ```python
+# Managed background task
 task_id = await self.api.runtime.run_task(collect_stats, username="admin")
+
+# Dynamic API scheduled task registration
 self.api.runtime.register_api_task("prune", "backup_restore.prune_old_backups")
+
+# Scoped plugin file I/O (private to <config_dir>/plugins/<plugin_name>/ or shared in <config_dir>/plugins/public/)
+await self.api.runtime.write_plugin_file("state.json", {"ready": True}, scope="private", format="json")
+state = await self.api.runtime.read_plugin_file("state.json", scope="private", format="json")
+data_dir = await self.api.runtime.get_plugin_data_path(scope="private")
+
+# Temporary server stop/start wrapper
 async with self.api.runtime.server_lifecycle_manager(
     server_name="example", stop_before=True, start_after=True
 ):
     await perform_operation()
 ```
 
-Declare WebSocket data providers, diagnostic providers, and custom scheduled task methods with the `@data_provider` / `@websocket_provider`, `@diagnostic_provider`, and `@scheduled_task` decorators on `PluginBase`. Await server start, stop, and restart directly. Use background tasks for operations whose progress must outlive an HTTP request. See [Scheduled tasks](scheduled_tasks.md) and [Background tasks](task_manager.md). Use `get_plugin_setting` and `set_plugin_setting` for persistent plugin settings; see [Plugin settings](settings.md).
+Declare WebSocket data providers, diagnostic providers, and custom scheduled task methods with the `@data_provider` / `@websocket_provider`, `@diagnostic_provider`, and `@scheduled_task` decorators on `PluginBase`. Await server start, stop, and restart directly. Use background tasks for operations whose progress must outlive an HTTP request. See [Scheduled tasks](scheduled_tasks.md) and [Background tasks](task_manager.md). Use `get_plugin_setting` and `set_plugin_setting` for persistent plugin settings, and `read_plugin_file` / `write_plugin_file` / `get_plugin_data_path` for plugin-owned files on disk; see [Plugin settings and storage](settings.md).
 
 ## Operation context
 
@@ -169,9 +179,11 @@ notification data with `events.observe`. Discover contracts through
 for complete examples, visibility rules, and deadlines.
 
 
-### Backup component settings
+### Backups, snapshots, and component settings
 
-Use the shared validated type instead of copying component names into a plugin:
+Prefer the unified `.bsmbackup` snapshot APIs on `self.api.backup_restore` (`create_server_backup`, `list_server_snapshots`, `plan_server_restore`, and `restore_server_snapshot`) when building new backup or restore integrations. The component-specific convenience methods (`backup_all`, `backup_world`, `backup_config_files`, `restore_world`, `restore_config_file`) remain supported and operate on legacy or component archives.
+
+Use the shared validated `BackupComponents` type instead of copying component names into a plugin:
 
 ```python
 from pydantic import BaseModel, Field

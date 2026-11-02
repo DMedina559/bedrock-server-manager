@@ -20,7 +20,7 @@ In addition to `web start` and `web stop`, the local `bedrock-server-manager` co
 | `bedrock-server-manager service` | Configure, enable, disable, remove, or check OS service status (`configure`, `enable`, `disable`, `remove`, `status`) |
 | `bedrock-server-manager database` | Inspect schema status, run migrations, or back up and restore the database (`status`, `upgrade`, `downgrade`, `backup`, `restore`) |
 | `bedrock-server-manager logs` | List, view, or follow application and server logs with verified PID status (`--app`, `--server`, `--list`, `--lines`, `--follow`) |
-| `bedrock-server-manager cleanup` | Prune downloads cache, old logs, or orphaned plugin/server/addon artifacts (`--cache`, `--logs`, `--orphans`, `--all`, `--dry-run`) |
+| `bedrock-server-manager cleanup` | Clean Python `__pycache__` bytecode (`--cache`), old `.log` files (`--logs`, `--log-dir`), or orphaned plugin/server/addon artifacts (`--orphans`, `--plugins`, `--servers`, `--addons`, `--all`, `--dry-run`) |
 | `bedrock-server-manager backup` | Offline `.bsmbackup` archive inspection and extraction (`inspect`, `extract`) |
 | `bedrock-server-manager reset-password` | Reset a local user account's password and revoke its existing sessions |
 | `bedrock-server-manager reset-mfa` | Clear MFA, passkeys, and trusted devices for a locked-out local account |
@@ -53,7 +53,7 @@ echo "$BSM_TOKEN" | bsm-cli auth login --with-token --base-url https://bsm.examp
 bsm-cli auth status
 ```
 
-`bsm-cli` stores bearer tokens and MFA trusted-device tokens in your operating system's credential store (`keyring`, Windows Credential Manager, macOS Keychain, or Linux `secret-tool`) when available, keeping secrets out of plaintext configuration files.
+`bsm-cli` stores bearer tokens and MFA trusted-device tokens in your operating system's credential store (`keyring`, Windows Credential Manager, macOS Keychain, or Linux `secret-tool`) when available, keeping secrets out of plaintext configuration files. You can also manage active sessions (`bsm-cli auth sessions`), trusted devices (`bsm-cli auth devices`), integration tokens (`bsm-cli auth tokens`), and security audit logs (`bsm-cli audit`) directly from the CLI.
 
 Consult the [client command reference](api_client_commands.rst) for connection, authentication, scheduler, and server commands. Client compatibility follows the HTTP contract; update clients when upgrading across a contract-changing release.
 

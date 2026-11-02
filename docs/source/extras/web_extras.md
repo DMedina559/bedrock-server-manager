@@ -68,13 +68,16 @@ page refreshes, redirects, downloads, themes, plugin content, and live updates.
 HTML and token responses use `Cache-Control: no-store`. Fingerprinted build
 bundles are immutable; mutable static files and custom themes revalidate.
 To allow embedding the Web UI inside a trusted parent frame on another origin
-(such as an external Home Assistant dashboard), configure `web.frame_ancestors`
-(default `["'self'"]`); use `web.csp_report_only` to test Content-Security-Policy
-changes before enforcing them.
+(such as an external Home Assistant dashboard), set `web.frame_ancestors` to a
+space-separated CSP source list (for example, `"'self' https://ha.example.com"`);
+when left empty (`""`, the default), BSM sends `frame-ancestors 'none'` and
+`X-Frame-Options: DENY`. Setting `web.csp_report_only` to `true` emits
+`Content-Security-Policy-Report-Only` instead of an enforced
+`Content-Security-Policy` header so you can test CSP changes before enforcing them.
 
 ## Appearance
 
-See [theming](../web/theming.md) for supported frontend customization. Asset paths and frontend behavior follow the installed frontend package rather than a JavaScript build inside the backend checkout.
+See [theming](../web/theming.md) for custom CSS themes (`<data_dir>/themes/`) and custom background panoramas (`<config_dir>/panorama.{jpeg,jpg,png,webp}`). Asset paths and frontend behavior follow the installed frontend package rather than a JavaScript build inside the backend checkout.
 
 ## Process ownership
 

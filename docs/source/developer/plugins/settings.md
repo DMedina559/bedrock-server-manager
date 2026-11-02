@@ -119,13 +119,59 @@ Recheck existence before performing operations; ordinary app server lookup
 validates the installation again. Auto Backup On Start uses an empty server
 selection to mean all servers, and reads its selection for every start event.
 
-## Plugin-owned configuration files
+## Plugin-owned configuration and data files
 
-Use `await self.api.runtime.write_plugin_file("settings.json", value)` to atomically write files inside this plugin's private data directory (`scope="private"`, default) or the shared public plugin data directory (`scope="public"`). Read them with `await self.api.runtime.read_plugin_file("settings.json")`, or resolve a validated directory/file path with `await self.api.runtime.get_plugin_data_path()`.
+When your plugin needs to store larger JSON documents, plain-text templates, binary exports, or multi-file datasets on disk rather than inside the SQLite settings table, use the scoped file capabilities on `self.api.runtime`:
 
-Paths are relative to `<config_dir>/plugins/<plugin-id>/` (private) or `<config_dir>/plugins/public/` (shared). Traversal and symlink escapes are rejected, ownership is injected by the runtime, and capabilities from an unloaded plugin are revoked. Use the existing plugin settings API for ordinary structured settings; these file methods are for plugin-owned files.
+| Method | Signature | Description |
+|---|---|---|
+| `write_plugin_file` | `await self.api.runtime.write_plugin_file(filename, value, *, scope="private", format="json") -> Path` | Atomically write a file inside the selected plugin data root and return its resolved `Path`. |
+| `read_plugin_file` | `await self.api.runtime.read_plugin_file(filename, *, scope="private", format="json")` | Read and decode a file from the selected plugin data root. |
+| `get_plugin_data_path` | `await self.api.runtime.get_plugin_data_path(filename="", *, scope="private") -> Path` | Resolve a validated directory (`filename=""`) or file path inside the selected plugin data root, creating parent directories as needed. |
 
-The application does not expose its credentials directory through this capability. In-process Python plugins are trusted code with the host process's operating-system permissions; scoped APIs are not an OS sandbox.
+### Storage scopes and directory roots
+
+- **`scope="private"` (default):** Resolves under `<config_dir>/plugins/<plugin_name>/`. Each plugin gets its own isolated directory. On first access, if a legacy directory exists at `<config_dir>/config/plugins/<plugin_name>` and the new directory does not yet exist, BSM automatically migrates the legacy directory.
+- **`scope="public"` or `scope="shared"`:** Both resolve under `<config_dir>/plugins/public/`. Any plugin can read and write files here to share artifacts, exports, or cross-plugin data, and directories inside `<config_dir>/plugins/public/` can also be mounted as static web assets via `static_mounts`.
+- **Reserved directory names (`public`, `shared`, `private`):** Because `<config_dir>/plugins/public/` is reserved for shared storage, BSM reserves the names `public`, `shared`, and `private`. A plugin file or package using any of those names cannot be loaded or access private storage.
+
+### Supported file formats (`format`)
+
+- **`format="json"` (default):** `write_plugin_file` serializes JSON-compatible values (`dict`, `list`, `str`, `int`, `float`, `bool`, `None`) with 2-space indentation and rejects `NaN`/`Infinity`. `read_plugin_file` parses and returns the decoded Python value.
+- **`format="text"`:** `write_plugin_file` requires a `str` and writes UTF-8 text; `read_plugin_file` decodes and returns a UTF-8 `str`.
+- **`format="bytes"`:** `write_plugin_file` requires `bytes` or `bytearray`; `read_plugin_file` returns raw `bytes`.
+
+```python
+# 1. Write and read private JSON data
+await self.api.runtime.write_plugin_file(
+    "cache/state.json",
+    {"last_sync": "2026-01-01T00:00:00Z", "items": [1, 2, 3]},
+)
+state = await self.api.runtime.read_plugin_file("cache/state.json")
+
+# 2. Write a shared plain-text report to <config_dir>/plugins/public/reports/summary.txt
+await self.api.runtime.write_plugin_file(
+    "reports/summary.txt",
+    "All servers healthy.\n",
+    scope="public",
+    format="text",
+)
+
+# 3. Resolve the plugin's private root directory to list or delete files
+private_dir = await self.api.runtime.get_plugin_data_path(scope="private")
+for path in private_dir.glob("cache/*.json"):
+    path.unlink(missing_ok=True)
+```
+
+### Path validation, atomic writes, and restricted directories
+
+- **Relative path validation (`safe_name`):** `filename` must be a relative POSIX path (1–1024 characters) using forward slashes (`/`). Absolute paths, backslashes (`\`), drive letters (`C:`), control characters, `.` or `..` traversal segments, and Windows reserved device names (`CON`, `PRN`, `AUX`, `NUL`, `COM1`–`COM9`, `LPT1`–`LPT9`) raise `ValueError`.
+- **Symlink rejection:** Every path component from `<config_dir>/plugins` down to the target file is checked for symbolic links; symlinks anywhere in the chain are rejected (`ValueError: Plugin file path may not traverse symlinks`).
+- **Atomic writes & permissions:** Writes use temporary sibling files and atomic replacement, applying `0o700` to directories and `0o600` to files on POSIX (and restricted owner DACLs on Windows).
+- **Restricted `<config_dir>/credentials/` directory:** Application secrets (`jwt_secret.key`, `encryption_key.key`, `internal_service_token.key`) live in `<config_dir>/credentials/` and are never accessible through `read_plugin_file`, `write_plugin_file`, or `get_plugin_data_path`. Note that in-process Python plugins are trusted code running with the host process's OS permissions; scoped file APIs prevent accidental path bugs and traversal, not hostile OS-level access.
+- **Generation binding:** Capabilities from an unloaded or reloaded plugin generation are revoked and raise `PluginCapabilityError`.
+
+Use the typed plugin settings API (`settings_model`, `get_plugin_setting`, `set_plugin_setting`) for structured user-editable configuration, and reserve `read_plugin_file` / `write_plugin_file` / `get_plugin_data_path` for plugin-managed files and artifacts.
 
 
 ## Global and server settings models
@@ -148,7 +194,7 @@ class MyPlugin(PluginBase):
     server_settings_model = Policy
 ```
 
-Each model is independent. Global and server values live in that scope's `custom.<plugin_name>` namespace. Plugin-local values retain their existing storage. Scoped declarations require a plugin identifier that is a single safe namespace segment. Core settings and other plugins' schemas cannot be redefined through these declarations.
+Each model is independent. Global and server values live in that scope's `custom.<plugin_name>` namespace. Plugin-local values retain their existing storage. Scoped declarations require a plugin identifier that is a single safe namespace segment: the plugin's module/package name must not start with `_`, contain `.`, or contain `__`, and cannot match a reserved setting namespace (`custom`, `server_info`, `settings_version`, or any core top-level key). Core settings and other plugins' schemas cannot be redefined through these declarations.
 
 ```python
 policy = await self.get_plugin_settings(scope="global")

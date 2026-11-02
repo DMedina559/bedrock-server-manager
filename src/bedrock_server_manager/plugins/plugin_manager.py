@@ -605,7 +605,11 @@ class PluginManager:
                         if not self._register_settings_models(p_name, p_class):
                             continue
                         valid_plugin_names.add(p_name)
-                        description = p_class.__doc__.strip() if p_class.__doc__ else ""
+                        description = (
+                            p_class.__doc__.strip()
+                            if p_class.__doc__
+                            else str(getattr(p_class, "description", "") or "").strip()
+                        )
                         author = getattr(p_class, "author", "N/A")
 
                         existing = self.plugin_config.get(p_name)
@@ -1119,9 +1123,17 @@ class PluginManager:
         ):
             for api_entry in scheduled_apis:
                 if isinstance(api_entry, dict):
+                    api_target = api_entry.get("api_method") or api_entry.get("api")
+                    if not api_target:
+                        continue
+                    task_name = api_entry.get("name") or (
+                        str(api_target).replace(".", "_")
+                        if isinstance(api_target, str)
+                        else getattr(api_target, "__name__", "api_task")
+                    )
                     scheduler.register_api_task(
-                        api_entry["name"],
-                        api_entry["api_method"],
+                        task_name,
+                        api_target,
                         owner=owner,
                         generation=generation,
                         options_model=api_entry.get("options_model"),
@@ -1132,6 +1144,14 @@ class PluginManager:
                             "requires_server_lock", True
                         ),
                         description=api_entry.get("description", ""),
+                    )
+                elif isinstance(api_entry, (tuple, list)) and len(api_entry) == 2:
+                    task_name, api_target = api_entry
+                    scheduler.register_api_task(
+                        task_name,
+                        api_target,
+                        owner=owner,
+                        generation=generation,
                     )
 
         # 4. FastAPI routers (declarative router / routers + deprecated get_fastapi_routers)

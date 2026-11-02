@@ -40,8 +40,14 @@ The player's **Ban** action opens a confirmation dialog with an optional reason.
 Confirm the intended player and optionally record a reason for the ban.
 ```
 
-## Monitor and maintain
+## Monitor, logs, and server removal
 
-Resource readings describe the running process. Logs help distinguish a process crash from a network problem or a rejected command. Review enabled autostart/update plugins before scheduling restarts, and create backups before maintenance that replaces data.
+Resource readings describe the running process. Logs help distinguish a process crash from a network problem or a rejected command:
+
+- **Server console logs (`logs:read`):** View live and recent output for a specific server on its dashboard or via `GET /api/logs/history?source=server&server_name=<name>` and the `server_log:<server_name>` WebSocket topic.
+- **Application logs (`logs:read_application`):** Administrators can inspect BSM's own application logs via `GET /api/logs/history?source=application`, the `app_log` WebSocket topic, or locally with `bedrock-server-manager logs --app`.
+- **Delete a server (`servers:delete`):** Administrators can permanently remove a server installation and its server-specific configuration (`DELETE /api/server/{server_name}/delete`). Because deletion is irreversible, it requires recent authentication step-up verification (`X-BSM-Recent-Auth: required`) and cannot be delegated to integration tokens.
+
+Review enabled autostart/update plugins before scheduling restarts, and create backups before maintenance that replaces data.
 
 [Installation and updates](installation.md), [configuration](configuration.md), [backups](backups.md), and [scheduled tasks](scheduler.md) explain the corresponding maintenance workflows.

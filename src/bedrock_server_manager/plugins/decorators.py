@@ -46,7 +46,7 @@ def scheduled_task(
 
 
 def diagnostic_provider(name: str | None = None) -> Callable[[F], F]:
-    """Declare an asynchronous or synchronous diagnostic provider on a plugin method."""
+    """Declare an asynchronous diagnostic provider on a plugin method."""
 
     def decorator(func: F) -> F:
         provider_name = name if name is not None else getattr(func, "__name__", "")

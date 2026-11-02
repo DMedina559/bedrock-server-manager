@@ -98,15 +98,29 @@ class CustomBackupPlugin(PluginBase):
     scheduled_apis = [
         {
             "name": "export_world",
-            "api": "world.export_world",
+            "api_method": "world.export_world",
             "description": "Export the server world through CustomBackupPlugin.",
+            "default_options": {},
             "timeout_seconds": 600,
             "requires_server_lock": True,
         },
-        # Tuple shorthand: (task_name, api_target)
+        # Tuple shorthand: (task_name, api_method)
         ("scan_players", "player.scan_and_update_player_db"),
     ]
 ```
+
+Each dictionary entry in `scheduled_apis` supports the following keys:
+
+| Key | Type | Default | Description |
+|---|---|---|---|
+| `api_method` (or `api`) | `str` or `@api_method` callable | *(required)* | Target `@api_method` callable or dotted `<domain>.<method>` path |
+| `name` | `str` | Derived from `api_method` | Task name suffix (automatically prefixed with `<plugin_name>:`) |
+| `options_model` | `type[BaseModel] \| None` | Auto-derived from request model | Explicit Pydantic model for schedule options |
+| `default_options` | `dict[str, Any] \| None` | `None` | Default option overrides applied to the derived `options_model` |
+| `slot_field` | `str \| None` | `"schedule_slot"` if present on request | Request field that receives `execution_context["slot"]` |
+| `timeout_seconds` | `float \| None` | `300` | Per-attempt execution timeout in seconds |
+| `requires_server_lock` | `bool` | `True` | Whether to acquire the server's `operation_lock` before running |
+| `description` | `str` | Method docstring | Human-readable description shown in the Scheduler UI |
 
 You can also register API tasks dynamically during `on_load` via `self.api.runtime.register_api_task`:
 
