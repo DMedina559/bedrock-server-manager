@@ -10,6 +10,28 @@ from .contents import DEFAULT_COMPONENTS, SERVER_PACK_COMPONENTS, BackupMode
 
 ConfigComponent = Literal["server.properties", "allowlist.json", "permissions.json"]
 
+AppComponent = Literal[
+    "database",
+    "config",
+    "credentials",
+    "plugins",
+    "data",
+]
+APP_COMPONENTS: tuple[AppComponent, ...] = (
+    "database",
+    "config",
+    "credentials",
+    "plugins",
+    "data",
+)
+APP_PREFIXES: dict[AppComponent, str] = {
+    "database": "database",
+    "config": "config",
+    "credentials": "credentials",
+    "plugins": "plugins",
+    "data": "data",
+}
+
 Component = Literal[
     "server_directory",
     "world",
@@ -83,6 +105,54 @@ class BackupManifest(Record):
     files: list[BackupFile]
     directories: list[str] = Field(default_factory=list)
     warnings: list[str] = Field(default_factory=list)
+
+
+class AppBackupFile(Record):
+    path: str
+    component: AppComponent
+    size: int = Field(ge=0)
+    executable: bool = False
+    sha256: str = Field(pattern=r"^[a-f0-9]{64}$")
+
+
+class AppBackupManifest(Record):
+    format: Literal["bsmappbackup"] = "bsmappbackup"
+    format_version: Literal[1] = 1
+    backup_id: UUID
+    created_at: datetime
+    capture_started_at: datetime
+    capture_finished_at: datetime
+    bsm_version: str
+    alembic_version: str | None = None
+    database_type: str = "sqlite"
+    components: dict[AppComponent, Literal["included", "absent"]]
+    files: list[AppBackupFile]
+    directories: list[str] = Field(default_factory=list)
+    warnings: list[str] = Field(default_factory=list)
+
+
+class AppDrillResult(Record):
+    backup_id: str
+    checked_at: str
+    status: Literal["passed", "failed"]
+    checked_files: int
+    checked_components: list[AppComponent]
+    duration_ms: float
+    error: str | None = None
+
+
+class AppBackupSummary(Record):
+    backup_id: str
+    filename: str
+    created_at: str | None = None
+    drill: AppDrillResult | None = None
+    size: int
+    encrypted: bool
+    key_id: str | None = None
+    components: dict[AppComponent, Literal["included", "absent"]] = Field(
+        default_factory=dict
+    )
+    manifest: AppBackupManifest | None = None
 
 
 class BackupHeader(Record):

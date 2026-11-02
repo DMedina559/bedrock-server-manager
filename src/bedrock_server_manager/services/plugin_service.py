@@ -85,6 +85,9 @@ class PluginService:
             raise UserInputError("Plugin settings namespace must contain an object")
         values = copy.deepcopy(raw)
         if model is not None:
+            from ..plugins.settings import prune_dropped_fields
+
+            values, _ = prune_dropped_fields(model, values)
             for key, field in model.model_fields.items():
                 if key not in values:
                     default = field.get_default(

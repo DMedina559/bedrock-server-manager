@@ -5,6 +5,7 @@ This module is central to the plugin architecture of the Bedrock Server Manager.
 """
 
 import asyncio
+import copy
 import importlib.util
 import inspect
 import logging
@@ -57,6 +58,7 @@ from .scopes import (
     normalize_permissions,
     plugin_permissions,
 )
+from .settings import prune_dropped_fields
 
 logger = logging.getLogger(__name__)
 
@@ -564,6 +566,198 @@ class PluginManager:
                         error=e,
                     )
 
+    async def _reconcile_plugin_settings(
+        self,
+        valid_plugin_names: Set[str] | None = None,
+        target_plugin: str | None = None,
+        removed_plugin_names: Set[str] | None = None,
+    ) -> None:
+        """Reconcile and prune orphaned or dropped settings as plugins and their schemas evolve.
+
+        This handles:
+        1. Pruning settings for uninstalled plugins (plugins removed from disk).
+        2. Pruning settings for scopes dropped by existing plugins (e.g. global_settings_model removed).
+        3. Pruning individual dropped/renamed fields from stored settings when a plugin evolves its model.
+        """
+        from ..state.changeset import ChangeSet
+
+        async with self.storage.write_lock:
+            settings = self.state.settings
+            current_plugin_settings = copy.deepcopy(settings.plugin_settings)
+            current_custom = copy.deepcopy(settings.custom)
+            settings_changed = False
+            updated_servers: Dict[str, Any] = {}
+            changeset = ChangeSet()
+
+            # Custom namespaces can belong to integrations outside the plugin system.
+            # Only remove those with evidence of prior plugin ownership.
+            orphaned_plugins = set(current_plugin_settings) | (
+                removed_plugin_names or set()
+            )
+            if valid_plugin_names is not None:
+                orphaned_plugins -= valid_plugin_names
+
+            # 1. Prune uninstalled plugins across settings and servers
+            if valid_plugin_names is not None and target_plugin is None:
+                for p_name in list(current_plugin_settings):
+                    if p_name not in valid_plugin_names:
+                        current_plugin_settings.pop(p_name, None)
+                        settings_changed = True
+                        logger.info(
+                            "Pruned orphaned plugin settings for uninstalled plugin '%s'",
+                            p_name,
+                        )
+                for p_name in list(current_custom):
+                    if p_name in orphaned_plugins:
+                        current_custom.pop(p_name, None)
+                        settings_changed = True
+                        logger.info(
+                            "Pruned orphaned global custom settings for uninstalled plugin '%s'",
+                            p_name,
+                        )
+                for s_name, s_cfg in self.state.servers.servers.items():
+                    if isinstance(s_cfg.custom, dict):
+                        s_custom = dict(s_cfg.custom)
+                        s_changed = False
+                        for p_name in list(s_custom):
+                            if p_name in orphaned_plugins:
+                                s_custom.pop(p_name, None)
+                                s_changed = True
+                                logger.info(
+                                    "Pruned orphaned server custom settings for uninstalled plugin '%s' on server '%s'",
+                                    p_name,
+                                    s_name,
+                                )
+                        if s_changed:
+                            updated_servers[s_name] = s_cfg.model_copy(
+                                update={"custom": s_custom}
+                            )
+
+            # 2. Prune dropped scopes and dropped fields for installed plugins
+            plugins_to_check = (
+                {target_plugin: self._discovered_classes[target_plugin]}
+                if target_plugin and target_plugin in self._discovered_classes
+                else self._discovered_classes
+            )
+
+            for p_name, p_class in plugins_to_check.items():
+                if valid_plugin_names is not None and p_name not in valid_plugin_names:
+                    continue
+
+                # Scope: plugin
+                p_model = getattr(p_class, "settings_model", None)
+                if (
+                    p_model is not None
+                    and isinstance(p_model, type)
+                    and issubclass(p_model, BaseModel)
+                ):
+                    if p_name in current_plugin_settings and isinstance(
+                        current_plugin_settings[p_name], dict
+                    ):
+                        pruned, dropped = prune_dropped_fields(
+                            p_model, current_plugin_settings[p_name]
+                        )
+                        if dropped:
+                            logger.info(
+                                "Pruned dropped settings for plugin '%s' (plugin scope): %s",
+                                p_name,
+                                sorted(dropped),
+                            )
+                            current_plugin_settings[p_name] = pruned
+                            settings_changed = True
+
+                # Scope: global
+                g_model = getattr(p_class, "global_settings_model", None)
+                if g_model is None:
+                    if p_name in current_custom:
+                        current_custom.pop(p_name, None)
+                        settings_changed = True
+                        logger.info(
+                            "Pruned orphaned global custom settings for plugin '%s' (scope dropped)",
+                            p_name,
+                        )
+                elif isinstance(g_model, type) and issubclass(g_model, BaseModel):
+                    if p_name in current_custom and isinstance(
+                        current_custom[p_name], dict
+                    ):
+                        pruned, dropped = prune_dropped_fields(
+                            g_model, current_custom[p_name]
+                        )
+                        if dropped:
+                            logger.info(
+                                "Pruned dropped settings for plugin '%s' (global scope): %s",
+                                p_name,
+                                sorted(dropped),
+                            )
+                            current_custom[p_name] = pruned
+                            settings_changed = True
+
+                # Scope: server
+                s_model = getattr(p_class, "server_settings_model", None)
+                for s_name, s_cfg in self.state.servers.servers.items():
+                    s_server_cfg = updated_servers.get(s_name, s_cfg)
+                    if (
+                        isinstance(s_server_cfg.custom, dict)
+                        and p_name in s_server_cfg.custom
+                    ):
+                        if s_model is None:
+                            s_custom = dict(s_server_cfg.custom)
+                            s_custom.pop(p_name, None)
+                            updated_servers[s_name] = s_server_cfg.model_copy(
+                                update={"custom": s_custom}
+                            )
+                            logger.info(
+                                "Pruned orphaned server custom settings for plugin '%s' on server '%s' (scope dropped)",
+                                p_name,
+                                s_name,
+                            )
+                        elif isinstance(s_model, type) and issubclass(
+                            s_model, BaseModel
+                        ):
+                            if isinstance(s_server_cfg.custom[p_name], dict):
+                                pruned, dropped = prune_dropped_fields(
+                                    s_model, s_server_cfg.custom[p_name]
+                                )
+                                if dropped:
+                                    logger.info(
+                                        "Pruned dropped settings for plugin '%s' on server '%s' (server scope): %s",
+                                        p_name,
+                                        s_name,
+                                        sorted(dropped),
+                                    )
+                                    s_custom = dict(s_server_cfg.custom)
+                                    s_custom[p_name] = pruned
+                                    updated_servers[s_name] = s_server_cfg.model_copy(
+                                        update={"custom": s_custom}
+                                    )
+
+            # 3. Persist pruned state atomically
+            if settings_changed or updated_servers:
+                candidate = type(settings).model_validate(settings.model_dump())
+                if settings_changed:
+                    candidate.set("plugin_settings", current_plugin_settings)
+                    candidate.set("custom", current_custom)
+                    changeset.add_setting("plugin_settings")
+                    changeset.add_setting("custom")
+
+                async with self.storage.transaction() as session:
+                    if settings_changed:
+                        await self.storage.settings_repo.save_settings(
+                            session, candidate.to_dict()
+                        )
+                    for s_name, updated_cfg in updated_servers.items():
+                        await self.storage.server_repo.save_server(session, updated_cfg)
+                        changeset.add_server(s_name)
+
+                if settings_changed:
+                    candidate.clear_dirty()
+                    self.state.settings = candidate
+                for s_name, updated_cfg in updated_servers.items():
+                    self.state.servers.set(updated_cfg)
+                    self.state.servers.remove_dirty_server(s_name)
+
+                await self.storage._notify_listeners(self.state, changeset)
+
     async def _synchronize_config_with_disk(self) -> None:
         """Synchronizes the in-memory plugin configuration with the actual plugin files on disk."""
         self.plugin_config = await self._load_config()
@@ -677,6 +871,10 @@ class PluginManager:
                     self.server_settings_models.pop(plugin_name, None)
 
             await self._save_config()
+            await self._reconcile_plugin_settings(
+                valid_plugin_names=valid_plugin_names,
+                removed_plugin_names=set(plugins_to_remove),
+            )
         except BaseException:
             self._discovered_classes.clear()
             for mod_name in list(sys.modules):
@@ -1612,6 +1810,8 @@ class PluginManager:
 
             if not self._register_settings_models(plugin_name, p_class):
                 return False
+            self._discovered_classes[plugin_name] = p_class
+            await self._reconcile_plugin_settings(target_plugin=plugin_name)
             instance = None
             try:
                 plugin_logger = logging.getLogger(f"plugin.{plugin_name}")

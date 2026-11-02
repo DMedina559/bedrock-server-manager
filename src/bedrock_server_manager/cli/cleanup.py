@@ -24,6 +24,7 @@ from .logs import (
     resolve_active_app_log,
     resolve_server_logs,
 )
+from .utils import assert_bsm_offline_cli
 
 logger = logging.getLogger(__name__)
 
@@ -595,6 +596,11 @@ def cleanup(
         )
         logger.warning("Cleanup command run without any action flags.")
         return
+
+    if plugins or servers or addons:
+        assert_bsm_offline_cli(
+            app_context, operation_name="Pruning server, plugin, or addon records"
+        )
 
     if dry_run:
         click.secho(

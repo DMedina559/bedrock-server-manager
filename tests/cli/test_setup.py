@@ -88,3 +88,15 @@ def test_setup_advanced_db(runner, app_context, monkeypatch, tmp_path):
 
     assert app_context.settings.get("web.host") == "1.2.3.4"
     assert app_context.settings.get("web.port") == 80
+
+
+def test_setup_blocks_when_bsm_running(runner, app_context, monkeypatch):
+    """Test setup command is blocked when BSM is running."""
+    monkeypatch.setattr(
+        "bedrock_server_manager.web.process.check_bsm_offline",
+        lambda *args, **kwargs: (False, 9999),
+    )
+    result = runner.invoke(setup, obj={"app_context": app_context})
+    assert result.exit_code != 0
+    assert "Bedrock Server Manager is currently running (PID 9999)" in result.output
+    assert "Setup configuration requires BSM to be stopped first" in result.output
