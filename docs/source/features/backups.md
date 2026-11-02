@@ -158,7 +158,6 @@ packs. Leave its server selection empty to cover all valid servers.
 
 | Plugin setting | Default | Behavior |
 |---|---|---|
-| `enable_backup_on_start` | `true` | Back up before starting selected servers |
 | `servers` | `[]` (all servers) | List of servers to back up before start; an empty list covers every valid server |
 | `backup_mode` | `world` | Choose `world`, `selected`, `full`, or `default` to use global contents |
 | `components` | The six standard data/settings components | Used only in selected mode |

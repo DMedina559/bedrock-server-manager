@@ -11,10 +11,14 @@ from .routes import define_routes
 
 
 class EventSenderPlugin(PluginBase):
-    version = "1.3.0"
+    version = "1.4.0"
     author = "dmedina559"
-    description = "A plugin that provides a web UI for sending custom plugin events."
     name = "Event Sender"
+    description = "A plugin that provides a web UI for sending custom plugin events."
+
+    http_permissions = [
+        ("manage", "Manage event sender and dispatch events", ["admin"]),
+    ]
 
     @app_event("on_load")
     async def plugin_loaded(self):

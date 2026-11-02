@@ -4,7 +4,6 @@ from fastapi import APIRouter, Request, Security
 from fastapi.responses import JSONResponse
 from pydantic import BaseModel, ConfigDict, Field, JsonValue
 
-from bedrock_server_manager.web.access_policy import Permission
 from bedrock_server_manager.web.deps.auth import require_permissions
 
 
@@ -31,7 +30,7 @@ def define_routes(router: APIRouter, plugin_instance):
         response_class=JSONResponse,
         operation_id="event_sender_ui",
         dependencies=[
-            Security(require_permissions, scopes=[Permission.PLUGINS_MANAGE])
+            Security(require_permissions, scopes=["plugin:event_sender_plugin:manage"])
         ],
         name="Event Sender",
         tags=["plugin-json-ui"],
@@ -121,7 +120,7 @@ def define_routes(router: APIRouter, plugin_instance):
         "/trigger",
         operation_id="event_sender_trigger",
         dependencies=[
-            Security(require_permissions, scopes=[Permission.PLUGINS_MANAGE])
+            Security(require_permissions, scopes=["plugin:event_sender_plugin:manage"])
         ],
     )
     async def trigger_event(payload: EventPayload):

@@ -44,9 +44,6 @@ class PluginSettings(BaseModel):
         le=3600,
         description="Maximum seconds for a pre-start backup (default 5 minutes). Optional backup failures allow startup; required backups prevent startup.",
     )
-    enable_backup_on_start: bool = Field(
-        default=True, description="Back up this server before starting it."
-    )
 
 
 class AutoBackupOnStart(PluginBase):
@@ -57,7 +54,7 @@ class AutoBackupOnStart(PluginBase):
 
     settings_model = PluginSettings
 
-    version = "1.3.2"
+    version = "1.4.0"
     description = "Backs up selected server contents before starting a server. This plugin hooks into the `before_server_start` event."
     author = "dmedina559"
     name = "Auto Backup On Start"
@@ -82,9 +79,6 @@ class AutoBackupOnStart(PluginBase):
             and item.server_name == kwargs.get("server_name")
             for item in sequence.ancestry
         ):
-            return
-        if not await self.get_plugin_setting("enable_backup_on_start", default=True):
-            self.logger.debug("Backup on start is disabled in plugin settings.")
             return
 
         server_name = kwargs.get("server_name")

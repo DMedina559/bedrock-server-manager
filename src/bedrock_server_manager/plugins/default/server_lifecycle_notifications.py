@@ -32,9 +32,6 @@ class PluginSettings(BaseModel):
         le=60,
         description="Seconds to wait after starting for initialization.",
     )
-    enable_notifications: bool = Field(
-        default=True, description="Send in-game lifecycle warnings."
-    )
 
 
 class ServerLifecycleNotificationsPlugin(PluginBase):
@@ -46,7 +43,7 @@ class ServerLifecycleNotificationsPlugin(PluginBase):
 
     settings_model = PluginSettings
 
-    version = "1.2.0"
+    version = "1.3.0"
     description = "Enhances server management by sending in-game notifications and introducing delays at critical server lifecycle points."
     author = "dmedina559"
     name = "Server Lifecycle Notifications"
@@ -62,8 +59,6 @@ class ServerLifecycleNotificationsPlugin(PluginBase):
         self, server_name: str, message: str, context: str
     ) -> None:
         """Helper to send an in-game message if the server is running."""
-        if not await self.get_plugin_setting("enable_notifications", default=True):
-            return
         if await self._is_server_running(server_name):
             try:
                 # Ensure the message is formatted as a "say" command.

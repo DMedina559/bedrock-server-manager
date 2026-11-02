@@ -32,8 +32,9 @@ class WorldOperationNotificationsPlugin(PluginBase):
 
     settings_model = PluginSettings
 
-    version = "1.2.0"
-    description = "Notifies in-game players before significant world operations (export, import, reset) are performe..."
+    name = "World Operation Notifications"
+    version = "1.3.0"
+    description = "Notifies in-game players before significant world operations (export, import, reset) are performed on a running server."
     author = "dmedina559"
 
     @app_event("on_load")

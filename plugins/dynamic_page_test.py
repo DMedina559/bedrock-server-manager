@@ -4,7 +4,6 @@ from fastapi import APIRouter, Request, Security
 from fastapi.responses import JSONResponse
 
 from bedrock_server_manager import PluginBase, app_event
-from bedrock_server_manager.web.access_policy import Permission
 from bedrock_server_manager.web.deps.auth import require_permissions
 from bedrock_server_manager.web.schemas import UserResponse
 
@@ -14,10 +13,14 @@ class DynamicPageTestPlugin(PluginBase):
     A plugin to test all Dynamic Page UI components.
     """
 
-    version = "1.1.0"
+    version = "1.2.0"
     description = "A plugin to test all Dynamic Page UI components."
     author = "dmedina559"
     name = "Dynamic Page Test"
+
+    http_permissions = [
+        ("manage", "Manage dynamic page test UI", ["admin"]),
+    ]
 
     @app_event("on_load")
     async def plugin_loaded(self, **kwargs):
@@ -37,7 +40,7 @@ class DynamicPageTestPlugin(PluginBase):
         async def get_test_ui(
             request: Request,
             current_user: UserResponse = Security(
-                require_permissions, scopes=[Permission.PLUGINS_MANAGE]
+                require_permissions, scopes=["plugin:dynamic_page_test:manage"]
             ),
         ):
             return JSONResponse(
@@ -357,7 +360,7 @@ class DynamicPageTestPlugin(PluginBase):
         async def submit_test_form(
             request: Request,
             current_user: UserResponse = Security(
-                require_permissions, scopes=[Permission.PLUGINS_MANAGE]
+                require_permissions, scopes=["plugin:dynamic_page_test:manage"]
             ),
         ):
             try:
