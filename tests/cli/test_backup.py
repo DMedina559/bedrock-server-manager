@@ -220,3 +220,46 @@ async def test_backup_always_excludes_servers_and_backups(
         for p in file_paths
     )
     assert not any("server.properties" in p for p in file_paths)
+
+
+async def test_backup_does_not_duplicate_plugins_or_plugin_data(
+    invoke_backup, app_context, tmp_path
+):
+    # Installed plugin module in data_dir/plugins
+    installed_plugins_dir = Path(app_context.data_dir) / "plugins"
+    installed_plugins_dir.mkdir(parents=True, exist_ok=True)
+    plugin_module = installed_plugins_dir / "custom_plugin.py"
+    plugin_module.write_text("# custom plugin code", encoding="utf-8")
+
+    # Plugin runtime data in config_dir/plugins/<plugin_name>/
+    plugin_data_dir = Path(app_context.config_dir) / "plugins" / "custom_plugin"
+    plugin_data_dir.mkdir(parents=True, exist_ok=True)
+    plugin_data_file = plugin_data_dir / "state.json"
+    plugin_data_file.write_text('{"counter": 42}', encoding="utf-8")
+
+    archive_path = tmp_path / "dedup_backup.bsmappbackup"
+    res = await invoke_backup("create", "-o", str(archive_path), "--no-encrypt")
+    assert res.exit_code == 0, res.output
+
+    from bedrock_server_manager.backups.app import inspect_app_backup
+
+    _, manifest = inspect_app_backup(archive_path)
+    file_paths = [f.path for f in manifest.files]
+
+    # Installed plugin appears only once under plugins/
+    assert file_paths.count("plugins/custom_plugin.py") == 1
+    assert not any(p.startswith("plugins/plugins/") for p in file_paths)
+
+    # Plugin runtime data appears only once under data/plugins/, never under config/plugins/ or plugins/
+    assert file_paths.count("data/plugins/custom_plugin/state.json") == 1
+    assert not any(p.startswith("config/plugins/") for p in file_paths)
+    assert not any(p.startswith("config/db/") for p in file_paths)
+
+    # Verify round-trip restore puts both back in their respective locations
+    plugin_module.unlink()
+    plugin_data_file.unlink()
+
+    restore_res = await invoke_backup("restore", str(archive_path), "--yes")
+    assert restore_res.exit_code == 0, restore_res.output
+    assert plugin_module.read_text(encoding="utf-8") == "# custom plugin code"
+    assert plugin_data_file.read_text(encoding="utf-8") == '{"counter": 42}'
