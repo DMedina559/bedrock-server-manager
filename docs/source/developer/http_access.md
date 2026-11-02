@@ -138,6 +138,73 @@ never cookies or URL parameters. Swagger's IntegrationToken bearer scheme accept
 a pasted named credential. Logging out of a client discards its local copy;
 revocation is an explicit, separate operation.
 
+### Authenticating external tools and scripts
+
+Named integration credentials (`bsm_it_...`) are designed specifically for headless external tools, signaling proxies, Discord bots, and monitoring scripts that interact with BSM without browser sessions or expiring cookies.
+
+#### 1. REST API authentication (HTTP Bearer)
+
+Pass the integration credential in the standard `Authorization` header:
+
+```bash
+curl -X POST http://localhost:11325/api/server/start \
+  -H "Authorization: Bearer bsm_it_your_token_here" \
+  -H "Content-Type: application/json" \
+  -d '{"server_name": "Survival"}'
+```
+
+Integration credentials grant access to all core REST APIs and any custom endpoints registered by plugins via `get_fastapi_routers()`, subject to the permissions configured on the token.
+
+#### 2. WebSocket authentication (`/ws`)
+
+Connect to the WebSocket endpoint at `/ws` and send an authentication frame within 5 seconds of opening the socket:
+
+```json
+{
+  "token": "bsm_it_your_token_here"
+}
+```
+
+BSM validates the token, binds the connection to the principal and its authorized scopes, and returns an authentication confirmation:
+
+```json
+{
+  "type": "auth_success",
+  "user": { "username": "admin", "role": "admin" }
+}
+```
+
+#### 3. Real-time server log streaming over WebSocket
+
+External tools (such as signaling proxies or server monitors) can stream live console output from Bedrock Dedicated Server without reading or tailing files on the host filesystem.
+
+Send a subscription frame:
+
+```json
+{
+  "action": "subscribe",
+  "topic": "logs:Survival"
+}
+```
+
+BSM's log streamer will stream each log line emitted by BDS in real time:
+
+```json
+{
+  "topic": "logs:Survival",
+  "data": "[2026-11-02 11:45:00:123 INFO] Server started.\n"
+}
+```
+
+When the client is done or the server is ready, unsubscribe or close the socket:
+
+```json
+{
+  "action": "unsubscribe",
+  "topic": "logs:Survival"
+}
+```
+
 ## Assigned servers
 
 Existing accounts keep access to all servers allowed by their role. Admins can

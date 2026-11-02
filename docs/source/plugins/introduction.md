@@ -7,7 +7,10 @@ Plugins run in BSM's process and can access host resources. Review their source,
 Place the plugin's Python file (`<plugin_name>.py`) or package directory (`<plugin_name>/__init__.py`) in `<data_dir>/plugins/` (configurable via `paths.plugins`). Follow the plugin author's installation instructions for any third-party Python packages, installing them into the same Python environment and OS account as BSM.
 
 * **Discovery rules:** BSM scans `<data_dir>/plugins/` (plus its own bundled plugins). Files or folders starting with `_` or `.`, symlinked plugin entries that fail path checks, classes without a valid `version` attribute, and the reserved directory names `public`, `shared`, and `private` are ignored.
-* **Code vs. persistent data:** Plugin source code lives in `<data_dir>/plugins/`. Runtime plugin state lives separately in the database (`plugin_settings` table and `plugins.json` registry) and under `<config_dir>/plugins/<plugin_name>/` (private plugin files) or `<config_dir>/plugins/public/` (shared plugin files).
+* **Code vs. persistent data:** Plugin source code lives in `<data_dir>/plugins/`. Runtime plugin state lives separately in the database (`plugin_settings` table and `plugins.json` registry) and under dedicated persistent file roots:
+  * **Private plugin data:** `<config_dir>/plugins/<plugin_name>/` (isolated per plugin). Plugins access this directory via `await self.api.runtime.get_plugin_data_path()`, `read_plugin_file()`, and `write_plugin_file()`. No special filesystem permissions are required.
+  * **Shared public plugin data:** `<config_dir>/plugins/public/` (shared cross-plugin artifacts or static web assets).
+  See [Plugin Settings and Storage](../developer/plugins/settings.md) for code examples and storage scopes.
 
 Refresh discovery (**Reload Plugins** in the Web UI or `PUT /api/plugins/reload`) or restart the manager, then inspect the **Manage Plugins** view. Confirm the plugin's internal name, version, and status before enabling it. Newly discovered third-party plugins start disabled until you enable them.
 
