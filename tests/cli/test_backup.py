@@ -246,14 +246,20 @@ async def test_backup_does_not_duplicate_plugins_or_plugin_data(
     _, manifest = inspect_app_backup(archive_path)
     file_paths = [f.path for f in manifest.files]
 
-    # Installed plugin appears only once under plugins/
-    assert file_paths.count("plugins/custom_plugin.py") == 1
-    assert not any(p.startswith("plugins/plugins/") for p in file_paths)
+    # Installed plugin appears only once under data/plugins/
+    assert file_paths.count("data/plugins/custom_plugin.py") == 1
+    assert not any(p.startswith("data/plugins/plugins/") for p in file_paths)
 
-    # Plugin runtime data appears only once under data/plugins/, never under config/plugins/ or plugins/
-    assert file_paths.count("data/plugins/custom_plugin/state.json") == 1
+    # Plugin runtime data appears only once under plugins/, never under config/plugins/ or data/plugins/
+    assert file_paths.count("plugins/custom_plugin/state.json") == 1
     assert not any(p.startswith("config/plugins/") for p in file_paths)
+    assert not any(p.startswith("data/plugins/custom_plugin/") for p in file_paths)
     assert not any(p.startswith("config/db/") for p in file_paths)
+
+    # Verify component mapping
+    file_map = {f.path: f.component for f in manifest.files}
+    assert file_map["data/plugins/custom_plugin.py"] == "plugins"
+    assert file_map["plugins/custom_plugin/state.json"] == "data"
 
     # Verify round-trip restore puts both back in their respective locations
     plugin_module.unlink()
@@ -263,3 +269,42 @@ async def test_backup_does_not_duplicate_plugins_or_plugin_data(
     assert restore_res.exit_code == 0, restore_res.output
     assert plugin_module.read_text(encoding="utf-8") == "# custom plugin code"
     assert plugin_data_file.read_text(encoding="utf-8") == '{"counter": 42}'
+
+
+async def test_backup_selective_plugin_component_restore(
+    invoke_backup, app_context, tmp_path
+):
+    installed_plugins_dir = Path(app_context.data_dir) / "plugins"
+    installed_plugins_dir.mkdir(parents=True, exist_ok=True)
+    plugin_module = installed_plugins_dir / "selective_plugin.py"
+    plugin_module.write_text("# initial plugin code", encoding="utf-8")
+
+    plugin_data_dir = Path(app_context.config_dir) / "plugins" / "selective_plugin"
+    plugin_data_dir.mkdir(parents=True, exist_ok=True)
+    plugin_data_file = plugin_data_dir / "state.json"
+    plugin_data_file.write_text('{"v": 1}', encoding="utf-8")
+
+    archive_path = tmp_path / "selective_plugin_backup.bsmappbackup"
+    res = await invoke_backup("create", "-o", str(archive_path), "--no-encrypt")
+    assert res.exit_code == 0, res.output
+
+    # Mutate both
+    plugin_module.write_text("# modified plugin code", encoding="utf-8")
+    plugin_data_file.write_text('{"v": 2}', encoding="utf-8")
+
+    # Restore only plugins component
+    restore_res = await invoke_backup(
+        "restore", str(archive_path), "--components", "plugins", "--yes"
+    )
+    assert restore_res.exit_code == 0, restore_res.output
+    # Only installed plugin is reverted
+    assert plugin_module.read_text(encoding="utf-8") == "# initial plugin code"
+    assert plugin_data_file.read_text(encoding="utf-8") == '{"v": 2}'
+
+    # Restore only data component
+    restore_res_data = await invoke_backup(
+        "restore", str(archive_path), "--components", "data", "--yes"
+    )
+    assert restore_res_data.exit_code == 0, restore_res_data.output
+    # Now plugin data is reverted
+    assert plugin_data_file.read_text(encoding="utf-8") == '{"v": 1}'

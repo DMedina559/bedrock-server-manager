@@ -309,14 +309,14 @@ def create_app_backup(
                 creds_dst = content_dir / APP_PREFIXES["credentials"]
                 _copy_tree_filtered(creds_path, creds_dst)
 
-        # 4. Plugins (user-installed plugin modules in data_dir/plugins)
+        # 4. Plugins (user-installed plugin modules in data_dir/plugins -> data/plugins in archive)
         data_plugins_dir = Path(data_dir) / "plugins"
         if "plugins" in selected_components:
             if data_plugins_dir.exists() and data_plugins_dir.is_dir():
-                plugins_dst = content_dir / APP_PREFIXES["plugins"]
+                plugins_dst = content_dir / APP_PREFIXES["data"] / "plugins"
                 _copy_tree_filtered(data_plugins_dir, plugins_dst)
 
-        # 5. Plugin Data & Themes (runtime plugin data in config_dir/plugins and themes in data_dir/themes)
+        # 5. Plugin Data & Themes (runtime plugin data in config_dir/plugins -> plugins/ in archive, and themes in data_dir/themes -> data/themes in archive)
         if "data" in selected_components:
             cfg_plugins_dir = Path(config_dir) / "plugins"
             if (
@@ -327,7 +327,7 @@ def create_app_backup(
                     or cfg_plugins_dir.resolve() != data_plugins_dir.resolve()
                 )
             ):
-                data_plugins_dst = content_dir / APP_PREFIXES["data"] / "plugins"
+                data_plugins_dst = content_dir / APP_PREFIXES["plugins"]
                 _copy_tree_filtered(cfg_plugins_dir, data_plugins_dst)
 
             themes_dir = Path(data_dir) / "themes"
@@ -352,10 +352,18 @@ def create_app_backup(
 
                 # Determine component association from path prefix
                 comp: AppComponent = "config"
-                for c_name, prefix in APP_PREFIXES.items():
-                    if rel_path == prefix or rel_path.startswith(f"{prefix}/"):
-                        comp = c_name
-                        break
+                if rel_path == "data/plugins" or rel_path.startswith("data/plugins/"):
+                    comp = "plugins"
+                elif rel_path == "plugins" or rel_path.startswith("plugins/"):
+                    comp = "data"
+                elif rel_path == "data" or rel_path.startswith("data/"):
+                    comp = "data"
+                elif rel_path == "credentials" or rel_path.startswith("credentials/"):
+                    comp = "credentials"
+                elif rel_path == "database" or rel_path.startswith("database/"):
+                    comp = "database"
+                elif rel_path == "config" or rel_path.startswith("config/"):
+                    comp = "config"
 
                 file_list.append(
                     AppBackupFile(
@@ -724,7 +732,7 @@ def restore_app_backup(
 
         # 3. Restore Plugins (user-installed plugin modules -> data_dir/plugins)
         if "plugins" in restore_components:
-            src_plugins = temp_dir / APP_PREFIXES["plugins"]
+            src_plugins = temp_dir / APP_PREFIXES["data"] / "plugins"
             if src_plugins.is_dir():
                 dst_plugins = Path(data_dir) / "plugins"
                 dst_plugins.mkdir(parents=True, exist_ok=True)
@@ -737,21 +745,17 @@ def restore_app_backup(
 
         # 4. Restore Plugin Data & Themes (runtime plugin data -> config_dir/plugins, themes -> data_dir/themes)
         if "data" in restore_components:
-            src_data = temp_dir / APP_PREFIXES["data"]
-            if src_data.is_dir():
-                src_plugin_data = src_data / "plugins"
-                if src_plugin_data.is_dir():
-                    dst_plugin_data = Path(config_dir) / "plugins"
-                    dst_plugin_data.mkdir(parents=True, exist_ok=True)
-                    shutil.copytree(
-                        src_plugin_data, dst_plugin_data, dirs_exist_ok=True
-                    )
+            src_plugin_data = temp_dir / APP_PREFIXES["plugins"]
+            if src_plugin_data.is_dir():
+                dst_plugin_data = Path(config_dir) / "plugins"
+                dst_plugin_data.mkdir(parents=True, exist_ok=True)
+                shutil.copytree(src_plugin_data, dst_plugin_data, dirs_exist_ok=True)
 
-                src_themes = src_data / "themes"
-                if src_themes.is_dir():
-                    dst_themes = Path(data_dir) / "themes"
-                    dst_themes.mkdir(parents=True, exist_ok=True)
-                    shutil.copytree(src_themes, dst_themes, dirs_exist_ok=True)
+            src_themes = temp_dir / APP_PREFIXES["data"] / "themes"
+            if src_themes.is_dir():
+                dst_themes = Path(data_dir) / "themes"
+                dst_themes.mkdir(parents=True, exist_ok=True)
+                shutil.copytree(src_themes, dst_themes, dirs_exist_ok=True)
 
         # 5. Restore Database
         if "database" in restore_components:
