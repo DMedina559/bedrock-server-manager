@@ -310,3 +310,11 @@ async def test_untracked_scan_throttling(tmp_path: Path):
         res3 = await get_verified_bedrock_process("test_srv", server_dir, config_dir)
         assert res3 is None
         assert mock_scan.call_count == 2
+
+        # Disabled recover_untracked skips scan entirely
+        clear_untracked_scan_cache()
+        res4 = await get_verified_bedrock_process(
+            "test_srv", server_dir, config_dir, recover_untracked=False
+        )
+        assert res4 is None
+        assert mock_scan.call_count == 2

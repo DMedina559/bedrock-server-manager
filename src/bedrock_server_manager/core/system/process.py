@@ -369,7 +369,12 @@ def find_untracked_server_process(server_dir: str) -> Optional[int]:
 
 
 async def get_verified_bedrock_process(
-    server_name: str, server_dir: str, config_dir: str
+    server_name: str,
+    server_dir: str,
+    config_dir: str,
+    *,
+    scan_interval_sec: Optional[float] = None,
+    recover_untracked: bool = True,
 ) -> Optional["psutil.Process"]:
     """Asynchronously finds, verifies, and returns the Bedrock server process using its PID file.
 
@@ -417,9 +422,17 @@ async def get_verified_bedrock_process(
             _last_untracked_scan.pop(server_name, None)
 
         if pid is None:
+            if not recover_untracked:
+                return None
+
+            interval = (
+                scan_interval_sec
+                if scan_interval_sec is not None
+                else UNTRACKED_SCAN_INTERVAL_SECONDS
+            )
             now = time.monotonic()
             last_scan = _last_untracked_scan.get(server_name, 0.0)
-            if now - last_scan < UNTRACKED_SCAN_INTERVAL_SECONDS:
+            if now - last_scan < interval:
                 return None
 
             _last_untracked_scan[server_name] = now

@@ -84,6 +84,18 @@ class MonitoringSettings(SettingsRecord):
     player_interval_sec: int = Field(default=10, gt=0)
     app_metrics_interval_sec: int = Field(default=3, ge=1, le=3600)
     bedrock_metrics_interval_sec: int = Field(default=3, ge=1, le=3600)
+    untracked_process_interval_sec: int = Field(
+        default=5,
+        ge=1,
+        le=3600,
+        title="Untracked process scan interval",
+        description="Minimum seconds between system process scans when verifying stopped servers without a PID file.",
+    )
+    recover_untracked_processes: bool = Field(
+        default=True,
+        title="Recover untracked server processes",
+        description="Automatically scan the system process table and regenerate PID files for orphaned or unmonitored Bedrock servers.",
+    )
 
 
 DEFAULT_CORS_ORIGINS: tuple[str, ...] = ()
@@ -538,6 +550,7 @@ class SettingsState(BaseModel):
                 "player_interval_sec",
                 "app_metrics_interval_sec",
                 "bedrock_metrics_interval_sec",
+                "untracked_process_interval_sec",
             ),
             "web": ("port", "token_expires_weeks"),
         }

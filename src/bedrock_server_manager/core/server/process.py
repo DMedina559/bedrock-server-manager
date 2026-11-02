@@ -71,10 +71,18 @@ class ServerProcess:
         # Probes do not hold operation_lock: discard results from before a
         # concurrent start or another probe installed a different handle.
         observed_process = self._process
+        scan_interval = self.server.settings.get(
+            "monitoring.untracked_process_interval_sec", 5
+        )
+        recover = self.server.settings.get(
+            "monitoring.recover_untracked_processes", True
+        )
         verified_process = await system_process.get_verified_bedrock_process(
             self.server.server_name,
             self.server.paths.server_dir,
             self.server.paths.app_config_dir,
+            scan_interval_sec=float(scan_interval),
+            recover_untracked=bool(recover),
         )
         if self._process is not observed_process:
             return await self.is_running()
@@ -356,10 +364,18 @@ class ServerProcess:
         Return ``None`` when no verified running process is available.
         """
         try:
+            scan_interval = self.server.settings.get(
+                "monitoring.untracked_process_interval_sec", 5
+            )
+            recover = self.server.settings.get(
+                "monitoring.recover_untracked_processes", True
+            )
             process_obj = await system_process.get_verified_bedrock_process(
                 self.server.server_name,
                 self.server.paths.server_dir,
                 self.server.paths.app_config_dir,
+                scan_interval_sec=float(scan_interval),
+                recover_untracked=bool(recover),
             )
             if process_obj is None:
                 self.logger.debug(

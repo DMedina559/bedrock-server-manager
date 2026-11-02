@@ -56,6 +56,8 @@ Changing a `paths.*` setting does not move existing files on disk. Plan and back
 | `monitoring.player_interval_sec` | `10` | `> 0` | Interval in seconds between player log scans on running servers |
 | `monitoring.app_metrics_interval_sec` | `3` | `1–3600` | Sampling interval in seconds for host and BSM application resource metrics |
 | `monitoring.bedrock_metrics_interval_sec` | `3` | `1–3600` | Sampling interval in seconds for per-server Bedrock process metrics |
+| `monitoring.untracked_process_interval_sec` | `5` | `1–3600` | Minimum seconds between process table scans when verifying stopped servers |
+| `monitoring.recover_untracked_processes` | `true` | Boolean | Automatically scan and recover orphaned Bedrock server processes if the PID file is missing |
 
 ### Web and proxy settings
 
