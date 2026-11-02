@@ -1,3 +1,5 @@
+import pytest
+
 from bedrock_server_manager.plugins.plugin_manager import PluginManager
 
 
@@ -719,7 +721,8 @@ class DropScopePlugin(PluginBase):
     assert "drop_scope_plugin" not in app_context.state.servers.get("srv2").custom
 
 
-async def test_uninstalled_plugin_prunes_orphaned_settings(app_context):
+@pytest.mark.parametrize("ownership", ["settings", "config"])
+async def test_uninstalled_plugin_prunes_orphaned_settings(app_context, ownership):
     """Test that disk synchronization prunes orphaned settings from completely removed plugins."""
     # Seed orphaned plugin settings in state
     app_context.state.settings.set("plugin_settings.removed_plugin", {"foo": "bar"})
@@ -733,6 +736,20 @@ async def test_uninstalled_plugin_prunes_orphaned_settings(app_context):
     assert "removed_plugin" in app_context.state.settings.custom
     assert "removed_plugin" in app_context.state.servers.get("srv3").custom
 
+    # Unrelated integration namespaces must survive the same cleanup and reload.
+    await app_context.settings.set("custom.integration", {"enabled": True})
+    await app_context.server_service.update_setting(
+        "srv3", "custom.integration", {"enabled": True}
+    )
+
+    if ownership == "config":
+        app_context.state.settings.set("plugin_settings", {})
+        app_context.plugin_manager.plugin_config["removed_plugin"] = {
+            "enabled": False,
+            "version": "1.0.0",
+        }
+        await app_context.plugin_manager._save_config()
+
     # Synchronize with disk (where removed_plugin does not exist)
     await app_context.plugin_manager._synchronize_config_with_disk()
 
@@ -740,3 +757,9 @@ async def test_uninstalled_plugin_prunes_orphaned_settings(app_context):
     assert "removed_plugin" not in app_context.state.settings.plugin_settings
     assert "removed_plugin" not in app_context.state.settings.custom
     assert "removed_plugin" not in app_context.state.servers.get("srv3").custom
+
+    await app_context.settings.reload()
+    assert app_context.settings.get("custom.integration") == {"enabled": True}
+    assert app_context.state.servers.get("srv3").custom["integration"] == {
+        "enabled": True
+    }

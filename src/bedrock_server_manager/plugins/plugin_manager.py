@@ -570,6 +570,7 @@ class PluginManager:
         self,
         valid_plugin_names: Set[str] | None = None,
         target_plugin: str | None = None,
+        removed_plugin_names: Set[str] | None = None,
     ) -> None:
         """Reconcile and prune orphaned or dropped settings as plugins and their schemas evolve.
 
@@ -588,6 +589,14 @@ class PluginManager:
             updated_servers: Dict[str, Any] = {}
             changeset = ChangeSet()
 
+            # Custom namespaces can belong to integrations outside the plugin system.
+            # Only remove those with evidence of prior plugin ownership.
+            orphaned_plugins = set(current_plugin_settings) | (
+                removed_plugin_names or set()
+            )
+            if valid_plugin_names is not None:
+                orphaned_plugins -= valid_plugin_names
+
             # 1. Prune uninstalled plugins across settings and servers
             if valid_plugin_names is not None and target_plugin is None:
                 for p_name in list(current_plugin_settings):
@@ -599,7 +608,7 @@ class PluginManager:
                             p_name,
                         )
                 for p_name in list(current_custom):
-                    if p_name not in valid_plugin_names:
+                    if p_name in orphaned_plugins:
                         current_custom.pop(p_name, None)
                         settings_changed = True
                         logger.info(
@@ -611,7 +620,7 @@ class PluginManager:
                         s_custom = dict(s_cfg.custom)
                         s_changed = False
                         for p_name in list(s_custom):
-                            if p_name not in valid_plugin_names:
+                            if p_name in orphaned_plugins:
                                 s_custom.pop(p_name, None)
                                 s_changed = True
                                 logger.info(
@@ -862,7 +871,10 @@ class PluginManager:
                     self.server_settings_models.pop(plugin_name, None)
 
             await self._save_config()
-            await self._reconcile_plugin_settings(valid_plugin_names=valid_plugin_names)
+            await self._reconcile_plugin_settings(
+                valid_plugin_names=valid_plugin_names,
+                removed_plugin_names=set(plugins_to_remove),
+            )
         except BaseException:
             self._discovered_classes.clear()
             for mod_name in list(sys.modules):
