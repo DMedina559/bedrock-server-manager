@@ -37,7 +37,7 @@ def _delivery_status(
     return "partial" if result.failed or result.unavailable else "success"
 
 
-@api_method("websocket_broadcast")
+@api_method("websocket_broadcast", required_scope="websocket:send")
 async def broadcast(
     request: BroadcastRequest, *, app_context: AppContext
 ) -> BroadcastResponse:
@@ -68,7 +68,7 @@ async def broadcast(
         raise
 
 
-@api_method("websocket_send_to_user")
+@api_method("websocket_send_to_user", required_scope="websocket:send")
 async def send_to_user(
     request: SendToUserRequest, *, app_context: AppContext
 ) -> SendToUserResponse:
@@ -89,7 +89,7 @@ async def send_to_user(
         raise
 
 
-@api_method("websocket_send_to_client")
+@api_method("websocket_send_to_client", required_scope="websocket:send")
 async def send_to_client(
     request: SendToClientRequest, *, app_context: AppContext
 ) -> SendToClientResponse:
@@ -112,12 +112,17 @@ async def send_to_client(
 
 @api_method("websocket_unregister_data_provider")
 async def unregister_data_provider(
-    request: UnregisterDataProviderRequest, *, app_context: AppContext
+    request: UnregisterDataProviderRequest,
+    *,
+    app_context: AppContext,
+    plugin_name: str | None = None,
 ) -> UnregisterDataProviderResponse:
     """Unregisters a data provider handler for a WebSocket topic."""
     topic = request.topic
     try:
-        removed = app_context.connection_manager.unregister_data_provider(topic)
+        removed = app_context.connection_manager.unregister_data_provider(
+            topic, plugin_name=plugin_name
+        )
         return UnregisterDataProviderResponse(
             status="success" if removed else "skipped",
             outcome="removed" if removed else "already_absent",
@@ -134,7 +139,7 @@ async def unregister_data_provider(
         raise
 
 
-@api_method("websocket_publish_ws_event")
+@api_method("websocket_publish_ws_event", required_scope="websocket:send")
 async def publish_ws_event(
     request: PublishWsEventRequest, *, app_context: AppContext
 ) -> PublishWsEventResponse:

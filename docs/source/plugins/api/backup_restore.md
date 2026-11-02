@@ -460,6 +460,8 @@ await self.api.backup_restore.prune_old_backups(request: bedrock_server_manager.
 
 - **Description:** Prunes old backups for a server based on retention settings.
 
+- **Required Permission:** `maintenance:backups`
+
 - **Returns:** `PruneOldBackupsResponse`
 
 Runtime context and plugin identity are injected by the bridge. Failures raise application exceptions; plugin cancellation raises `APICancelledError`.
@@ -524,6 +526,8 @@ await self.api.backup_restore.restore_all(request: bedrock_server_manager.api.mo
 
 - **Description:** Restores the server from the latest available backups.
 
+- **Required Permission:** `backup:restore`
+
 - **Returns:** `RestoreAllResponse`
 
 Runtime context and plugin identity are injected by the bridge. Failures raise application exceptions; plugin cancellation raises `APICancelledError`.
@@ -554,6 +558,8 @@ await self.api.backup_restore.restore_config_file(request: bedrock_server_manage
 - **Async (Requires await):** Yes
 
 - **Description:** Restores a specific config file from a backup.
+
+- **Required Permission:** `backup:restore`
 
 - **Returns:** `RestoreConfigFileResponse`
 
@@ -618,6 +624,8 @@ await self.api.backup_restore.restore_world(request: bedrock_server_manager.api.
 - **Async (Requires await):** Yes
 
 - **Description:** Restores a server's world from a specific backup file.
+
+- **Required Permission:** `backup:restore`
 
 - **Returns:** `RestoreWorldResponse`
 

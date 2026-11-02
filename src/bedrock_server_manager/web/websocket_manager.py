@@ -263,7 +263,16 @@ class ConnectionManager:
     def register_data_provider(
         self, topic: str, handler: Callable[..., Any], plugin_name: Optional[str] = None
     ):
-        """Register a data provider handler for a given topic."""
+        """Register a provider without replacing another owner's topic."""
+        existing = self.data_providers.get(topic)
+        if (
+            plugin_name is not None
+            and existing is not None
+            and existing.plugin_name != plugin_name
+        ):
+            raise PermissionError(
+                "Plugins may only replace their own WebSocket providers"
+            )
         self.data_providers[topic] = DataProvider(
             handler=handler, plugin_name=plugin_name
         )
@@ -273,9 +282,18 @@ class ConnectionManager:
             plugin_name or "core",
         )
 
-    def unregister_data_provider(self, topic: str) -> bool:
+    def unregister_data_provider(
+        self, topic: str, *, plugin_name: str | None = None
+    ) -> bool:
         """Unregisters a data provider for a given topic."""
         if topic in self.data_providers:
+            if (
+                plugin_name is not None
+                and self.data_providers[topic].plugin_name != plugin_name
+            ):
+                raise PermissionError(
+                    "Plugins may only remove their own WebSocket providers"
+                )
             del self.data_providers[topic]
             logger.debug("Unregistered data provider for topic '%s'", topic)
             return True

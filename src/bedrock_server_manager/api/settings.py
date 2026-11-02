@@ -10,7 +10,12 @@ from ..error import BSMError, UserInputError
 from ..events import trigger_event
 from ..logging import log_operation_error
 from ..plugins.api_bridge import api_method
-from ..plugins.scopes import BLACKLISTED_PATH_SETTINGS, GRANTABLE_PATH_SCOPES
+from ..plugins.scopes import (
+    BLACKLISTED_PATH_SETTINGS,
+    GRANTABLE_PATH_SCOPES,
+    plugin_permissions,
+    require_plugin_permission,
+)
 from .models.settings import (
     GetAllGlobalSettingsRequest,
     GetAllGlobalSettingsResponse,
@@ -44,13 +49,7 @@ async def get_global_setting(
             raise PermissionError(
                 f"Access to host filesystem path '{key}' is restricted for plugins."
             )
-        plugin = app_context.plugin_manager.get_plugin(plugin_name)
-        declared = getattr(plugin, "permissions", None) if plugin else None
-        required_perm = f"path:{scope}"
-        if not declared or required_perm not in declared:
-            raise PermissionError(
-                f"Plugin '{plugin_name}' requires permission '{required_perm}' to access setting '{key}'."
-            )
+        require_plugin_permission(app_context, plugin_name, f"path:{scope}")
     logger.debug("Reading global setting '%s'.", key)
     try:
         settings = app_context.settings
@@ -82,7 +81,7 @@ async def get_all_global_settings(
             paths = all_settings.get("paths")
             if isinstance(paths, dict):
                 plugin = app_context.plugin_manager.get_plugin(plugin_name)
-                declared = getattr(plugin, "permissions", None) if plugin else None
+                declared = plugin_permissions(plugin)
                 filtered_paths = {}
                 if declared:
                     for scope in GRANTABLE_PATH_SCOPES:

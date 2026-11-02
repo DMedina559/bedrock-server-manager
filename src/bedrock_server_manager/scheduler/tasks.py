@@ -316,9 +316,8 @@ class TaskRegistry:
                 target_callable = entry[0]
         elif callable(api_function):
             target_callable = api_function
-            unwrapped = getattr(api_function, "__wrapped__", api_function)
             for reg_name, entry in _api_registry.items():
-                if entry[0] is unwrapped or entry[0] is api_function:
+                if inspect.unwrap(entry[0]) is inspect.unwrap(api_function):
                     resolved_api_name = reg_name
                     resolved_domain = entry[4]
                     resolved_method = next(
@@ -332,6 +331,33 @@ class TaskRegistry:
                     break
         else:
             raise TypeError("api_function must be a callable or registered API name")
+
+        plugin_api_call = None
+        if owner.startswith("plugin:"):
+            from ..plugins.api_bridge import create_app_api
+
+            self.context.events.check_owner(owner, generation)
+            if resolved_api_name is not None:
+                entry = _api_registry[resolved_api_name]
+                domain = entry[4]
+                method = next(
+                    (
+                        m
+                        for m, r in _api_methods().get(domain, {}).items()
+                        if r == resolved_api_name
+                    ),
+                    resolved_api_name,
+                )
+                bridge = create_app_api(owner.removeprefix("plugin:"), self.context)
+                # Resolving through the bridge rejects internal methods immediately.
+                plugin_api_call = getattr(getattr(bridge, domain), method)
+            elif (
+                target_callable is not None
+                and "app_context" in inspect.signature(target_callable).parameters
+            ):
+                raise TypeError(
+                    "Plugin task callbacks must not request internal application context"
+                )
 
         if target_callable is not None:
             unwrapped = getattr(target_callable, "__wrapped__", target_callable)
@@ -370,6 +396,8 @@ class TaskRegistry:
             options: dict[str, Any],
             execution_context: dict[str, Any] | None = None,
         ) -> Any:
+            if owner.startswith("plugin:"):
+                self.context.events.check_owner(owner, generation)
             payload: dict[str, Any] = dict(default_options or {})
             payload.update(options)
             if request_cls is None or "server_name" in request_cls.model_fields:
@@ -377,7 +405,9 @@ class TaskRegistry:
             if slot_field and execution_context and "slot" in execution_context:
                 payload[slot_field] = execution_context["slot"]
 
-            if (
+            if plugin_api_call is not None:
+                result = plugin_api_call(request=payload)
+            elif (
                 isinstance(api_function, str)
                 and resolved_domain is not None
                 and resolved_method is not None

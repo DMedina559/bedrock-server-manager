@@ -456,6 +456,7 @@ class JobOptions(BaseModel):
 
 class ModernPlugin(PluginBase):
     version = "1.0.0"
+    permissions = ["server:command", "maintenance:backups"]
     http_permissions = [("manage", "Manage modern plugin", ["admin"])]
     scheduled_apis = [
         {"name": "cmd", "api_method": "server.send_command", "requires_server_lock": False}

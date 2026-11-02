@@ -102,33 +102,109 @@ Decorate an `async def` or synchronous method with `@data_provider("my_plugin:st
 
 ### Capability permissions (`permissions = [...]`)
 
-Declare required system and server capability scopes on your `PluginBase` subclass. BSM enforces these scopes when plugins invoke sensitive `@api_method` APIs or access paths:
+Declare the capabilities used by your plugin on its `PluginBase` subclass:
 
 ```python
 class MyPlugin(PluginBase):
     version = "1.0.0"
-    permissions = ["server:command", "server:lifecycle"]
+    permissions = ["server:command", "maintenance:backups"]
 ```
 
-| Scope | Description | Associated APIs |
-|---|---|---|
-| `path:servers` | Access server installation directories | `api.runtime.get_system_path("servers")`, `paths.servers` |
-| `path:backups` | Access backup archives and snapshot storage | `api.runtime.get_system_path("backups")`, `paths.backups` |
-| `path:content` | Access content import directories (worlds and packs) | `api.runtime.get_system_path("content")`, `paths.content` |
-| `path:downloads` | Access cached server download archives | `api.runtime.get_system_path("downloads")`, `paths.downloads` |
-| `path:themes` | Access custom Web UI themes | `api.runtime.get_system_path("themes")`, `paths.themes` |
-| `server:command` | Send interactive console commands | `api.server.send_command` |
-| `server:lifecycle` | Start, stop, and restart game servers | `api.server.start_server`, `stop_server`, `restart_server` |
-| `server:properties` | Modify server.properties configuration | `api.properties.set_properties` |
-| `server:permissions` | Modify Minecraft player operator permissions | `api.permissions.set_permissions` |
-| `server:allowlist` | Add or remove players from the server allowlist | `api.allowlist.add_to_allowlist`, `remove_from_allowlist` |
-| `server:ban` | Add or remove server player bans | `api.ban.add_server_ban`, `remove_server_ban` |
-| `world:manage` | Import or export Minecraft server worlds | `api.world.import_world`, `export_world` |
-| `addon:manage` | Enable, disable, import, or reorder server addons | `api.addon.enable_addon`, `disable_addon`, `import_addon`, `reorder_addons` |
-| `backup:create` | Create server backups and snapshots | `api.backup_restore.backup_*`, `create_server_backup` |
+Declarations accept lists, tuples, sets, or frozensets of nonempty scope strings.
+`None` and an empty collection declare no capabilities. BSM validates declarations
+and snapshots them as an immutable set when a plugin loads. Changing the original
+list while the plugin is running does not change its authority; reload the plugin
+to apply declaration changes. Unknown scope names produce a warning and do not
+match another capability. Invalid declaration types prevent that plugin from
+loading without interrupting discovery of healthy plugins.
 
-> [!NOTE]
-> The root `"paths"` configuration key and `"paths.plugins"` directory are permanently restricted and cannot be granted to any plugin.
+These declarations describe access through BSM's supported plugin APIs. Plugins
+execute as trusted, in-process Python code and can import Python modules; install
+only trusted plugins. Declaring a capability does not create an HTTP account
+permission, and account permissions do not grant plugin capabilities.
+
+| Scope | Purpose |
+|---|---|
+| `path:servers` | Access Bedrock server installation directories |
+| `path:backups` | Access backup archives and snapshot storage |
+| `path:content` | Access content import directories (worlds and packs) |
+| `path:downloads` | Access cached server download archives |
+| `path:themes` | Access custom Web UI themes |
+| `server:lifecycle` | Start, stop, and restart game servers |
+| `server:command` | Send interactive console commands to running servers |
+| `addon:manage` | Enable, disable, import, or reorder server addons |
+| `server:allowlist` | Add or remove players from the server allowlist |
+| `backup:create` | Create server backups and snapshots |
+| `backup:restore` | Restore server snapshots and recovery data |
+| `maintenance:backups` | Prune server backups using configured retention |
+| `backup:manage` | Manage, verify, drill, and pin server snapshots |
+| `server:ban` | Add or remove server player bans |
+| `server:install` | Install new servers and update server software binaries |
+| `maintenance:downloads` | Prune the configured server download cache |
+| `server:permissions` | Modify Minecraft player operator permissions (permissions.json) |
+| `server:properties` | Modify server.properties configuration |
+| `websocket:send` | Broadcast and send messages to WebSocket clients |
+| `world:manage` | Import or export Minecraft server worlds |
+| `world:reset` | Reset and regenerate server worlds |
+
+Pruning requires `maintenance:backups` or `maintenance:downloads` respectively.
+`backup:manage` covers snapshot verification, recovery drills, and pinning instead.
+Plugin download pruning is confined to the configured download cache or a
+subdirectory; an explicit path outside that tree, including a symlink resolving
+outside it, is rejected. `path:downloads` permits retrieving the configured path
+but does not independently permit a prune operation.
+
+The root `paths` setting and `paths.plugins` are permanently restricted.
+`api.runtime.server_lifecycle_manager()` requires `server:lifecycle`, including
+when called with positional options. A composite API's documented capability
+covers its internal lifecycle work, such as stopping a server during restore.
+
+Direct and scheduled API calls enforce the same capabilities. Plugin-owned
+`scheduled_apis` and `api.runtime.register_api_task()` jobs run through the owning
+plugin's bridge, including when a registered function is supplied as a callable.
+Internal APIs cannot be scheduled by plugins. Custom plugin task callbacks must
+not request internal `app_context`. Core-owned schedules retain core authority.
+API and runtime handles belong to one plugin load generation: retained handles
+stop working after unload and remain invalid when the same plugin name reloads.
+
+`websocket:send` covers broadcasting, publishing WebSocket events, and sending
+messages to users or clients. Provider removal requires ownership: a plugin can
+remove its own provider without a capability, but cannot remove core providers or
+another plugin's providers. Registration also rejects replacing a provider owned
+by core or another plugin. Registration and provider cleanup use the injected
+plugin identifier, not its display name.
+
+#### APIs without a required capability declaration
+
+These methods retain their existing availability. The bridge still injects
+identity and enforces its lifetime. Owner-scoped settings operations retain their
+namespace checks; global path settings additionally check the relevant `path:*`
+capability. The compatibility custom-value/player update APIs listed below
+remain available without an additional capability.
+
+| Domain | Methods |
+|---|---|
+| addon | `addon.list_available_addons`, `addon.list_installed_addons` |
+| allowlist | `allowlist.get_allowlist` |
+| application | `application.get_all_servers_data`, `application.get_system_and_app_info`, `application.list_available_worlds` |
+| backup_restore | `backup_restore.can_reuse_server_backup`, `backup_restore.download_backup_recovery_report`, `backup_restore.get_backup_health`, `backup_restore.get_restore_recovery`, `backup_restore.inspect_server_backup`, `backup_restore.list_backup_files`, `backup_restore.list_server_snapshots`, `backup_restore.plan_server_restore` |
+| ban | `ban.get_server_bans` |
+| diagnostics | `diagnostics.compare_diagnostic_snapshots`, `diagnostics.get_application_diagnostics`, `diagnostics.get_diagnostic_activity`, `diagnostics.get_diagnostic_history`, `diagnostics.get_diagnostic_report`, `diagnostics.get_diagnostic_runs`, `diagnostics.get_diagnostic_trace` |
+| permissions | `permissions.get_permissions` |
+| player | `player.add_players_manually`, `player.get_all_known_players`, `player.scan_and_update_player_db` |
+| plugins | `plugins.get_plugin_setting`, `plugins.get_plugin_statuses`, `plugins.set_plugin_setting` |
+| properties | `properties.get_properties`, `properties.get_raw_properties`, `properties.validate_property_value` |
+| scheduler | `scheduler.list_schedules` |
+| server | `server.get_all_settings`, `server.get_setting`, `server.get_summary`, `server.get_valid_names`, `server.set_custom_value` |
+| settings | `settings.get_all_global_settings`, `settings.get_global_setting`, `settings.set_custom_global_setting` |
+| system | `system.get_application_health`, `system.get_application_metrics`, `system.get_bedrock_process_info`, `system.get_server_running_status` |
+| websocket | `websocket.websocket_unregister_data_provider` |
+| world | `world.get_world_name` |
+
+Reading and writing the caller's private plugin files or the shared public plugin
+directory uses the file scope (`private` or `public`) and requires no `path:*`
+declaration. Plugin, global, and server **settings scopes** describe where the
+plugin's own settings are stored; they are separate from capability permissions.
 
 ## Call typed capabilities
 

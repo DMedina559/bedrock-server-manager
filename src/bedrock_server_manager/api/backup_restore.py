@@ -279,7 +279,7 @@ async def backup_all(
         server.operation_lock.release()
 
 
-@api_method("restore_all")
+@api_method("restore_all", required_scope="backup:restore")
 @track_operation(OperationName.BACKUP_RESTORE)
 @trigger_event(
     before="before_restore",
@@ -343,7 +343,7 @@ async def restore_all(
         server.operation_lock.release()
 
 
-@api_method("restore_world")
+@api_method("restore_world", required_scope="backup:restore")
 @track_operation(OperationName.BACKUP_RESTORE)
 @trigger_event(
     before="before_restore",
@@ -425,7 +425,7 @@ async def restore_world(
         server.operation_lock.release()
 
 
-@api_method("restore_config_file")
+@api_method("restore_config_file", required_scope="backup:restore")
 @track_operation(OperationName.BACKUP_RESTORE)
 @trigger_event(
     before="before_restore",
@@ -501,7 +501,7 @@ async def restore_config_file(
         server.operation_lock.release()
 
 
-@api_method("prune_old_backups")
+@api_method("prune_old_backups", required_scope="maintenance:backups")
 @trigger_event(
     before="before_prune_backups",
     after="after_prune_backups",

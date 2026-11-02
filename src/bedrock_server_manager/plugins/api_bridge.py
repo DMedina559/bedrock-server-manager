@@ -175,6 +175,11 @@ def create_app_api(
     file_owner = "application" if is_core else f"plugin:{plugin_name}"
     file_generation = file_bus.owner_generation(file_owner) if file_bus else 0
 
+    def require_owner() -> None:
+        if file_bus is None:
+            raise RuntimeError("Plugin capabilities require an event owner")
+        file_bus.check_owner(file_owner, file_generation)
+
     def runtime_dispatcher(name: str) -> Callable[..., Any]:
         from ..api.server import server_lifecycle_manager
         from . import runtime_capabilities
@@ -200,18 +205,14 @@ def create_app_api(
         signature = inspect.signature(function)
 
         def inject(args: tuple[Any, ...], kwargs: dict[str, Any]) -> dict[str, Any]:
-            if name in {
-                "read_plugin_file",
-                "write_plugin_file",
-                "get_plugin_data_path",
-                "get_system_path",
-                "register_scheduled_task",
-                "register_api_task",
-                "register_http_permission",
-            }:
-                if file_bus is None:
-                    raise RuntimeError("Plugin file capabilities are unavailable")
-                file_bus.check_owner(file_owner, file_generation)
+            if not is_core:
+                require_owner()
+                if name == "server_lifecycle_manager":
+                    from .scopes import require_plugin_permission
+
+                    require_plugin_permission(
+                        app_context, plugin_name, "server:lifecycle"
+                    )
             bound = signature.bind_partial(*args, **kwargs)
             if {"app_context", "plugin_name"} & bound.arguments.keys():
                 raise TypeError("Runtime context and plugin identity are injected")
@@ -229,6 +230,16 @@ def create_app_api(
             return async_capability
 
         def capability(*args: Any, **kwargs: Any) -> Any:
+            if name == "server_lifecycle_manager":
+                inject(args, kwargs)
+                from contextlib import asynccontextmanager
+
+                @asynccontextmanager
+                async def managed_lifecycle():
+                    async with function(*args, **inject(args, kwargs)):
+                        yield
+
+                return managed_lifecycle()
             return function(*args, **inject(args, kwargs))
 
         return capability
@@ -267,23 +278,16 @@ def create_app_api(
             )
 
         def check_permission() -> None:
-            if not is_core and required_scope is not None:
-                plugin = (
-                    app_context.plugin_manager.get_plugin(plugin_name)
-                    if app_context and getattr(app_context, "plugin_manager", None)
-                    else None
-                )
-                declared = getattr(plugin, "permissions", None) if plugin else None
-                if not declared or required_scope not in declared:
-                    logger.error(
-                        "Plugin '%s' denied access to API '%s': requires permission '%s'.",
-                        plugin_name,
-                        name,
-                        required_scope,
-                    )
-                    raise PermissionError(
-                        f"Plugin '{plugin_name}' requires permission '{required_scope}' to call '{name}'."
-                    )
+            if not is_core:
+                require_owner()
+                if required_scope is not None:
+                    from .scopes import require_plugin_permission
+
+                    if app_context is None:
+                        raise RuntimeError(
+                            "Plugin permissions require application context"
+                        )
+                    require_plugin_permission(app_context, plugin_name, required_scope)
 
         def inject_runtime(
             args: tuple[Any, ...], kwargs: dict[str, Any]
@@ -298,7 +302,10 @@ def create_app_api(
             if requires_context:
                 injected["app_context"] = app_context
             if requires_plugin_name:
-                injected["plugin_name"] = plugin_name
+                parameter = inspect.signature(api_function).parameters["plugin_name"]
+                injected["plugin_name"] = (
+                    None if is_core and parameter.default is None else plugin_name
+                )
             return injected
 
         public_signature = inspect.signature(api_function).replace(

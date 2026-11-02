@@ -96,9 +96,13 @@ async def test_plugin_cannot_supply_runtime_dependencies(app_context):
 
 
 async def test_runtime_lifecycle_positional_options_match_protocol(
-    app_context, real_bedrock_server
+    app_context, real_bedrock_server, plugin_factory
 ):
-    api = create_app_api("example", app_context)
+    plugin = await plugin_factory(
+        "example",
+        "from bedrock_server_manager import PluginBase\nclass Example(PluginBase):\n    version = '1.0'\n    permissions = ['server:lifecycle']\n",
+    )
+    api = plugin.api
     async with api.runtime.server_lifecycle_manager(
         real_bedrock_server.server_name, False, False
     ):

@@ -61,6 +61,9 @@ class PluginBase(ABC):
         # Use class property name if provided, else fallback to module name
         class_name = getattr(self.__class__, "name", "N/A")
         self.name: str = class_name if class_name != "N/A" else plugin_name
+        from .scopes import normalize_permissions
+
+        self._capability_permissions = normalize_permissions(self.permissions)
         self.api: AppAPI = api
         self.logger: Logger = logger
 

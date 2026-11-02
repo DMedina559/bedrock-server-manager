@@ -1,6 +1,10 @@
 """Plugin capability and permission scope definitions."""
 
-from typing import Any, Final
+from collections.abc import Iterator, Mapping
+from typing import TYPE_CHECKING, Final
+
+if TYPE_CHECKING:
+    from ..context import AppContext
 
 BLACKLISTED_PATH_SETTINGS: Final[frozenset[str]] = frozenset({"paths", "paths.plugins"})
 
@@ -32,6 +36,9 @@ SCOPE_DESCRIPTIONS: Final[dict[str, str]] = {
     "backup:create": "Create server backups and snapshots",
     "backup:restore": "Restore server snapshots and recovery data",
     "backup:manage": "Manage, verify, drill, and pin server snapshots",
+    "maintenance:backups": "Prune server backups using configured retention",
+    "maintenance:downloads": "Prune the configured server download cache",
+    "websocket:send": "Broadcast and send messages to WebSocket clients",
 }
 
 
@@ -56,32 +63,56 @@ def get_known_permission_scopes() -> dict[str, str]:
     return scopes
 
 
-class _DynamicScopesDict(dict[str, str]):
-    """Dynamic view of permission scopes that resolves registered scopes on access."""
+def normalize_permissions(value: object) -> frozenset[str]:
+    """Validate plugin declarations without treating strings as collections of scopes."""
+    if value is None:
+        return frozenset()
+    if not isinstance(value, (list, tuple, set, frozenset)):
+        raise TypeError("Plugin permissions must be a collection of scope strings")
+    if any(
+        not isinstance(scope, str) or not scope or scope != scope.strip()
+        for scope in value
+    ):
+        raise TypeError(
+            "Plugin permissions must contain nonempty scope strings without surrounding whitespace"
+        )
+    return frozenset(value)
+
+
+def plugin_permissions(plugin: object | None) -> frozenset[str]:
+    """Read the immutable load-time snapshot, or validate an unloaded declaration."""
+    if plugin is None:
+        return frozenset()
+    snapshot = getattr(plugin, "_capability_permissions", None)
+    return (
+        frozenset(snapshot)
+        if isinstance(snapshot, frozenset)
+        else normalize_permissions(getattr(plugin, "permissions", None))
+    )
+
+
+def require_plugin_permission(
+    app_context: "AppContext", plugin_name: str, scope: str
+) -> None:
+    plugin = app_context.plugin_manager.get_plugin(plugin_name)
+    if scope not in plugin_permissions(plugin):
+        raise PermissionError(f"Plugin '{plugin_name}' requires permission '{scope}'")
+
+
+class _DynamicScopesMapping(Mapping[str, str]):
+    """Read-only dynamic view; every mapping operation uses the same catalog."""
 
     def __getitem__(self, key: str) -> str:
         return get_known_permission_scopes()[key]
 
-    def __contains__(self, key: object) -> bool:
-        return key in get_known_permission_scopes()
-
-    def __iter__(self):
+    def __iter__(self) -> Iterator[str]:
         return iter(get_known_permission_scopes())
 
     def __len__(self) -> int:
         return len(get_known_permission_scopes())
 
-    def items(self):
-        return get_known_permission_scopes().items()
-
-    def keys(self):
-        return get_known_permission_scopes().keys()
-
-    def values(self):
-        return get_known_permission_scopes().values()
-
-    def get(self, key: Any, default: Any = None) -> Any:  # type: ignore[override]
-        return get_known_permission_scopes().get(key, default)
+    def copy(self) -> dict[str, str]:
+        return get_known_permission_scopes()
 
 
-VALID_PERMISSION_SCOPES: Final[dict[str, str]] = _DynamicScopesDict()
+VALID_PERMISSION_SCOPES: Final[Mapping[str, str]] = _DynamicScopesMapping()

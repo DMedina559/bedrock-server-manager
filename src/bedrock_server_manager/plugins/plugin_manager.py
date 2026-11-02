@@ -52,6 +52,11 @@ from .api_bridge import create_app_api
 from .lifespan import RouterLifespan
 from .plugin_base import PluginBase
 from .runtime import PluginRuntime, PluginStatus
+from .scopes import (
+    get_known_permission_scopes,
+    normalize_permissions,
+    plugin_permissions,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -603,6 +608,24 @@ class PluginManager:
                 if p_class:
                     version = getattr(p_class, "version", None)
                     if version and version != "N/A":
+                        try:
+                            permissions = sorted(plugin_permissions(p_class))
+                        except TypeError as error:
+                            logger.error(
+                                "Invalid permissions for plugin '%s': %s", p_name, error
+                            )
+                            valid_plugin_names.add(p_name)
+                            existing_config = self.plugin_config.get(p_name)
+                            if not isinstance(existing_config, dict):
+                                existing_config = {
+                                    "enabled": bool(existing_config),
+                                    "version": str(version),
+                                }
+                                self.plugin_config[p_name] = existing_config
+                            existing_config["permissions"] = []
+                            self._discovered_classes.pop(p_name, None)
+                            self._set_runtime_status(p_name, "ERROR")
+                            continue
                         self._discovered_classes[p_name] = p_class
                         if not self._register_settings_models(p_name, p_class):
                             continue
@@ -613,8 +636,6 @@ class PluginManager:
                             else str(getattr(p_class, "description", "") or "").strip()
                         )
                         author = getattr(p_class, "author", "N/A")
-                        permissions = list(getattr(p_class, "permissions", []) or [])
-
                         existing = self.plugin_config.get(p_name)
                         enabled_val = (
                             p_name in DEFAULT_ENABLED_PLUGINS
@@ -717,10 +738,9 @@ class PluginManager:
     def _validate_plugin_permissions(
         self, plugin_name: str, instance: PluginBase, plugin_logger: logging.Logger
     ) -> None:
-        declared_perms = getattr(instance, "permissions", None)
+        instance._capability_permissions = normalize_permissions(instance.permissions)
+        declared_perms = instance._capability_permissions
         if declared_perms:
-            from .scopes import get_known_permission_scopes
-
             known_scopes = get_known_permission_scopes()
             for perm in declared_perms:
                 if perm not in known_scopes:

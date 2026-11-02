@@ -203,13 +203,9 @@ async def get_system_path(
     if scope not in GRANTABLE_PATH_SCOPES:
         raise PermissionError(f"Scope '{scope}' is not a grantable system path.")
 
-    plugin = app_context.plugin_manager.get_plugin(plugin_name)
-    declared = getattr(plugin, "permissions", None) if plugin else None
-    required_perm = f"path:{scope}"
-    if not declared or required_perm not in declared:
-        raise PermissionError(
-            f"Plugin '{plugin_name}' requires permission '{required_perm}' to access system path."
-        )
+    from .scopes import require_plugin_permission
+
+    require_plugin_permission(app_context, plugin_name, f"path:{scope}")
 
     raw_path = app_context.settings.get(GRANTABLE_PATH_SCOPES[scope])
     if not raw_path:

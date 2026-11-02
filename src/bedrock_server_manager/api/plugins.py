@@ -10,6 +10,7 @@ from ..error import BSMError, UserInputError
 from ..events import trigger_event
 from ..logging import log_operation_error
 from ..plugins.api_bridge import api_method
+from ..plugins.scopes import normalize_permissions, plugin_permissions
 from .models.plugins import (
     EventDispatchSummary,
     GetPluginSettingRequest,
@@ -47,15 +48,15 @@ async def get_plugin_statuses(
         for name, config in pm.plugin_config.items():
             plugin = pm.get_plugin(name)
             p_class = pm._discovered_classes.get(name)
-            perms = list(
-                getattr(plugin, "permissions", None)
-                or getattr(p_class, "permissions", None)
-                or config.get("permissions", [])
-                or []
-            )
+            if plugin is not None:
+                perms = plugin_permissions(plugin)
+            elif p_class is not None:
+                perms = plugin_permissions(p_class)
+            else:
+                perms = normalize_permissions(config.get("permissions"))
             statuses[name] = {
                 **config,
-                "permissions": perms,
+                "permissions": sorted(perms),
                 "status": pm.get_plugin_status(name),
                 "has_global_settings": name
                 in app_context.plugin_service.global_settings_models,

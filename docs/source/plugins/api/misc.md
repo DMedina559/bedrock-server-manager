@@ -14,6 +14,8 @@ await self.api.misc.prune_download_cache(request: bedrock_server_manager.api.mod
 
 - **Description:** Prunes old downloaded server archives (.zip) in a directory.
 
+- **Required Permission:** `maintenance:downloads`
+
 - **Returns:** `PruneDownloadCacheResponse`
 
 Runtime context and plugin identity are injected by the bridge. Failures raise application exceptions; plugin cancellation raises `APICancelledError`.
