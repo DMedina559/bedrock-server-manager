@@ -25,7 +25,7 @@ async def test_plugin_api_status_events_and_validation(app_context, plugin_facto
 
     plugin = await plugin_factory(
         "integration",
-        "from bedrock_server_manager import PluginBase\nclass Integration(PluginBase):\n    version = '1.0'\n",
+        "from bedrock_server_manager import PluginBase\nclass Integration(PluginBase):\n    version = '1.0'\n    permissions = ['server:lifecycle']\n",
     )
 
     received = []
@@ -50,6 +50,7 @@ async def test_plugin_api_status_events_and_validation(app_context, plugin_facto
         ).plugins["integration"]
 
     assert (await status()).enabled
+    assert (await status()).permissions == ["server:lifecycle"]
     await set_plugin_status(
         SetPluginStatusRequest(target_plugin_name="integration", enabled=False),
         app_context=app_context,

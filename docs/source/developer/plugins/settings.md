@@ -171,6 +171,37 @@ for path in private_dir.glob("cache/*.json"):
 - **Restricted `<config_dir>/credentials/` directory:** Application secrets (`jwt_secret.key`, `encryption_key.key`, `internal_service_token.key`) live in `<config_dir>/credentials/` and are never accessible through `read_plugin_file`, `write_plugin_file`, or `get_plugin_data_path`. Note that in-process Python plugins are trusted code running with the host process's OS permissions; scoped file APIs prevent accidental path bugs and traversal, not hostile OS-level access.
 - **Generation binding:** Capabilities from an unloaded or reloaded plugin generation are revoked and raise `PluginCapabilityError`.
 
+### Host filesystem permissions and system paths (`permissions`)
+
+By default, plugins are restricted from querying raw host configuration directories under `paths.*`. Plugins that need to inspect or manage host storage directories must declare explicit capability permissions on their class:
+
+```python
+class MyStoragePlugin(PluginBase):
+    version = "1.0.0"
+    permissions = [
+        "path:servers",  # Access to server instances
+    ]
+```
+
+#### Grantable path scopes:
+- **`path:servers`** (`paths.servers`): Individual Bedrock server installations.
+- **`path:backups`** (`paths.backups`): Backup archives and snapshots.
+- **`path:content`** (`paths.content`): Content import directories (`worlds/`, `addons/`).
+- **`path:downloads`** (`paths.downloads`): Bedrock server binary download cache.
+- **`path:themes`** (`paths.themes`): Custom Web UI theme directory.
+
+#### Permanently blacklisted paths:
+- **`paths.plugins`**: The global plugins directory containing executable plugin code is strictly forbidden for all plugins and can never be granted.
+- **`paths` (root dictionary)**: Fetching the entire unpartitioned paths dictionary is forbidden.
+
+#### Resolving system paths (`api.runtime.get_system_path`):
+Rather than querying global settings strings and resolving paths manually, use `get_system_path()` to obtain a canonical, validated `Path`:
+
+```python
+servers_root = await self.api.runtime.get_system_path("servers")
+server_dir = servers_root / "Survival"
+```
+
 Use the typed plugin settings API (`settings_model`, `get_plugin_setting`, `set_plugin_setting`) for structured user-editable configuration, and reserve `read_plugin_file` / `write_plugin_file` / `get_plugin_data_path` for plugin-managed files and artifacts.
 
 

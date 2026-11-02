@@ -49,6 +49,7 @@ class PluginBase(ABC):
     )  # Optional list of optional plugin names (strings) to load before this plugin, if they are enabled.
 
     # Standardized declarative extension attributes:
+    permissions: ClassVar[list[str] | None] = None
     router: Any = None
     routers: List[Any] = []
     static_mounts: List[tuple[str, "Path", str]] = []
@@ -60,6 +61,9 @@ class PluginBase(ABC):
         # Use class property name if provided, else fallback to module name
         class_name = getattr(self.__class__, "name", "N/A")
         self.name: str = class_name if class_name != "N/A" else plugin_name
+        from .scopes import normalize_permissions
+
+        self._capability_permissions = normalize_permissions(self.permissions)
         self.api: AppAPI = api
         self.logger: Logger = logger
 

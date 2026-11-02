@@ -17,7 +17,7 @@ from .models.allowlist import (
 logger = logging.getLogger(__name__)
 
 
-@api_method("add_to_allowlist")
+@api_method("add_to_allowlist", required_scope="server:allowlist")
 @trigger_event(
     before="before_allowlist_change",
     after="after_allowlist_change",
@@ -86,7 +86,7 @@ async def get_allowlist(
         raise
 
 
-@api_method("remove_from_allowlist")
+@api_method("remove_from_allowlist", required_scope="server:allowlist")
 @trigger_event(
     before="before_allowlist_change",
     after="after_allowlist_change",

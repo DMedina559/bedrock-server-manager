@@ -10,7 +10,7 @@ from ..error import BSMError, UserInputError
 from ..events import trigger_event
 from ..logging import log_operation_error
 from ..plugins.api_bridge import api_method
-from .contract import validate_contract
+from ..plugins.scopes import normalize_permissions, plugin_permissions
 from .models.plugins import (
     EventDispatchSummary,
     GetPluginSettingRequest,
@@ -44,9 +44,19 @@ async def get_plugin_statuses(
     try:
         pm = app_context.plugin_manager
         await pm._synchronize_config_with_disk()
-        statuses = {
-            name: {
+        statuses = {}
+        for name, config in pm.plugin_config.items():
+            plugin = pm.get_plugin(name)
+            p_class = pm._discovered_classes.get(name)
+            if plugin is not None:
+                perms = plugin_permissions(plugin)
+            elif p_class is not None:
+                perms = plugin_permissions(p_class)
+            else:
+                perms = normalize_permissions(config.get("permissions")) or frozenset()
+            statuses[name] = {
                 **config,
+                "permissions": sorted(perms),
                 "status": pm.get_plugin_status(name),
                 "has_global_settings": name
                 in app_context.plugin_service.global_settings_models,
@@ -62,8 +72,6 @@ async def get_plugin_statuses(
                     )
                 ),
             }
-            for name, config in pm.plugin_config.items()
-        }
         logger.debug("Retrieved data for %s plugins.", len(statuses))
         return GetPluginStatusesResponse.model_validate(
             {"status": "success", "plugins": statuses.copy()}
@@ -73,7 +81,7 @@ async def get_plugin_statuses(
         raise
 
 
-@validate_contract
+@api_method("set_plugin_status", expose_to_plugins=False)
 @trigger_event(
     before="before_set_plugin_status",
     after="after_set_plugin_status",
@@ -144,7 +152,7 @@ async def reload_single_plugin(
         raise
 
 
-@validate_contract
+@api_method("reload_plugins", expose_to_plugins=False)
 async def reload_plugins(
     request: ReloadPluginsRequest, *, app_context: AppContext
 ) -> ReloadPluginsResponse:
@@ -162,7 +170,7 @@ async def reload_plugins(
         raise
 
 
-@validate_contract
+@api_method("trigger_external_app_event", expose_to_plugins=False)
 async def trigger_external_app_event(
     request: TriggerExternalAppEventRequest, *, app_context: AppContext
 ) -> TriggerExternalAppEventResponse:
@@ -238,7 +246,7 @@ async def set_plugin_setting(
     return SetPluginSettingResponse(message="Plugin setting saved.")
 
 
-@validate_contract
+@api_method("get_plugin_settings", expose_to_plugins=False)
 async def get_plugin_settings(
     request: GetPluginSettingsRequest, *, app_context: AppContext
 ) -> GetPluginSettingsResponse:
@@ -252,7 +260,7 @@ async def get_plugin_settings(
     )
 
 
-@validate_contract
+@api_method("update_plugin_settings", expose_to_plugins=False)
 @trigger_event(after="after_plugin_settings_update")
 async def update_plugin_settings(
     request: UpdatePluginSettingsRequest, *, app_context: AppContext

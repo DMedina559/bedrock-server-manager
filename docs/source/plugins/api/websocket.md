@@ -14,6 +14,8 @@ await self.api.websocket.websocket_broadcast(request: bedrock_server_manager.api
 
 - **Description:** Broadcasts a JSON payload to all WebSocket clients subscribed to a given topic.
 
+- **Required Permission:** `websocket:send`
+
 - **Returns:** `BroadcastResponse`
 
 Runtime context and plugin identity are injected by the bridge. Failures raise application exceptions; plugin cancellation raises `APICancelledError`.
@@ -44,6 +46,8 @@ await self.api.websocket.websocket_publish_ws_event(request: bedrock_server_mana
 - **Async (Requires await):** Yes
 
 - **Description:** Publishes a custom WebSocket event to topic 'ws_event:{event_name}'.
+
+- **Required Permission:** `websocket:send`
 
 - **Returns:** `PublishWsEventResponse`
 
@@ -76,6 +80,8 @@ await self.api.websocket.websocket_send_to_client(request: bedrock_server_manage
 
 - **Description:** Sends a JSON payload directly to a specific connected WebSocket client ID.
 
+- **Required Permission:** `websocket:send`
+
 - **Returns:** `SendToClientResponse`
 
 Runtime context and plugin identity are injected by the bridge. Failures raise application exceptions; plugin cancellation raises `APICancelledError`.
@@ -106,6 +112,8 @@ await self.api.websocket.websocket_send_to_user(request: bedrock_server_manager.
 - **Async (Requires await):** Yes
 
 - **Description:** Sends a JSON payload to all active WebSocket connections belonging to a user.
+
+- **Required Permission:** `websocket:send`
 
 - **Returns:** `SendToUserResponse`
 

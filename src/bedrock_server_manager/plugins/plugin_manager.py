@@ -52,6 +52,11 @@ from .api_bridge import create_app_api
 from .lifespan import RouterLifespan
 from .plugin_base import PluginBase
 from .runtime import PluginRuntime, PluginStatus
+from .scopes import (
+    get_known_permission_scopes,
+    normalize_permissions,
+    plugin_permissions,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -201,6 +206,7 @@ class PluginManager:
                 "version": p.version,
                 "author": p.author,
                 "description": p.description,
+                "permissions": list(p.permissions),
             }
             for name, p in self.state.plugins.plugins.items()
         }
@@ -216,6 +222,7 @@ class PluginManager:
                 version=str(config.get("version") or ""),
                 author=str(config.get("author") or ""),
                 description=str(config.get("description") or ""),
+                permissions=list(config.get("permissions") or []),
             )
             self.state.plugins.set(p_info)
 
@@ -601,6 +608,24 @@ class PluginManager:
                 if p_class:
                     version = getattr(p_class, "version", None)
                     if version and version != "N/A":
+                        try:
+                            permissions = sorted(plugin_permissions(p_class))
+                        except TypeError as error:
+                            logger.error(
+                                "Invalid permissions for plugin '%s': %s", p_name, error
+                            )
+                            valid_plugin_names.add(p_name)
+                            existing_config = self.plugin_config.get(p_name)
+                            if not isinstance(existing_config, dict):
+                                existing_config = {
+                                    "enabled": bool(existing_config),
+                                    "version": str(version),
+                                }
+                                self.plugin_config[p_name] = existing_config
+                            existing_config["permissions"] = []
+                            self._discovered_classes.pop(p_name, None)
+                            self._set_runtime_status(p_name, "ERROR")
+                            continue
                         self._discovered_classes[p_name] = p_class
                         if not self._register_settings_models(p_name, p_class):
                             continue
@@ -611,7 +636,6 @@ class PluginManager:
                             else str(getattr(p_class, "description", "") or "").strip()
                         )
                         author = getattr(p_class, "author", "N/A")
-
                         existing = self.plugin_config.get(p_name)
                         enabled_val = (
                             p_name in DEFAULT_ENABLED_PLUGINS
@@ -632,12 +656,14 @@ class PluginManager:
                                 "description": description,
                                 "version": str(version),
                                 "author": author,
+                                "permissions": permissions,
                             }
                         else:
                             existing["description"] = description
                             existing["version"] = str(version)
                             existing["author"] = author
                             existing["enabled"] = enabled_val
+                            existing["permissions"] = permissions
                         self._set_runtime_status(p_name, status_val)
 
             plugins_to_remove = [
@@ -708,6 +734,21 @@ class PluginManager:
                     plugin_classes.pop(p_name, None)
 
         return [p for p in sorted_plugins if p in plugin_classes]
+
+    def _validate_plugin_permissions(
+        self, plugin_name: str, instance: PluginBase, plugin_logger: logging.Logger
+    ) -> None:
+        instance._capability_permissions = normalize_permissions(instance.permissions)
+        declared_perms = instance._capability_permissions
+        if declared_perms:
+            known_scopes = get_known_permission_scopes()
+            for perm in declared_perms:
+                if perm not in known_scopes:
+                    plugin_logger.warning(
+                        "Plugin '%s' declared unrecognized permission scope '%s'.",
+                        plugin_name,
+                        perm,
+                    )
 
     def _validate_static_mounts(
         self, plugin_name: str, mounts: list[Any], *, warn_invalid: bool = False
@@ -804,6 +845,9 @@ class PluginManager:
 
                     instance = plugin_class(plugin_name, api_instance, plugin_logger)
                     self._pending_plugins[plugin_name] = instance
+                    self._validate_plugin_permissions(
+                        plugin_name, instance, plugin_logger
+                    )
                     task_manager = self.task_manager_provider()
                     if task_manager is not None:
                         task_manager.allow_plugin(plugin_name)
@@ -1367,6 +1411,17 @@ class PluginManager:
                 return "DISABLED"
         return "UNKNOWN" if cfg is None else "UNLOADED"
 
+    def get_plugin(self, plugin_name: str) -> Optional[PluginBase]:
+        """Find a loaded or pending plugin instance by identifier or display name."""
+        if plugin_name in self._pending_plugins:
+            return self._pending_plugins[plugin_name]
+        for p in self.plugins:
+            api = getattr(p, "api", None)
+            ident = getattr(api, "_plugin_name", None) or getattr(p, "name", None)
+            if p.name == plugin_name or ident == plugin_name:
+                return p
+        return None
+
     async def unload_plugin_by_name(self, plugin_name: str) -> bool:
         """Measure owned drain work and retain failures without changing propagation."""
         started = time.monotonic()
@@ -1565,6 +1620,7 @@ class PluginManager:
 
                 instance = p_class(plugin_name, api_instance, plugin_logger)
                 self._pending_plugins[plugin_name] = instance
+                self._validate_plugin_permissions(plugin_name, instance, plugin_logger)
                 task_manager = self.task_manager_provider()
                 if task_manager is not None:
                     task_manager.allow_plugin(plugin_name)

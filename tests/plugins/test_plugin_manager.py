@@ -456,6 +456,7 @@ class JobOptions(BaseModel):
 
 class ModernPlugin(PluginBase):
     version = "1.0.0"
+    permissions = ["server:command", "maintenance:backups"]
     http_permissions = [("manage", "Manage modern plugin", ["admin"])]
     scheduled_apis = [
         {"name": "cmd", "api_method": "server.send_command", "requires_server_lock": False}
@@ -562,3 +563,25 @@ class LegacyPlugin(PluginBase):
     assert "deprecated 'api.runtime.register_data_provider()'" in messages
     assert "deprecated 'api.runtime.register_scheduled_task()'" in messages
     assert app_context.scheduler.tasks.available("legacy_plugin:old_task")
+
+
+async def test_plugin_declaring_unrecognized_permission_logs_warning(
+    app_context, plugin_factory, caplog
+):
+    import logging
+
+    caplog.clear()
+    with caplog.at_level(logging.WARNING):
+        await plugin_factory(
+            "typo_plugin",
+            """
+from bedrock_server_manager import PluginBase
+
+class TypoPlugin(PluginBase):
+    version = "1.0.0"
+    permissions = ["server:lifecycle", "sever:command"]
+""",
+        )
+
+    messages = "\n".join(record.getMessage() for record in caplog.records)
+    assert "declared unrecognized permission scope 'sever:command'" in messages

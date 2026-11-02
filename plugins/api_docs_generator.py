@@ -173,6 +173,10 @@ class APIDocsGenerator(PluginBase):
                 f"- **Async (Requires await):** {'Yes' if is_async else 'No'}\n"
             )
             lines.append(f"- **Description:** {docstring}\n")
+            if api_func.get("required_scope"):
+                lines.append(
+                    f"- **Required Permission:** `{api_func['required_scope']}`\n"
+                )
 
             if api_func.get("contract_version") == 2:
                 request_model = api_func["request_model"]

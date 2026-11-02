@@ -70,6 +70,29 @@ repair. Recovery failures retain the primary exception when the main operation
 also failed. Python exceptions are classified into stable codes and safe messages
 at HTTP, WebSocket, and background-task boundaries.
 
+## Capability permissions
+
+Operations that modify server lifecycle, state, configurations, or storage require explicit capability permissions. Declare these permissions on your `PluginBase` subclass:
+
+```python
+from bedrock_server_manager import PluginBase
+
+class MyPlugin(PluginBase):
+    version = "1.0.0"
+    permissions = ["server:lifecycle", "server:command"]
+```
+
+If a plugin attempts to call a protected API method without declaring the required permission, BSM raises `PermissionError`:
+
+```python
+try:
+    await self.api.server.start(StartServerRequest(server_name="example"))
+except PermissionError as error:
+    self.logger.error("Missing required capability: %s", error)
+```
+
+At load time, `PluginManager` checks the plugin's declared permissions and logs a warning if an unrecognized permission scope is declared. See [Write a plugin](introduction.md#capability-permissions-permissions--) for the complete list of valid capability scopes.
+
 ## Events
 
 API before-events include a typed `request`. After-events also include a typed

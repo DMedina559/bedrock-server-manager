@@ -16,7 +16,7 @@ from .models.ban import (
 logger = logging.getLogger(__name__)
 
 
-@api_method("add_server_ban")
+@api_method("add_server_ban", required_scope="server:ban")
 @trigger_event(
     before="before_add_server_ban",
     after="after_add_server_ban",
@@ -48,7 +48,7 @@ async def add_server_ban(
     )
 
 
-@api_method("remove_server_ban")
+@api_method("remove_server_ban", required_scope="server:ban")
 @trigger_event(
     before="before_remove_server_ban",
     after="after_remove_server_ban",

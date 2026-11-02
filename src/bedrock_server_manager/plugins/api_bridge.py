@@ -71,13 +71,20 @@ ALLOWED_API_MODULES = {
     "world",
 }
 
-# (func, expose_to_plugins, requires_context, requires_plugin_name, origin_module)
-_api_registry: Dict[str, tuple[Callable[..., Any], bool, bool, bool, str]] = {}
+# (func, expose_to_plugins, requires_context, requires_plugin_name, origin_module, required_scope)
+_api_registry: Dict[
+    str, tuple[Callable[..., Any], bool, bool, bool, str, Optional[str]]
+] = {}
 
 F = TypeVar("F", bound=Callable[..., Any])
 
 
-def api_method(name: str, expose_to_plugins: bool = True) -> Callable[[F], F]:
+def api_method(
+    name: str,
+    expose_to_plugins: bool = True,
+    *,
+    required_scope: Optional[str] = None,
+) -> Callable[[F], F]:
     """Decorator to register a function with the AppAPI bridge.
 
     Validates that the registering function originates from one of the allowed API modules.
@@ -124,14 +131,16 @@ def api_method(name: str, expose_to_plugins: bool = True) -> Callable[[F], F]:
             requires_context,
             requires_plugin_name,
             api_domain,
+            required_scope,
         )
         logger.debug(
-            "API registered: '%s' from '%s' (expose_to_plugins=%s, requires_context=%s, requires_plugin_name=%s).",
+            "API registered: '%s' from '%s' (expose_to_plugins=%s, requires_context=%s, requires_plugin_name=%s, required_scope=%s).",
             name,
             module_name,
             expose_to_plugins,
             requires_context,
             requires_plugin_name,
+            required_scope,
         )
         return func
 
@@ -166,6 +175,11 @@ def create_app_api(
     file_owner = "application" if is_core else f"plugin:{plugin_name}"
     file_generation = file_bus.owner_generation(file_owner) if file_bus else 0
 
+    def require_owner() -> None:
+        if file_bus is None:
+            raise RuntimeError("Plugin capabilities require an event owner")
+        file_bus.check_owner(file_owner, file_generation)
+
     def runtime_dispatcher(name: str) -> Callable[..., Any]:
         from ..api.server import server_lifecycle_manager
         from . import runtime_capabilities
@@ -183,6 +197,7 @@ def create_app_api(
             "read_plugin_file": runtime_capabilities.read_plugin_file,
             "write_plugin_file": runtime_capabilities.write_plugin_file,
             "get_plugin_data_path": runtime_capabilities.get_plugin_data_path,
+            "get_system_path": runtime_capabilities.get_system_path,
             "server_lifecycle_manager": server_lifecycle_manager,
             "websocket_register_data_provider": runtime_capabilities.register_data_provider,
         }
@@ -190,17 +205,14 @@ def create_app_api(
         signature = inspect.signature(function)
 
         def inject(args: tuple[Any, ...], kwargs: dict[str, Any]) -> dict[str, Any]:
-            if name in {
-                "read_plugin_file",
-                "write_plugin_file",
-                "get_plugin_data_path",
-                "register_scheduled_task",
-                "register_api_task",
-                "register_http_permission",
-            }:
-                if file_bus is None:
-                    raise RuntimeError("Plugin file capabilities are unavailable")
-                file_bus.check_owner(file_owner, file_generation)
+            if not is_core:
+                require_owner()
+                if name == "server_lifecycle_manager":
+                    from .scopes import require_plugin_permission
+
+                    require_plugin_permission(
+                        app_context, plugin_name, "server:lifecycle"
+                    )
             bound = signature.bind_partial(*args, **kwargs)
             if {"app_context", "plugin_name"} & bound.arguments.keys():
                 raise TypeError("Runtime context and plugin identity are injected")
@@ -218,6 +230,16 @@ def create_app_api(
             return async_capability
 
         def capability(*args: Any, **kwargs: Any) -> Any:
+            if name == "server_lifecycle_manager":
+                inject(args, kwargs)
+                from contextlib import asynccontextmanager
+
+                @asynccontextmanager
+                async def managed_lifecycle():
+                    async with function(*args, **inject(args, kwargs)):
+                        yield
+
+                return managed_lifecycle()
             return function(*args, **inject(args, kwargs))
 
         return capability
@@ -239,6 +261,7 @@ def create_app_api(
             requires_context,
             requires_plugin_name,
             _,
+            required_scope,
         ) = _api_registry[name]
 
         if not expose_to_plugins and not is_core:
@@ -254,6 +277,18 @@ def create_app_api(
                 f"API '{name}' requires app_context, but none was provided."
             )
 
+        def check_permission() -> None:
+            if not is_core:
+                require_owner()
+                if required_scope is not None:
+                    from .scopes import require_plugin_permission
+
+                    if app_context is None:
+                        raise RuntimeError(
+                            "Plugin permissions require application context"
+                        )
+                    require_plugin_permission(app_context, plugin_name, required_scope)
+
         def inject_runtime(
             args: tuple[Any, ...], kwargs: dict[str, Any]
         ) -> dict[str, Any]:
@@ -267,7 +302,10 @@ def create_app_api(
             if requires_context:
                 injected["app_context"] = app_context
             if requires_plugin_name:
-                injected["plugin_name"] = plugin_name
+                parameter = inspect.signature(api_function).parameters["plugin_name"]
+                injected["plugin_name"] = (
+                    None if is_core and parameter.default is None else plugin_name
+                )
             return injected
 
         public_signature = inspect.signature(api_function).replace(
@@ -282,6 +320,7 @@ def create_app_api(
 
             @functools.wraps(api_function)
             async def async_wrapper(*args: Any, **kwargs: Any) -> Any:
+                check_permission()
                 kwargs = inject_runtime(args, kwargs)
                 from ..events.operations import operation_source
 
@@ -296,6 +335,7 @@ def create_app_api(
 
             @functools.wraps(api_function)
             def sync_wrapper(*args: Any, **kwargs: Any) -> Any:
+                check_permission()
                 kwargs = inject_runtime(args, kwargs)
                 return api_function(*args, **kwargs)
 
@@ -345,6 +385,7 @@ class CapabilityNamespace:
                 "read_plugin_file": "read_plugin_file",
                 "write_plugin_file": "write_plugin_file",
                 "get_plugin_data_path": "get_plugin_data_path",
+                "get_system_path": "get_system_path",
                 "server_lifecycle_manager": "server_lifecycle_manager",
                 "register_data_provider": "websocket_register_data_provider",
             }
@@ -527,6 +568,7 @@ class AppAPI:
             "read_plugin_file",
             "write_plugin_file",
             "get_plugin_data_path",
+            "get_system_path",
             "server_lifecycle_manager",
             "register_data_provider",
         }
@@ -556,7 +598,10 @@ class AppAPI:
             _api_registry.items(),
             key=lambda item: (item[1][4] or "", item[0]),
         )
-        for name, (func, expose_to_plugins, _, _, domain) in sorted_registry:
+        for (
+            name,
+            (func, expose_to_plugins, _, _, domain, required_scope),
+        ) in sorted_registry:
             if not expose_to_plugins and not include_internal:
                 continue
             try:
@@ -598,6 +643,7 @@ class AppAPI:
                         "parameters": params_info,
                         "docstring": summary,
                         "expose_to_plugins": expose_to_plugins,
+                        "required_scope": required_scope,
                         "is_async": inspect.iscoroutinefunction(func),
                         "contract_version": 2 if contract else 1,
                         "request_model": contract[0].__name__ if contract else None,
@@ -637,6 +683,7 @@ class AppAPI:
                         "parameters": [],
                         "docstring": "Could not inspect signature.",
                         "expose_to_plugins": expose_to_plugins,
+                        "required_scope": required_scope,
                         "is_async": inspect.iscoroutinefunction(func),
                     }
                 )

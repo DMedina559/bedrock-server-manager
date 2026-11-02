@@ -24,6 +24,7 @@ class PluginInfo(APIResponse):
     version: str = "N/A"
     author: str = ""
     status: str = "UNKNOWN"
+    permissions: list[str] = Field(default_factory=list)
 
 
 class GetPluginStatusesRequest(APIRequest):

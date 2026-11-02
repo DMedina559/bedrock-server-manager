@@ -18,7 +18,7 @@ from .models.player import GetAllKnownPlayersRequest
 logger = logging.getLogger(__name__)
 
 
-@api_method("set_permissions")
+@api_method("set_permissions", required_scope="server:permissions")
 @trigger_event(
     before="before_permission_change",
     after="after_permission_change",

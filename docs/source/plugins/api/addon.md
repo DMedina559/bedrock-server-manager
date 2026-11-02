@@ -14,6 +14,8 @@ await self.api.addon.disable_addon(request: bedrock_server_manager.api.models.ad
 
 - **Description:** Disables an active addon for a server's active world, preserving files.
 
+- **Required Permission:** `addon:manage`
+
 - **Returns:** `DisableAddonResponse`
 
 Runtime context and plugin identity are injected by the bridge. Failures raise application exceptions; plugin cancellation raises `APICancelledError`.
@@ -45,6 +47,8 @@ await self.api.addon.enable_addon(request: bedrock_server_manager.api.models.add
 
 - **Description:** Enables a disabled addon for a server's active world.
 
+- **Required Permission:** `addon:manage`
+
 - **Returns:** `EnableAddonResponse`
 
 Runtime context and plugin identity are injected by the bridge. Failures raise application exceptions; plugin cancellation raises `APICancelledError`.
@@ -75,6 +79,8 @@ await self.api.addon.import_addon(request: bedrock_server_manager.api.models.add
 - **Async (Requires await):** Yes
 
 - **Description:** Installs an addon to a specified Bedrock server.
+
+- **Required Permission:** `addon:manage`
 
 - **Returns:** `ImportAddonResponse`
 
@@ -169,6 +175,8 @@ await self.api.addon.reorder_addons(request: bedrock_server_manager.api.models.a
 
 - **Description:** Reorder the active addons for a server's active world.
 
+- **Required Permission:** `addon:manage`
+
 - **Returns:** `ReorderAddonsResponse`
 
 Runtime context and plugin identity are injected by the bridge. Failures raise application exceptions; plugin cancellation raises `APICancelledError`.
@@ -188,3 +196,36 @@ data = result.model_dump(mode="json")
 | Name | Type | Default |
 |------|------|---------|
 | `request` | `bedrock_server_manager.api.models.addon.ReorderAddonsRequest` | `REQUIRED` |
+
+---
+
+
+## `addon.update_subpack`
+```python
+await self.api.addon.update_subpack(request: bedrock_server_manager.api.models.addon.UpdateSubpackRequest)
+```
+- **Async (Requires await):** Yes
+
+- **Description:** Updates the active subpack for an addon on a server's active world.
+
+- **Required Permission:** `addon:manage`
+
+- **Returns:** `UpdateSubpackResponse`
+
+Runtime context and plugin identity are injected by the bridge. Failures raise application exceptions; plugin cancellation raises `APICancelledError`.
+
+```python
+from bedrock_server_manager.api.models import UpdateSubpackRequest
+payload = {...}  # Supply required request fields below.
+request = UpdateSubpackRequest(**payload)
+result = await self.api.addon.update_subpack(request)
+data = result.model_dump(mode="json")
+```
+- **Request schema:** [UpdateSubpackRequest](models.md#updatesubpackrequest)
+- **Response schema:** [UpdateSubpackResponse](models.md#updatesubpackresponse)
+- **Transport error schema:** [APIErrorResponse](models.md#apierrorresponse)
+**Parameters:**
+
+| Name | Type | Default |
+|------|------|---------|
+| `request` | `bedrock_server_manager.api.models.addon.UpdateSubpackRequest` | `REQUIRED` |

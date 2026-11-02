@@ -1,14 +1,17 @@
 import asyncio
 import json
 
-from bedrock_server_manager.plugins.api_bridge import create_app_api
 from bedrock_server_manager.web.auth import create_access_token
 
 
 async def test_plugin_websocket_api_delivers_real_frames(
-    websocket_client, app_context, test_user
+    websocket_client, app_context, test_user, plugin_factory
 ):
-    api = create_app_api("integration", app_context)
+    plugin = await plugin_factory(
+        "integration",
+        "from bedrock_server_manager import PluginBase\nclass Integration(PluginBase):\n    version = '1.0'\n    permissions = ['websocket:send']\n",
+    )
+    api = plugin.api
     token = await create_access_token(app_context, {"sub": test_user.username})
     async with websocket_client() as socket:
         await socket.send(json.dumps({"action": "authenticate", "token": token}))

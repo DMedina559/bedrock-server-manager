@@ -7,7 +7,8 @@ from bedrock_server_manager import PluginBase, app_event
 class AutostartServers(PluginBase):
     """Start all servers with the autostart setting set to true on manager startup."""
 
-    version = "1.1.0"
+    version = "1.2.0"
+    permissions = ["server:lifecycle"]
     description = (
         "Starts all servers with the autostart setting set to true on manager startup."
     )

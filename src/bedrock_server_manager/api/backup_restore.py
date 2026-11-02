@@ -94,7 +94,7 @@ async def list_backup_files(
         raise
 
 
-@api_method("backup_world")
+@api_method("backup_world", required_scope="backup:create")
 @track_operation(OperationName.BACKUP_REQUEST)
 @trigger_event(
     before="before_backup",
@@ -146,7 +146,7 @@ async def backup_world(
         server.operation_lock.release()
 
 
-@api_method("backup_config_file")
+@api_method("backup_config_file", required_scope="backup:create")
 @track_operation(OperationName.BACKUP_REQUEST)
 @trigger_event(
     before="before_backup",
@@ -211,7 +211,7 @@ async def backup_config_file(
         server.operation_lock.release()
 
 
-@api_method("backup_all")
+@api_method("backup_all", required_scope="backup:create")
 @track_operation(OperationName.BACKUP_REQUEST)
 @trigger_event(
     before="before_backup",
@@ -279,7 +279,7 @@ async def backup_all(
         server.operation_lock.release()
 
 
-@api_method("restore_all")
+@api_method("restore_all", required_scope="backup:restore")
 @track_operation(OperationName.BACKUP_RESTORE)
 @trigger_event(
     before="before_restore",
@@ -343,7 +343,7 @@ async def restore_all(
         server.operation_lock.release()
 
 
-@api_method("restore_world")
+@api_method("restore_world", required_scope="backup:restore")
 @track_operation(OperationName.BACKUP_RESTORE)
 @trigger_event(
     before="before_restore",
@@ -425,7 +425,7 @@ async def restore_world(
         server.operation_lock.release()
 
 
-@api_method("restore_config_file")
+@api_method("restore_config_file", required_scope="backup:restore")
 @track_operation(OperationName.BACKUP_RESTORE)
 @trigger_event(
     before="before_restore",
@@ -501,7 +501,7 @@ async def restore_config_file(
         server.operation_lock.release()
 
 
-@api_method("prune_old_backups")
+@api_method("prune_old_backups", required_scope="maintenance:backups")
 @trigger_event(
     before="before_prune_backups",
     after="after_prune_backups",
@@ -552,7 +552,7 @@ async def prune_old_backups(
         server.operation_lock.release()
 
 
-@api_method("create_server_backup")
+@api_method("create_server_backup", required_scope="backup:create")
 @track_operation(OperationName.BACKUP_REQUEST)
 @trigger_event(
     before="before_backup", after="after_backup", identity_keys=("server_name",)
@@ -615,7 +615,7 @@ async def plan_server_restore(
     )
 
 
-@api_method("restore_server_snapshot")
+@api_method("restore_server_snapshot", required_scope="backup:restore")
 @track_operation(OperationName.BACKUP_RESTORE)
 @trigger_event(
     before="before_restore", after="after_restore", identity_keys=("server_name",)
@@ -668,7 +668,7 @@ async def get_restore_recovery(
     return RestoreRecoveryResponse(recovery=await server.backups.recovery_state())
 
 
-@api_method("recover_server_backup")
+@api_method("recover_server_backup", required_scope="backup:restore")
 @track_operation(OperationName.BACKUP_RESTORE)
 @trigger_event(
     before="before_restore", after="after_restore", identity_keys=("server_name",)
@@ -692,7 +692,7 @@ async def get_backup_health(
     return BackupHealthResponse(health=await server.backups.backup_health())
 
 
-@api_method("delete_server_backup")
+@api_method("delete_server_backup", expose_to_plugins=False)
 async def delete_server_backup(
     request: DeleteSnapshotRequest, *, app_context: AppContext
 ) -> ManageSnapshotResponse:
@@ -707,7 +707,7 @@ async def delete_server_backup(
     return ManageSnapshotResponse(message=f"Deleted backup '{request.backup_id}'.")
 
 
-@api_method("manage_server_snapshot")
+@api_method("manage_server_snapshot", required_scope="backup:manage")
 async def manage_server_snapshot(
     request: ManageSnapshotRequest, *, app_context: AppContext
 ) -> ManageSnapshotResponse:
@@ -753,7 +753,7 @@ async def manage_server_snapshot(
     return ManageSnapshotResponse(message="Backup operation completed.")
 
 
-@api_method("prepare_backup_copy")
+@api_method("prepare_backup_copy", expose_to_plugins=False)
 @track_operation(OperationName.BACKUP_RESTORE)
 async def prepare_backup_copy(
     request: PrepareBackupCopyRequest, *, app_context: AppContext
@@ -777,7 +777,7 @@ async def can_reuse_server_backup(
     )
 
 
-@api_method("dry_run_server_restore")
+@api_method("dry_run_server_restore", required_scope="backup:restore")
 async def dry_run_server_restore(
     request: PlanSnapshotRestoreRequest, *, app_context: AppContext
 ) -> PlanSnapshotRestoreResponse:
@@ -793,7 +793,7 @@ async def dry_run_server_restore(
     )
 
 
-@api_method("cleanup_backup_destination")
+@api_method("cleanup_backup_destination", expose_to_plugins=False)
 async def cleanup_backup_destination(
     request: CleanupBackupDestinationRequest, *, app_context: AppContext
 ) -> CleanupBackupDestinationResponse:

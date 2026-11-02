@@ -174,6 +174,7 @@ class PluginInfoState(PersistentRecord):
     version: Optional[str] = None
     author: Optional[str] = None
     description: Optional[str] = None
+    permissions: list[str] = Field(default_factory=list)
 
 
 @dataclass

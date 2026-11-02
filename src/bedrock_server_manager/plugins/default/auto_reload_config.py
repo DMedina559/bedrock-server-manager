@@ -18,7 +18,8 @@ class AutoReloadPlugin(PluginBase):
     ensuring changes take effect immediately without manual intervention.
     """
 
-    version = "1.3.0"
+    version = "1.4.0"
+    permissions = ["server:command"]
     description = "Automatically sends a `reload` command to a running server after its configuration files (e.g., allowlist.json, permissions.json) are modified."
     author = "dmedina559"
     name = "Auto Reload Config"

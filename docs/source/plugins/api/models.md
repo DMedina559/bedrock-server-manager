@@ -1555,85 +1555,6 @@ Schemas are listed once. Local `$defs` references identify other models on this 
 }
 ```
 
-## CleanupBackupDestinationRequest
-
-```json
-{
-  "additionalProperties": false,
-  "properties": {
-    "destination": {
-      "minLength": 1,
-      "pattern": ".*\\S.*",
-      "title": "Destination",
-      "type": "string"
-    },
-    "server_name": {
-      "examples": [
-        "example"
-      ],
-      "minLength": 1,
-      "pattern": "^[a-zA-Z0-9_-]+$",
-      "title": "Server Name",
-      "type": "string"
-    },
-    "token": {
-      "anyOf": [
-        {
-          "type": "string"
-        },
-        {
-          "type": "null"
-        }
-      ],
-      "default": null,
-      "title": "Token"
-    }
-  },
-  "required": [
-    "server_name",
-    "destination"
-  ],
-  "title": "CleanupBackupDestinationRequest",
-  "type": "object"
-}
-```
-
-## CleanupBackupDestinationResponse
-
-```json
-{
-  "additionalProperties": false,
-  "properties": {
-    "message": {
-      "anyOf": [
-        {
-          "type": "string"
-        },
-        {
-          "type": "null"
-        }
-      ],
-      "default": null,
-      "title": "Message"
-    },
-    "plan": {
-      "$ref": "#/$defs/DestinationCleanupPlan"
-    },
-    "status": {
-      "const": "success",
-      "default": "success",
-      "title": "Status",
-      "type": "string"
-    }
-  },
-  "required": [
-    "plan"
-  ],
-  "title": "CleanupBackupDestinationResponse",
-  "type": "object"
-}
-```
-
 ## CleanupResult
 
 ```json
@@ -2155,37 +2076,6 @@ Schemas are listed once. Local `$defs` references identify other models on this 
 }
 ```
 
-## DeleteSnapshotRequest
-
-```json
-{
-  "additionalProperties": false,
-  "properties": {
-    "backup_id": {
-      "minLength": 1,
-      "pattern": ".*\\S.*",
-      "title": "Backup Id",
-      "type": "string"
-    },
-    "server_name": {
-      "examples": [
-        "example"
-      ],
-      "minLength": 1,
-      "pattern": "^[a-zA-Z0-9_-]+$",
-      "title": "Server Name",
-      "type": "string"
-    }
-  },
-  "required": [
-    "server_name",
-    "backup_id"
-  ],
-  "title": "DeleteSnapshotRequest",
-  "type": "object"
-}
-```
-
 ## DeliveryResult
 
 ```json
@@ -2218,68 +2108,6 @@ Schemas are listed once. Local `$defs` references identify other models on this 
     }
   },
   "title": "DeliveryResult",
-  "type": "object"
-}
-```
-
-## DestinationCleanupPlan
-
-```json
-{
-  "additionalProperties": false,
-  "properties": {
-    "applied": {
-      "default": false,
-      "title": "Applied",
-      "type": "boolean"
-    },
-    "available_bytes": {
-      "title": "Available Bytes",
-      "type": "integer"
-    },
-    "delete": {
-      "items": {
-        "type": "string"
-      },
-      "title": "Delete",
-      "type": "array"
-    },
-    "destination": {
-      "title": "Destination",
-      "type": "string"
-    },
-    "reclaim_bytes": {
-      "title": "Reclaim Bytes",
-      "type": "integer"
-    },
-    "retain": {
-      "items": {
-        "type": "string"
-      },
-      "title": "Retain",
-      "type": "array"
-    },
-    "token": {
-      "title": "Token",
-      "type": "string"
-    },
-    "warnings": {
-      "items": {
-        "type": "string"
-      },
-      "title": "Warnings",
-      "type": "array"
-    }
-  },
-  "required": [
-    "destination",
-    "token",
-    "delete",
-    "retain",
-    "reclaim_bytes",
-    "available_bytes"
-  ],
-  "title": "DestinationCleanupPlan",
   "type": "object"
 }
 ```
@@ -8584,6 +8412,13 @@ Schemas are listed once. Local `$defs` references identify other models on this 
       "title": "Has Settings",
       "type": "boolean"
     },
+    "permissions": {
+      "items": {
+        "type": "string"
+      },
+      "title": "Permissions",
+      "type": "array"
+    },
     "status": {
       "default": "UNKNOWN",
       "title": "Status",
@@ -8699,117 +8534,6 @@ Schemas are listed once. Local `$defs` references identify other models on this 
     }
   },
   "title": "PluginsDiagnostics",
-  "type": "object"
-}
-```
-
-## PrepareBackupCopyRequest
-
-```json
-{
-  "additionalProperties": false,
-  "properties": {
-    "backup_id": {
-      "minLength": 1,
-      "pattern": ".*\\S.*",
-      "title": "Backup Id",
-      "type": "string"
-    },
-    "recovery_key": {
-      "anyOf": [
-        {
-          "format": "password",
-          "type": "string",
-          "writeOnly": true
-        },
-        {
-          "type": "null"
-        }
-      ],
-      "default": null,
-      "title": "Recovery Key"
-    },
-    "server_name": {
-      "examples": [
-        "example"
-      ],
-      "minLength": 1,
-      "pattern": "^[a-zA-Z0-9_-]+$",
-      "title": "Server Name",
-      "type": "string"
-    },
-    "server_port": {
-      "maximum": 65535,
-      "minimum": 1,
-      "title": "Server Port",
-      "type": "integer"
-    },
-    "server_portv6": {
-      "maximum": 65535,
-      "minimum": 1,
-      "title": "Server Portv6",
-      "type": "integer"
-    },
-    "target_server": {
-      "examples": [
-        "example"
-      ],
-      "minLength": 1,
-      "pattern": "^[a-zA-Z0-9_-]+$",
-      "title": "Target Server",
-      "type": "string"
-    },
-    "target_version": {
-      "default": "LATEST",
-      "minLength": 1,
-      "pattern": ".*\\S.*",
-      "title": "Target Version",
-      "type": "string"
-    }
-  },
-  "required": [
-    "server_name",
-    "backup_id",
-    "target_server",
-    "server_port",
-    "server_portv6"
-  ],
-  "title": "PrepareBackupCopyRequest",
-  "type": "object"
-}
-```
-
-## PrepareBackupCopyResponse
-
-```json
-{
-  "additionalProperties": false,
-  "properties": {
-    "backup_id": {
-      "title": "Backup Id",
-      "type": "string"
-    },
-    "message": {
-      "title": "Message",
-      "type": "string"
-    },
-    "server_name": {
-      "title": "Server Name",
-      "type": "string"
-    },
-    "status": {
-      "const": "success",
-      "default": "success",
-      "title": "Status",
-      "type": "string"
-    }
-  },
-  "required": [
-    "message",
-    "server_name",
-    "backup_id"
-  ],
-  "title": "PrepareBackupCopyResponse",
   "type": "object"
 }
 ```
@@ -13063,6 +12787,92 @@ Schemas are listed once. Local `$defs` references identify other models on this 
     "server_name"
   ],
   "title": "UpdateServerResponse",
+  "type": "object"
+}
+```
+
+## UpdateSubpackRequest
+
+```json
+{
+  "additionalProperties": false,
+  "properties": {
+    "pack_type": {
+      "enum": [
+        "behavior",
+        "resource"
+      ],
+      "title": "Pack Type",
+      "type": "string"
+    },
+    "pack_uuid": {
+      "minLength": 1,
+      "pattern": ".*\\S.*",
+      "title": "Pack Uuid",
+      "type": "string"
+    },
+    "server_name": {
+      "examples": [
+        "example"
+      ],
+      "minLength": 1,
+      "pattern": "^[a-zA-Z0-9_-]+$",
+      "title": "Server Name",
+      "type": "string"
+    },
+    "subpack_name": {
+      "minLength": 1,
+      "pattern": ".*\\S.*",
+      "title": "Subpack Name",
+      "type": "string"
+    }
+  },
+  "required": [
+    "server_name",
+    "pack_uuid",
+    "pack_type",
+    "subpack_name"
+  ],
+  "title": "UpdateSubpackRequest",
+  "type": "object"
+}
+```
+
+## UpdateSubpackResponse
+
+```json
+{
+  "additionalProperties": false,
+  "properties": {
+    "message": {
+      "title": "Message",
+      "type": "string"
+    },
+    "server_name": {
+      "examples": [
+        "example"
+      ],
+      "minLength": 1,
+      "pattern": "^[a-zA-Z0-9_-]+$",
+      "title": "Server Name",
+      "type": "string"
+    },
+    "status": {
+      "default": "success",
+      "enum": [
+        "success",
+        "skipped",
+        "partial"
+      ],
+      "title": "Status",
+      "type": "string"
+    }
+  },
+  "required": [
+    "message",
+    "server_name"
+  ],
+  "title": "UpdateSubpackResponse",
   "type": "object"
 }
 ```
