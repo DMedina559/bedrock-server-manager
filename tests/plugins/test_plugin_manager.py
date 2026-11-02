@@ -585,3 +585,158 @@ class TypoPlugin(PluginBase):
 
     messages = "\n".join(record.getMessage() for record in caplog.records)
     assert "declared unrecognized permission scope 'sever:command'" in messages
+
+
+async def test_plugin_settings_evolution_prunes_dropped_fields(
+    app_context, plugin_factory
+):
+    """Test that updating a plugin to a new schema version automatically prunes dropped fields."""
+    v1_source = """
+from pydantic import BaseModel, ConfigDict, Field
+from bedrock_server_manager import PluginBase
+
+class Profile(BaseModel):
+    model_config = ConfigDict(extra="forbid", strict=True)
+    a: int = 1
+    dropped_field: str = "old"
+
+class PluginV1(PluginBase):
+    version = "1.0.0"
+    settings_model = Profile
+    global_settings_model = Profile
+    server_settings_model = Profile
+"""
+    plugin = await plugin_factory("evolving_plugin", v1_source)
+    await app_context.server_service.register_or_update_server("srv1")
+
+    # Set settings containing the field that will be dropped in v2
+    await plugin.set_plugin_settings(
+        {"a": 5, "dropped_field": "legacy"}, scope="plugin"
+    )
+    await plugin.set_plugin_settings(
+        {"a": 6, "dropped_field": "legacy_global"}, scope="global"
+    )
+    await plugin.set_plugin_settings(
+        {"a": 7, "dropped_field": "legacy_server"}, scope="server", server_name="srv1"
+    )
+
+    # Verify initial settings contain dropped_field
+    assert (
+        app_context.state.settings.plugin_settings["evolving_plugin"]["dropped_field"]
+        == "legacy"
+    )
+    assert (
+        app_context.state.settings.custom["evolving_plugin"]["dropped_field"]
+        == "legacy_global"
+    )
+    assert (
+        app_context.state.servers.get("srv1").custom["evolving_plugin"]["dropped_field"]
+        == "legacy_server"
+    )
+
+    # Now update plugin to v2 where dropped_field is removed from all models (with extra="forbid")
+    v2_source = """
+from pydantic import BaseModel, ConfigDict, Field
+from bedrock_server_manager import PluginBase
+
+class ProfileV2(BaseModel):
+    model_config = ConfigDict(extra="forbid", strict=True)
+    a: int = 1
+    new_field: str = "default_new"
+
+class PluginV1(PluginBase):
+    version = "2.0.0"
+    settings_model = ProfileV2
+    global_settings_model = ProfileV2
+    server_settings_model = ProfileV2
+"""
+    await plugin_factory("evolving_plugin", v2_source)
+    await app_context.plugin_manager.reload_plugin("evolving_plugin")
+    active_plugin = app_context.plugin_manager.get_plugin("evolving_plugin")
+
+    # Verify dropped_field is completely pruned from state and database
+    p_settings = app_context.state.settings.plugin_settings["evolving_plugin"]
+    assert "dropped_field" not in p_settings
+    assert p_settings["a"] == 5
+
+    g_settings = app_context.state.settings.custom["evolving_plugin"]
+    assert "dropped_field" not in g_settings
+    assert g_settings["a"] == 6
+
+    s_settings = app_context.state.servers.get("srv1").custom["evolving_plugin"]
+    assert "dropped_field" not in s_settings
+    assert s_settings["a"] == 7
+
+    # Verify reading settings via get_plugin_settings works without ValidationError and returns clean dict
+    own = await active_plugin.get_plugin_settings(scope="plugin")
+    assert own == {"a": 5, "new_field": "default_new"}
+
+    glob = await active_plugin.get_plugin_settings(scope="global")
+    assert glob == {"a": 6, "new_field": "default_new"}
+
+    srv = await active_plugin.get_plugin_settings(scope="server", server_name="srv1")
+    assert srv == {"a": 7, "new_field": "default_new"}
+
+
+async def test_plugin_dropped_scope_prunes_settings(app_context, plugin_factory):
+    """Test that when a plugin drops a settings scope in an update, orphaned custom settings are pruned."""
+    v1_source = """
+from pydantic import BaseModel, ConfigDict
+from bedrock_server_manager import PluginBase
+
+class Profile(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    x: int = 10
+
+class DropScopePlugin(PluginBase):
+    version = "1.0.0"
+    global_settings_model = Profile
+    server_settings_model = Profile
+"""
+    plugin = await plugin_factory("drop_scope_plugin", v1_source)
+    await app_context.server_service.register_or_update_server("srv2")
+
+    await plugin.set_plugin_settings({"x": 99}, scope="global")
+    await plugin.set_plugin_settings({"x": 88}, scope="server", server_name="srv2")
+
+    assert "drop_scope_plugin" in app_context.state.settings.custom
+    assert "drop_scope_plugin" in app_context.state.servers.get("srv2").custom
+
+    # Update plugin to v2 which drops global_settings_model and server_settings_model
+    v2_source = """
+from bedrock_server_manager import PluginBase
+
+class DropScopePlugin(PluginBase):
+    version = "2.0.0"
+    global_settings_model = None
+    server_settings_model = None
+"""
+    await plugin_factory("drop_scope_plugin", v2_source)
+    await app_context.plugin_manager.reload_plugin("drop_scope_plugin")
+
+    # Verify orphaned global and server custom settings were pruned
+    assert "drop_scope_plugin" not in app_context.state.settings.custom
+    assert "drop_scope_plugin" not in app_context.state.servers.get("srv2").custom
+
+
+async def test_uninstalled_plugin_prunes_orphaned_settings(app_context):
+    """Test that disk synchronization prunes orphaned settings from completely removed plugins."""
+    # Seed orphaned plugin settings in state
+    app_context.state.settings.set("plugin_settings.removed_plugin", {"foo": "bar"})
+    app_context.state.settings.set("custom.removed_plugin", {"baz": "qux"})
+    await app_context.server_service.register_or_update_server("srv3")
+    await app_context.server_service.update_setting(
+        "srv3", "custom.removed_plugin", {"srv": 1}
+    )
+
+    assert "removed_plugin" in app_context.state.settings.plugin_settings
+    assert "removed_plugin" in app_context.state.settings.custom
+    assert "removed_plugin" in app_context.state.servers.get("srv3").custom
+
+    # Synchronize with disk (where removed_plugin does not exist)
+    await app_context.plugin_manager._synchronize_config_with_disk()
+
+    # Verify orphaned settings are completely cleaned up
+    assert "removed_plugin" not in app_context.state.settings.plugin_settings
+    assert "removed_plugin" not in app_context.state.settings.custom
+    assert "removed_plugin" not in app_context.state.servers.get("srv3").custom
