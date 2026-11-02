@@ -497,8 +497,12 @@ async def test_builtin_tasks_registered_via_unified_registry_with_schemas(
         "server:start",
         "server:stop",
         "server:restart",
+        "server:update",
         "server:send_command",
         "world:export",
+        "world:reset",
+        "player:scan",
+        "system:prune_downloads",
     }
     assert expected_builtins.issubset(service._handlers.keys())
     for task_name in expected_builtins:
@@ -520,6 +524,16 @@ async def test_builtin_tasks_registered_via_unified_registry_with_schemas(
             "properties"
         ]
     )
+    assert (
+        "send_message"
+        in snap.task_definitions["server:update"]["options_schema"]["properties"]
+    )
+    assert (
+        "keep_count"
+        in snap.task_definitions["system:prune_downloads"]["options_schema"][
+            "properties"
+        ]
+    )
 
     await service.save(
         SaveScheduleRequest(
@@ -538,6 +552,25 @@ async def test_builtin_tasks_registered_via_unified_registry_with_schemas(
     )
     snapshots = await populated_server.backups.list_snapshots()
     assert len(snapshots) == 1 and snapshots[0].purpose == "scheduled"
+
+    await service.execute(
+        "prune-noop",
+        {"task": "backup:prune", "options": {}},
+        populated_server,
+        "slot-prune",
+    )
+    await service.execute(
+        "downloads-prune",
+        {"task": "system:prune_downloads", "options": {"keep_count": 2}},
+        populated_server,
+        "slot-downloads",
+    )
+    await service.execute(
+        "player-scan",
+        {"task": "player:scan", "options": {}},
+        populated_server,
+        "slot-players",
+    )
 
     with pytest.raises(UserInputError):
         await service.save(

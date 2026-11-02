@@ -49,6 +49,24 @@ class VerifyScheduleOptions(BaseModel):
     minimum_age_hours: int = Field(default=168, ge=0, le=8760)
 
 
+class PruneDownloadsScheduleOptions(BaseModel):
+    """Serializable options for scheduled download cache pruning."""
+
+    model_config = ConfigDict(extra="forbid", strict=True)
+
+    directory: str | None = Field(
+        default=None,
+        pattern=r"^(stable|preview)$",
+        description="Optional download cache channel ('stable' or 'preview'); prunes both when omitted.",
+    )
+    keep_count: int | None = Field(
+        default=None,
+        ge=0,
+        le=1000,
+        description="Number of recent installer archives to retain per channel.",
+    )
+
+
 class EmptyScheduleOptions(BaseModel):
     """Options model for scheduled API tasks that take only server_name."""
 
@@ -430,6 +448,14 @@ class Scheduler:
                         raise DeferredRun(
                             "Scheduled task yielded to active server operation"
                         )
+                    cleanup_outcome = getattr(
+                        getattr(result, "result", None), "outcome", None
+                    )
+                    if cleanup_outcome == "noop" or (
+                        isinstance(detail, str)
+                        and "no backup directory" in detail.lower()
+                    ):
+                        return result
                 if status != "success":
                     raise RuntimeError(f"{err_msg}: {detail}" if detail else err_msg)
             return result
@@ -594,6 +620,15 @@ class Scheduler:
             description="Restart the Bedrock server.",
         )
         self.register_api_task(
+            "server:update",
+            "install.update_server",
+            owner="application",
+            timeout_seconds=None,
+            requires_server_lock=True,
+            manage_server_lock=False,
+            description="Check for and install Bedrock server updates (with pre-update backup).",
+        )
+        self.register_api_task(
             "server:send_command",
             "server.send_command",
             owner="application",
@@ -609,6 +644,74 @@ class Scheduler:
             requires_server_lock=True,
             manage_server_lock=False,
             description="Export the active server world to a .mcworld archive.",
+        )
+        from ..api.world import reset_world
+
+        self.register_api_task(
+            "world:reset",
+            reset_world,
+            owner="application",
+            timeout_seconds=None,
+            requires_server_lock=True,
+            manage_server_lock=False,
+            description="Reset the active server world directory so it regenerates on next start.",
+        )
+        self.register_api_task(
+            "player:scan",
+            "player.scan_and_update_player_db",
+            owner="application",
+            timeout_seconds=None,
+            requires_server_lock=False,
+            manage_server_lock=False,
+            description="Scan server logs to discover and update known players in the database.",
+        )
+
+        async def _prune_downloads_handler(
+            *, server_name: str, options: dict[str, Any]
+        ) -> None:
+            import os
+
+            import aiofiles.ospath
+
+            from ..api.misc import prune_download_cache
+            from ..api.models.misc import PruneDownloadCacheRequest
+
+            base_dir = self.context.settings.get("paths.downloads")
+            if not base_dir:
+                raise RuntimeError("DOWNLOAD_DIR setting is missing in configuration")
+            channel = options.get("directory")
+            keep = options.get("keep_count")
+            channels = [channel] if channel else ["stable", "preview"]
+            for subdir in channels:
+                target_dir = os.path.normpath(os.path.join(base_dir, subdir))
+                if not os.path.abspath(target_dir).startswith(
+                    os.path.abspath(base_dir) + os.sep
+                ):
+                    raise RuntimeError(f"Invalid download cache channel: {subdir}")
+                if not await aiofiles.ospath.isdir(target_dir):
+                    continue
+                res = await prune_download_cache(
+                    request=PruneDownloadCacheRequest(
+                        download_dir=target_dir, keep_count=keep
+                    ),
+                    app_context=self.context,
+                )
+                if res.status not in ("success", "skipped"):
+                    raise RuntimeError(
+                        res.message
+                        or f"Scheduled download cache prune failed for '{subdir}'"
+                    )
+
+        self.register(
+            "system:prune_downloads",
+            _prune_downloads_handler,
+            owner="application",
+            options_model=PruneDownloadsScheduleOptions,
+            timeout_seconds=None,
+            requires_server_lock=False,
+            manage_server_lock=False,
+            exclude_unset_options=True,
+            description="Prune old downloaded Bedrock server installer archives.",
         )
 
     def remove_owner(self, owner):
