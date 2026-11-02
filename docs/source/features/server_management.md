@@ -44,4 +44,4 @@ Confirm the intended player and optionally record a reason for the ban.
 
 Resource readings describe the running process. Logs help distinguish a process crash from a network problem or a rejected command. Review enabled autostart/update plugins before scheduling restarts, and create backups before maintenance that replaces data.
 
-[Installation and updates](installation.md), [configuration](configuration.md) and [backups](backups.md) explain the corresponding maintenance workflows.
+[Installation and updates](installation.md), [configuration](configuration.md), [backups](backups.md), and [scheduled tasks](scheduler.md) explain the corresponding maintenance workflows.

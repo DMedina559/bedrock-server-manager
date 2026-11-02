@@ -106,7 +106,7 @@ async with self.api.runtime.server_lifecycle_manager(
     await perform_operation()
 ```
 
-Declare WebSocket data providers, diagnostic providers, and custom scheduled task methods with the `@data_provider` / `@websocket_provider`, `@diagnostic_provider`, and `@scheduled_task` decorators on `PluginBase`. Await server start, stop, and restart directly. Use background tasks for operations whose progress must outlive an HTTP request. See [Background tasks](task_manager.md). Use `get_plugin_setting` and `set_plugin_setting` for persistent plugin settings; see [Plugin settings](settings.md).
+Declare WebSocket data providers, diagnostic providers, and custom scheduled task methods with the `@data_provider` / `@websocket_provider`, `@diagnostic_provider`, and `@scheduled_task` decorators on `PluginBase`. Await server start, stop, and restart directly. Use background tasks for operations whose progress must outlive an HTTP request. See [Scheduled tasks](scheduled_tasks.md) and [Background tasks](task_manager.md). Use `get_plugin_setting` and `set_plugin_setting` for persistent plugin settings; see [Plugin settings](settings.md).
 
 ## Operation context
 

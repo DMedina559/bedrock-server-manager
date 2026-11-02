@@ -165,43 +165,10 @@ Ordinary global/server setting writes and server-settings restores validate chan
 
 `GET /api/plugins/{plugin_name}/settings` and `PUT /api/plugins/{plugin_name}/settings` accept `scope` and optional `server_name` parameters and return the scope's model schema for the frontend editor.
 
-## Scheduled task options and execution context
-
-Register custom plugin tasks declaratively with `@scheduled_task`, or expose existing API methods with `scheduled_apis` or `self.api.runtime.register_api_task`:
-
-```python
-from pydantic import BaseModel, Field
-from bedrock_server_manager import PluginBase, scheduled_task
-
-class TaskOptions(BaseModel):
-    count: int = Field(default=1, ge=1, le=100)
-
-class MyScheduledPlugin(PluginBase):
-    version = "1.0.0"
-    scheduled_apis = [
-        {
-            "name": "prune_backups",
-            "api": "backup_restore.prune_old_backups",
-            "description": "Prune old backups via plugin schedule.",
-        }
-    ]
-
-    @scheduled_task("cleanup", timeout_seconds=300, requires_server_lock=False)
-    async def cleanup(self, *, server_name: str, options: TaskOptions, execution_context: dict):
-        """Run periodic cleanup for the selected server."""
-        key = execution_context["idempotency_key"]
-        # Use key to recognize a repeated attempt before producing external effects.
-```
-
-`@scheduled_task` automatically prefixes `<plugin_name>:` when `:` is omitted from the task name (or defaults to `<plugin_name>:<method_name>` when called as `@scheduled_task`), infers `options_model` from a type-annotated `options: BaseModel` parameter, enables `with_context=True` when `execution_context` is in the signature, and uses the method's docstring as the default description. When using `scheduled_apis` or `self.api.runtime.register_api_task`, the scheduler automatically derives the schedule's `options_model` from the target API method's request contract (excluding `server_name` and `schedule_slot`, which are injected at runtime). The legacy `self.api.runtime.register_scheduled_task()` method remains supported for compatibility but logs a deprecation warning.
-
-All registration keywords are optional. Existing handlers that omit `execution_context` continue receiving `server_name` and `options`. The default server lock remains enabled. Choose `requires_server_lock=False` only when the task does not need exclusive server access; operations called through the API still apply their own locks. Plugin task timeouts default to 300 seconds and can be set from 1 through 86400 seconds. Cancellation is cooperative; handlers must propagate cancellation and clean up in `finally` blocks. Long built-in backups do not inherit this plugin timeout.
-
-An options model validates saved options and validates again before execution. The scheduler listing exposes its JSON Schema for clients. With context enabled, the handler additionally receives a stable slot/idempotency key, attempt number, and operation correlation ID. A manual run has its own slot. Execution is at-least-once across a crash; database claims and completed-run reconciliation do not replace idempotency for external effects. Disabled or unloaded plugin owners cannot run registered handlers.
-
-
 HTTP permissions follow the selected storage scope: plugin-local GET/PUT require
 `plugins:read`/`plugins:manage`; global GET/PUT require `settings:read`/`settings:manage`;
 server GET/PUT require `servers:read`/`servers:configure` on the selected server.
 The ordinary global settings endpoint does not include the separate plugin-owned
 table. Global/server custom fields remain part of their own setting scope.
+
+For validating per-schedule task options with Pydantic models, see [Scheduled tasks in plugins](scheduled_tasks.md).

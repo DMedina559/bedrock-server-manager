@@ -116,7 +116,7 @@ on every poll.
 
 If you need a task to run continuously in the background on a fixed interval (e.g., polling an external API, performing cleanups), you don't need to manually interact with the `TaskManager`.
 
-Instead, use the `@task_loop(interval)` decorator provided by the plugin system. The `PluginManager` will automatically schedule these methods as background tasks when your plugin is loaded and cancel them when it is unloaded.
+Instead, use the `@task_loop(interval)` decorator provided by the plugin system. The `PluginManager` will automatically schedule these methods as background tasks when your plugin is loaded and cancel them when it is unloaded. (For administrator-configured per-server calendar tasks, use `@scheduled_task` or `scheduled_apis` instead; see [Scheduled tasks in plugins](scheduled_tasks.md).)
 
 Both synchronous and asynchronous methods are supported.
 

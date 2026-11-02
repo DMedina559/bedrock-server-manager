@@ -67,4 +67,4 @@ For custom declarations, priorities, delivery limits, waits and diagnostics, use
 
 Declare routes, listeners, scheduled tasks, diagnostic providers, and WebSocket data providers through `PluginBase` attributes and decorators, or use `self.api.runtime` and `self.api.events` when dynamic registration is required. Stop producers and release external resources during unload. Reload can be blocked while an old generation still has outstanding synchronous work.
 
-Additional guides cover [settings and scheduled tasks](settings.md), [FastAPI routes](fastapi_endpoints.md), [background tasks](task_manager.md), and [native JSON UI](native_json_ui.md). Authenticate custom routes explicitly and validate their requests with Pydantic models.
+Additional guides cover [plugin settings](settings.md), [scheduled tasks](scheduled_tasks.md), [FastAPI routes](fastapi_endpoints.md), [background tasks](task_manager.md), and [native JSON UI](native_json_ui.md). Authenticate custom routes explicitly and validate their requests with Pydantic models.

@@ -41,6 +41,12 @@ and `security.session_max_days`), and authentication rate-limit thresholds
 (`security.auth_account_attempts`, `security.auth_peer_attempts`,
 `security.auth_window_seconds`, `security.auth_ipv6_prefix`).
 
+General and scheduler settings control timezones and background job concurrency:
+`general.timezone` sets the default IANA timezone for new schedules (default `UTC`),
+`scheduler.max_concurrent_servers` limits concurrent scheduled jobs across servers
+(default `4`, range `1–32`), and `scheduler.poll_interval_seconds` sets the maximum
+scheduler poll interval (default `60`, range `1–60`). See [Schedule automated tasks](scheduler.md).
+
 ## Accounts and plugins
 
 Administrators manage accounts, per-server access assignments, and invitation tokens. Use the expiry returned for the generated invitation rather than assuming a fixed lifetime. BSM roles and permission scopes are separate from Bedrock player permissions; see [access and roles](../web/role_access_table.md).

@@ -28,6 +28,7 @@ documentation matching your installed release.
    features/server_management.md
    features/configuration.md
    features/backups.md
+   features/scheduler.md
    features/content_management.md
    features/settings.md
    features/default_plugins.md
@@ -71,6 +72,7 @@ documentation matching your installed release.
    developer/plugins/plugin_manager
    developer/plugins/custom_events.md
    developer/plugins/settings.md
+   developer/plugins/scheduled_tasks.md
    developer/plugins/fastapi_endpoints.md
    developer/plugins/native_json_ui.md
    developer/plugins/task_manager.md

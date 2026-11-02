@@ -36,7 +36,26 @@ python -m pip install --upgrade 'bedrock-server-manager[cli]'
 bsm-cli --help
 ```
 
-Consult the [client command reference](api_client_commands.rst) for connection, authentication and server commands. Client compatibility follows the HTTP contract; update clients when upgrading across a contract-changing release.
+Authenticate against a running BSM instance using a username and password, a long-lived integration token, or by minting an integration token during password login:
+
+```sh
+# Interactive or flag-based password login (defaults to http://127.0.0.1:11325)
+bsm-cli auth login -u admin
+
+# Mint and store a long-lived integration token during password login
+bsm-cli auth login -u admin --long-lived --token-name "workstation-cli"
+
+# Authenticate with an existing integration token (bsm_it_...) via flag or stdin
+bsm-cli auth login --token bsm_it_...
+echo "$BSM_TOKEN" | bsm-cli auth login --with-token --base-url https://bsm.example.com
+
+# Check current authentication status and credential storage backend
+bsm-cli auth status
+```
+
+`bsm-cli` stores bearer tokens and MFA trusted-device tokens in your operating system's credential store (`keyring`, Windows Credential Manager, macOS Keychain, or Linux `secret-tool`) when available, keeping secrets out of plaintext configuration files.
+
+Consult the [client command reference](api_client_commands.rst) for connection, authentication, scheduler, and server commands. Client compatibility follows the HTTP contract; update clients when upgrading across a contract-changing release.
 
 ## Interactive client
 
