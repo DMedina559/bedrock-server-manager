@@ -329,3 +329,112 @@ async def test_path_permission_checks_share_the_load_time_snapshot(plugin_factor
             await call()
     settings = await plugin.api.settings.get_all_global_settings({})
     assert "paths" not in settings.settings
+
+
+@pytest.mark.parametrize(
+    "declaration,allowed",
+    [
+        ("omitted", True),
+        (None, True),
+        ([], False),
+        (["server:command", "server:lifecycle", "path:servers"], True),
+    ],
+)
+async def test_legacy_and_explicit_permission_modes_match_all_dispatch_paths(
+    app_context, plugin_factory, monkeypatch, declaration, allowed
+):
+    from pathlib import Path
+    from unittest.mock import AsyncMock
+
+    line = "" if declaration == "omitted" else f"    permissions = {declaration!r}\n"
+    plugin = await plugin_factory(
+        "compatibility_probe",
+        'from bedrock_server_manager import PluginBase\nclass Probe(PluginBase):\n    version = "1.0"\n'
+        + line,
+    )
+    _, calls = spy_api(monkeypatch, "send_command")
+    task = plugin.api.runtime.register_api_task("command", "server.send_command")
+    command = {"server_name": "test", "command": "list"}
+    operations = [
+        lambda: plugin.api.server.send_command(command),
+        lambda: task.handler(server_name="test", options={"command": "list"}),
+        lambda: plugin.api.runtime.get_system_path("servers"),
+        lambda: plugin.api.settings.get_global_setting({"key": "paths.servers"}),
+    ]
+    for operation in operations:
+        if allowed:
+            await operation()
+        else:
+            with pytest.raises(PermissionError):
+                await operation()
+    assert len(calls) == (2 if allowed else 0)
+    settings = await plugin.api.settings.get_all_global_settings({})
+    assert ("servers" in settings.settings.get("paths", {})) is allowed
+    if allowed:
+        assert (
+            await plugin.api.runtime.get_system_path("servers")
+            == Path(app_context.settings.get("paths.servers")).resolve()
+        )
+    monkeypatch.setattr(
+        app_context,
+        "get_server",
+        lambda *a, **k: SimpleNamespace(is_running=AsyncMock(return_value=False)),
+    )
+    if allowed:
+        async with plugin.api.runtime.server_lifecycle_manager(
+            "test", stop_before=False
+        ):
+            pass
+    else:
+        with pytest.raises(PermissionError, match="server:lifecycle"):
+            async with plugin.api.runtime.server_lifecycle_manager(
+                "test", stop_before=False
+            ):
+                pass
+
+
+@pytest.mark.parametrize("declaration,allowed", [(None, True), ([], False)])
+async def test_legacy_mode_is_snapshotted_until_reload(
+    plugin_factory, monkeypatch, declaration, allowed
+):
+    plugin = await make_plugin(plugin_factory, permissions=declaration)
+    plugin.permissions = [] if declaration is None else None
+    _, calls = spy_api(monkeypatch, "send_command")
+    if allowed:
+        await plugin.api.server.send_command({"server_name": "test", "command": "list"})
+    else:
+        with pytest.raises(PermissionError):
+            await plugin.api.server.send_command(
+                {"server_name": "test", "command": "list"}
+            )
+    assert len(calls) == int(allowed)
+
+
+def test_absent_plugin_is_not_treated_as_legacy():
+    from bedrock_server_manager.plugins.scopes import plugin_has_permission
+
+    assert not plugin_has_permission(None, "server:command")
+    assert normalize_permissions(None) is None
+    assert normalize_permissions([]) == frozenset()
+
+
+@pytest.mark.parametrize("explicit_none", [False, True])
+async def test_legacy_mode_survives_metadata_sync_and_reload(
+    app_context, plugin_factory, monkeypatch, explicit_none
+):
+    source = 'from bedrock_server_manager import PluginBase\nclass Legacy(PluginBase):\n    version = "1.0"\n'
+    if explicit_none:
+        source += "    permissions = None\n"
+    plugin = await plugin_factory("legacy_probe", source)
+    _, calls = spy_api(monkeypatch, "send_command")
+    old_call = plugin.api.server.send_command
+    status = await get_plugin_statuses(
+        GetPluginStatusesRequest(), app_context=app_context
+    )
+    assert status.plugins["legacy_probe"].permissions == []
+    assert await app_context.plugin_manager.reload_plugin("legacy_probe")
+    reloaded = app_context.plugin_manager.get_plugin("legacy_probe")
+    await reloaded.api.server.send_command({"server_name": "test", "command": "list"})
+    assert len(calls) == 1
+    with pytest.raises(RuntimeError, match="owner"):
+        await old_call({"server_name": "test", "command": "list"})

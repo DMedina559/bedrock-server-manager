@@ -63,10 +63,10 @@ def get_known_permission_scopes() -> dict[str, str]:
     return scopes
 
 
-def normalize_permissions(value: object) -> frozenset[str]:
+def normalize_permissions(value: object) -> frozenset[str] | None:
     """Validate plugin declarations without treating strings as collections of scopes."""
     if value is None:
-        return frozenset()
+        return None
     if not isinstance(value, (list, tuple, set, frozenset)):
         raise TypeError("Plugin permissions must be a collection of scope strings")
     if any(
@@ -79,23 +79,35 @@ def normalize_permissions(value: object) -> frozenset[str]:
     return frozenset(value)
 
 
+def plugin_permission_declaration(plugin: object) -> frozenset[str] | None:
+    """Preserve legacy None separately from an explicit empty declaration."""
+    if hasattr(plugin, "_capability_permissions"):
+        return normalize_permissions(getattr(plugin, "_capability_permissions"))
+    return normalize_permissions(getattr(plugin, "permissions", None))
+
+
 def plugin_permissions(plugin: object | None) -> frozenset[str]:
-    """Read the immutable load-time snapshot, or validate an unloaded declaration."""
-    if plugin is None:
-        return frozenset()
-    snapshot = getattr(plugin, "_capability_permissions", None)
+    """Return declared scopes for reporting; legacy plugins declare none."""
     return (
-        frozenset(snapshot)
-        if isinstance(snapshot, frozenset)
-        else normalize_permissions(getattr(plugin, "permissions", None))
+        (plugin_permission_declaration(plugin) or frozenset())
+        if plugin is not None
+        else frozenset()
     )
+
+
+def plugin_has_permission(plugin: object | None, scope: str) -> bool:
+    """Legacy instances keep access; explicit declarations opt into enforcement."""
+    if plugin is None:
+        return False
+    declared = plugin_permission_declaration(plugin)
+    return declared is None or scope in declared
 
 
 def require_plugin_permission(
     app_context: "AppContext", plugin_name: str, scope: str
 ) -> None:
     plugin = app_context.plugin_manager.get_plugin(plugin_name)
-    if scope not in plugin_permissions(plugin):
+    if not plugin_has_permission(plugin, scope):
         raise PermissionError(f"Plugin '{plugin_name}' requires permission '{scope}'")
 
 

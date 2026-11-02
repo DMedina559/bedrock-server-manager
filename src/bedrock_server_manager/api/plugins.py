@@ -53,7 +53,7 @@ async def get_plugin_statuses(
             elif p_class is not None:
                 perms = plugin_permissions(p_class)
             else:
-                perms = normalize_permissions(config.get("permissions"))
+                perms = normalize_permissions(config.get("permissions")) or frozenset()
             statuses[name] = {
                 **config,
                 "permissions": sorted(perms),

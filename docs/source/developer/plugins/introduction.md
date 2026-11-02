@@ -111,9 +111,12 @@ class MyPlugin(PluginBase):
 ```
 
 Declarations accept lists, tuples, sets, or frozensets of nonempty scope strings.
-`None` and an empty collection declare no capabilities. BSM validates declarations
-and snapshots them as an immutable set when a plugin loads. Changing the original
-list while the plugin is running does not change its authority; reload the plugin
+Omitting `permissions` or setting it to `None` preserves legacy access to scoped
+APIs for older plugins. An explicit collection opts into capability enforcement:
+`permissions = []` grants no scoped capabilities, and a nonempty collection grants
+only its listed scopes. BSM validates explicit declarations and snapshots the
+legacy mode or immutable scope set when a plugin loads. Changing the declaration
+while the plugin is running does not change its authority; reload the plugin
 to apply declaration changes. Unknown scope names produce a warning and do not
 match another capability. Invalid declaration types prevent that plugin from
 loading without interrupting discovery of healthy plugins.
@@ -159,11 +162,12 @@ The root `paths` setting and `paths.plugins` are permanently restricted.
 when called with positional options. A composite API's documented capability
 covers its internal lifecycle work, such as stopping a server during restore.
 
-Direct and scheduled API calls enforce the same capabilities. Plugin-owned
-`scheduled_apis` and `api.runtime.register_api_task()` jobs run through the owning
+Direct and scheduled API calls use the same permission mode: omitted/`None`
+declarations retain legacy access, while explicit collections are enforced.
+Plugin-owned `scheduled_apis` and `api.runtime.register_api_task()` jobs run through the owning
 plugin's bridge, including when a registered function is supplied as a callable.
-Internal APIs cannot be scheduled by plugins. Custom plugin task callbacks must
-not request internal `app_context`. Core-owned schedules retain core authority.
+Internal APIs cannot be scheduled by plugins, including legacy plugins.
+Custom plugin task callbacks must not request internal `app_context`. Core-owned schedules retain core authority.
 API and runtime handles belong to one plugin load generation: retained handles
 stop working after unload and remain invalid when the same plugin name reloads.
 

@@ -13,7 +13,7 @@ from ..plugins.api_bridge import api_method
 from ..plugins.scopes import (
     BLACKLISTED_PATH_SETTINGS,
     GRANTABLE_PATH_SCOPES,
-    plugin_permissions,
+    plugin_has_permission,
     require_plugin_permission,
 )
 from .models.settings import (
@@ -81,12 +81,13 @@ async def get_all_global_settings(
             paths = all_settings.get("paths")
             if isinstance(paths, dict):
                 plugin = app_context.plugin_manager.get_plugin(plugin_name)
-                declared = plugin_permissions(plugin)
                 filtered_paths = {}
-                if declared:
-                    for scope in GRANTABLE_PATH_SCOPES:
-                        if f"path:{scope}" in declared and scope in paths:
-                            filtered_paths[scope] = paths[scope]
+                for scope in GRANTABLE_PATH_SCOPES:
+                    if (
+                        plugin_has_permission(plugin, f"path:{scope}")
+                        and scope in paths
+                    ):
+                        filtered_paths[scope] = paths[scope]
                 if filtered_paths:
                     all_settings["paths"] = filtered_paths
                 else:
