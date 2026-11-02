@@ -401,3 +401,28 @@ async def test_plugin_cleanup_commits_all_scopes_before_publishing(
         assert server.custom == expected
         plugins = await app_context.storage.plugin_repo.get_all_plugins(session)
         assert {plugin.plugin_name for plugin in plugins} == {"keep"}
+
+
+def test_cleanup_servers_blocks_when_bsm_running(runner, app_context, monkeypatch):
+    """Test cleanup with --servers is blocked when BSM is running."""
+    monkeypatch.setattr(
+        "bedrock_server_manager.web.process.check_bsm_offline",
+        lambda *args, **kwargs: (False, 8888),
+    )
+    result = runner.invoke(cleanup, ["--servers"], obj={"app_context": app_context})
+    assert result.exit_code != 0
+    assert "Bedrock Server Manager is currently running (PID 8888)" in result.output
+    assert "requires BSM to be stopped first" in result.output
+
+
+def test_cleanup_cache_allowed_when_bsm_running(
+    runner, app_context, cache_root, monkeypatch
+):
+    """Test cleanup with only --cache is allowed even if BSM is running."""
+    monkeypatch.setattr(
+        "bedrock_server_manager.web.process.check_bsm_offline",
+        lambda *args, **kwargs: (False, 8888),
+    )
+    result = runner.invoke(cleanup, ["--cache"], obj={"app_context": app_context})
+    assert result.exit_code == 0
+    assert "Cleaning Python cache files" in result.output

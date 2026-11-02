@@ -5,7 +5,9 @@ import questionary
 
 from ..config import bcm_config
 from ..config.const import app_name_title
+from ..context import AppContext
 from .service import interactive_web_service_workflow
+from .utils import assert_bsm_offline_cli
 
 
 @click.command("setup", help="Run an interactive setup to configure the manager.")
@@ -16,10 +18,10 @@ def setup(ctx: click.Context):  # noqa: C901
     Bedrock Server Manager. It configures the data directory, web UI settings,
     and database connection.
     """
-    try:
-        from ..context import AppContext
+    app_context: AppContext = ctx.obj["app_context"]
+    assert_bsm_offline_cli(app_context, operation_name="Setup configuration")
 
-        app_context: AppContext = ctx.obj["app_context"]
+    try:
         click.secho(f"{app_name_title} - Setup", fg="cyan")
 
         current_config = bcm_config.load_config()

@@ -273,3 +273,30 @@ async def stop_local(
             await asyncio.to_thread(paths.control_file.unlink, missing_ok=True)
             await asyncio.to_thread(paths.pid_file.unlink, missing_ok=True)
         return "Web server stopped by forced termination."
+
+
+async def check_bsm_offline(
+    config_dir: str, data_dir: str = "", db_url: str = ""
+) -> tuple[bool, int | None]:
+    """Check whether BSM is currently running. Returns (is_offline, active_pid)."""
+    if not config_dir:
+        return True, None
+    paths = WebProcessPaths(
+        config_dir=config_dir,
+        data_dir=data_dir or config_dir,
+        db_url=db_url or "sqlite:///:memory:",
+    )
+    control = read_control(paths)
+    if paths.pid_file.is_file():
+        try:
+            pid = await processes.read_pid_from_file(str(paths.pid_file))
+            if pid is not None and pid > 0:
+                try:
+                    proc = await verify_web_owner(paths, pid, control)
+                    if proc is not None and proc.is_running():
+                        return False, pid
+                except Exception:
+                    pass
+        except Exception:
+            pass
+    return True, None

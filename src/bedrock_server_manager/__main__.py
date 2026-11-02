@@ -77,7 +77,13 @@ def create_cli_app():
 
         if ctx.invoked_subcommand == "backup":
             # Offline recovery must work even when bootstrap/database access is broken.
-            ctx.obj = {"cli": cli}
+            ctx.obj = {
+                "cli": cli,
+                "config_dir": config_dir,
+                "data_dir": data_dir,
+                "db_url": db_url,
+                "log_level": log_level,
+            }
             return
 
         try:

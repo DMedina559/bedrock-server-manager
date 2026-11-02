@@ -17,6 +17,7 @@ from ..db.backup import backup_database, get_current_db_revision, restore_databa
 from ..db.database import run_migrations_downgrade, run_migrations_upgrade
 from ..logging import log_operation_error
 from ..utils.general import run_async
+from .utils import assert_bsm_offline_cli
 
 logger = logging.getLogger(__name__)
 
@@ -57,6 +58,7 @@ def db_status(ctx: click.Context):
 def upgrade(ctx: click.Context, yes: bool):  # noqa: C901
     """Upgrades the database to the latest version, stamping it if necessary."""
     app_context: AppContext = ctx.obj["app_context"]
+    assert_bsm_offline_cli(app_context, operation_name="Database upgrade")
     alembic_ini_path = files("bedrock_server_manager").joinpath("db/alembic.ini")
     alembic_cfg = Config(str(alembic_ini_path))
     alembic_cfg.set_main_option("skip_logging_config", "true")
@@ -213,6 +215,7 @@ def upgrade(ctx: click.Context, yes: bool):  # noqa: C901
 def downgrade(ctx: click.Context, revision: str, yes: bool = False):
     """Downgrades the database to a previous version."""
     app_context: AppContext = ctx.obj["app_context"]
+    assert_bsm_offline_cli(app_context, operation_name="Database downgrade")
     alembic_ini_path = files("bedrock_server_manager").joinpath("db/alembic.ini")
     alembic_cfg = Config(str(alembic_ini_path))
     alembic_cfg.set_main_option("skip_logging_config", "true")
@@ -304,6 +307,7 @@ def backup_db(ctx: click.Context, output: str | None):
 def restore_db(ctx: click.Context, input: str):
     """Restores database records from a JSON file. Wipes existing data!"""
     app_context: AppContext = ctx.obj["app_context"]
+    assert_bsm_offline_cli(app_context, operation_name="Database restore")
     target_db = app_context.db
 
     click.secho("Database Restore Utility", fg="cyan", bold=True)
