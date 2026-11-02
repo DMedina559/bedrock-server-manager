@@ -9,3 +9,5 @@ Internal contributor reference. Plugins should use supported capabilities.
    engine
    runner
    service
+   tasks
+   builtin

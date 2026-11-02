@@ -35,6 +35,9 @@ Use your normal administrator authentication:
 | `GET /api/diagnostics/runs` | `get_diagnostic_runs` | Retained records grouped by application instance |
 | `GET /api/diagnostics/trace/{correlation_id}` | `get_diagnostic_trace` | Correlated live events, tasks, and retained records |
 | `GET /api/diagnostics/report` | `get_diagnostic_report` | Current observations and bounded history for a support report |
+| `POST /api/diagnostics/compare` | `compare_diagnostic_snapshots` | Compare two diagnostic snapshots and return up to 200 metadata deltas |
+| `GET /api/events` | `get_event_catalog` | Public event contract catalog, schemas, and registered listener counts |
+| `GET /api/events/activity` | `get_event_activity` | Active and recent event emissions and listener delivery stats (`EventActivityQuery`) |
 
 History accepts `limit` (1–200), `subsystem`, `instance_id`, `correlation_id`, `owner`, `code`, `outcome`, and `operation_id`. Results are newest first. Pass `next_cursor` as `cursor` to continue without duplicating records with equal timestamps; `truncated` indicates more matching records. Runs summarize retained records, not complete process lifetimes. A missing closing record does not prove that an instance crashed. The event catalog and filtered event details remain available through `/api/events` and `/api/events/activity`.
 
@@ -52,32 +55,18 @@ Live counters, active operations, and event activity reset for each application 
 
 Diagnostic recording uses an independent best-effort queue. It never participates in the transaction it observes. Database failures and overflow increment the report's write-failure/drop counts. A crash can lose records still queued in memory; diagnostic history is not a guaranteed audit log.
 
-Defaults retain at most 1,000 records for seven days, with a 256-record write queue. Settings under `diagnostics` configure `history_limit`, `retention_days`, `queue_limit`, `provider_timeout_seconds`, `max_providers`, and `max_providers_per_owner`. Restart the application after changing these settings. Expired records are excluded from reads and pruned during writes. Existing records remain subject to current retention limits.
+Defaults retain at most 1,000 records for seven days, with a 256-record write queue. Settings under `diagnostics` configure `history_limit`, `retention_days`, `queue_limit`, `provider_timeout_seconds`, `stale_after_seconds` (age threshold before cached observations are marked stale), `state_pending_warn_seconds` (warn threshold for pending state transitions), `max_providers`, `max_providers_per_owner`, `event_record_limit`, `event_detail_limit`, and `snapshot_interval_seconds`. Restart the application after changing these settings. Expired records are excluded from reads and pruned during writes. Existing records remain subject to current retention limits.
 
 The report contains metadata only, but plugin names and event names can still identify your installation. Review downloaded reports before sharing them.
 
 ## Plugin-owned observations
 
-Plugins can register an asynchronous provider during load:
+Enabled plugins can contribute bounded numeric and boolean telemetry under `plugin:<plugin_name>:<name>`.
 
-```python
-from bedrock_server_manager.diagnostics import PluginValues
+- Each section identifies its owning plugin, health (`ok`, `degraded`, `unknown`, or `unavailable`), units, and freshness. Arbitrary state dumps and string values are excluded so plugin telemetry cannot leak secrets or large payloads into support reports.
+- Providers are automatically removed when a plugin is unloaded, and registration limits (`diagnostics.max_providers` and `diagnostics.max_providers_per_owner`) bound provider counts globally and per plugin. Registry diagnostics show configured limits, ownership, pending providers, failures, timeouts, and rejected registrations.
 
-async def diagnostic_values():
-    return PluginValues(
-        health="ok",
-        values={"queued": 3, "connected": True},
-        units={"queued": "count"},
-    )
-
-await self.api.runtime.register_diagnostic_provider("connection", diagnostic_values)
-```
-
-The runtime assigns the section name `plugin:<plugin_name>:connection` and its owner. Providers return bounded numeric/boolean observations; arbitrary state dumps and string values are excluded. Providers must yield normally and cooperate with cancellation. A timeout cannot forcibly terminate Python code that blocks the event loop.
-
-Providers are removed during plugin unload. An old unfinished provider prevents replacement of the same name until it drains. Registration limits bound provider counts globally and per plugin owner. Registry diagnostics show configured limits, ownership, pending providers, failures, timeouts, and rejected registrations. Built-in application providers are outside the per-plugin limit. Plugin authors can read typed diagnostics with `self.api.diagnostics.get_application_diagnostics({})`, `get_diagnostic_history({})`, and `get_diagnostic_report({})`.
-
-Provider health defaults to `unknown`; explicitly return `ok` or `degraded` when the provider has evidence. Provider collection failures are reported separately as `unavailable`. Optional units are `count`, `seconds`, `milliseconds`, `bytes`, or `percent` and must refer to a returned value. Labels are bounded to 80 characters. Providers should report measurements rather than perform expensive probes.
+For declaring `@diagnostic_provider` methods and `PluginValues` in your own plugin, see [Write a plugin](../developer/plugins/introduction.md#diagnostic-and-websocket-data-providers).
 
 ## Diagnose the diagnostic subsystem
 

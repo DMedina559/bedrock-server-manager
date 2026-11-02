@@ -5,6 +5,7 @@ import asyncio
 import logging
 import os
 import shutil
+import stat
 from pathlib import Path
 from typing import Optional, Set
 
@@ -173,32 +174,34 @@ def _cleanup_log_files(
     return CleanupResult(deleted=deleted, retained=retained, failures=failures)
 
 
+def _scan_cleanup_directory(directory: Path) -> list[tuple[Path, int]]:
+    """Read a complete inventory, propagating missing paths and stat failures."""
+    return [(entry, entry.stat().st_mode) for entry in directory.iterdir()]
+
+
 def _discover_installed_plugin_names(app_context: AppContext) -> Set[str]:
-    """Return all plugin names currently present on disk in user and default plugin dirs."""
+    """Return plugin names only after every configured source was readable."""
     names: Set[str] = set()
     dirs: list[Path] = []
     user_dir = app_context.settings.get("paths.plugins")
     if user_dir:
         dirs.append(Path(str(user_dir)))
-    default_dir = Path(__file__).resolve().parents[1] / "plugins" / "default"
-    dirs.append(default_dir)
+    dirs.append(Path(__file__).resolve().parents[1] / "plugins" / "default")
 
     for directory in dirs:
-        if not directory.is_dir():
-            continue
-        try:
-            for entry in directory.iterdir():
-                if entry.name.startswith(("_", ".")):
-                    continue
-                if entry.is_file() and entry.suffix == ".py":
-                    stem = entry.stem
-                    if stem.lower() not in RESERVED_PLUGIN_NAMES:
-                        names.add(stem)
-                elif entry.is_dir() and (entry / "__init__.py").is_file():
-                    if entry.name.lower() not in RESERVED_PLUGIN_NAMES:
-                        names.add(entry.name)
-        except OSError:
-            continue
+        for entry, mode in _scan_cleanup_directory(directory):
+            if entry.name.startswith(("_", ".")):
+                continue
+            if stat.S_ISREG(mode) and entry.suffix == ".py":
+                if entry.stem.lower() not in RESERVED_PLUGIN_NAMES:
+                    names.add(entry.stem)
+            elif stat.S_ISDIR(mode):
+                try:
+                    is_package = stat.S_ISREG((entry / "__init__.py").stat().st_mode)
+                except FileNotFoundError:
+                    is_package = False
+                if is_package and entry.name.lower() not in RESERVED_PLUGIN_NAMES:
+                    names.add(entry.name)
     return names
 
 
@@ -206,7 +209,12 @@ async def _cleanup_orphaned_plugins_async(
     app_context: AppContext, dry_run: bool = False
 ) -> CleanupResult:
     """Clean DB records, custom settings, and private directories for removed plugins."""
-    installed = _discover_installed_plugin_names(app_context)
+    try:
+        installed = _discover_installed_plugin_names(app_context)
+    except OSError as error:
+        return CleanupResult(
+            failures={"inventory:plugins": classify_failure(error).error}
+        )
     deleted: list[str] = []
     retained: list[str] = sorted(installed)
     failures: dict[str, FailureInfo] = {}
@@ -238,60 +246,72 @@ async def _cleanup_orphaned_plugins_async(
         else:
             try:
                 async with app_context.storage.write_lock:
+                    settings = app_context.state.settings
+                    candidate = type(settings).model_validate(settings.model_dump())
+                    candidate.set(
+                        "plugin_settings",
+                        {
+                            k: v
+                            for k, v in settings.plugin_settings.items()
+                            if k not in orphaned_db_names
+                        },
+                    )
+                    candidate.set(
+                        "custom",
+                        {
+                            k: v
+                            for k, v in settings.custom.items()
+                            if k not in orphaned_db_names
+                        },
+                    )
+                    settings_changed = candidate.to_dict() != settings.to_dict()
+                    updated_servers = [
+                        cfg.model_copy(
+                            update={
+                                "custom": {
+                                    k: v
+                                    for k, v in cfg.custom.items()
+                                    if k not in orphaned_db_names
+                                }
+                            }
+                        )
+                        for cfg in app_context.state.servers.servers.values()
+                        if any(k in cfg.custom for k in orphaned_db_names)
+                    ]
                     async with app_context.storage.transaction() as session:
                         for name in orphaned_db_names:
                             await app_context.storage.plugin_repo.delete_plugin(
                                 session, name
                             )
-                            app_context.state.plugins.remove(name)
-                            app_context.state.plugins.remove_dirty_plugin(name)
-
-                        plugin_settings = dict(
-                            app_context.state.settings.plugin_settings
-                        )
-                        custom_settings = dict(app_context.state.settings.custom)
-                        settings_changed = False
-                        for name in orphaned_db_names:
-                            if name in plugin_settings:
-                                plugin_settings.pop(name, None)
-                                settings_changed = True
-                            if name in custom_settings:
-                                custom_settings.pop(name, None)
-                                settings_changed = True
                         if settings_changed:
-                            app_context.state.settings.set(
-                                "plugin_settings", plugin_settings
-                            )
-                            app_context.state.settings.set("custom", custom_settings)
                             await app_context.storage.settings_repo.save_settings(
-                                session, app_context.state.settings.to_dict()
+                                session, candidate.to_dict()
                             )
-                            app_context.state.settings.clear_dirty()
+                        for updated in updated_servers:
+                            await app_context.storage.server_repo.save_server(
+                                session, updated
+                            )
 
-                        for s_name, s_cfg in list(
-                            app_context.state.servers.servers.items()
-                        ):
-                            if isinstance(s_cfg.custom, dict) and any(
-                                k in s_cfg.custom for k in orphaned_db_names
-                            ):
-                                new_custom = {
-                                    k: v
-                                    for k, v in s_cfg.custom.items()
-                                    if k not in orphaned_db_names
-                                }
-                                updated = s_cfg.model_copy(
-                                    update={"custom": new_custom}
-                                )
-                                await app_context.storage.server_repo.save_server(
-                                    session, updated
-                                )
-                                app_context.state.servers.set(updated)
-                                app_context.state.servers.remove_dirty_server(s_name)
+                    # Publish and acknowledge changes only after a successful commit.
+                    for name in orphaned_db_names:
+                        app_context.state.plugins.remove(name)
+                        app_context.state.plugins.remove_dirty_plugin(name)
+                    if settings_changed:
+                        candidate.clear_dirty()
+                        app_context.state.settings = candidate
+                    for updated in updated_servers:
+                        app_context.state.servers.set(updated)
+                        app_context.state.servers.remove_dirty_server(
+                            updated.server_name
+                        )
 
                 for name in orphaned_db_names:
                     deleted.append(f"db:plugin:{name}")
             except Exception as error:
                 failures["db:plugins"] = classify_failure(error).error
+                return CleanupResult(
+                    deleted=deleted, retained=retained, failures=failures
+                )
 
     plugins_data_root = Path(app_context.config_dir) / "plugins"
     if plugins_data_root.is_dir():
@@ -319,14 +339,18 @@ async def _cleanup_orphaned_servers_async(
 ) -> CleanupResult:
     """Clean DB records, runtime directories, and log directories for removed servers."""
     servers_dir_val = app_context.settings.get("paths.servers")
-    installed_servers: Set[str] = set()
-    if servers_dir_val and os.path.isdir(str(servers_dir_val)):
-        try:
-            for entry in Path(str(servers_dir_val)).iterdir():
-                if entry.is_dir():
-                    installed_servers.add(entry.name)
-        except OSError:
-            pass
+    try:
+        if not servers_dir_val:
+            raise FileNotFoundError("No server directory configured for cleanup.")
+        installed_servers = {
+            entry.name
+            for entry, mode in _scan_cleanup_directory(Path(str(servers_dir_val)))
+            if stat.S_ISDIR(mode)
+        }
+    except OSError as error:
+        return CleanupResult(
+            failures={"inventory:servers": classify_failure(error).error}
+        )
 
     deleted: list[str] = []
     retained: list[str] = sorted(installed_servers)
@@ -347,12 +371,16 @@ async def _cleanup_orphaned_servers_async(
                             await app_context.storage.server_repo.delete_server(
                                 session, s_name
                             )
-                            app_context.state.servers.remove(s_name)
-                            app_context.state.servers.remove_dirty_server(s_name)
+                    for s_name in orphaned_db_servers:
+                        app_context.state.servers.remove(s_name)
+                        app_context.state.servers.remove_dirty_server(s_name)
                 for s_name in orphaned_db_servers:
                     deleted.append(f"db:server:{s_name}")
             except Exception as error:
                 failures["db:servers"] = classify_failure(error).error
+                return CleanupResult(
+                    deleted=deleted, retained=retained, failures=failures
+                )
 
     config_root = Path(app_context.config_dir)
     for scoped_parent in (

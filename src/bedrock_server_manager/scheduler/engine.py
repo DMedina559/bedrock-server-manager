@@ -7,13 +7,6 @@ from datetime import datetime, timedelta, timezone
 from ..utils.timezones import resolve_timezone
 
 
-def config_for(backups):
-    raw = backups.server.settings.get("backups.schedules", {}).get(
-        backups.server.server_name
-    )
-    return raw.model_dump() if hasattr(raw, "model_dump") else raw
-
-
 def signature(config):
     return hashlib.sha256(json.dumps(config, sort_keys=True).encode()).hexdigest()[:16]
 
@@ -38,12 +31,21 @@ def occurrences(config, name, moment):
     return sorted(slots)
 
 
-def status(backups, value, moment=None):
-    config = config_for(backups)
-    if not config:
+def status(backups, value=None, moment=None):
+    state = getattr(backups.server, "state", None)
+    records = getattr(getattr(state, "scheduler", None), "records", {}) or {}
+    matching = [
+        (config, record)
+        for config, record, _ in records.values()
+        if config.get("server_name") == backups.server.server_name
+        and config.get("task") == "backup:create"
+    ]
+    if not matching:
         return None
+    # Prefer an enabled schedule if multiple exist.
+    matching.sort(key=lambda item: not item[0].get("enabled", False))
+    config, record = matching[0]
     moment = moment or datetime.now(timezone.utc)
-    record = value.get("schedule", {})
     future = [
         slot
         for slot in occurrences(config, backups.server.server_name, moment)

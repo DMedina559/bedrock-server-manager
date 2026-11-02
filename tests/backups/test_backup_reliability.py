@@ -159,7 +159,7 @@ async def test_schedules_catch_up_once_and_survive_restart(
     service = app_context.scheduler
     activated = datetime(2026, 10, 19, 2, tzinfo=timezone.utc)
     config = ScheduledTask(
-        task="backup",
+        task="backup:create",
         server_name=name,
         time="03:00",
         timezone="UTC",
@@ -312,7 +312,7 @@ async def test_scheduled_failures_have_bounded_retries(
     service = app_context.scheduler
     activated = datetime(2026, 10, 19, 2, tzinfo=timezone.utc)
     config = ScheduledTask(
-        task="backup",
+        task="backup:create",
         server_name=name,
         time="03:00",
         timezone="UTC",
@@ -355,7 +355,7 @@ async def test_scheduled_capture_uses_backup_hooks(
     service = app_context.scheduler
     activated = datetime(2026, 10, 19, 2, tzinfo=timezone.utc)
     config = ScheduledTask(
-        task="backup",
+        task="backup:create",
         server_name=name,
         time="03:00",
         timezone="UTC",

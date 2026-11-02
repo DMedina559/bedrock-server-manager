@@ -50,7 +50,7 @@ them before any listener or transport receives them.
 
 ```python
 from pydantic import BaseModel, ConfigDict
-from bedrock_server_manager import PluginBase
+from bedrock_server_manager import PluginBase, app_event
 
 class RefreshPayload(BaseModel):
     model_config = ConfigDict(extra="forbid")
@@ -61,7 +61,8 @@ class DashboardPlugin(PluginBase):
     version = "4.0.0"
 
     # This example is installed as dashboard.py.
-    def on_load(self):
+    @app_event("on_load")
+    async def on_load(self, **kwargs):
         self.api.events.define("dashboard:refresh", RefreshPayload)
         self.refresh_listener = self.api.events.listen(
             "dashboard:refresh", self.refreshed
@@ -82,9 +83,10 @@ class DashboardPlugin(PluginBase):
 that subscription. Listeners and definitions are removed automatically on unload.
 A saved API from an unloaded plugin cannot register or emit after reload.
 Plugins and external callers may emit custom events; core before, after, and
-lifecycle events are reserved for the application. `send_event()` and
-`listen_for_event()` remain supported through the same bus and require a declaration
-owned by the emitting plugin.
+lifecycle events are reserved for the application. Unscoped `self.api.send_event()`
+and `self.api.listen_for_event()` remain supported for backward compatibility
+(and require a declaration owned by the emitting plugin), but they are deprecated
+and log warnings—prefer `self.api.events.emit()` and `@app_event` / `self.api.events.listen()`.
 
 For a private custom event, pass `public=False` to `events.define()`. Public
 events keep the WebSocket topic `event:<name>` and the existing `type`, `topic`,
@@ -93,8 +95,8 @@ The before/after pair shares a correlation ID; nested dispatches also identify
 their parent event internally.
 
 For transport-only topic data and live dashboards, use
-`self.api.websocket.websocket_broadcast` and
-`self.api.runtime.register_data_provider`; see the
+`self.api.websocket.websocket_broadcast` and the `@data_provider` (or
+`@websocket_provider`) decorator; see the
 [plugin introduction](introduction.md) and [Native JSON UI](native_json_ui.md).
 
 ## Diagnostics and limits

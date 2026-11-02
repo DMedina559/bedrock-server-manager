@@ -5,7 +5,7 @@ from pathlib import Path
 from types import UnionType
 from typing import Annotated, Any, Dict, List, Literal, Union, get_args, get_origin
 
-from bedrock_server_manager import PluginBase, app_event
+from bedrock_server_manager import PluginBase, app_event, scheduled_task
 from bedrock_server_manager.events import server as status_events  # noqa: F401
 from bedrock_server_manager.events.registry import builtin_events
 from bedrock_server_manager.plugins.api_types import API_METHODS
@@ -14,7 +14,7 @@ from bedrock_server_manager.plugins.api_types import API_METHODS
 class APIDocsGenerator(PluginBase):
     """Generate navigable plugin API, model, and event references."""
 
-    version = "1.3.0"
+    version = "1.4.0"
     author = "dmedina559"
     description = "A utility plugin that automatically generates Markdown documentation for all registered plugin API functions and application events."
     name = "API Docs Generator"
@@ -26,6 +26,11 @@ class APIDocsGenerator(PluginBase):
         )
 
     @app_event("on_manager_startup")
+    @scheduled_task(
+        name="generate_docs",
+        requires_server_lock=False,
+        description="Generate Markdown documentation for registered plugin APIs and events",
+    )
     async def generate_docs(self, **kwargs: Any):
         """Export registered contracts after application startup without blocking I/O."""
 

@@ -1,106 +1,79 @@
-# WebSocket Implementation
+# Real-time WebSockets and log streaming
 
-This document provides an overview of the WebSocket implementation in the Bedrock Server Manager, covering backend (server-side) components.
+BSM exposes a single multiplexed WebSocket endpoint at `/ws` for live server telemetry, application metrics, log streaming, background task progress, and event notifications.
 
-The backend WebSocket implementation is built using FastAPI and is divided into two main components: a WebSocket router and a connection manager.
+## Connecting and authenticating
 
-## WebSocket Router
+1. Open a WebSocket connection to `ws://<host>:<port>/ws` (or `wss://<host>/ws` behind TLS).
+2. Authenticate on the **first message** within **5 seconds** of connecting (otherwise the connection is closed with code `1008`):
+   - **Bearer / integration token (`bsm_it_...`):**
+     ```json
+     {"action": "authenticate", "token": "<jwt_or_bsm_it_token>"}
+     ```
+   - **Same-origin browser session (HttpOnly cookie):**
+     ```json
+     {"action": "authenticate"}
+     ```
+3. Upon successful authentication, the server replies with `{"status": "authenticated"}`.
+4. Subscribe or unsubscribe to topics at any time:
+   ```json
+   {"action": "subscribe", "topic": "resource-monitor:survival"}
+   {"action": "unsubscribe", "topic": "resource-monitor:survival"}
+   ```
 
-The WebSocket router is defined in `src/bedrock_server_manager/web/routers/websocket.py`. It is responsible for the following:
+## Available topics
 
--   **Endpoint**: Creates a WebSocket endpoint at `/ws`.
--   **Authentication**: Authenticates the user on the first message payload. The client must send an authentication message within 5 seconds of connecting, containing their JWT access token (e.g., `{"action": "authenticate", "token": "eyJhb..."}`).
--   **Message Handling**: Listens for incoming JSON messages from the client. After authentication, supported actions include `subscribe`, `unsubscribe`, `request`, and `request_data`.
--   **Connection Management**: Hands off the connection and subscription management to the `ConnectionManager`.
+| Topic pattern | Required permission | Payload `type` | Description |
+|---|---|---|---|
+| `event:<event_name>` / `ws_event:<event_name>` | Authenticated (server-scoped events filter by `servers:read` on `server_name`) | `event` | Real-time notifications for public application and server lifecycle events (see [Event catalog](../plugins/plugin_events.md)) |
+| `resource-monitor:<server_name>` | `servers:read` on `<server_name>` | `resource_update` | Per-server process CPU, memory, PID, and uptime samples |
+| `application-metrics` | `system:info` | `resource_update` | Host and BSM process CPU, memory, disk I/O, network rates, and event-loop delay (`MetricsSample`) |
+| `server_log:<server_name>` | `logs:read` on `<server_name>` | `server_log` | Live stdout/console log lines for `<server_name>` (initial snapshot + incremental lines) |
+| `app_log` (or `app_logs`) | `logs:read_application` | `app_log` | Live BSM application log lines (initial snapshot + incremental lines) |
+| `task:<task_id>` | Automatic for task owner (or `admin`) | `task_update` | Background task status, stage, percentage, and completion updates |
+| `*` (wildcard) | Filtered per message by the connection's live permissions | Varies | Receives all broadcast topics that the authenticated user is authorized to read (deduplicated if also subscribed to a specific topic) |
 
-## Connection Manager & Plugin Messaging API
+### Log history over HTTP (`GET /api/logs/history`)
 
-The `ConnectionManager` is a class defined in `src/bedrock_server_manager/web/websocket_manager.py`. It is the core of the backend WebSocket implementation and is responsible for the following:
+Before or alongside subscribing to `server_log:<server_name>` or `app_log`, clients can paginate historical log lines with `GET /api/logs/history`:
 
--   **Connection Tracking**: Keeps track of all active WebSocket connections and their authenticated `UserResponse` identity (`user.username`, `user.role`, `user.id`).
--   **Topic-Based Subscriptions**: Manages which clients are subscribed to which topics.
--   **Message Broadcasting**: Provides methods for sending messages to a single client, all clients subscribed to a specific topic, or all clients for a specific user.
--   **Data Provider Registration**: Allows plugins to register real-time topic data providers to handle client request-response messages.
+- Query parameters: `source=server` (requires `server_name` and `logs:read`) or `source=application` (requires `logs:read_application`), `limit` (`1`–`1000`, default `400`), and optional `before` cursor for scrolling backward through rotated `.log` files.
 
-Plugins use typed requests with `self.api.websocket`; provider registration belongs to owned runtime capabilities:
+### Control frames and connection lifecycle
 
-```python
-await self.api.websocket.websocket_broadcast({"topic": "my-plugin:status", "data": {"connected": True}})
-await self.api.websocket.websocket_send_to_user({"username": "admin", "data": {"message": "Ready"}})
-await self.api.runtime.register_data_provider("my-plugin:status", handler)
-```
+When an account's role, server assignments, or session validity changes while connected:
 
-See the generated [WebSocket API reference](../plugins/api/websocket.md) for exact request fields and delivery results. Providers enforce access to their own data.
+- **`access_changed` / `policy_changed`:** Sent to affected connections when permissions or per-server grants change; unauthorized topic subscriptions (such as `resource-monitor:<server>` or `server_log:<server>`) are automatically revoked.
+- **Close code `1008` (Policy Violation):** Sent when authentication fails, times out, or the backing session/user is disabled or revoked.
+- **Close code `1001` (Going Away):** Sent during graceful BSM web server shutdown.
+- **Outbound queue limit (`web.outbound_queue_limit`):** Outbound sends are serialized per client with a bounded queue (default `64` messages, configurable from `8` to `1024`). If a slow client falls behind, the newest excess send is dropped rather than blocking other clients.
 
-## Request / Response Messaging
+## Request / response data providers
 
-Clients can request data from real-time topics or plugin-registered data providers by sending a request payload over `/ws`:
+Clients can query registered real-time data providers over `/ws` using `action: "request"` (or `"request_data"`):
 
 ```json
 {
     "action": "request",
-    "topic": "server-status",
-    "data": { "server_name": "my_server" },
+    "topic": "my_plugin:status",
+    "data": {"server_name": "survival"},
     "request_id": "req-101"
 }
 ```
 
-The server routes the request to the registered data provider for `topic`. Handlers can accept `topic`, `data`, `client_id`, and `user` (containing `user.role` like `"admin"` or `"user"`).
-
-The server responds directly to the requesting client:
+The server invokes the provider registered for `topic` and replies directly to the requesting connection:
 
 ```json
 {
     "status": "success",
     "type": "response",
-    "topic": "server-status",
+    "topic": "my_plugin:status",
     "request_id": "req-101",
-    "data": {
-        "server_name": "my_server",
-        "running": true,
-        "players_online": 3
-    }
+    "data": {"connected": true}
 }
 ```
 
-### Role-Based Access in Data Providers
-Because `user` is passed to the data provider callback, handlers can verify permissions based on `user.role`:
-
-```python
-async def admin_status_provider(topic, data, user):
-    if user.role != "admin":
-        raise PermissionError("Admin access required")
-    return {"admin_metrics": ...}
-```
-
-## Wildcard Subscription
-
-Clients can subscribe to the wildcard topic `*`. A client subscribed to `*` will receive **all** broadcast messages sent to any specific topic. This is useful for monitoring tools or dashboards that need a global view of system activity.
-
-If a client is subscribed to both a specific topic (e.g., `event:server_start`) and the wildcard `*`, the system ensures the client only receives the message once.
-
-## Architecture
-
-1.  A client connects to the `/ws` endpoint (e.g., `ws://<host>:<port>/ws`).
-2.  The client immediately sends an authentication message: `{"action": "authenticate", "token": "<your_access_token>"}`.
-3.  The `websocket_router` authenticates the user using the provided token and passes the connection to the `ConnectionManager`.
-4.  The client sends a `subscribe` message to a topic.
-5.  The `websocket_router` calls the `ConnectionManager` to subscribe the client to the topic.
-6.  When an event occurs on the server (e.g., the server status changes), the `ConnectionManager` is used to broadcast a message to all clients subscribed to the relevant topic.
-
-## Available Topics
-
-The following WebSocket topics are available for subscription:
-
-### Event Topics
-
-Event topics broadcast a message when a specific event occurs on the server. The topic name is in the format `event:{event_name}`.
-
-See the generated [event catalog](../plugins/plugin_events.md) for current names and payloads. Only public event declarations are published; plugin listeners and WebSocket subscriptions have different cancellation capabilities.
-
-### Resource Monitor Topics
-
-Resource monitor topics broadcast resource usage information for a specific server. The topic name is in the format `resource-monitor:{server_name}`. Replace `{server_name}` with the name of the server you want to monitor.
+Plugin authors register custom topic providers with `@data_provider("my_plugin:status")` (or `@websocket_provider`) on `PluginBase` and broadcast messages with `self.api.websocket.websocket_broadcast` or `websocket_send_to_user`. Because `@data_provider` registers the topic string verbatim, prefix plugin topics with `<plugin_name>:`. See [Write a plugin](../developer/plugins/introduction.md#diagnostic-and-websocket-data-providers) and the [WebSocket API reference](../plugins/api/websocket.md).
 
 ### Task Manager Topics
 

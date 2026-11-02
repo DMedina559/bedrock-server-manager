@@ -680,7 +680,7 @@ class AppContext:
 
     def _cleanup_plugin_capabilities(self, owner: str) -> None:
         self.diagnostics.remove_owner(f"plugin:{owner}")
-        self.scheduler.remove_owner(f"plugin:{owner}")
+        self.scheduler.tasks.remove_owner(f"plugin:{owner}")
 
     @property
     def plugin_manager(self) -> "PluginManager":
@@ -701,7 +701,9 @@ class AppContext:
                 global_settings_models=self.plugin_service.global_settings_models,
                 server_settings_models=self.plugin_service.server_settings_models,
                 task_manager_provider=lambda: self._task_manager,
-                connection_manager_provider=lambda: self._connection_manager,
+                connection_manager_provider=lambda: self.connection_manager,
+                scheduler_provider=lambda: self.scheduler,
+                diagnostics_provider=lambda: self.diagnostics,
                 diagnostic_cleanup=self._cleanup_plugin_capabilities,
                 diagnostic_failure=(
                     self._diagnostics.record_plugin_failure

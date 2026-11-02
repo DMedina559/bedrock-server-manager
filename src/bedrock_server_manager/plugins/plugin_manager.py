@@ -112,6 +112,8 @@ class PluginManager:
         connection_manager_provider: (
             Callable[[], Optional["ConnectionManager"]] | None
         ) = None,
+        scheduler_provider: Callable[[], Any] | None = None,
+        diagnostics_provider: Callable[[], Any] | None = None,
     ):
         """Initialize the PluginManager with explicit required dependencies."""
         from ..web.access_policy import AccessPolicy
@@ -152,6 +154,8 @@ class PluginManager:
         )
         self.task_manager_provider = task_manager_provider or (lambda: None)
         self.connection_manager_provider = connection_manager_provider or (lambda: None)
+        self.scheduler_provider = scheduler_provider or (lambda: None)
+        self.diagnostics_provider = diagnostics_provider or (lambda: None)
         self.plugin_fastapi_routers: List[APIRouter] = []
         self._router_owners: dict[str, list[APIRouter]] = {}
         self._mount_owners: dict[str, list[Tuple[str, Path, str]]] = {}
@@ -601,7 +605,11 @@ class PluginManager:
                         if not self._register_settings_models(p_name, p_class):
                             continue
                         valid_plugin_names.add(p_name)
-                        description = p_class.__doc__.strip() if p_class.__doc__ else ""
+                        description = (
+                            p_class.__doc__.strip()
+                            if p_class.__doc__
+                            else str(getattr(p_class, "description", "") or "").strip()
+                        )
                         author = getattr(p_class, "author", "N/A")
 
                         existing = self.plugin_config.get(p_name)
@@ -819,22 +827,9 @@ class PluginManager:
 
                     # Dispatch on_load so plugins initialize internal state (e.g. self.router)
                     await self.dispatch_event(instance, "on_load")
-
-                    if callable(getattr(instance, "get_fastapi_routers", None)):
-                        routers = instance.get_fastapi_routers()
-                        if isinstance(routers, list):
-                            await self._register_routers(plugin_name, routers)
-
-                    if callable(getattr(instance, "get_static_mounts", None)):
-                        mounts = instance.get_static_mounts()
-                        if isinstance(mounts, list):
-                            valid_mounts = await run_in_thread(
-                                self._validate_static_mounts,
-                                plugin_name,
-                                mounts,
-                                warn_invalid=True,
-                            )
-                            self._register_mounts(plugin_name, valid_mounts)
+                    await self._register_plugin_extensions(
+                        plugin_name, instance, warn_invalid_mounts=True
+                    )
 
                     self.plugins.append(instance)
                     for owner in self._event_owners(instance):
@@ -1041,6 +1036,192 @@ class PluginManager:
         validate_plugin_routes(
             base, [*self.plugin_fastapi_routers, *extra], self.access_policy
         )
+
+    async def _register_plugin_extensions(
+        self,
+        plugin_name: str,
+        instance: PluginBase,
+        *,
+        warn_invalid_mounts: bool = True,
+    ) -> None:
+        """Discover and register standardized declarative attributes, decorators, and legacy hooks."""
+        owner = f"plugin:{plugin_name}"
+        generation = self.events.owner_generation(owner)
+
+        # 1. Declarative HTTP permissions
+        permissions = getattr(instance, "http_permissions", None)
+        if isinstance(permissions, list) and permissions:
+            for perm_entry in permissions:
+                if isinstance(perm_entry, dict):
+                    raw_perm = perm_entry["permission"]
+                    full_perm = (
+                        raw_perm
+                        if raw_perm.startswith("plugin:")
+                        else f"plugin:{plugin_name}:{raw_perm}"
+                    )
+                    self.access_policy.register(
+                        plugin_name,
+                        full_perm,
+                        perm_entry.get("description", ""),
+                        perm_entry["roles"],
+                    )
+                elif isinstance(perm_entry, (tuple, list)) and len(perm_entry) == 3:
+                    raw_perm = perm_entry[0]
+                    full_perm = (
+                        raw_perm
+                        if raw_perm.startswith("plugin:")
+                        else f"plugin:{plugin_name}:{raw_perm}"
+                    )
+                    self.access_policy.register(
+                        plugin_name,
+                        full_perm,
+                        perm_entry[1],
+                        perm_entry[2],
+                    )
+
+        # 2. Declarative method decorators (@scheduled_task, @diagnostic_provider, @data_provider)
+        scheduler = self.scheduler_provider()
+        diagnostics = self.diagnostics_provider()
+        cm = self.connection_manager_provider()
+
+        for _, method in inspect.getmembers(instance, predicate=inspect.ismethod):
+            for task_cfg in getattr(method, "_scheduled_task_configs", ()):
+                if scheduler is not None:
+                    scheduler.tasks.register(
+                        task_cfg["name"],
+                        method,
+                        owner=owner,
+                        generation=generation,
+                        options_model=task_cfg.get("options_model"),
+                        timeout_seconds=task_cfg.get("timeout_seconds", 300),
+                        requires_server_lock=task_cfg.get("requires_server_lock", True),
+                        with_context=task_cfg.get("with_context", False),
+                        description=task_cfg.get("description", ""),
+                    )
+            for diag_name in getattr(method, "_diagnostic_provider_names", ()):
+                if diagnostics is not None:
+                    self.events.check_owner(owner)
+                    diagnostics.register(
+                        f"plugin:{plugin_name}:{diag_name}",
+                        method,
+                        owner=owner,
+                    )
+            for topic_name in getattr(method, "_data_provider_topics", ()):
+                if cm is not None:
+                    cm.register_data_provider(
+                        topic=topic_name,
+                        handler=method,
+                        plugin_name=plugin_name,
+                    )
+
+        # 3. Declarative scheduled_apis attribute
+        scheduled_apis = getattr(instance, "scheduled_apis", None)
+        if (
+            isinstance(scheduled_apis, list)
+            and scheduled_apis
+            and scheduler is not None
+        ):
+            for api_entry in scheduled_apis:
+                if isinstance(api_entry, dict):
+                    api_target = api_entry.get("api_method") or api_entry.get("api")
+                    if not api_target:
+                        continue
+                    task_name = api_entry.get("name") or (
+                        str(api_target).replace(".", "_")
+                        if isinstance(api_target, str)
+                        else getattr(api_target, "__name__", "api_task")
+                    )
+                    scheduler.tasks.register_api_task(
+                        task_name,
+                        api_target,
+                        owner=owner,
+                        generation=generation,
+                        options_model=api_entry.get("options_model"),
+                        default_options=api_entry.get("default_options"),
+                        slot_field=api_entry.get("slot_field"),
+                        timeout_seconds=api_entry.get("timeout_seconds", 300),
+                        requires_server_lock=api_entry.get(
+                            "requires_server_lock", True
+                        ),
+                        description=api_entry.get("description", ""),
+                    )
+                elif isinstance(api_entry, (tuple, list)) and len(api_entry) == 2:
+                    task_name, api_target = api_entry
+                    scheduler.tasks.register_api_task(
+                        task_name,
+                        api_target,
+                        owner=owner,
+                        generation=generation,
+                    )
+
+        # 4. FastAPI routers (declarative router / routers + deprecated get_fastapi_routers)
+        collected_routers: list[APIRouter] = []
+        seen_router_ids: set[int] = set()
+
+        def _add_router(r: Any) -> None:
+            if r is not None and id(r) not in seen_router_ids:
+                seen_router_ids.add(id(r))
+                collected_routers.append(r)
+
+        single_router = getattr(instance, "router", None)
+        if single_router is not None:
+            _add_router(single_router)
+        multi_routers = getattr(instance, "routers", None)
+        if isinstance(multi_routers, list):
+            for r in multi_routers:
+                _add_router(r)
+
+        has_legacy_routers = (
+            "get_fastapi_routers" in instance.__dict__
+            or getattr(type(instance), "get_fastapi_routers", None)
+            is not PluginBase.get_fastapi_routers
+        )
+        if has_legacy_routers and callable(
+            getattr(instance, "get_fastapi_routers", None)
+        ):
+            logger.warning(
+                "Plugin '%s' uses deprecated 'get_fastapi_routers()'; assign 'router' or 'routers' on the plugin class/instance instead. 'get_fastapi_routers()' will be removed in a future version.",
+                plugin_name,
+            )
+            legacy_routers = instance.get_fastapi_routers()
+            if isinstance(legacy_routers, list):
+                for r in legacy_routers:
+                    _add_router(r)
+
+        if collected_routers:
+            await self._register_routers(plugin_name, collected_routers)
+
+        # 5. Static mounts (declarative static_mounts + deprecated get_static_mounts)
+        collected_mounts: list[Tuple[str, Path, str]] = []
+        decl_mounts = getattr(instance, "static_mounts", None)
+        if isinstance(decl_mounts, list) and decl_mounts:
+            collected_mounts.extend(decl_mounts)
+
+        has_legacy_mounts = (
+            "get_static_mounts" in instance.__dict__
+            or getattr(type(instance), "get_static_mounts", None)
+            is not PluginBase.get_static_mounts
+        )
+        if has_legacy_mounts and callable(getattr(instance, "get_static_mounts", None)):
+            logger.warning(
+                "Plugin '%s' uses deprecated 'get_static_mounts()'; assign 'static_mounts' on the plugin class/instance instead. 'get_static_mounts()' will be removed in a future version.",
+                plugin_name,
+            )
+            legacy_mounts = instance.get_static_mounts()
+            if isinstance(legacy_mounts, list):
+                for m in legacy_mounts:
+                    if m not in collected_mounts:
+                        collected_mounts.append(m)
+
+        if collected_mounts:
+            valid_mounts = await run_in_thread(
+                self._validate_static_mounts,
+                plugin_name,
+                collected_mounts,
+                warn_invalid=warn_invalid_mounts,
+            )
+            if valid_mounts:
+                self._register_mounts(plugin_name, valid_mounts)
 
     async def _register_routers(self, name: str, routers: list[APIRouter]) -> None:
         self._validate_web_routers(routers)
@@ -1405,20 +1586,9 @@ class PluginManager:
                         )
 
                 await self.dispatch_event(instance, "on_load")
-
-                if callable(getattr(instance, "get_fastapi_routers", None)):
-                    routers = instance.get_fastapi_routers()
-                    if isinstance(routers, list):
-                        await self._register_routers(plugin_name, routers)
-
-                if callable(getattr(instance, "get_static_mounts", None)):
-                    mounts = instance.get_static_mounts()
-                    if isinstance(mounts, list):
-                        valid_mounts = await run_in_thread(
-                            self._validate_static_mounts, plugin_name, mounts
-                        )
-                        for mount_entry in valid_mounts:
-                            self._register_mounts(plugin_name, [mount_entry])
+                await self._register_plugin_extensions(
+                    plugin_name, instance, warn_invalid_mounts=False
+                )
 
                 self._start_plugin_task_loops(plugin_name, instance)
 

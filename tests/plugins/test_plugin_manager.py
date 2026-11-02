@@ -431,3 +431,134 @@ async def test_core_content_upload_download_and_delete(admin_auth_client, app_co
     assert (
         await admin_auth_client.get("/api/content/worlds/my_world.mcworld/download")
     ).status_code == 404
+
+
+async def test_standardized_plugin_decorators_and_attributes(
+    app_context, populated_server, running_app, admin_auth_client, plugin_factory
+):
+    plugin = await plugin_factory(
+        "modern_plugin",
+        """
+from fastapi import APIRouter
+from pydantic import BaseModel, Field
+from bedrock_server_manager import (
+    PluginBase,
+    app_event,
+    data_provider,
+    diagnostic_provider,
+    scheduled_task,
+)
+
+
+class JobOptions(BaseModel):
+    step: int = Field(default=3, ge=1)
+
+
+class ModernPlugin(PluginBase):
+    version = "1.0.0"
+    http_permissions = [("manage", "Manage modern plugin", ["admin"])]
+    scheduled_apis = [
+        {"name": "cmd", "api_method": "server.send_command", "requires_server_lock": False}
+    ]
+
+    @app_event("on_load")
+    async def setup(self):
+        self.calls = []
+        self.router = APIRouter()
+        self.router.add_api_route(
+            "/modern-plugin", lambda: {"modern": True}, operation_id="modern_plugin_route"
+        )
+        self.api.runtime.register_api_task(
+            "prune_api",
+            self.api.backup_restore.prune_old_backups,
+        )
+
+    @scheduled_task("custom_job", requires_server_lock=False)
+    async def run_custom(self, server_name: str, options: JobOptions, execution_context: dict):
+        self.calls.append((server_name, options, execution_context["slot"]))
+
+    @diagnostic_provider("metric")
+    async def report_metric(self):
+        return {"count": len(self.calls)}
+
+    @data_provider("modern_topic")
+    async def provide_topic(self):
+        return {"active": True}
+""",
+    )
+
+    assert "/modern-plugin" in running_app.openapi()["paths"]
+    assert (await admin_auth_client.get("/modern-plugin")).json() == {"modern": True}
+    assert (
+        "plugin:modern_plugin:manage"
+        in app_context.plugin_manager.access_policy.descriptions
+    )
+    assert app_context.connection_manager.get_data_provider("modern_topic") is not None
+    assert app_context.scheduler.tasks.available("modern_plugin:custom_job")
+    assert app_context.scheduler.tasks.available("modern_plugin:cmd")
+    assert app_context.scheduler.tasks.available("modern_plugin:prune_api")
+
+    await app_context.scheduler._execute(
+        {"task": "modern_plugin:custom_job", "options": {}},
+        populated_server,
+        "slot-a",
+    )
+    assert plugin.calls == [(populated_server.server_name, {"step": 3}, "slot-a")]
+
+    await app_context.plugin_manager.unload_plugin_by_name("modern_plugin")
+    assert not app_context.scheduler.tasks.available("modern_plugin:custom_job")
+    assert not app_context.scheduler.tasks.available("modern_plugin:cmd")
+    assert not app_context.scheduler.tasks.available("modern_plugin:prune_api")
+    assert app_context.connection_manager.get_data_provider("modern_topic") is None
+
+
+async def test_deprecated_plugin_registrations_log_warnings(
+    app_context, plugin_factory, caplog
+):
+    import logging
+
+    caplog.clear()
+    with caplog.at_level(logging.WARNING):
+        await plugin_factory(
+            "legacy_plugin",
+            """
+from fastapi import APIRouter
+from bedrock_server_manager import PluginBase, app_event
+
+
+class LegacyPlugin(PluginBase):
+    version = "1.0.0"
+
+    @app_event("on_load")
+    async def setup(self):
+        self._router = APIRouter()
+        self._router.add_api_route(
+            "/legacy-plugin", lambda: {"legacy": True}, operation_id="legacy_plugin_route"
+        )
+        async def old_diag():
+            return {"v": 1}
+
+        async def old_topic():
+            return 1
+
+        self.api.runtime.register_http_permission("view", "View legacy", ["admin"])
+        await self.api.runtime.register_diagnostic_provider("old_diag", old_diag)
+        await self.api.runtime.register_data_provider("old_topic", old_topic)
+
+        async def old_task(server_name: str, options: dict):
+            return None
+
+        self.api.runtime.register_scheduled_task("legacy_plugin:old_task", old_task)
+
+    def get_fastapi_routers(self):
+        return [self._router]
+""",
+        )
+
+    messages = "\n".join(record.getMessage() for record in caplog.records)
+    assert "deprecated 'get_fastapi_routers()'" in messages
+    assert "deprecated 'api.runtime.register_http_permission()'" in messages
+    assert "deprecated 'api.runtime.register_diagnostic_provider()'" in messages
+    assert "deprecated 'api.runtime.register_data_provider()'" in messages
+    assert "deprecated 'api.runtime.register_scheduled_task()'" in messages
+    assert app_context.scheduler.tasks.available("legacy_plugin:old_task")

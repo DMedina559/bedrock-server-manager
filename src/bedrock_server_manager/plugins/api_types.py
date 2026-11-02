@@ -129,6 +129,8 @@ from bedrock_server_manager.api.models import (
     RemoveServerBanResponse,
     ReorderAddonsRequest,
     ReorderAddonsResponse,
+    ResetWorldRequest,
+    ResetWorldResponse,
     RestartServerRequest,
     RestartServerResponse,
     RestoreAllRequest,
@@ -587,6 +589,10 @@ class WorldAPI(Protocol):
         self, request: ImportWorldRequest | Mapping[str, object]
     ) -> ImportWorldResponse: ...
 
+    async def reset_world(
+        self, request: ResetWorldRequest | Mapping[str, object]
+    ) -> ResetWorldResponse: ...
+
 
 class RuntimeAPI(Protocol):
     def register_http_permission(
@@ -602,7 +608,21 @@ class RuntimeAPI(Protocol):
         timeout_seconds: float = 300,
         requires_server_lock: bool = True,
         with_context: bool = False,
-    ) -> None: ...
+        description: str = "",
+    ) -> Any: ...
+
+    def register_api_task(
+        self,
+        name: str,
+        api_method: Callable[..., Any] | str,
+        *,
+        options_model: Any = None,
+        default_options: dict[str, Any] | None = None,
+        slot_field: str | None = None,
+        timeout_seconds: float = 300,
+        requires_server_lock: bool = True,
+        description: str = "",
+    ) -> Any: ...
 
     async def run_task(
         self,
@@ -779,5 +799,6 @@ API_METHODS: dict[str, dict[str, str]] = {
         "export_world": "export_world",
         "get_world_name": "get_world_name",
         "import_world": "import_world",
+        "reset_world": "reset_world",
     },
 }

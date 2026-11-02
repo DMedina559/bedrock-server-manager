@@ -170,7 +170,12 @@ def readiness(backups, summaries, value, known):
         if name in enabled
     ):
         reasons.append("A destination copy failed.")
-    if value.get("schedule", {}).get("status") in ("failed", "skipped"):
+    from ..scheduler.engine import status as schedule_status
+
+    sched = schedule_status(backups, value)
+    if (sched and sched.get("last_status") in ("failed", "skipped")) or value.get(
+        "schedule", {}
+    ).get("status") in ("failed", "skipped"):
         reasons.append("A scheduled backup failed or was missed.")
     drill = value.get("drill")
     if drill and drill.get("status") == "passed":

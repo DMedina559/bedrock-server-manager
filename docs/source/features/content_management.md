@@ -4,15 +4,15 @@ Create a [backup](backups.md) before replacing a world, resetting it or changing
 
 ## Import and export worlds
 
-Place a `.mcworld` file in the configured world-content library, or use the enabled content-uploader plugin. Select it for the intended server through the content view. Import replaces the active world. Archive validation/extraction failure preserves the existing world.
+Upload a `.mcworld` file through the Web UI content library (`POST /api/content/upload`) or place it directly in the configured `worlds` content directory. Select it for the intended server through the content view. Import replaces the active world. Archive validation/extraction failure preserves the existing world.
 
-Export packages the active world as a `.mcworld` file in the world-content library. Confirm the exported file exists before copying or deleting source data.
+Export packages the active world as a `.mcworld` file in the world-content library, where it can be downloaded through the Web UI (`GET /api/content/worlds/{filename}/download`). Confirm the exported file exists before copying or deleting source data.
 
 Reset removes the active world; it does not mean deleting every world belonging to every server. Bedrock creates the replacement on the next start using the configured world properties. Save anything you want to keep first.
 
 ## Install and manage addons
 
-Place `.mcpack` or `.mcaddon` files in the addon-content library and select them for installation. Packs must be compatible with your Bedrock version and world. Some features require Bedrock experiment settings.
+Upload `.mcpack` or `.mcaddon` files through the Web UI or place them in the `addons` content library, then select them for installation. Packs must be compatible with your Bedrock version and world. Some features require Bedrock experiment settings.
 
 ```{figure} ../../images/web_install_addons.png
 :alt: Web interface for installing addons on the selected server
@@ -32,7 +32,7 @@ Enabling and disabling packs changes the world's activation lists. Disabled pack
 Inspect installed behavior and resource packs, adjust their order, and enable or disable them.
 ```
 
-Removing a pack can affect existing world content. Back up the world, check task results and verify it in-game after restarting. The [manual content guide](../extras/install_content.md) explains file placement when the upload/download plugins are unavailable.
+Removing a pack can affect existing world content. Back up the world, check task results and verify it in-game after restarting. The [manual content guide](../extras/install_content.md) explains direct filesystem placement in the content library.
 
 ## Choose a subpack
 
@@ -45,3 +45,13 @@ Some resource packs declare multiple subpacks. In **Manage Installed Addons**, o
 
 Choose a declared subpack from the installed resource pack's selector.
 ```
+
+## Content library management, icons, and archive safety
+
+Manage staged files in `<data_dir>/content/worlds/` and `<data_dir>/content/addons/` through the **Content Library** page or API:
+
+- **List & download:** List staged worlds (`GET /api/content/worlds`) and addons (`GET /api/content/addons`), or download staged files (`GET /api/content/worlds/{filename}/download` and `GET /api/content/addons/{filename}/download`, requires `content:download`).
+- **Upload:** Upload `.mcworld`, `.mcpack`, `.mcaddon`, or `.zip` packages (`POST /api/content/upload`, requires `content:upload`). Passing `overwrite=true` replaces an existing file of the same name; otherwise conflicts return `409 Conflict`.
+- **Delete:** Remove staged files from the content library (`DELETE /api/content/{category}/{filename}` where `category` is `worlds` or `addons`, requires `content:delete`).
+- **World & addon icons:** Authenticated endpoints serve the active world's icon (`GET /api/server/{server_name}/world/icon`, fallback `/image/icon.png`) and installed pack icons (`GET /api/server/{server_name}/addons/{pack_type}/{pack_uuid}/icon`).
+- **Archive & filename validation:** Filenames are restricted to `[a-zA-Z0-9_.\- ()\[\]]+` (up to 200 characters) with no leading dot or trailing space/dot. Uploaded archives are inspected before extraction to reject path traversal, absolute paths, symlinks, encrypted ZIP entries, nested ZIP bombs, excessive entry counts (>100,000 entries), excessive expansion (>10 GiB), or extreme compression ratios.

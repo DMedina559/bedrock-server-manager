@@ -4,7 +4,8 @@ from bedrock_server_manager import PluginBase, app_event
 
 
 class PongPlugin(PluginBase):
-    version = "2.0.0"
+    version = "2.1.0"
+    author = "dmedina559"
     name = "Pong Example"
     description = "Log server pings from the ping example."
     dependencies = ["ping_plugin"]

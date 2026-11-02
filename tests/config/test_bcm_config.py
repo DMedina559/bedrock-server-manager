@@ -257,3 +257,72 @@ def test_bootstrap_migration_rejects_conflicts(isolated_bcm_config):
     with pytest.raises(ConfigurationError, match="Conflicting"):
         bcm_config.get_config_path()
     assert (root / "bedrock_server_manager.json").exists()
+
+
+@pytest.mark.parametrize("driver", ["sqlite", "sqlite+aiosqlite"])
+@pytest.mark.parametrize("source", ["cli", "env", "file"])
+def test_explicit_database_selection_never_moves_files(
+    clean_env, tmp_path, monkeypatch, driver, source
+):
+    bcm_config.set_custom_config_dir(str(tmp_path))
+    legacy = tmp_path / "bedrock-server-manager.db"
+    nested = tmp_path / "db" / legacy.name
+    nested.parent.mkdir()
+    # Neither validity nor user/server counts authorize touching an explicit DB.
+    legacy.write_bytes(b"legacy database")
+    nested.write_bytes(b"nested database")
+    wal = Path(f"{legacy}-wal")
+    wal.write_bytes(b"pending writes")
+    url = f"{driver}:///{legacy}"
+    if source == "cli":
+        bcm_config.set_custom_db_url(url)
+    elif source == "env":
+        monkeypatch.setenv("BSM_DB_URL", url)
+    else:
+        bcm_config.save_config({"db_url": url})
+
+    assert bcm_config.load_config()["db_url"] == url
+    assert legacy.read_bytes() == b"legacy database"
+    assert nested.read_bytes() == b"nested database"
+    assert wal.read_bytes() == b"pending writes"
+
+
+def test_legacy_default_preserves_live_database_and_wal(clean_env, tmp_path):
+    import sqlite3
+
+    bcm_config.set_custom_config_dir(str(tmp_path))
+    legacy = tmp_path / "bedrock-server-manager.db"
+    with sqlite3.connect(legacy) as db:
+        db.execute("PRAGMA journal_mode=WAL")
+        db.execute("CREATE TABLE settings (value TEXT)")
+        db.execute("INSERT INTO settings VALUES ('retained')")
+        db.commit()
+        wal = Path(f"{legacy}-wal")
+        before = wal.read_bytes()
+        assert bcm_config.load_config()["db_url"] == f"sqlite:///{legacy}"
+        assert wal.read_bytes() == before
+        assert db.execute("SELECT value FROM settings").fetchone() == ("retained",)
+    assert not (tmp_path / "db" / legacy.name).exists()
+
+
+@pytest.mark.parametrize("invalid", [False, True])
+def test_conflicting_default_databases_are_never_deleted(clean_env, tmp_path, invalid):
+    import sqlite3
+
+    from bedrock_server_manager.error import ConfigurationError
+
+    bcm_config.set_custom_config_dir(str(tmp_path))
+    legacy = tmp_path / "bedrock-server-manager.db"
+    nested = tmp_path / "db" / legacy.name
+    nested.parent.mkdir()
+    for path in (legacy, nested):
+        if invalid:
+            path.write_bytes(b"unreadable database")
+        else:
+            with sqlite3.connect(path) as db:
+                db.execute("CREATE TABLE settings (value TEXT)")
+                db.execute("INSERT INTO settings VALUES (?)", (path.name,))
+    before = {p: p.read_bytes() for p in (legacy, nested)}
+    with pytest.raises(ConfigurationError, match="Both legacy and nested"):
+        bcm_config.load_config()
+    assert {p: p.read_bytes() for p in before} == before

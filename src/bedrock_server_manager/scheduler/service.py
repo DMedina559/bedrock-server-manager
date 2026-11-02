@@ -1,22 +1,30 @@
-"""Lifecycle-owned scheduler, task registry, and backup maintenance orchestration."""
+"""Lifecycle-owned scheduler, task orchestration, and background worker loop."""
+
+from __future__ import annotations
 
 import asyncio
-import inspect
+import json
 import logging
-from typing import TYPE_CHECKING
+from contextlib import nullcontext
+from datetime import datetime, timezone
+from typing import TYPE_CHECKING, Any
 
 if TYPE_CHECKING:
     from ..api.models.scheduler import ListSchedulesResponse
 
-from datetime import datetime, timezone
-
 from ..logging import RepeatedFailureReporter
 from ..utils.threads import run_in_thread
+from .builtin import register_builtin_tasks
 from .engine import occurrences, signature
 from .runner import DeferredRun, next_attempt, run_schedule
+from .tasks import TaskRegistry
+
+logger = logging.getLogger(__name__)
 
 
 class Scheduler:
+    """Manage scheduled server tasks and the background execution loop."""
+
     def __init__(self, context):
         self._log_failures = RepeatedFailureReporter(logging.getLogger(__name__))
         self.context = context
@@ -26,129 +34,32 @@ class Scheduler:
         self._limit = 4
         self._interval = 60
         self._wake = asyncio.Event()
-        self._handlers = {}
+        self.tasks = TaskRegistry(context)
+        self._handlers = self.tasks.handlers
         self._settings_lock = asyncio.Lock()
         self._migration_lock = asyncio.Lock()
         self.last_tick_at = None
         self._last_tick_monotonic = None
         self.last_error_type = None
+        self._register_builtin_tasks()
 
     @property
     def repository(self):
         return self.context.storage.scheduler_repo
 
-    def register(
-        self,
-        name,
-        handler,
-        *,
-        owner,
-        generation,
-        options_model=None,
-        timeout_seconds=300,
-        requires_server_lock=True,
-        with_context=False,
-    ):
-        if not inspect.iscoroutinefunction(handler):
-            raise TypeError("Scheduled task handlers must be async functions")
-        import re
-
-        if (
-            not re.fullmatch(r"[a-zA-Z0-9_.-]+:[a-zA-Z0-9_.-]+", name)
-            or len(name) > 160
-        ):
-            raise ValueError(
-                "Scheduled task names require a namespace and name within 160 characters"
-            )
-        if not name.startswith(owner.removeprefix("plugin:") + ":"):
-            raise ValueError("Scheduled task names must use the plugin namespace")
-        if name in self._handlers and self.available(name):
-            raise ValueError("Scheduled task is already registered")
-        from pydantic import BaseModel
-
-        if options_model is not None and (
-            not inspect.isclass(options_model)
-            or not issubclass(options_model, BaseModel)
-        ):
-            raise TypeError("Task options_model must be a Pydantic model class")
-        if (
-            type(timeout_seconds) not in (int, float)
-            or not 1 <= timeout_seconds <= 86400
-        ):
-            raise ValueError("Task timeout must be from 1 through 86400 seconds")
-        if options_model is not None:
-            options_model.model_json_schema()
-        self._handlers[name] = (
-            handler,
-            owner,
-            generation,
-            options_model,
-            timeout_seconds,
-            requires_server_lock,
-            with_context,
-        )
-
-    def remove_owner(self, owner):
-        for name, entry in list(self._handlers.items()):
-            if entry[1] == owner:
-                self._handlers.pop(name, None)
-
-    def available(self, name):
-        if name in ("backup", "verify"):
-            return True
-        entry = self._handlers.get(name)
-        if entry is None:
-            return False
-        try:
-            self.context.events.check_owner(entry[1], entry[2])
-        except RuntimeError:
-            self._handlers.pop(name, None)
-            return False
-        return True
+    def _register_builtin_tasks(self) -> None:
+        """Register core backup/restore and server management APIs into the scheduler."""
+        register_builtin_tasks(self)
 
     async def configurations(self, server_name=None):
         async with self._migration_lock:
             return await self._configurations(server_name)
 
     async def _configurations(self, server_name=None):
-        import hashlib
-
-        # Existing settings remain a compatibility adapter. Stable IDs prevent duplication.
         rows = await self.repository.list()
-        known = {row[0]: row for row in rows}
-        changed = False
-        for server, raw in self.context.settings.get("backups.schedules", {}).items():
-            name = "backup-" + hashlib.sha256(server.encode()).hexdigest()[:20]
-            config = raw.model_dump() if hasattr(raw, "model_dump") else raw
-            config = dict(config, task="backup", server_name=server, options={})
-            state = None
-            if name not in known:
-                try:
-                    instance = self.context.get_server(
-                        server, require_installation=False
-                    )
-                    async with instance.operation_lock:
-                        value = await run_in_thread(instance.backups.catalog.load)
-                    state = value.get("schedule", {})
-                except Exception as error:
-                    self._log_failures.report(
-                        "legacy-schedule", "Scheduler %s failed: %s", error
-                    )
-                    state = {}
-            if name not in known or known[name][1] != config:
-                await self.repository.save(
-                    name, config, legacy_server=server, initial_state=state
-                )
-                changed = True
-        legacy = self.context.settings.get("backups.schedules", {})
-        for name, _, _, server in rows:
-            if server and server not in legacy:
-                await self.repository.delete(name)
-                changed = True
-        loaded = await self.repository.list() if changed else rows
         return {
             name: (config, state, server)
-            for name, config, state, server in loaded
+            for name, config, state, server in rows
             if server_name is None or config["server_name"] == server_name
         }
 
@@ -164,7 +75,7 @@ class Scheduler:
                 self.context.get_server(
                     config["server_name"], require_installation=False
                 )
-                available = self.available(config["task"])
+                available = self.tasks.available(config["task"])
             except Exception as error:
                 self._log_failures.report(
                     "availability", "Scheduler %s failed: %s", error
@@ -204,25 +115,30 @@ class Scheduler:
                     last_evaluated_at=record.get("last_evaluated_at"),
                 )
             )
-        types = ["backup", "verify"] + [
-            name for name in list(self._handlers) if self.available(name)
+        available_handlers = [
+            name for name in list(self._handlers) if self.tasks.available(name)
         ]
+        types = sorted(available_handlers)
         from ..utils.timezones import schedule_timezones, timezone_database_available
 
         return ListSchedulesResponse(
             schedules=entries,
-            task_types=sorted(types),
+            task_types=types,
             task_definitions={
                 name: {
                     "options_schema": (
-                        entry[3].model_json_schema() if entry[3] else None
+                        entry.options_model.model_json_schema()
+                        if entry.options_model
+                        else None
                     ),
-                    "timeout_seconds": entry[4],
-                    "requires_server_lock": entry[5],
-                    "with_context": entry[6],
+                    "timeout_seconds": entry.timeout_seconds,
+                    "requires_server_lock": entry.requires_server_lock,
+                    "with_context": entry.with_context,
+                    "description": entry.description,
+                    "owner": entry.owner,
                 }
                 for name, entry in list(self._handlers.items())
-                if self.available(name)
+                if self.tasks.available(name)
             },
             server_time=datetime.now(timezone.utc).isoformat(),
             host_timezone=datetime.now().astimezone().tzname(),
@@ -238,50 +154,30 @@ class Scheduler:
         )
         task = request.configuration.task
         options = request.configuration.options
-        allowed = {
-            "backup": {"encrypted", "mode", "components"},
-            "verify": {"minimum_age_hours"},
-        }.get(task)
-        if allowed is not None and set(options) - allowed:
-            raise UserInputError("Unknown scheduled task option")
-        if task == "backup":
-            from ..api.models.backup_restore import CreateSnapshotRequest
-            from ..error import BackupRestoreError
-
-            try:
-                CreateSnapshotRequest(
-                    server_name=request.configuration.server_name or "all", **options
+        definition = self.tasks.get_task_definition(task)
+        if definition is not None:
+            if definition.options_validator is not None:
+                definition.options_validator(
+                    self, request.configuration.server_name, options
                 )
-                from ..backups.selection import selection
-
-                selection(
-                    self.context.settings,
-                    options.get("mode"),
-                    options.get("components"),
-                )
-            except (ValueError, TypeError, BackupRestoreError) as error:
-                raise UserInputError(
-                    "Invalid backup content or encryption options"
-                ) from error
-        if task == "verify" and (
-            type(options.get("minimum_age_hours", 168)) is not int
-            or not 0 <= options.get("minimum_age_hours", 168) <= 8760
-        ):
-            raise UserInputError("Verification age must be an integer from 0 to 8760")
-        if ":" in task and self.available(task):
-            entry = self._handlers[task]
-            if entry[3] is not None:
-                import json
-
+            elif definition.options_model is not None:
                 try:
                     from ..services.plugin_service import _json_settings
 
-                    checked = _json_settings(
-                        entry[3].model_validate_json(json.dumps(options), strict=True)
+                    validated_model = definition.options_model.model_validate_json(
+                        json.dumps(options), strict=True
                     )
+                    if definition.exclude_unset_options:
+                        checked = json.loads(
+                            validated_model.model_dump_json(exclude_unset=True)
+                        )
+                    else:
+                        checked = _json_settings(validated_model)
                 except ValueError as error:
                     raise UserInputError(
                         "Invalid scheduled plugin task options"
+                        if definition.owner.startswith("plugin:")
+                        else "Invalid scheduled task options"
                     ) from error
                 request = request.model_copy(
                     update={
@@ -303,25 +199,6 @@ class Scheduler:
                 configuration = configuration.model_copy(update={"timezone": zone})
             if previous is None and len(rows) >= 500:
                 raise UserInputError("At most 500 schedules may be configured")
-            if previous and previous[2]:
-                if (
-                    task != "backup"
-                    or request.configuration.server_name != previous[2]
-                    or options
-                ):
-                    raise UserInputError(
-                        "Legacy schedules retain their backup task and server; create a new schedule instead"
-                    )
-                config = configuration.model_dump(
-                    exclude={"task", "server_name", "options"}
-                )
-                legacy = self.context.settings.get("backups.schedules", {})
-                legacy = {
-                    k: v.model_dump() if hasattr(v, "model_dump") else v
-                    for k, v in legacy.items()
-                }
-                legacy[previous[2]] = config
-                await self.context.settings.set("backups.schedules", legacy)
             await self.repository.save(request.schedule_id, configuration.model_dump())
             self._wake.set()
 
@@ -334,14 +211,6 @@ class Scheduler:
                 raise UserInputError(
                     "Wait for the active schedule run to finish before removing it"
                 )
-            if previous and previous[2]:
-                legacy = self.context.settings.get("backups.schedules", {})
-                legacy = {
-                    k: v.model_dump() if hasattr(v, "model_dump") else v
-                    for k, v in legacy.items()
-                    if k != previous[2]
-                }
-                await self.context.settings.set("backups.schedules", legacy)
             await self.repository.delete(name)
             self._wake.set()
 
@@ -354,6 +223,16 @@ class Scheduler:
         started = time.monotonic()
         failure = None
         run_id = uuid4().hex
+        definition = self.tasks.get_task_definition(config["task"])
+        owner = (
+            definition.owner
+            if definition is not None
+            else (
+                "application"
+                if ":" not in config["task"]
+                else "plugin:" + config["task"].split(":", 1)[0]
+            )
+        )
         with self.context.events.operations.scope(
             "scheduler.run", server_name=server.server_name
         ) as operation:
@@ -391,95 +270,64 @@ class Scheduler:
                         error=failure,
                         correlation_id=current_correlation_id(),
                         operation_id=operation.snapshot.operation_id,
-                        owner=(
-                            "application"
-                            if ":" not in config["task"]
-                            else "plugin:" + config["task"].split(":", 1)[0]
-                        ),
+                        owner=owner,
                     )
 
     async def _execute(self, config, server, slot, *, execution=None):
-        if config["task"] == "backup":
-            result = await self.context.api.backup_restore.create_server_backup(
-                request={
-                    "server_name": server.server_name,
-                    "purpose": "scheduled",
-                    "schedule_slot": slot,
-                    **config.get("options", {}),
-                }
-            )
-            if result.status != "success":
-                raise RuntimeError("Scheduled backup did not complete")
-        elif config["task"] == "verify":
-            from datetime import timedelta
+        definition = self.tasks.get_task_definition(config["task"])
+        if definition is None:
+            raise RuntimeError("Scheduled task handler is unavailable")
 
-            age = config.get("options", {}).get("minimum_age_hours", 168)
-            failed = 0
-            for item in await server.backups.list_snapshots():
-                if server.operation_lock.waiting:
-                    raise DeferredRun("Verification yielded to interactive work")
-                checked = item.verification.verified_at
-                if (
-                    item.verification.status != "verified"
-                    or not checked
-                    or datetime.now(timezone.utc) - datetime.fromisoformat(checked)
-                    >= timedelta(hours=age)
-                ):
-                    try:
-                        await server.backups.verify_snapshot(item.backup_id)
-                    except Exception as error:
-                        self._log_failures.report(
-                            "verification", "Scheduler %s failed: %s", error
-                        )
-                        failed += 1
-            if failed:
-                raise RuntimeError(
-                    "Some scheduled archive verifications failed; inspect backup health"
+        manager = self.context._plugin_manager
+        current = asyncio.current_task()
+        tasks = (
+            manager.plugin_tasks.setdefault(
+                definition.owner.removeprefix("plugin:"), []
+            )
+            if manager and definition.owner.startswith("plugin:")
+            else []
+        )
+        if current is not None and definition.owner.startswith("plugin:"):
+            tasks.append(current)
+        try:
+            from ..events.bus import current_correlation_id
+
+            options = dict(config.get("options", {}))
+            if definition.options_model is not None:
+                from ..services.plugin_service import _json_settings
+
+                validated = definition.options_model.model_validate_json(
+                    json.dumps(options), strict=True
                 )
-        else:
-            if not self.available(config["task"]):
-                raise RuntimeError("Scheduled task handler is unavailable")
-            handler, owner, _, model, timeout, requires_lock, with_context = (
-                self._handlers[config["task"]]
-            )
-            manager = self.context._plugin_manager
-            current = asyncio.current_task()
-            tasks = (
-                manager.plugin_tasks.setdefault(owner.removeprefix("plugin:"), [])
-                if manager
-                else []
-            )
-            if current is not None:
-                tasks.append(current)
-            try:
-                import json
-                from contextlib import nullcontext
-
-                from ..events.bus import current_correlation_id
-
-                options = dict(config.get("options", {}))
-                if model is not None:
-                    from ..services.plugin_service import _json_settings
-
-                    options = _json_settings(
-                        model.model_validate_json(json.dumps(options), strict=True)
-                    )
-                kwargs = {"server_name": server.server_name, "options": options}
-                if with_context:
-                    kwargs["execution_context"] = {
-                        "slot": slot,
-                        "idempotency_key": slot,
-                        "attempt": (execution or {}).get("attempts", 1),
-                        "correlation_id": current_correlation_id(),
-                    }
-                async with asyncio.timeout(timeout):
-                    async with (
-                        server.operation_lock if requires_lock else nullcontext()
-                    ):
-                        await handler(**kwargs)
-            finally:
-                if current in tasks:
-                    tasks.remove(current)
+                if definition.exclude_unset_options:
+                    options = json.loads(validated.model_dump_json(exclude_unset=True))
+                else:
+                    options = _json_settings(validated)
+            kwargs: dict[str, Any] = {
+                "server_name": server.server_name,
+                "options": options,
+            }
+            if definition.with_context:
+                kwargs["execution_context"] = {
+                    "slot": slot,
+                    "idempotency_key": slot,
+                    "attempt": (execution or {}).get("attempts", 1),
+                    "correlation_id": current_correlation_id(),
+                }
+            async with (
+                asyncio.timeout(definition.timeout_seconds)
+                if definition.timeout_seconds is not None
+                else nullcontext()
+            ):
+                async with (
+                    server.operation_lock
+                    if definition.manage_server_lock
+                    else nullcontext()
+                ):
+                    await definition.handler(**kwargs)
+        finally:
+            if current in tasks:
+                tasks.remove(current)
 
     async def _maintain_server(self, name, definitions=None):
         server = self.context.get_server(name, require_installation=False)
@@ -492,7 +340,8 @@ class Scheduler:
             )
             for identifier, (config, state, legacy) in entries.items():
                 try:
-                    if not self.available(config["task"]):
+                    definition = self.tasks.get_task_definition(config["task"])
+                    if definition is None:
                         raise ValueError("handler_unavailable")
                     from ..utils.timezones import resolve_timezone
 
@@ -506,24 +355,16 @@ class Scheduler:
 
                         await self.repository.mutate(identifier, repaired)
 
-                    async def execute(slot, execution):
-                        await self.execute(identifier, config, server, slot, execution)
+                    async def execute(
+                        slot,
+                        execution,
+                        _id=identifier,
+                        _cfg=config,
+                    ):
+                        await self.execute(_id, _cfg, server, slot, execution)
 
-                    async def reconcile(slot):
-                        # Only backups consult archives. Other task types are independent.
-                        async with server.operation_lock:
-
-                            def _has_slot_archive() -> bool:
-                                value = server.backups.catalog.load()
-                                return any(
-                                    item.get("schedule_slot") == slot
-                                    and (
-                                        server.backups.catalog.directory / filename
-                                    ).is_file()
-                                    for filename, item in value["archives"].items()
-                                )
-
-                            return await run_in_thread(_has_slot_archive)
+                    async def reconcile(slot, _def=definition):
+                        return await _def.reconcile_handler(server, slot)
 
                     performed = (
                         await run_schedule(
@@ -532,11 +373,12 @@ class Scheduler:
                             config,
                             server,
                             execute,
-                            reconcile=reconcile if config["task"] == "backup" else None,
-                            check_contention=(
-                                config["task"] in ("backup", "verify")
-                                or self._handlers[config["task"]][5]
+                            reconcile=(
+                                reconcile
+                                if definition.reconcile_handler is not None
+                                else None
                             ),
+                            check_contention=definition.requires_server_lock,
                         )
                         or performed
                     )
@@ -584,23 +426,11 @@ class Scheduler:
                 raise UserInputError("Schedule changed; refresh before trying again")
             if request.action in ("pause", "resume"):
                 configuration = dict(config, enabled=request.action == "resume")
-                if previous[2]:
-                    legacy = self.context.settings.get("backups.schedules", {})
-                    legacy = {
-                        k: v.model_dump() if hasattr(v, "model_dump") else v
-                        for k, v in legacy.items()
-                    }
-                    legacy[previous[2]] = {
-                        k: v
-                        for k, v in configuration.items()
-                        if k not in ("task", "server_name", "options")
-                    }
-                    await self.context.settings.set("backups.schedules", legacy)
                 await self.repository.save(request.schedule_id, configuration)
                 self._wake.set()
                 return
             else:
-                if not self.available(config["task"]):
+                if not self.tasks.available(config["task"]):
                     raise UserInputError("Scheduled task handler is unavailable")
 
                 self.context.get_server(
@@ -646,7 +476,7 @@ class Scheduler:
 
         def unavailable(config):
             if (
-                not self.available(config["task"])
+                not self.tasks.available(config["task"])
                 or config["server_name"] not in self.context.state.servers.servers
             ):
                 return True
@@ -815,4 +645,6 @@ class Scheduler:
             self.task.cancel()
             await asyncio.gather(self.task, return_exceptions=True)
             self.task = None
-        self._handlers.clear()
+        for name, entry in list(self._handlers.items()):
+            if entry.owner != "application":
+                self._handlers.pop(name, None)

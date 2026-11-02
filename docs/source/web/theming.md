@@ -107,15 +107,19 @@ Palette JSON contains the following fields:
 
 Personal palette names and descriptions belong to the browser's saved palette. Exported CSS contains the color rules; it does not register that palette description with the server.
 
-## Installing a shared CSS theme
+## Installing a shared CSS theme or custom panorama
 
-Place a CSS file in the backend's `themes` directory in your application data directory. The exact application data path depends on your installation.
+Place a CSS file in the backend's `themes` directory under your application data directory (`<data_dir>/themes/`, configurable via `paths.themes` in Global Settings).
 
 For example, `my-theme.css` uses the theme identifier `my-theme`. Prefer a simple filename and avoid the built-in identifiers listed above, because the frontend loads those identifiers from its bundled stylesheets.
 
-The backend must list the identifier through `GET /api/info/themes` and serve the stylesheet at `/themes/my-theme.css`. Reload Appearance after installing the file, then select the theme from **Built-in and installed CSS themes**.
+The backend lists discovered identifiers through `GET /api/info/themes` and serves the stylesheet at `/themes/my-theme.css`. Reload Appearance after installing the file, then select the theme from **Built-in and installed CSS themes**.
 
 Selecting the theme saves its identifier through `POST /api/account/theme`. Appearance does not upload CSS files to the server; installation is an administrator task.
+
+### Custom background panorama
+
+To replace the default background panorama across the Web UI, place an image named `panorama.jpeg`, `panorama.jpg`, `panorama.png`, or `panorama.webp` directly in the **configuration directory** (`<config_dir>/panorama.<ext>`). BSM serves the custom image at `GET /api/panorama` (falling back to `/image/panorama.jpeg` when no custom file is present). Users can toggle **Panorama** and adjust **Panorama visibility** in **Appearance**.
 
 ## Writing a CSS theme
 

@@ -26,7 +26,7 @@ See the [documentation](https://bedrock-server-manager.readthedocs.io/en/latest/
 Quick links:
 
 - [Changelog](https://bedrock-server-manager.readthedocs.io/en/latest/changelog.html)
-- [Installation](https://bedrock-server-manager.readthedocs.io/en/latest/general/introduction.html#prerequisites)
+- [Installation](https://bedrock-server-manager.readthedocs.io/en/latest/extras/installation.html)
 - [Docker Installation](https://bedrock-server-manager.readthedocs.io/en/latest/extras/docker.html)
 - [CLI Commands](https://bedrock-server-manager.readthedocs.io/en/latest/cli/commands.html)
 - [Web Interface](https://bedrock-server-manager.readthedocs.io/en/latest/web/general.html)

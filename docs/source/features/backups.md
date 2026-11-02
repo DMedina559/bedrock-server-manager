@@ -52,10 +52,17 @@ needed.
 
 | Setting | Default | Purpose |
 |---|---|---|
-| `backups.mode` | `selected` | World only, selected components, or full directory |
+| `backups.mode` | `selected` | World only (`world`), selected components (`selected`), or full directory (`full`) |
 | `backups.components` | World, properties, allowlist, permissions, script configuration and BSM server settings | Contents used in selected mode |
+| `backups.compression` | `balanced` | Archive compression profile: `fast` (gzip level 1), `balanced` (level 6), or `small` (level 9) |
 | `backups.encryption` | `false` | Encryption default, overridable for an individual capture |
-| `backups.verify_after_create` | `false` | Optional full readback after creation |
+| `backups.verify_after_create` | `false` | Optional full readback immediately after creation |
+| `retention.backups` | `3` | Per-server count of recent recovery points to retain (`0` disables automatic pruning) |
+| `backups.keep_daily` | `7` | Daily retention buckets (`0`–`365`) |
+| `backups.keep_weekly` | `4` | Weekly retention buckets (`0`–`104`) |
+| `backups.keep_monthly` | `3` | Monthly retention buckets (`0`–`120`) |
+| `backups.storage_budget_bytes` | `0` | Optional local per-server archive storage budget in bytes (`0` disables budget trimming) |
+| `backups.destinations` | `[]` | Off-host copy destinations (`id`, `name`, `path`, `enabled`, `keep_count`, `storage_budget_bytes`, `min_free_bytes`) |
 
 A full-directory default also requires servers to be stopped for captures. For
 frequent pre-start protection, world only avoids copying binaries and bundled
@@ -121,7 +128,7 @@ encryption. The manifest, filenames, settings, and payload are encrypted; a smal
 public header identifies the format and key ID. Unencrypted archives and explicit
 decrypted exports expose readable server secrets.
 
-BSM stores keys privately at `<config_dir>/credentials/backup-keys.json`. Rotating
+BSM stores keys privately at `<config_dir>/credentials/backup.key`. Rotating
 the active key affects future captures; older archives still require their
 original key. Keep their emergency kits. Losing every copy of the matching key
 makes an encrypted archive unrecoverable.
@@ -131,65 +138,17 @@ archive. This does not prove the kit is safely stored elsewhere. Host permission
 limit access to stored keys, but an administrator or in-process Python plugin
 with BSM's operating-system permissions can access them.
 
-## Schedule backup and verification tasks
+## Schedule automated backups and verification
 
-Open **Scheduler** as an administrator and select **Add schedule**. Give the job
-an ID using letters, digits, underscores, dots or hyphens (1–100 characters, no
-spaces), choose a server, and select **Backup** or **Verify backups**. New jobs are
-paused until enabled.
+Configure recurring backup creation (`backup:create`), archive verification (`backup:verify`), and retention pruning (`backup:prune`) on the **Scheduler** page:
 
-- **Backup** jobs use the global encryption default. Their content picker can
-  inherit global contents or choose any of the same three modes as manual
-  creation. A full-directory job requires Minecraft to be stopped when it runs.
-- **Verify backups** jobs check unverified archives and archives older than the
-  configured recheck age. They do not create backups or run Minecraft.
+- **`backup:create`** — Captures a `.bsmbackup` snapshot archive using global encryption and content defaults unless overridden in the schedule's options (`encrypted`, `mode`, `components`). Full-directory schedules (`mode="full"`) require Minecraft to be stopped when the job runs.
+- **`backup:verify`** — Verifies unverified archives and archives whose last verification is older than `minimum_age_hours` (default `168` hours) without stopping Minecraft.
+- **`backup:prune`** — Prunes older recovery points for the server according to configured retention policies.
 
-Choose a daily time, weekdays, timezone, catch-up behavior and staggering window.
-BSM stores schedules and run history across restarts. The page shows the next run,
-recent outcomes and whether the task is available. Existing backup schedules are
-retained. A running job must finish before its schedule can be removed.
+Scheduled backups use the same hooks, encryption defaults, optional readback verification, local retention, and external destination-copy policies as manual captures. Backup manifests and archive filenames record timestamps in UTC.
 
-### Timezones and timestamps
-
-Set the application timezone in **Global Settings → General** using an IANA region
-such as `America/Los_Angeles`. The setting is `general.timezone`, which defaults
-to `UTC`. New schedules use the application timezone when available; existing jobs
-keep their saved timezone until edited.
-
-For Pacific time, choose `America/Los_Angeles`, rather than `PDT` or `PST`. A daily
-14:42 job remains at 14:42 Pacific through winter and summer. BSM calculates UTC
-occurrences from the saved region. Repeated daylight-saving hours run once; a
-missing local time moves forward through the daylight-saving gap. Changing the
-host timezone does not shift a saved job.
-
-BSM includes the portable `tzdata` dependency. If the scheduler reports missing
-regional timezone data, UTC remains available. Repair `tzdata` in the Python
-environment running BSM and restart the manager before using regional schedules.
-
-Backup manifests, event and diagnostic timestamps, log timestamps and timestamped
-filenames use UTC. The frontend account display preference can show application
-time, browser-local time or UTC; timestamp details show the exact UTC instant.
-Changing display timezone does not rename archives or change their recorded time.
-Raw log text remains in UTC.
-
-### Missed runs and failures
-
-A new, changed or re-enabled job begins with its next occurrence. With catch-up
-enabled, a restart runs the latest missed occurrence rather than replaying every
-missed run. Without catch-up, occurrences more than two minutes late are skipped.
-A stable server-specific offset provides staggering. Work runs serially per
-server, with bounded concurrency across servers.
-
-Persisted checkpoints prevent duplicate captures for a published occurrence.
-Failures back off and stop after three attempts for that occurrence. Interrupted
-runs are recorded on startup. Unavailable plugin-provided tasks remain visible
-and require their plugin to register the handler again before they can resume.
-BSM provides backup and verification tasks; plugins may add other task types.
-
-Scheduled backups use the normal hooks, encryption defaults, optional verification,
-retention and destination-copy policies. Scheduler status is also included in
-application health and diagnostics, including its heartbeat, active jobs and
-recorded run failures.
+See [Schedule automated tasks](scheduler.md) for the full list of built-in server tasks, IANA timezone configuration, daylight-saving behavior, staggering, catch-up, retry policies, and manual execution controls.
 
 ## Back up before starting Minecraft
 
@@ -199,12 +158,13 @@ packs. Leave its server selection empty to cover all valid servers.
 
 | Plugin setting | Default | Behavior |
 |---|---|---|
-| `enable_backup_on_start` | `true` | Back up before starting selected servers |
+| `servers` | `[]` (all servers) | List of servers to back up before start; an empty list covers every valid server |
 | `backup_mode` | `world` | Choose `world`, `selected`, `full`, or `default` to use global contents |
 | `components` | The six standard data/settings components | Used only in selected mode |
 | `encryption` | `default` | Inherit global encryption, or force `on` or `off` |
 | `reuse_sequence_backup` | `true` | Reuse an eligible backup from the same operation sequence |
 | `require_complete_backup` | `false` | Cancel startup if the requested backup cannot complete |
+| `timeout_seconds` | `300` | Maximum time in seconds (`1`–`3600`) allowed for the pre-start backup |
 
 Update Before Start runs first. Backup on Start can reuse a valid, completed
 pre-update capture for the same server if it covers the currently requested
@@ -471,31 +431,6 @@ Legacy backup-creation API names now create unified archives. Legacy restore-all
 selects one latest unified archive rather than combining separately dated files.
 Minecraft `.mcworld` import and export remain available as
 [content operations](content_management.md).
-
-### Scheduler execution and controls
-
-Schedules activate when saved, so the first poll shortly after their due time can
-still execute them. Catch-up controls missed first attempts; it does not disable
-retries of a run that already started. Automatic failures receive up to three
-attempts with backoff, within a one-day retry window. Interactive contention defers
-work without consuming that budget. A new occurrence has a separate budget.
-
-The scheduler page provides **Run now**, **Pause/Resume**, and **Retry now**. Manual
-runs use distinct execution identities and do not consume a calendar occurrence.
-Pausing prevents future claims; an already claimed run may finish. Retry now is an
-explicit request to retry a failed slot. Controls can include the listed
-configuration revision to reject stale requests. Run history remains the source
-of outcomes; acknowledgement of a control does not mean its work has completed.
-
-Listings distinguish `next_run_at` (the next calendar occurrence) from
-`next_attempt_at` (a retry, deferral, or queued manual request), and report exhausted
-retries and blocked reasons. Diagnostics include running executions, worker queue
-size, and concurrency limits. Preparation failures remain visible until repaired.
-
-`scheduler.max_concurrent_servers` defaults to 4 (range 1–32).
-`scheduler.poll_interval_seconds` defaults to 60 (range 1–60). Both apply after a
-BSM restart. Schedule controls wake the loop immediately.
-
 
 ## Pre-start backup deadlines
 

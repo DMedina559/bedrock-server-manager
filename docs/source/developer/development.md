@@ -28,4 +28,4 @@ Run focused tests during development and the appropriate full checks before subm
 
 The Sphinx build retains `sphinx_github_changelog`; its release lookup uses `SPHINX_GITHUB_CHANGELOG_TOKEN` or `GITHUB_TOKEN` when available. Keep credentials in environment configuration, never in documentation or generated output.
 
-The docs generator runs without starting BSM. Its plugin also exports a `plugin-reference` directory beneath the configured backup directory, with an API index, domain pages, shared models and events. Generated pages should be regenerated rather than hand-edited. See [contract development](contracts.md).
+The docs generator runs without starting BSM. Its bundled `api_docs_generator` plugin also exports a `plugin-reference` directory inside its private plugin data directory (`<config_dir>/plugins/api_docs_generator/plugin-reference/`), with an API index, domain pages, shared models, and events. Generated pages should be regenerated rather than hand-edited. See [contract development](plugins/contracts.md).

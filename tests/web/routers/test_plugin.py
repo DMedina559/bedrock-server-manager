@@ -175,7 +175,6 @@ async def test_bundled_notification_settings(admin_auth_client, plugin_factory):
                 "stop_warning_delay": 0,
                 "post_stop_settle_delay": 0,
                 "post_start_settle_delay": 0,
-                "enable_notifications": False,
             },
         ),
         (

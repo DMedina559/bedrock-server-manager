@@ -220,3 +220,184 @@ def test_logs_cli_list_and_view(runner, app_context, real_bedrock_server, monkey
     assert srv_res.exit_code == 0, srv_res.output
     assert "server line 1" not in srv_res.output
     assert "server line 2" in srv_res.output
+
+
+@pytest.mark.parametrize("target", ["servers", "plugins"])
+@pytest.mark.parametrize("failure", ["missing", "unreadable", "partial"])
+async def test_cleanup_preserves_data_when_inventory_unavailable(
+    app_context, tmp_path, monkeypatch, target, failure
+):
+    from bedrock_server_manager.cli.cleanup import (
+        _cleanup_orphaned_plugins_async,
+        _cleanup_orphaned_servers_async,
+    )
+
+    app_context.state.servers.set(ServerConfigState(server_name="kept"))
+    app_context.state.plugins.set(PluginInfoState(plugin_name="kept", enabled=True))
+    directory = Path(app_context.config_dir) / (
+        "runtime/servers/kept" if target == "servers" else "plugins/kept"
+    )
+    directory.mkdir(parents=True, exist_ok=True)
+    marker = directory / "important.txt"
+    marker.write_text("retained")
+    source = tmp_path / "inventory"
+    app_context.state.settings.set(f"paths.{target}", str(source))
+    if failure != "missing":
+        source.mkdir()
+        original = Path.iterdir
+
+        def fail_scan(path):
+            if path == source:
+                if failure == "partial":
+                    child = source / "seen"
+                    child.mkdir(exist_ok=True)
+                    yield child
+                raise PermissionError("Inventory unavailable")
+            yield from original(path)
+
+        monkeypatch.setattr(Path, "iterdir", fail_scan)
+    cleanup_fn = (
+        _cleanup_orphaned_servers_async
+        if target == "servers"
+        else _cleanup_orphaned_plugins_async
+    )
+    for dry_run in (True, False):
+        result = await cleanup_fn(app_context, dry_run=dry_run)
+        assert f"inventory:{target}" in result.failures
+        assert not result.deleted
+        assert marker.read_text() == "retained"
+        assert "kept" in app_context.state.servers.servers
+        assert "kept" in app_context.state.plugins.plugins
+
+
+@pytest.mark.parametrize("target", ["servers", "plugins"])
+async def test_cleanup_commit_failure_preserves_state_dirty_flags_and_files(
+    app_context, monkeypatch, target
+):
+    from contextlib import asynccontextmanager
+
+    from bedrock_server_manager.cli.cleanup import (
+        _cleanup_orphaned_plugins_async,
+        _cleanup_orphaned_servers_async,
+    )
+
+    # Persist an orphan in both the DB and state so rollback is checked end to end.
+    plugin = PluginInfoState(plugin_name="ghost", enabled=True)
+    server = ServerConfigState(server_name="ghost", custom={"ghost": {"x": 1}})
+    app_context.state.plugins.set(plugin)
+    app_context.state.servers.set(server)
+    app_context.state.settings.set("plugin_settings", {"ghost": {"x": 1}})
+    app_context.state.settings.set("custom", {"ghost": {"x": 1}})
+    async with app_context.storage.transaction() as session:
+        await app_context.storage.plugin_repo.save_plugin(session, plugin)
+        await app_context.storage.server_repo.save_server(session, server)
+        await app_context.storage.settings_repo.save_settings(
+            session, app_context.state.settings.to_dict()
+        )
+    for key in ("servers", "plugins"):
+        Path(app_context.settings.get(f"paths.{key}")).mkdir(
+            parents=True, exist_ok=True
+        )
+    dirs = [
+        Path(app_context.config_dir) / suffix
+        for suffix in ("runtime/servers/ghost", "logs/servers/ghost", "plugins/ghost")
+    ]
+    for directory in dirs:
+        directory.mkdir(parents=True, exist_ok=True)
+        (directory / "important.txt").write_text("retained")
+    before_settings = app_context.state.settings.model_dump()
+    dirty_servers = app_context.state.servers.dirty_keys
+    dirty_plugins = app_context.state.plugins.dirty_keys
+    dirty_settings = app_context.state.settings.dirty_keys
+    original = app_context.storage.transaction
+
+    @asynccontextmanager
+    async def failed_transaction():
+        async with original() as session:
+            yield session
+            raise RuntimeError("Injected commit failure")
+
+    cleanup_fn = (
+        _cleanup_orphaned_servers_async
+        if target == "servers"
+        else _cleanup_orphaned_plugins_async
+    )
+    with monkeypatch.context() as scoped:
+        scoped.setattr(app_context.storage, "transaction", failed_transaction)
+        result = await cleanup_fn(app_context)
+    assert f"db:{target}" in result.failures
+    assert not result.deleted
+    assert app_context.state.servers.get("ghost") == server
+    assert app_context.state.plugins.get("ghost") == plugin
+    assert app_context.state.settings.model_dump() == before_settings
+    assert app_context.state.servers.dirty_keys == dirty_servers
+    assert app_context.state.plugins.dirty_keys == dirty_plugins
+    assert app_context.state.settings.dirty_keys == dirty_settings
+    assert all(
+        (directory / "important.txt").read_text() == "retained" for directory in dirs
+    )
+    async with original() as session:
+        assert await app_context.storage.server_repo.get_server_by_name(
+            session, "ghost"
+        )
+        assert any(
+            item.plugin_name == "ghost"
+            for item in await app_context.storage.plugin_repo.get_all_plugins(session)
+        )
+        persisted = await app_context.storage.settings_repo.get_all_settings(session)
+        assert persisted["plugin_settings"]["ghost"] == {"x": 1}
+        assert persisted["custom"]["ghost"] == {"x": 1}
+
+
+async def test_plugin_cleanup_commits_all_scopes_before_publishing(
+    app_context, monkeypatch
+):
+    from bedrock_server_manager.cli.cleanup import _cleanup_orphaned_plugins_async
+
+    module = importlib.import_module("bedrock_server_manager.cli.cleanup")
+    monkeypatch.setattr(module, "_discover_installed_plugin_names", lambda _: {"keep"})
+    for name in ("ghost", "keep"):
+        app_context.state.plugins.set(PluginInfoState(plugin_name=name, enabled=True))
+        directory = Path(app_context.config_dir) / "plugins" / name
+        directory.mkdir(parents=True, exist_ok=True)
+        (directory / "state.json").write_text("retained")
+    values = {"ghost": {"value": 1}, "keep": {"value": 2}}
+    app_context.state.settings.set("plugin_settings", values)
+    app_context.state.settings.set("custom", values)
+    app_context.state.servers.set(
+        ServerConfigState(server_name="server", custom=values)
+    )
+    await app_context.storage.flush(app_context.state)
+    original = app_context.storage.transaction
+    from contextlib import asynccontextmanager
+
+    @asynccontextmanager
+    async def observe_commit():
+        async with original() as session:
+            yield session
+            assert "ghost" in app_context.state.plugins.plugins
+            assert app_context.state.settings.custom == values
+            assert app_context.state.servers.get("server").custom == values
+            assert (Path(app_context.config_dir) / "plugins/ghost/state.json").exists()
+
+    with monkeypatch.context() as scoped:
+        scoped.setattr(app_context.storage, "transaction", observe_commit)
+        result = await _cleanup_orphaned_plugins_async(app_context)
+    assert not result.failures
+    assert "ghost" not in app_context.state.plugins.plugins
+    expected = {"keep": {"value": 2}}
+    assert app_context.state.settings.plugin_settings == expected
+    assert app_context.state.settings.custom == expected
+    assert app_context.state.servers.get("server").custom == expected
+    assert not (Path(app_context.config_dir) / "plugins/ghost").exists()
+    assert (Path(app_context.config_dir) / "plugins/keep/state.json").exists()
+    async with original() as session:
+        settings = await app_context.storage.settings_repo.get_all_settings(session)
+        assert settings["custom"] == expected
+        assert settings["plugin_settings"] == expected
+        server = await app_context.storage.server_repo.get_server_by_name(
+            session, "server"
+        )
+        assert server.custom == expected
+        plugins = await app_context.storage.plugin_repo.get_all_plugins(session)
+        assert {plugin.plugin_name for plugin in plugins} == {"keep"}
