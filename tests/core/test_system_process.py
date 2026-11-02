@@ -10,6 +10,7 @@ import pytest
 from bedrock_server_manager.config import GUARD_VARIABLE
 from bedrock_server_manager.core.system.process import (
     GuardedProcess,
+    find_untracked_server_process,
     get_bedrock_server_pid_file_path,
     get_pid_file_path,
     get_verified_bedrock_process,
@@ -179,6 +180,20 @@ async def test_verify_and_get_bedrock_process_with_real_server(
     assert process.pid == pid
     assert process.is_running()
 
+    # Test orphan process recovery when PID file is unlinked while server is running
+    pid_file_path = Path(server.get_pid_file_path())
+    assert pid_file_path.exists()
+    pid_file_path.unlink()
+    assert not pid_file_path.exists()
+
+    recovered_process = await get_verified_bedrock_process(
+        server.server_name, server.paths.server_dir, server.paths.app_config_dir
+    )
+    assert recovered_process is not None
+    assert recovered_process.pid == pid
+    assert pid_file_path.exists()
+    assert await read_pid_from_file(str(pid_file_path)) == pid
+
     await server.stop()
     path = server.get_pid_file_path()
     await write_pid_to_file(path, pid)
@@ -189,3 +204,77 @@ async def test_verify_and_get_bedrock_process_with_real_server(
         is None
     )
     assert not Path(path).exists()
+
+
+def test_find_untracked_server_process_psutil(tmp_path: Path):
+    """Test process scanning via psutil matching cwd or exe."""
+    server_dir = str(tmp_path / "myserver")
+    os.makedirs(server_dir, exist_ok=True)
+    exe_name = "bedrock_server.exe" if os.name == "nt" else "bedrock_server"
+    exe_path = os.path.join(server_dir, exe_name)
+    Path(exe_path).touch()
+
+    class MockProc:
+        def __init__(
+            self, pid, name, cwd_val=None, exe_val=None, raises_in_oneshot=False
+        ):
+            self.pid = pid
+            self.info = {"pid": pid, "name": name}
+            self._cwd = cwd_val
+            self._exe = exe_val
+            self._raises = raises_in_oneshot
+
+        def oneshot(self):
+            class Ctx:
+                def __init__(self, raises):
+                    self.raises = raises
+
+                def __enter__(self):
+                    if self.raises:
+                        raise psutil.NoSuchProcess(999)
+                    return self
+
+                def __exit__(self, *args):
+                    pass
+
+            return Ctx(self._raises)
+
+        def cwd(self):
+            if isinstance(self._cwd, Exception):
+                raise self._cwd
+            return self._cwd
+
+        def exe(self):
+            if isinstance(self._exe, Exception):
+                raise self._exe
+            return self._exe
+
+    # Case 1: CWD match
+    proc1 = MockProc(101, exe_name, cwd_val=server_dir, exe_val="/some/other/exe")
+    with (
+        patch("bedrock_server_manager.core.system.process.PSUTIL_AVAILABLE", True),
+        patch("psutil.process_iter", return_value=[proc1]),
+    ):
+        assert find_untracked_server_process(server_dir) == 101
+
+    # Case 2: CWD raises AccessDenied, Exe matches
+    proc2 = MockProc(
+        102,
+        exe_name,
+        cwd_val=psutil.AccessDenied(102),
+        exe_val=exe_path,
+    )
+    with (
+        patch("bedrock_server_manager.core.system.process.PSUTIL_AVAILABLE", True),
+        patch("psutil.process_iter", return_value=[proc2]),
+    ):
+        assert find_untracked_server_process(server_dir) == 102
+
+    # Case 3: Name does not match or oneshot raises
+    proc3 = MockProc(103, "other_proc.exe")
+    proc4 = MockProc(104, exe_name, raises_in_oneshot=True)
+    with (
+        patch("bedrock_server_manager.core.system.process.PSUTIL_AVAILABLE", True),
+        patch("psutil.process_iter", return_value=[proc3, proc4]),
+    ):
+        assert find_untracked_server_process(server_dir) is None

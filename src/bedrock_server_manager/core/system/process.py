@@ -301,6 +301,61 @@ async def verify_process_identity(  # noqa: C901
     )
 
 
+def find_untracked_server_process(server_dir: str) -> Optional[int]:
+    """Find an active Bedrock server process running inside server_dir.
+
+    Scans the system process table via ``psutil`` to discover any untracked
+    or orphaned bedrock_server processes matching server_dir.
+    """
+    target_dir = os.path.realpath(os.path.abspath(server_dir))
+    exe_name = (
+        "bedrock_server.exe" if platform.system() == "Windows" else "bedrock_server"
+    )
+    expected_exe = os.path.join(target_dir, exe_name)
+
+    if PSUTIL_AVAILABLE:
+        try:
+            for proc in psutil.process_iter(["pid", "name"]):
+                try:
+                    name = proc.info.get("name")
+                    if not name or name.lower() != exe_name.lower():
+                        continue
+
+                    with proc.oneshot():
+                        try:
+                            proc_cwd = os.path.realpath(proc.cwd())
+                        except (psutil.AccessDenied, psutil.NoSuchProcess, OSError):
+                            proc_cwd = None
+
+                        try:
+                            proc_exe = os.path.realpath(proc.exe())
+                        except (psutil.AccessDenied, psutil.NoSuchProcess, OSError):
+                            proc_exe = None
+
+                        if proc_cwd and os.path.samefile(proc_cwd, target_dir):
+                            return int(proc.pid)
+                        if proc_exe and (
+                            os.path.samefile(proc_exe, expected_exe)
+                            if os.path.exists(proc_exe) and os.path.exists(expected_exe)
+                            else os.path.normcase(proc_exe)
+                            == os.path.normcase(expected_exe)
+                        ):
+                            return int(proc.pid)
+                except (
+                    psutil.NoSuchProcess,
+                    psutil.AccessDenied,
+                    psutil.ZombieProcess,
+                ):
+                    continue
+        except Exception as e:
+            logger.debug(
+                "Error while scanning for untracked Bedrock processes via psutil: %s",
+                e,
+            )
+
+    return None
+
+
 async def get_verified_bedrock_process(
     server_name: str, server_dir: str, config_dir: str
 ) -> Optional["psutil.Process"]:
@@ -341,16 +396,27 @@ async def get_verified_bedrock_process(
         pid_file_path = await get_bedrock_server_pid_file_path(server_name, config_dir)
         pid = await read_pid_from_file(pid_file_path)
 
-        if pid is None:
-            logger.debug("No valid PID found in file for server '%s'.", server_name)
-            return None
-
-        if not await is_process_running(pid):
+        if pid is not None and not await is_process_running(pid):
             logger.debug(
                 "Stale PID %s found for '%s'. Process not running.", pid, server_name
             )
             await remove_pid_file_if_exists(pid_file_path)
-            return None
+            pid = None
+
+        if pid is None:
+            logger.debug(
+                "No valid PID found in file for server '%s'. Scanning for untracked process.",
+                server_name,
+            )
+            pid = await run_in_thread(find_untracked_server_process, server_dir)
+            if pid is None:
+                return None
+            logger.warning(
+                "Discovered untracked Bedrock server process (PID %s) for server '%s'. Regenerating PID file.",
+                pid,
+                server_name,
+            )
+            await write_pid_to_file(pid_file_path, pid)
 
         exe_name = (
             "bedrock_server.exe" if platform.system() == "Windows" else "bedrock_server"
