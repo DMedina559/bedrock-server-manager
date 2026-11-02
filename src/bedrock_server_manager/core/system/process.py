@@ -6,6 +6,7 @@ import logging
 import os
 import platform
 import subprocess
+import time
 from typing import Any, Dict, List, Optional, Sequence, Union
 
 import aiofiles
@@ -40,6 +41,14 @@ from ...error import (
 from ...logging import log_operation_error
 
 logger = logging.getLogger(__name__)
+
+_last_untracked_scan: dict[str, float] = {}
+UNTRACKED_SCAN_INTERVAL_SECONDS: float = 5.0
+
+
+def clear_untracked_scan_cache() -> None:
+    """Clear cached timestamps for untracked process scans."""
+    _last_untracked_scan.clear()
 
 
 class GuardedProcess:
@@ -194,6 +203,9 @@ async def write_pid_to_file(pid_file_path: str, pid: int):
     try:
         async with aiofiles.open(pid_file_path, "w", encoding="utf-8") as f:
             await f.write(str(pid))
+        parent_name = os.path.basename(os.path.dirname(pid_file_path))
+        if parent_name:
+            _last_untracked_scan.pop(parent_name, None)
         logger.debug("Wrote PID %s to '%s'", pid, pid_file_path)
     except OSError as e:
         raise FileOperationError(
@@ -402,8 +414,15 @@ async def get_verified_bedrock_process(
             )
             await remove_pid_file_if_exists(pid_file_path)
             pid = None
+            _last_untracked_scan.pop(server_name, None)
 
         if pid is None:
+            now = time.monotonic()
+            last_scan = _last_untracked_scan.get(server_name, 0.0)
+            if now - last_scan < UNTRACKED_SCAN_INTERVAL_SECONDS:
+                return None
+
+            _last_untracked_scan[server_name] = now
             logger.debug(
                 "No valid PID found in file for server '%s'. Scanning for untracked process.",
                 server_name,
@@ -411,6 +430,7 @@ async def get_verified_bedrock_process(
             pid = await run_in_thread(find_untracked_server_process, server_dir)
             if pid is None:
                 return None
+            _last_untracked_scan.pop(server_name, None)
             logger.warning(
                 "Discovered untracked Bedrock server process (PID %s) for server '%s'. Regenerating PID file.",
                 pid,
@@ -430,6 +450,7 @@ async def get_verified_bedrock_process(
             expected_cwd=expected_cwd_abs,
         )
 
+        _last_untracked_scan.pop(server_name, None)
         return psutil.Process(pid)
 
     except (

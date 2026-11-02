@@ -13,6 +13,7 @@ from .base import is_server_running as is_bedrock_server_running
 from .base import set_server_folder_permissions
 from .process import (
     GuardedProcess,
+    clear_untracked_scan_cache,
     find_untracked_server_process,
     get_pid_file_path,
     get_verified_bedrock_process,
@@ -32,6 +33,7 @@ __all__ = [
     "find_files",
     # From process.py
     "GuardedProcess",
+    "clear_untracked_scan_cache",
     "find_untracked_server_process",
     "get_pid_file_path",
     "read_pid_from_file",

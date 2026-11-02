@@ -10,6 +10,7 @@ import pytest
 from bedrock_server_manager.config import GUARD_VARIABLE
 from bedrock_server_manager.core.system.process import (
     GuardedProcess,
+    clear_untracked_scan_cache,
     find_untracked_server_process,
     get_bedrock_server_pid_file_path,
     get_pid_file_path,
@@ -278,3 +279,34 @@ def test_find_untracked_server_process_psutil(tmp_path: Path):
         patch("psutil.process_iter", return_value=[proc3, proc4]),
     ):
         assert find_untracked_server_process(server_dir) is None
+
+
+async def test_untracked_scan_throttling(tmp_path: Path):
+    """Test that untracked process scans are throttled when a server is stopped."""
+    server_dir = str(tmp_path / "server")
+    config_dir = str(tmp_path / "config")
+    os.makedirs(server_dir, exist_ok=True)
+    os.makedirs(
+        os.path.join(config_dir, "runtime", "servers", "test_srv"), exist_ok=True
+    )
+
+    clear_untracked_scan_cache()
+
+    with patch(
+        "bedrock_server_manager.core.system.process.find_untracked_server_process",
+        return_value=None,
+    ) as mock_scan:
+        res1 = await get_verified_bedrock_process("test_srv", server_dir, config_dir)
+        assert res1 is None
+        assert mock_scan.call_count == 1
+
+        # Second call immediately after should be throttled
+        res2 = await get_verified_bedrock_process("test_srv", server_dir, config_dir)
+        assert res2 is None
+        assert mock_scan.call_count == 1
+
+        # Clearing cache allows scanning again
+        clear_untracked_scan_cache()
+        res3 = await get_verified_bedrock_process("test_srv", server_dir, config_dir)
+        assert res3 is None
+        assert mock_scan.call_count == 2
