@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import logging
+from pathlib import Path
 from typing import TYPE_CHECKING, Any, Callable, Optional
 
 from ..error import UserInputError
@@ -188,6 +189,35 @@ async def get_plugin_data_path(
         return target
 
     return await run_in_thread(_resolve)
+
+
+async def get_system_path(
+    scope: str,
+    *,
+    app_context: AppContext,
+    plugin_name: str,
+) -> Path:
+    """Return a validated host storage path for a granted path scope."""
+    from .scopes import GRANTABLE_PATH_SCOPES
+
+    if scope not in GRANTABLE_PATH_SCOPES:
+        raise PermissionError(f"Scope '{scope}' is not a grantable system path.")
+
+    plugin = app_context.plugin_manager.get_plugin(plugin_name)
+    declared = getattr(plugin, "permissions", None) if plugin else None
+    required_perm = f"path:{scope}"
+    if not declared or required_perm not in declared:
+        raise PermissionError(
+            f"Plugin '{plugin_name}' requires permission '{required_perm}' to access system path."
+        )
+
+    raw_path = app_context.settings.get(GRANTABLE_PATH_SCOPES[scope])
+    if not raw_path:
+        raise FileNotFoundError(
+            f"Host filesystem path for scope '{scope}' is not configured."
+        )
+
+    return Path(raw_path).expanduser().resolve()
 
 
 def register_scheduled_task(

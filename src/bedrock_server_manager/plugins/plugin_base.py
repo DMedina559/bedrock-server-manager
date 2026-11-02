@@ -49,6 +49,7 @@ class PluginBase(ABC):
     )  # Optional list of optional plugin names (strings) to load before this plugin, if they are enabled.
 
     # Standardized declarative extension attributes:
+    permissions: ClassVar[list[str] | None] = None
     router: Any = None
     routers: List[Any] = []
     static_mounts: List[tuple[str, "Path", str]] = []

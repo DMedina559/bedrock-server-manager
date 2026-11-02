@@ -138,6 +138,8 @@ await self.api.server.restart(request: bedrock_server_manager.api.models.server.
 
 - **Description:** Orchestrate stop/start; abort on cancellation or either phase failing.
 
+- **Required Permission:** `server:lifecycle`
+
 - **Returns:** `RestartServerResponse`
 
 Runtime context and plugin identity are injected by the bridge. Failures raise application exceptions; plugin cancellation raises `APICancelledError`.
@@ -168,6 +170,8 @@ await self.api.server.send_command(request: bedrock_server_manager.api.models.se
 - **Async (Requires await):** Yes
 
 - **Description:** Sends a command to a running Bedrock server.
+
+- **Required Permission:** `server:command`
 
 - **Returns:** `SendCommandResponse`
 
@@ -231,6 +235,8 @@ await self.api.server.start(request: bedrock_server_manager.api.models.server.St
 
 - **Description:** Start an offline server under its lock, dispatching hooks only when needed.
 
+- **Required Permission:** `server:lifecycle`
+
 - **Returns:** `StartServerResponse`
 
 Runtime context and plugin identity are injected by the bridge. Failures raise application exceptions; plugin cancellation raises `APICancelledError`.
@@ -261,6 +267,8 @@ await self.api.server.stop(request: bedrock_server_manager.api.models.server.Sto
 - **Async (Requires await):** Yes
 
 - **Description:** Stop a server, or report that it is already stopped; failures raise.
+
+- **Required Permission:** `server:lifecycle`
 
 - **Returns:** `StopServerResponse`
 

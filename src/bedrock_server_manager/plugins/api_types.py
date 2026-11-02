@@ -27,6 +27,8 @@ from bedrock_server_manager.api.models import (
     CreateSnapshotRequest,
     CreateSnapshotResponse,
     DeleteScheduleRequest,
+    DeleteServerDataRequest,
+    DeleteServerDataResponse,
     DeleteSnapshotRequest,
     DisableAddonRequest,
     DisableAddonResponse,
@@ -68,6 +70,8 @@ from bedrock_server_manager.api.models import (
     GetPermissionsResponse,
     GetPluginSettingRequest,
     GetPluginSettingResponse,
+    GetPluginSettingsRequest,
+    GetPluginSettingsResponse,
     GetPluginStatusesRequest,
     GetPluginStatusesResponse,
     GetPropertiesRequest,
@@ -121,6 +125,10 @@ from bedrock_server_manager.api.models import (
     PublishWsEventRequest,
     PublishWsEventResponse,
     RecoveryReportResponse,
+    ReloadGlobalSettingsRequest,
+    ReloadGlobalSettingsResponse,
+    ReloadPluginsRequest,
+    ReloadPluginsResponse,
     ReloadSinglePluginRequest,
     ReloadSinglePluginResponse,
     RemoveFromAllowlistRequest,
@@ -153,14 +161,20 @@ from bedrock_server_manager.api.models import (
     SendToUserResponse,
     SetCustomGlobalSettingRequest,
     SetCustomGlobalSettingResponse,
+    SetGlobalSettingRequest,
+    SetGlobalSettingResponse,
     SetPermissionsRequest,
     SetPermissionsResponse,
     SetPluginSettingRequest,
     SetPluginSettingResponse,
+    SetPluginStatusRequest,
+    SetPluginStatusResponse,
     SetPropertiesRequest,
     SetPropertiesResponse,
     SetServerCustomValueRequest,
     SetServerCustomValueResponse,
+    SetServerSettingRequest,
+    SetServerSettingResponse,
     SetServerStatusRequest,
     SetServerStatusResponse,
     SnapshotReuseRequest,
@@ -170,14 +184,21 @@ from bedrock_server_manager.api.models import (
     StopServerRequest,
     StopServerResponse,
     SuccessResponse,
+    TriggerExternalAppEventRequest,
+    TriggerExternalAppEventResponse,
+    UninstallAddonRequest,
+    UninstallAddonResponse,
     UnregisterDataProviderRequest,
     UnregisterDataProviderResponse,
+    UpdatePluginSettingsRequest,
     UpdateServerPlayerStatsRequest,
     UpdateServerPlayerStatsResponse,
     UpdateServerRequest,
     UpdateServerResponse,
     UpdateServerStatusesRequest,
     UpdateServerStatusesResponse,
+    UpdateSubpackRequest,
+    UpdateSubpackResponse,
     ValidatePropertyValueRequest,
     ValidatePropertyValueResponse,
 )
@@ -210,6 +231,14 @@ class AddonAPI(Protocol):
     async def reorder_addons(
         self, request: ReorderAddonsRequest | Mapping[str, object]
     ) -> ReorderAddonsResponse: ...
+
+    async def uninstall_addon(
+        self, request: UninstallAddonRequest | Mapping[str, object]
+    ) -> UninstallAddonResponse: ...
+
+    async def update_subpack(
+        self, request: UpdateSubpackRequest | Mapping[str, object]
+    ) -> UpdateSubpackResponse: ...
 
 
 class AllowlistAPI(Protocol):
@@ -427,6 +456,10 @@ class PluginsAPI(Protocol):
         self, request: GetPluginSettingRequest | Mapping[str, object]
     ) -> GetPluginSettingResponse: ...
 
+    async def get_plugin_settings(
+        self, request: GetPluginSettingsRequest | Mapping[str, object]
+    ) -> GetPluginSettingsResponse: ...
+
     async def get_plugin_statuses(
         self, request: GetPluginStatusesRequest | Mapping[str, object]
     ) -> GetPluginStatusesResponse: ...
@@ -435,8 +468,24 @@ class PluginsAPI(Protocol):
         self, request: ReloadSinglePluginRequest | Mapping[str, object]
     ) -> ReloadSinglePluginResponse: ...
 
+    async def reload_plugins(
+        self, request: ReloadPluginsRequest | Mapping[str, object]
+    ) -> ReloadPluginsResponse: ...
+
     async def set_plugin_setting(
         self, request: SetPluginSettingRequest | Mapping[str, object]
+    ) -> SetPluginSettingResponse: ...
+
+    async def set_plugin_status(
+        self, request: SetPluginStatusRequest | Mapping[str, object]
+    ) -> SetPluginStatusResponse: ...
+
+    async def trigger_external_app_event(
+        self, request: TriggerExternalAppEventRequest | Mapping[str, object]
+    ) -> TriggerExternalAppEventResponse: ...
+
+    async def update_plugin_settings(
+        self, request: UpdatePluginSettingsRequest | Mapping[str, object]
     ) -> SetPluginSettingResponse: ...
 
 
@@ -477,6 +526,10 @@ class SchedulerAPI(Protocol):
 
 
 class ServerAPI(Protocol):
+    async def delete_data(
+        self, request: DeleteServerDataRequest | Mapping[str, object]
+    ) -> DeleteServerDataResponse: ...
+
     async def get_all_settings(
         self, request: GetAllServerSettingsRequest | Mapping[str, object]
     ) -> GetAllServerSettingsResponse: ...
@@ -505,6 +558,10 @@ class ServerAPI(Protocol):
         self, request: SetServerCustomValueRequest | Mapping[str, object]
     ) -> SetServerCustomValueResponse: ...
 
+    async def set_setting(
+        self, request: SetServerSettingRequest | Mapping[str, object]
+    ) -> SetServerSettingResponse: ...
+
     async def set_status(
         self, request: SetServerStatusRequest | Mapping[str, object]
     ) -> SetServerStatusResponse: ...
@@ -531,9 +588,17 @@ class SettingsAPI(Protocol):
         self, request: GetGlobalSettingRequest | Mapping[str, object]
     ) -> GetGlobalSettingResponse: ...
 
+    async def reload_global_settings(
+        self, request: ReloadGlobalSettingsRequest | Mapping[str, object]
+    ) -> ReloadGlobalSettingsResponse: ...
+
     async def set_custom_global_setting(
         self, request: SetCustomGlobalSettingRequest | Mapping[str, object]
     ) -> SetCustomGlobalSettingResponse: ...
+
+    async def set_global_setting(
+        self, request: SetGlobalSettingRequest | Mapping[str, object]
+    ) -> SetGlobalSettingResponse: ...
 
 
 class SystemAPI(Protocol):
@@ -672,6 +737,10 @@ class RuntimeAPI(Protocol):
         self, filename: str = "", *, scope: Literal["private", "public"] = "private"
     ) -> Path: ...
 
+    async def get_system_path(
+        self, scope: Literal["servers", "backups", "content", "downloads", "themes"]
+    ) -> Path: ...
+
 
 API_METHODS: dict[str, dict[str, str]] = {
     "addon": {
@@ -681,6 +750,8 @@ API_METHODS: dict[str, dict[str, str]] = {
         "list_available_addons": "list_available_addons",
         "list_installed_addons": "list_installed_addons",
         "reorder_addons": "reorder_addons",
+        "uninstall_addon": "uninstall_addon",
+        "update_subpack": "update_subpack",
     },
     "allowlist": {
         "add_to_allowlist": "add_to_allowlist",
@@ -748,9 +819,14 @@ API_METHODS: dict[str, dict[str, str]] = {
     },
     "plugins": {
         "get_plugin_setting": "get_plugin_setting",
+        "get_plugin_settings": "get_plugin_settings",
         "get_plugin_statuses": "get_plugin_statuses",
         "reload_plugin": "reload_plugin",
+        "reload_plugins": "reload_plugins",
         "set_plugin_setting": "set_plugin_setting",
+        "set_plugin_status": "set_plugin_status",
+        "trigger_external_app_event": "trigger_external_app_event",
+        "update_plugin_settings": "update_plugin_settings",
     },
     "properties": {
         "get_properties": "get_properties",
@@ -765,6 +841,7 @@ API_METHODS: dict[str, dict[str, str]] = {
         "save_schedule": "save_schedule",
     },
     "server": {
+        "delete_data": "delete_server_data",
         "get_all_settings": "get_all_server_settings",
         "get_setting": "get_server_setting",
         "get_summary": "get_server_summary",
@@ -772,6 +849,7 @@ API_METHODS: dict[str, dict[str, str]] = {
         "restart": "restart_server",
         "send_command": "send_command",
         "set_custom_value": "set_server_custom_value",
+        "set_setting": "set_server_setting",
         "set_status": "set_server_status",
         "start": "start_server",
         "stop": "stop_server",
@@ -780,7 +858,9 @@ API_METHODS: dict[str, dict[str, str]] = {
     "settings": {
         "get_all_global_settings": "get_all_global_settings",
         "get_global_setting": "get_global_setting",
+        "reload_global_settings": "reload_global_settings",
         "set_custom_global_setting": "set_custom_global_setting",
+        "set_global_setting": "set_global_setting",
     },
     "system": {
         "get_application_health": "get_application_health",

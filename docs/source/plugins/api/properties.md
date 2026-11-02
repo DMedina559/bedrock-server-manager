@@ -76,6 +76,8 @@ await self.api.properties.set_properties(request: bedrock_server_manager.api.mod
 
 - **Description:** Set one or multiple server properties for a given server.
 
+- **Required Permission:** `server:properties`
+
 - **Returns:** `SetPropertiesResponse`
 
 Runtime context and plugin identity are injected by the bridge. Failures raise application exceptions; plugin cancellation raises `APICancelledError`.

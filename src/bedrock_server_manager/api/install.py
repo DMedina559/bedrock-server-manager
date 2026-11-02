@@ -22,7 +22,7 @@ from .server import server_lifecycle_manager
 logger = logging.getLogger(__name__)
 
 
-@api_method("install_new_server")
+@api_method("install_new_server", required_scope="server:install")
 @trigger_event(
     before="before_server_install",
     after="after_server_install",
@@ -93,7 +93,7 @@ async def install_new_server(
         server.operation_lock.release()
 
 
-@api_method("update_server")
+@api_method("update_server", required_scope="server:install")
 @track_operation(OperationName.SERVER_UPDATE)
 @trigger_event(
     before="before_server_update",

@@ -17,7 +17,6 @@ from ..events import trigger_event
 from ..logging import log_operation_error
 from ..plugins.api_bridge import api_method
 from ..utils import list_content_files
-from .contract import validate_contract
 from .models.addon import (
     DisableAddonRequest,
     DisableAddonResponse,
@@ -62,7 +61,7 @@ async def list_available_addons(
         raise
 
 
-@api_method("import_addon")
+@api_method("import_addon", required_scope="addon:manage")
 @trigger_event(
     before="before_addon_import",
     after="after_addon_import",
@@ -171,7 +170,7 @@ async def list_installed_addons(
     )
 
 
-@api_method("enable_addon")
+@api_method("enable_addon", required_scope="addon:manage")
 @trigger_event(
     before="before_addon_enable",
     after="after_addon_enable",
@@ -231,7 +230,7 @@ async def enable_addon(
         server.operation_lock.release()
 
 
-@api_method("disable_addon")
+@api_method("disable_addon", required_scope="addon:manage")
 @trigger_event(
     before="before_addon_disable",
     after="after_addon_disable",
@@ -291,7 +290,7 @@ async def disable_addon(
         server.operation_lock.release()
 
 
-@validate_contract
+@api_method("update_subpack", required_scope="addon:manage")
 @trigger_event(
     before="before_addon_subpack_update",
     after="after_addon_subpack_update",
@@ -354,7 +353,7 @@ async def update_subpack(
         server.operation_lock.release()
 
 
-@validate_contract
+@api_method("uninstall_addon", expose_to_plugins=False)
 @trigger_event(
     before="before_addon_uninstall",
     after="after_addon_uninstall",
@@ -414,7 +413,7 @@ async def uninstall_addon(
         server.operation_lock.release()
 
 
-@api_method("reorder_addons")
+@api_method("reorder_addons", required_scope="addon:manage")
 @trigger_event(
     before="before_addon_reorder",
     after="after_addon_reorder",

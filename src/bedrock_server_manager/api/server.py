@@ -27,7 +27,6 @@ from ..logging import log_operation_error
 from ..plugins.api_bridge import api_method
 from ..state.revision import revision_clock
 from ..utils.threads import run_in_thread
-from .contract import validate_contract
 from .models import (
     RestartServerRequest,
     RestartServerResponse,
@@ -96,7 +95,7 @@ async def get_server_setting(
         raise
 
 
-@validate_contract
+@api_method("set_server_setting", expose_to_plugins=False)
 @trigger_event(
     before="before_set_server_setting",
     after="after_set_server_setting",
@@ -238,7 +237,7 @@ async def get_server_summary(
         raise
 
 
-@api_method("start_server")
+@api_method("start_server", required_scope="server:lifecycle")
 @track_operation(OperationName.SERVER_START)
 async def start_server(
     request: StartServerRequest, *, app_context: AppContext
@@ -274,7 +273,7 @@ async def _start_server(
     )
 
 
-@api_method("stop_server")
+@api_method("stop_server", required_scope="server:lifecycle")
 @track_operation(OperationName.SERVER_STOP)
 @trigger_event(
     before="before_server_stop",
@@ -329,7 +328,7 @@ async def stop_server(
                     )
 
 
-@api_method("restart_server")
+@api_method("restart_server", required_scope="server:lifecycle")
 @track_operation(OperationName.SERVER_RESTART)
 async def restart_server(
     request: RestartServerRequest, *, app_context: AppContext
@@ -365,7 +364,7 @@ async def restart_server(
         )
 
 
-@api_method("send_command")
+@api_method("send_command", required_scope="server:command")
 @trigger_event(
     before="before_command_send",
     after="after_command_send",
@@ -417,7 +416,7 @@ async def send_command(
         raise ServerError(f"Unexpected error sending command: {e}") from e
 
 
-@validate_contract
+@api_method("delete_server_data", expose_to_plugins=False)
 @trigger_event(
     before="before_delete_server_data",
     after="after_delete_server_data",

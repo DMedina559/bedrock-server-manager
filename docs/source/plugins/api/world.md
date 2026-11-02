@@ -14,6 +14,8 @@ await self.api.world.export_world(request: bedrock_server_manager.api.models.wor
 
 - **Description:** Export the server's currently active world to a .mcworld archive.
 
+- **Required Permission:** `world:manage`
+
 - **Returns:** `ExportWorldResponse`
 
 Runtime context and plugin identity are injected by the bridge. Failures raise application exceptions; plugin cancellation raises `APICancelledError`.
@@ -76,6 +78,8 @@ await self.api.world.import_world(request: bedrock_server_manager.api.models.wor
 
 - **Description:** Import a world from a .mcworld file, replacing the active world.
 
+- **Required Permission:** `world:manage`
+
 - **Returns:** `ImportWorldResponse`
 
 Runtime context and plugin identity are injected by the bridge. Failures raise application exceptions; plugin cancellation raises `APICancelledError`.
@@ -106,6 +110,8 @@ await self.api.world.reset_world(request: bedrock_server_manager.api.models.worl
 - **Async (Requires await):** Yes
 
 - **Description:** Resets the server's world by deleting the active world directory.
+
+- **Required Permission:** `world:reset`
 
 - **Returns:** `ResetWorldResponse`
 

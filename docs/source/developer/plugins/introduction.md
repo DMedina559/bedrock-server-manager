@@ -49,6 +49,7 @@ Import decorators and `PluginBase` directly from `bedrock_server_manager`. BSM a
 | WebSocket data providers | `@data_provider("topic")` / `@websocket_provider("topic")` | Handle WebSocket `request` messages for `topic` (use `"<plugin_name>:..."` by convention) |
 | FastAPI routes | `router = APIRouter(...)` or `routers = [...]` | Mount custom authenticated HTTP/UI routes on the web application |
 | Static asset mounts | `static_mounts = [(prefix, path, name)]` | Mount static directories under the plugin web namespace |
+| Capability permissions | `permissions = ["path:servers", ...]` | Declare required filesystem and system storage capabilities |
 | HTTP permissions | `http_permissions = [(perm, description, roles)]` | Register custom `plugin:<plugin_name>:<perm>` HTTP scopes |
 | Typed settings | `settings_model`, `global_settings_model`, `server_settings_model` | Validate plugin, global, and per-server settings and generate web forms |
 | Scoped plugin files | `self.api.runtime.read_plugin_file` / `write_plugin_file` / `get_plugin_data_path` | Read and write private (`<config_dir>/plugins/<plugin_name>/`) or shared (`<config_dir>/plugins/public/`) files |
@@ -98,6 +99,36 @@ Decorate an `async def` or synchronous method with `@data_provider("my_plugin:st
 
 - The `topic` string is registered verbatim in the WebSocket connection manager. Prefix custom topics with `<plugin_name>:` (for example, `"my_plugin:stats"`) so they do not collide with core topics or other plugins.
 - The method receives keyword arguments matching the client's `params` dictionary and returns JSON-serializable data, which BSM sends back to the requesting client in a `{"type": "response", "topic": ..., "data": ...}` frame.
+
+### Capability permissions (`permissions = [...]`)
+
+Declare required system and server capability scopes on your `PluginBase` subclass. BSM enforces these scopes when plugins invoke sensitive `@api_method` APIs or access paths:
+
+```python
+class MyPlugin(PluginBase):
+    version = "1.0.0"
+    permissions = ["server:command", "server:lifecycle"]
+```
+
+| Scope | Description | Associated APIs |
+|---|---|---|
+| `path:servers` | Access server installation directories | `api.runtime.get_system_path("servers")`, `paths.servers` |
+| `path:backups` | Access backup archives and snapshot storage | `api.runtime.get_system_path("backups")`, `paths.backups` |
+| `path:content` | Access content import directories (worlds and packs) | `api.runtime.get_system_path("content")`, `paths.content` |
+| `path:downloads` | Access cached server download archives | `api.runtime.get_system_path("downloads")`, `paths.downloads` |
+| `path:themes` | Access custom Web UI themes | `api.runtime.get_system_path("themes")`, `paths.themes` |
+| `server:command` | Send interactive console commands | `api.server.send_command` |
+| `server:lifecycle` | Start, stop, and restart game servers | `api.server.start_server`, `stop_server`, `restart_server` |
+| `server:properties` | Modify server.properties configuration | `api.properties.set_properties` |
+| `server:permissions` | Modify Minecraft player operator permissions | `api.permissions.set_permissions` |
+| `server:allowlist` | Add or remove players from the server allowlist | `api.allowlist.add_to_allowlist`, `remove_from_allowlist` |
+| `server:ban` | Add or remove server player bans | `api.ban.add_server_ban`, `remove_server_ban` |
+| `world:manage` | Import or export Minecraft server worlds | `api.world.import_world`, `export_world` |
+| `addon:manage` | Enable, disable, import, or reorder server addons | `api.addon.enable_addon`, `disable_addon`, `import_addon`, `reorder_addons` |
+| `backup:create` | Create server backups and snapshots | `api.backup_restore.backup_*`, `create_server_backup` |
+
+> [!NOTE]
+> The root `"paths"` configuration key and `"paths.plugins"` directory are permanently restricted and cannot be granted to any plugin.
 
 ## Call typed capabilities
 

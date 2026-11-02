@@ -1,3 +1,5 @@
+from pathlib import Path
+
 import pytest
 
 from bedrock_server_manager.api.models.settings import (
@@ -131,7 +133,20 @@ async def test_plugin_settings_preserve_falsy_values(app_context, value):
 async def test_plugin_task_bridge_runs_actual_server_api(
     app_context, real_bedrock_server, wait_for_task
 ):
-    api = create_app_api("autostart", app_context)
+    import logging
+
+    from bedrock_server_manager.plugins.plugin_base import PluginBase
+
+    class AutostartPlugin(PluginBase):
+        permissions = ["server:lifecycle"]
+
+    plugin = AutostartPlugin(
+        "autostart",
+        create_app_api("autostart", app_context),
+        logging.getLogger("test"),
+    )
+    app_context.plugin_manager.plugins.append(plugin)
+    api = plugin.api
     task_id = await api.runtime.run_task(
         api.server.start,
         request={"server_name": real_bedrock_server.server_name},
@@ -167,3 +182,225 @@ async def test_unscoped_api_access_is_backward_compatible_and_logs_deprecation(
         "deprecated unscoped runtime capability 'self.api.get_plugin_data_path'"
         in messages
     )
+
+
+async def test_plugin_path_permissions_and_blacklist(app_context, plugin_factory):
+    granted_plugin = await plugin_factory(
+        "granted_plugin",
+        """
+from bedrock_server_manager import PluginBase
+
+class GrantedPlugin(PluginBase):
+    version = "1.0.0"
+    permissions = ["path:servers"]
+""",
+    )
+    res = await granted_plugin.api.settings.get_global_setting(
+        GetGlobalSettingRequest(key="paths.servers")
+    )
+    assert res.status == "success"
+    assert res.value == app_context.settings.get("paths.servers")
+
+    servers_path = await granted_plugin.api.runtime.get_system_path("servers")
+    assert str(servers_path) == str(
+        Path(app_context.settings.get("paths.servers")).resolve()
+    )
+
+    with pytest.raises(PermissionError):
+        await granted_plugin.api.settings.get_global_setting(
+            GetGlobalSettingRequest(key="paths.backups")
+        )
+    with pytest.raises(PermissionError):
+        await granted_plugin.api.runtime.get_system_path("backups")
+
+    with pytest.raises(PermissionError):
+        await granted_plugin.api.settings.get_global_setting(
+            GetGlobalSettingRequest(key="paths.plugins")
+        )
+    with pytest.raises(PermissionError):
+        await granted_plugin.api.settings.get_global_setting(
+            GetGlobalSettingRequest(key="paths")
+        )
+
+    all_settings = await granted_plugin.api.settings.get_all_global_settings({})
+    assert "paths" in all_settings.settings
+    assert "servers" in all_settings.settings["paths"]
+    assert "plugins" not in all_settings.settings["paths"]
+    assert "backups" not in all_settings.settings["paths"]
+
+    denied_plugin = await plugin_factory(
+        "denied_plugin",
+        """
+from bedrock_server_manager import PluginBase
+
+class DeniedPlugin(PluginBase):
+    version = "1.0.0"
+    permissions = []
+""",
+    )
+    with pytest.raises(PermissionError):
+        await denied_plugin.api.settings.get_global_setting(
+            GetGlobalSettingRequest(key="paths.servers")
+        )
+    with pytest.raises(PermissionError):
+        await denied_plugin.api.runtime.get_system_path("servers")
+    all_denied = await denied_plugin.api.settings.get_all_global_settings({})
+    assert "paths" not in all_denied.settings
+
+
+async def test_scoped_server_lifecycle_and_command_permissions(
+    app_context, plugin_factory
+):
+    from bedrock_server_manager.api.models import SendCommandRequest, StartServerRequest
+
+    plugin = await plugin_factory(
+        "restricted_plugin",
+        """
+from bedrock_server_manager import PluginBase
+
+class RestrictedPlugin(PluginBase):
+    version = "1.0.0"
+    permissions = []
+""",
+    )
+    with pytest.raises(PermissionError, match="server:lifecycle"):
+        await plugin.api.server.start(StartServerRequest(server_name="test"))
+    with pytest.raises(PermissionError, match="server:command"):
+        await plugin.api.server.send_command(
+            SendCommandRequest(server_name="test", command="list")
+        )
+
+    allowed_plugin = await plugin_factory(
+        "allowed_plugin",
+        """
+from bedrock_server_manager import PluginBase
+
+class AllowedPlugin(PluginBase):
+    version = "1.0.0"
+    permissions = ["server:lifecycle", "server:command"]
+""",
+    )
+    assert allowed_plugin.permissions == ["server:lifecycle", "server:command"]
+
+
+async def test_unexposed_api_methods_raise_attribute_error_for_plugins(
+    app_context, plugin_factory
+):
+    plugin = await plugin_factory(
+        "probe_plugin",
+        """
+from bedrock_server_manager import PluginBase
+
+class ProbePlugin(PluginBase):
+    version = "1.0.0"
+""",
+    )
+    with pytest.raises(AttributeError, match="is not exposed to plugins"):
+        _ = plugin.api.settings.set_global_setting
+
+    with pytest.raises(AttributeError, match="is not exposed to plugins"):
+        _ = plugin.api.backup_restore.delete_server_backup
+
+    with pytest.raises(AttributeError, match="is not exposed to plugins"):
+        _ = plugin.api.server.delete_server_data
+
+    with pytest.raises(AttributeError, match="is not exposed to plugins"):
+        _ = plugin.api.plugins.reload_plugins
+
+
+async def test_granular_capability_scopes(app_context, plugin_factory):
+    from bedrock_server_manager.api.models import (
+        AddServerBanRequest,
+        AddToAllowlistRequest,
+        BackupWorldRequest,
+        EnableAddonRequest,
+        ExportWorldRequest,
+        ManageSnapshotRequest,
+        ResetWorldRequest,
+        RestoreSnapshotRequest,
+        SetPermissionsRequest,
+        SetPropertiesRequest,
+        UpdateServerRequest,
+    )
+
+    unscoped_plugin = await plugin_factory(
+        "unscoped_test_plugin",
+        """
+from bedrock_server_manager import PluginBase
+
+class UnscopedPlugin(PluginBase):
+    version = "1.0.0"
+    permissions = []
+""",
+    )
+
+    with pytest.raises(PermissionError, match="server:install"):
+        await unscoped_plugin.api.install.update_server(
+            UpdateServerRequest(server_name="test")
+        )
+
+    with pytest.raises(PermissionError, match="server:properties"):
+        await unscoped_plugin.api.properties.set_properties(
+            SetPropertiesRequest(server_name="test", properties_to_update={})
+        )
+
+    with pytest.raises(PermissionError, match="server:permissions"):
+        await unscoped_plugin.api.permissions.set_permissions(
+            SetPermissionsRequest(
+                server_name="test",
+                player_name="player",
+                xuid="123",
+                permission="operator",
+            )
+        )
+
+    with pytest.raises(PermissionError, match="server:allowlist"):
+        await unscoped_plugin.api.allowlist.add_to_allowlist(
+            AddToAllowlistRequest(server_name="test", new_players_data=[])
+        )
+
+    with pytest.raises(PermissionError, match="server:ban"):
+        await unscoped_plugin.api.ban.add_server_ban(
+            AddServerBanRequest(server_name="test", player_name="p", xuid="123")
+        )
+
+    with pytest.raises(PermissionError, match="world:manage"):
+        await unscoped_plugin.api.world.export_world(
+            ExportWorldRequest(server_name="test")
+        )
+
+    with pytest.raises(PermissionError, match="world:reset"):
+        await unscoped_plugin.api.world.reset_world(
+            ResetWorldRequest(server_name="test")
+        )
+
+    with pytest.raises(PermissionError, match="addon:manage"):
+        await unscoped_plugin.api.addon.enable_addon(
+            EnableAddonRequest(
+                server_name="test", pack_uuid="uuid", pack_type="behavior"
+            )
+        )
+
+    with pytest.raises(PermissionError, match="backup:create"):
+        await unscoped_plugin.api.backup_restore.backup_world(
+            BackupWorldRequest(server_name="test")
+        )
+
+    with pytest.raises(PermissionError, match="backup:restore"):
+        await unscoped_plugin.api.backup_restore.restore_server_snapshot(
+            RestoreSnapshotRequest(
+                server_name="test",
+                backup_id="snap1",
+                components=["world"],
+                token="tok",
+            )
+        )
+
+    with pytest.raises(PermissionError, match="backup:manage"):
+        await unscoped_plugin.api.backup_restore.manage_server_snapshot(
+            ManageSnapshotRequest(
+                server_name="test",
+                backup_id="snap1",
+                action="pin",
+            )
+        )

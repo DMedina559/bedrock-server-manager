@@ -88,7 +88,7 @@ def validate_property_value(
     return _core_validate_property_value(request)
 
 
-@api_method("set_properties")
+@api_method("set_properties", required_scope="server:properties")
 @trigger_event(
     before="before_properties_change",
     after="after_properties_change",

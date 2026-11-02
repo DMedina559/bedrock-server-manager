@@ -45,6 +45,8 @@ await self.api.permissions.set_permissions(request: bedrock_server_manager.api.m
 
 - **Description:** Set a player's permission level for a given server.
 
+- **Required Permission:** `server:permissions`
+
 - **Returns:** `SetPermissionsResponse`
 
 Runtime context and plugin identity are injected by the bridge. Failures raise application exceptions; plugin cancellation raises `APICancelledError`.

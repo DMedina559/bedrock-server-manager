@@ -83,7 +83,7 @@ async def get_world_name(
         raise
 
 
-@api_method("export_world")
+@api_method("export_world", required_scope="world:manage")
 @trigger_event(
     before="before_world_export",
     after="after_world_export",
@@ -161,7 +161,7 @@ async def export_world(
         server.operation_lock.release()
 
 
-@api_method("import_world")
+@api_method("import_world", required_scope="world:manage")
 @trigger_event(
     before="before_world_import",
     after="after_world_import",
@@ -242,7 +242,7 @@ async def import_world(
         server.operation_lock.release()
 
 
-@api_method("reset_world")
+@api_method("reset_world", required_scope="world:reset")
 @trigger_event(
     before="before_world_reset",
     after="after_world_reset",

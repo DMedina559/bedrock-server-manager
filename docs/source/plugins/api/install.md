@@ -14,6 +14,8 @@ await self.api.install.install_new_server(request: bedrock_server_manager.api.mo
 
 - **Description:** Installs a new server instance.
 
+- **Required Permission:** `server:install`
+
 - **Returns:** `InstallNewServerResponse`
 
 Runtime context and plugin identity are injected by the bridge. Failures raise application exceptions; plugin cancellation raises `APICancelledError`.
@@ -44,6 +46,8 @@ await self.api.install.update_server(request: bedrock_server_manager.api.models.
 - **Async (Requires await):** Yes
 
 - **Description:** Updates an existing server instance.
+
+- **Required Permission:** `server:install`
 
 - **Returns:** `UpdateServerResponse`
 

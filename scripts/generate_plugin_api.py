@@ -25,7 +25,7 @@ def generate():
     for domain in sorted({item[4] for item in _api_registry.values()}):
         methods = []
         names = {}
-        for name, (func, exposed, _, _, owner) in sorted(_api_registry.items()):
+        for name, (func, exposed, _, _, owner, *_) in sorted(_api_registry.items()):
             if owner != domain:
                 continue
             contract = get_contract(func)
@@ -80,6 +80,8 @@ def generate():
     async def write_plugin_file(self, filename: str, value: Any, *, scope: Literal["private", "public"] = "private", format: Literal["json", "text", "bytes"] = "json") -> None: ...
 
     async def get_plugin_data_path(self, filename: str = "", *, scope: Literal["private", "public"] = "private") -> Path: ...
+
+    async def get_system_path(self, scope: Literal["servers", "backups", "content", "downloads", "themes"]) -> Path: ...
 
 """
         + "API_METHODS: dict[str, dict[str, str]] = "
