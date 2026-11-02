@@ -1,146 +1,29 @@
-"""Lifecycle-owned scheduler, unified task registry, and API task orchestration."""
+"""Lifecycle-owned scheduler, task orchestration, and background worker loop."""
 
 from __future__ import annotations
 
 import asyncio
-import inspect
 import json
 import logging
-import re
 from contextlib import nullcontext
-from dataclasses import dataclass
-from datetime import datetime, timedelta, timezone
-from typing import TYPE_CHECKING, Any, Awaitable, Callable
-
-from pydantic import BaseModel, ConfigDict, Field, create_model
+from datetime import datetime, timezone
+from typing import TYPE_CHECKING, Any
 
 if TYPE_CHECKING:
     from ..api.models.scheduler import ListSchedulesResponse
 
-from ..backups.contents import BackupComponents, BackupMode
 from ..logging import RepeatedFailureReporter
 from ..utils.threads import run_in_thread
+from .builtin import register_builtin_tasks
 from .engine import occurrences, signature
 from .runner import DeferredRun, next_attempt, run_schedule
+from .tasks import TaskRegistry
 
 logger = logging.getLogger(__name__)
 
-_TASK_ALIASES: dict[str, str] = {
-    "backup": "backup:create",
-    "verify": "backup:verify",
-}
-
-
-class BackupScheduleOptions(BaseModel):
-    """Serializable options for scheduled server snapshot creation."""
-
-    model_config = ConfigDict(extra="forbid", strict=True)
-
-    encrypted: bool | None = None
-    mode: BackupMode | None = None
-    components: BackupComponents | None = None
-
-
-class VerifyScheduleOptions(BaseModel):
-    """Serializable options for scheduled backup archive verification."""
-
-    model_config = ConfigDict(extra="forbid", strict=True)
-
-    minimum_age_hours: int = Field(default=168, ge=0, le=8760)
-
-
-class PruneDownloadsScheduleOptions(BaseModel):
-    """Serializable options for scheduled download cache pruning."""
-
-    model_config = ConfigDict(extra="forbid", strict=True)
-
-    directory: str | None = Field(
-        default=None,
-        pattern=r"^(stable|preview)$",
-        description="Optional download cache channel ('stable' or 'preview'); prunes both when omitted.",
-    )
-    keep_count: int | None = Field(
-        default=None,
-        ge=0,
-        le=1000,
-        description="Number of recent installer archives to retain per channel.",
-    )
-
-
-class EmptyScheduleOptions(BaseModel):
-    """Options model for scheduled API tasks that take only server_name."""
-
-    model_config = ConfigDict(extra="forbid", strict=True)
-
-
-@dataclass(frozen=True)
-class TaskDefinition:
-    """Unified registration entry for built-in and plugin scheduled tasks."""
-
-    name: str
-    handler: Callable[..., Awaitable[Any]]
-    owner: str = "application"
-    generation: int = 0
-    options_model: type[BaseModel] | None = None
-    timeout_seconds: float | None = 300
-    requires_server_lock: bool = True
-    with_context: bool = False
-    manage_server_lock: bool = True
-    exclude_unset_options: bool = False
-    reconcile_handler: Callable[[Any, str], Awaitable[bool]] | None = None
-    options_validator: Callable[[Any, str, dict[str, Any]], None] | None = None
-    description: str = ""
-    api_method_name: str | None = None
-
-
-def _derive_api_options_model(
-    request_cls: type[BaseModel],
-    default_options: dict[str, Any] | None = None,
-) -> type[BaseModel]:
-    """Build a schedule options Pydantic model from an APIRequest model."""
-    fields: dict[str, Any] = {}
-    defaults = default_options or {}
-    for field_name, field_info in request_cls.model_fields.items():
-        if field_name in {"server_name", "schedule_slot"}:
-            continue
-        annotation = field_info.annotation or Any
-        if field_name in defaults:
-            fields[field_name] = (
-                annotation,
-                Field(default=defaults[field_name], description=field_info.description),
-            )
-        elif field_info.is_required():
-            fields[field_name] = (
-                annotation,
-                Field(..., description=field_info.description),
-            )
-        elif field_info.default_factory is not None:
-            fields[field_name] = (
-                annotation,
-                Field(
-                    default_factory=field_info.default_factory,
-                    description=field_info.description,
-                ),
-            )
-        else:
-            fields[field_name] = (
-                annotation,
-                Field(
-                    default=field_info.default,
-                    description=field_info.description,
-                ),
-            )
-    if not fields:
-        return EmptyScheduleOptions
-    return create_model(
-        f"{request_cls.__name__}ScheduleOptions",
-        __config__=ConfigDict(extra="forbid", strict=True),
-        **fields,
-    )
-
 
 class Scheduler:
-    """Manage scheduled server tasks and the unified ``TaskDefinition`` registry."""
+    """Manage scheduled server tasks and the background execution loop."""
 
     def __init__(self, context):
         self._log_failures = RepeatedFailureReporter(logging.getLogger(__name__))
@@ -151,7 +34,8 @@ class Scheduler:
         self._limit = 4
         self._interval = 60
         self._wake = asyncio.Event()
-        self._handlers: dict[str, TaskDefinition] = {}
+        self.tasks = TaskRegistry(context)
+        self._handlers = self.tasks.handlers
         self._settings_lock = asyncio.Lock()
         self._migration_lock = asyncio.Lock()
         self.last_tick_at = None
@@ -163,566 +47,9 @@ class Scheduler:
     def repository(self):
         return self.context.storage.scheduler_repo
 
-    def resolve_task_name(self, name: str, *, warn_deprecated: bool = False) -> str:
-        """Resolve a task name, normalizing legacy aliases when present."""
-        canonical = _TASK_ALIASES.get(name)
-        if canonical is not None:
-            if warn_deprecated:
-                logger.warning(
-                    "Scheduled task '%s' is deprecated and will be removed in a future version; use '%s' instead.",
-                    name,
-                    canonical,
-                )
-            return canonical
-        return name
-
-    def get_task_definition(
-        self, name: str, *, warn_deprecated: bool = False
-    ) -> TaskDefinition | None:
-        """Return the active ``TaskDefinition`` for ``name`` if available."""
-        canonical = self.resolve_task_name(name, warn_deprecated=warn_deprecated)
-        entry = self._handlers.get(canonical)
-        if entry is None:
-            return None
-        if entry.owner != "application":
-            try:
-                self.context.events.check_owner(entry.owner, entry.generation)
-            except RuntimeError:
-                self._handlers.pop(canonical, None)
-                return None
-        return entry
-
-    def register(
-        self,
-        name: str,
-        handler: Callable[..., Awaitable[Any]],
-        *,
-        owner: str = "application",
-        generation: int = 0,
-        options_model: type[BaseModel] | None = None,
-        timeout_seconds: float | None = 300,
-        requires_server_lock: bool = True,
-        with_context: bool = False,
-        manage_server_lock: bool | None = None,
-        exclude_unset_options: bool = False,
-        reconcile_handler: Callable[[Any, str], Awaitable[bool]] | None = None,
-        options_validator: Callable[[Any, str, dict[str, Any]], None] | None = None,
-        description: str = "",
-        api_method_name: str | None = None,
-    ) -> TaskDefinition:
-        """Register an async scheduled task handler in the unified task registry."""
-        if not inspect.iscoroutinefunction(handler):
-            raise TypeError("Scheduled task handlers must be async functions")
-
-        if owner.startswith("plugin:"):
-            plugin_prefix = owner.removeprefix("plugin:")
-            if ":" not in name and re.fullmatch(r"[a-zA-Z0-9_.-]+", name):
-                name = f"{plugin_prefix}:{name}"
-
-        if (
-            not re.fullmatch(r"[a-zA-Z0-9_.-]+:[a-zA-Z0-9_.-]+", name)
-            or len(name) > 160
-        ):
-            raise ValueError(
-                "Scheduled task names require a namespace and name within 160 characters"
-            )
-        if owner.startswith("plugin:") and not name.startswith(
-            owner.removeprefix("plugin:") + ":"
-        ):
-            raise ValueError("Scheduled task names must use the plugin namespace")
-        if name in self._handlers and self.available(name):
-            raise ValueError("Scheduled task is already registered")
-
-        if options_model is None:
-            try:
-                sig = inspect.signature(handler)
-                opt_param = sig.parameters.get("options")
-                if (
-                    opt_param is not None
-                    and inspect.isclass(opt_param.annotation)
-                    and issubclass(opt_param.annotation, BaseModel)
-                ):
-                    options_model = opt_param.annotation
-                if not with_context and "execution_context" in sig.parameters:
-                    with_context = True
-            except (ValueError, TypeError):
-                pass
-
-        if options_model is not None and (
-            not inspect.isclass(options_model)
-            or not issubclass(options_model, BaseModel)
-        ):
-            raise TypeError("Task options_model must be a Pydantic model class")
-        if timeout_seconds is not None and (
-            type(timeout_seconds) not in (int, float)
-            or not 1 <= timeout_seconds <= 86400
-        ):
-            raise ValueError("Task timeout must be from 1 through 86400 seconds")
-        if options_model is not None:
-            options_model.model_json_schema()
-
-        effective_manage_lock = (
-            requires_server_lock if manage_server_lock is None else manage_server_lock
-        )
-        definition = TaskDefinition(
-            name=name,
-            handler=handler,
-            owner=owner,
-            generation=generation,
-            options_model=options_model,
-            timeout_seconds=timeout_seconds,
-            requires_server_lock=requires_server_lock,
-            with_context=with_context,
-            manage_server_lock=effective_manage_lock,
-            exclude_unset_options=exclude_unset_options,
-            reconcile_handler=reconcile_handler,
-            options_validator=options_validator,
-            description=description,
-            api_method_name=api_method_name,
-        )
-        self._handlers[name] = definition
-        return definition
-
-    def register_api_task(
-        self,
-        name: str,
-        api_function: Callable[..., Any] | str,
-        *,
-        owner: str = "application",
-        generation: int = 0,
-        options_model: type[BaseModel] | None = None,
-        default_options: dict[str, Any] | None = None,
-        slot_field: str | None = None,
-        timeout_seconds: float | None = 300,
-        requires_server_lock: bool = True,
-        manage_server_lock: bool = False,
-        exclude_unset_options: bool = True,
-        reconcile_handler: Callable[[Any, str], Awaitable[bool]] | None = None,
-        options_validator: Callable[[Any, str, dict[str, Any]], None] | None = None,
-        description: str = "",
-        failure_message: str | None = None,
-    ) -> TaskDefinition:
-        """Register an API method to run as a scheduled task."""
-        from importlib import import_module
-
-        from ..api.contract import get_contract
-        from ..plugins.api_bridge import _api_methods, _api_registry
-
-        import_module("bedrock_server_manager.api")
-
-        resolved_api_name: str | None = None
-        resolved_domain: str | None = None
-        resolved_method: str | None = None
-        target_callable: Callable[..., Any] | None = None
-        request_cls: type[BaseModel] | None = None
-
-        if isinstance(api_function, str):
-            if "." in api_function:
-                domain_part, method_part = api_function.split(".", 1)
-                reg_name = (
-                    _api_methods().get(domain_part, {}).get(method_part, method_part)
-                )
-                entry = _api_registry.get(reg_name)
-                if entry is None:
-                    raise ValueError(f"Unknown API method '{api_function}'")
-                resolved_api_name = reg_name
-                resolved_domain = domain_part
-                resolved_method = method_part
-                target_callable = entry[0]
-            else:
-                entry = _api_registry.get(api_function)
-                if entry is None:
-                    raise ValueError(f"Unknown API method '{api_function}'")
-                resolved_api_name = api_function
-                resolved_domain = entry[4]
-                resolved_method = next(
-                    (
-                        m
-                        for m, r in _api_methods().get(resolved_domain, {}).items()
-                        if r == api_function
-                    ),
-                    api_function,
-                )
-                target_callable = entry[0]
-        elif callable(api_function):
-            target_callable = api_function
-            unwrapped = getattr(api_function, "__wrapped__", api_function)
-            for reg_name, entry in _api_registry.items():
-                if entry[0] is unwrapped or entry[0] is api_function:
-                    resolved_api_name = reg_name
-                    resolved_domain = entry[4]
-                    resolved_method = next(
-                        (
-                            m
-                            for m, r in _api_methods().get(resolved_domain, {}).items()
-                            if r == reg_name
-                        ),
-                        reg_name,
-                    )
-                    break
-        else:
-            raise TypeError("api_function must be a callable or registered API name")
-
-        if target_callable is not None:
-            unwrapped = getattr(target_callable, "__wrapped__", target_callable)
-            try:
-                contract = get_contract(unwrapped) or get_contract(target_callable)
-            except (TypeError, NameError):
-                contract = None
-            if contract is not None:
-                request_cls = contract[0]
-            else:
-                try:
-                    sig = inspect.signature(target_callable)
-                    first_param = next(iter(sig.parameters.values()), None)
-                    if (
-                        first_param is not None
-                        and inspect.isclass(first_param.annotation)
-                        and issubclass(first_param.annotation, BaseModel)
-                    ):
-                        request_cls = first_param.annotation
-                except (ValueError, TypeError):
-                    pass
-
-        if options_model is None and request_cls is not None:
-            options_model = _derive_api_options_model(request_cls, default_options)
-
-        doc = description
-        if not doc and target_callable is not None:
-            raw_doc = inspect.getdoc(target_callable) or ""
-            doc = raw_doc.strip().split("\n")[0] if raw_doc else ""
-
-        err_msg = failure_message or f"Scheduled task '{name}' did not complete"
-
-        async def _api_handler(
-            *,
-            server_name: str,
-            options: dict[str, Any],
-            execution_context: dict[str, Any] | None = None,
-        ) -> Any:
-            payload: dict[str, Any] = dict(default_options or {})
-            payload.update(options)
-            if request_cls is None or "server_name" in request_cls.model_fields:
-                payload["server_name"] = server_name
-            if slot_field and execution_context and "slot" in execution_context:
-                payload[slot_field] = execution_context["slot"]
-
-            if (
-                isinstance(api_function, str)
-                and resolved_domain is not None
-                and resolved_method is not None
-            ):
-                namespace = getattr(self.context.api, resolved_domain)
-                api_call = getattr(namespace, resolved_method)
-                result = api_call(request=payload)
-            else:
-                assert target_callable is not None
-                sig = inspect.signature(target_callable)
-                call_kwargs: dict[str, Any] = {}
-                if "app_context" in sig.parameters:
-                    call_kwargs["app_context"] = self.context
-                if "plugin_name" in sig.parameters and owner.startswith("plugin:"):
-                    call_kwargs["plugin_name"] = owner.removeprefix("plugin:")
-                if "request" in sig.parameters:
-                    result = target_callable(request=payload, **call_kwargs)
-                else:
-                    result = target_callable(payload, **call_kwargs)
-
-            if inspect.isawaitable(result):
-                result = await result
-
-            if hasattr(result, "status"):
-                status = getattr(result, "status")
-                detail = getattr(result, "message", None)
-                if status == "skipped":
-                    try:
-                        server = self.context.get_server(
-                            server_name, require_installation=False
-                        )
-                    except Exception:
-                        server = None
-                    if (server is not None and server.operation_lock.locked()) or (
-                        isinstance(detail, str)
-                        and "already in progress" in detail.lower()
-                    ):
-                        raise DeferredRun(
-                            "Scheduled task yielded to active server operation"
-                        )
-                    cleanup_outcome = getattr(
-                        getattr(result, "result", None), "outcome", None
-                    )
-                    if cleanup_outcome == "noop" or (
-                        isinstance(detail, str)
-                        and "no backup directory" in detail.lower()
-                    ):
-                        return result
-                if status != "success":
-                    raise RuntimeError(f"{err_msg}: {detail}" if detail else err_msg)
-            return result
-
-        return self.register(
-            name,
-            _api_handler,
-            owner=owner,
-            generation=generation,
-            options_model=options_model,
-            timeout_seconds=timeout_seconds,
-            requires_server_lock=requires_server_lock,
-            with_context=bool(slot_field),
-            manage_server_lock=manage_server_lock,
-            exclude_unset_options=exclude_unset_options,
-            reconcile_handler=reconcile_handler,
-            options_validator=options_validator,
-            description=doc,
-            api_method_name=resolved_api_name
-            or getattr(target_callable, "__name__", str(api_function)),
-        )
-
     def _register_builtin_tasks(self) -> None:
         """Register core backup/restore and server management APIs into the scheduler."""
-
-        def _validate_backup_options(
-            scheduler: Scheduler, server_name: str, options: dict[str, Any]
-        ) -> None:
-            from ..api.models.backup_restore import CreateSnapshotRequest
-            from ..backups.selection import selection
-            from ..error import BackupRestoreError, UserInputError
-
-            allowed = {"encrypted", "mode", "components"}
-            if set(options) - allowed:
-                raise UserInputError("Unknown scheduled task option")
-            try:
-                CreateSnapshotRequest(server_name=server_name or "all", **options)
-                selection(
-                    scheduler.context.settings,
-                    options.get("mode"),
-                    options.get("components"),
-                )
-            except (ValueError, TypeError, BackupRestoreError) as error:
-                raise UserInputError(
-                    "Invalid backup content or encryption options"
-                ) from error
-
-        async def _reconcile_backup_slot(server: Any, slot: str) -> bool:
-            async with server.operation_lock:
-
-                def _has_slot_archive() -> bool:
-                    value = server.backups.catalog.load()
-                    return any(
-                        item.get("schedule_slot") == slot
-                        and (server.backups.catalog.directory / filename).is_file()
-                        for filename, item in value["archives"].items()
-                    )
-
-                return await run_in_thread(_has_slot_archive)
-
-        def _validate_verify_options(
-            scheduler: Scheduler, server_name: str, options: dict[str, Any]
-        ) -> None:
-            from ..error import UserInputError
-
-            allowed = {"minimum_age_hours"}
-            if set(options) - allowed:
-                raise UserInputError("Unknown scheduled task option")
-            age = options.get("minimum_age_hours", 168)
-            if type(age) is not int or not 0 <= age <= 8760:
-                raise UserInputError(
-                    "Verification age must be an integer from 0 to 8760"
-                )
-
-        async def _verify_backups_handler(
-            *, server_name: str, options: dict[str, Any]
-        ) -> None:
-            server = self.context.get_server(server_name, require_installation=False)
-            age = options.get("minimum_age_hours", 168)
-            failed = 0
-            for item in await server.backups.list_snapshots():
-                if server.operation_lock.waiting:
-                    raise DeferredRun("Verification yielded to interactive work")
-                checked = item.verification.verified_at
-                if (
-                    item.verification.status != "verified"
-                    or not checked
-                    or datetime.now(timezone.utc) - datetime.fromisoformat(checked)
-                    >= timedelta(hours=age)
-                ):
-                    try:
-                        await server.backups.verify_snapshot(item.backup_id)
-                    except Exception as error:
-                        self._log_failures.report(
-                            "verification", "Scheduler %s failed: %s", error
-                        )
-                        failed += 1
-            if failed:
-                raise RuntimeError(
-                    "Some scheduled archive verifications failed; inspect backup health"
-                )
-
-        self.register_api_task(
-            "backup:create",
-            "backup_restore.create_server_backup",
-            owner="application",
-            options_model=BackupScheduleOptions,
-            default_options={"purpose": "scheduled"},
-            slot_field="schedule_slot",
-            timeout_seconds=None,
-            requires_server_lock=True,
-            manage_server_lock=False,
-            exclude_unset_options=True,
-            reconcile_handler=_reconcile_backup_slot,
-            options_validator=_validate_backup_options,
-            description="Create a scheduled server snapshot archive.",
-            failure_message="Scheduled backup did not complete",
-        )
-        self.register(
-            "backup:verify",
-            _verify_backups_handler,
-            owner="application",
-            options_model=VerifyScheduleOptions,
-            timeout_seconds=None,
-            requires_server_lock=True,
-            manage_server_lock=False,
-            exclude_unset_options=True,
-            options_validator=_validate_verify_options,
-            description="Verify snapshot archive integrity for backups older than minimum_age_hours.",
-        )
-        self.register_api_task(
-            "backup:prune",
-            "backup_restore.prune_old_backups",
-            owner="application",
-            timeout_seconds=None,
-            requires_server_lock=True,
-            manage_server_lock=False,
-            description="Prune old backups according to server retention policies.",
-        )
-        self.register_api_task(
-            "server:start",
-            "server.start",
-            owner="application",
-            requires_server_lock=True,
-            manage_server_lock=False,
-            description="Start the Bedrock server.",
-        )
-        self.register_api_task(
-            "server:stop",
-            "server.stop",
-            owner="application",
-            requires_server_lock=True,
-            manage_server_lock=False,
-            description="Stop the Bedrock server.",
-        )
-        self.register_api_task(
-            "server:restart",
-            "server.restart",
-            owner="application",
-            requires_server_lock=True,
-            manage_server_lock=False,
-            description="Restart the Bedrock server.",
-        )
-        self.register_api_task(
-            "server:update",
-            "install.update_server",
-            owner="application",
-            timeout_seconds=None,
-            requires_server_lock=True,
-            manage_server_lock=False,
-            description="Check for and install Bedrock server updates (with pre-update backup).",
-        )
-        self.register_api_task(
-            "server:send_command",
-            "server.send_command",
-            owner="application",
-            requires_server_lock=False,
-            manage_server_lock=False,
-            description="Send a console command to a running Bedrock server.",
-        )
-        self.register_api_task(
-            "world:export",
-            "world.export_world",
-            owner="application",
-            timeout_seconds=None,
-            requires_server_lock=True,
-            manage_server_lock=False,
-            description="Export the active server world to a .mcworld archive.",
-        )
-        from ..api.world import reset_world
-
-        self.register_api_task(
-            "world:reset",
-            reset_world,
-            owner="application",
-            timeout_seconds=None,
-            requires_server_lock=True,
-            manage_server_lock=False,
-            description="Reset the active server world directory so it regenerates on next start.",
-        )
-        self.register_api_task(
-            "player:scan",
-            "player.scan_and_update_player_db",
-            owner="application",
-            timeout_seconds=None,
-            requires_server_lock=False,
-            manage_server_lock=False,
-            description="Scan server logs to discover and update known players in the database.",
-        )
-
-        async def _prune_downloads_handler(
-            *, server_name: str, options: dict[str, Any]
-        ) -> None:
-            import os
-
-            import aiofiles.ospath
-
-            from ..api.misc import prune_download_cache
-            from ..api.models.misc import PruneDownloadCacheRequest
-
-            base_dir = self.context.settings.get("paths.downloads")
-            if not base_dir:
-                raise RuntimeError("DOWNLOAD_DIR setting is missing in configuration")
-            channel = options.get("directory")
-            keep = options.get("keep_count")
-            channels = [channel] if channel else ["stable", "preview"]
-            for subdir in channels:
-                target_dir = os.path.normpath(os.path.join(base_dir, subdir))
-                if not os.path.abspath(target_dir).startswith(
-                    os.path.abspath(base_dir) + os.sep
-                ):
-                    raise RuntimeError(f"Invalid download cache channel: {subdir}")
-                if not await aiofiles.ospath.isdir(target_dir):
-                    continue
-                res = await prune_download_cache(
-                    request=PruneDownloadCacheRequest(
-                        download_dir=target_dir, keep_count=keep
-                    ),
-                    app_context=self.context,
-                )
-                if res.status not in ("success", "skipped"):
-                    raise RuntimeError(
-                        res.message
-                        or f"Scheduled download cache prune failed for '{subdir}'"
-                    )
-
-        self.register(
-            "system:prune_downloads",
-            _prune_downloads_handler,
-            owner="application",
-            options_model=PruneDownloadsScheduleOptions,
-            timeout_seconds=None,
-            requires_server_lock=False,
-            manage_server_lock=False,
-            exclude_unset_options=True,
-            description="Prune old downloaded Bedrock server installer archives.",
-        )
-
-    def remove_owner(self, owner):
-        """Remove all scheduled task definitions registered by ``owner``."""
-        for name, entry in list(self._handlers.items()):
-            if entry.owner == owner:
-                self._handlers.pop(name, None)
-
-    def available(self, name: str) -> bool:
-        """Return whether ``name`` resolves to an active registered task."""
-        return self.get_task_definition(name) is not None
+        register_builtin_tasks(self)
 
     async def configurations(self, server_name=None):
         async with self._migration_lock:
@@ -748,7 +75,7 @@ class Scheduler:
                 self.context.get_server(
                     config["server_name"], require_installation=False
                 )
-                available = self.available(config["task"])
+                available = self.tasks.available(config["task"])
             except Exception as error:
                 self._log_failures.report(
                     "availability", "Scheduler %s failed: %s", error
@@ -789,7 +116,7 @@ class Scheduler:
                 )
             )
         available_handlers = [
-            name for name in list(self._handlers) if self.available(name)
+            name for name in list(self._handlers) if self.tasks.available(name)
         ]
         types = sorted(available_handlers)
         from ..utils.timezones import schedule_timezones, timezone_database_available
@@ -811,7 +138,7 @@ class Scheduler:
                     "owner": entry.owner,
                 }
                 for name, entry in list(self._handlers.items())
-                if self.available(name)
+                if self.tasks.available(name)
             },
             server_time=datetime.now(timezone.utc).isoformat(),
             host_timezone=datetime.now().astimezone().tzname(),
@@ -825,18 +152,9 @@ class Scheduler:
         self.context.get_server(
             request.configuration.server_name, require_installation=False
         )
-        raw_task = request.configuration.task
-        canonical_task = self.resolve_task_name(raw_task, warn_deprecated=True)
-        if canonical_task != raw_task:
-            request = request.model_copy(
-                update={
-                    "configuration": request.configuration.model_copy(
-                        update={"task": canonical_task}
-                    )
-                }
-            )
+        task = request.configuration.task
         options = request.configuration.options
-        definition = self.get_task_definition(canonical_task, warn_deprecated=False)
+        definition = self.tasks.get_task_definition(task)
         if definition is not None:
             if definition.options_validator is not None:
                 definition.options_validator(
@@ -905,7 +223,7 @@ class Scheduler:
         started = time.monotonic()
         failure = None
         run_id = uuid4().hex
-        definition = self.get_task_definition(config["task"])
+        definition = self.tasks.get_task_definition(config["task"])
         owner = (
             definition.owner
             if definition is not None
@@ -956,7 +274,7 @@ class Scheduler:
                     )
 
     async def _execute(self, config, server, slot, *, execution=None):
-        definition = self.get_task_definition(config["task"], warn_deprecated=True)
+        definition = self.tasks.get_task_definition(config["task"])
         if definition is None:
             raise RuntimeError("Scheduled task handler is unavailable")
 
@@ -1022,7 +340,7 @@ class Scheduler:
             )
             for identifier, (config, state, legacy) in entries.items():
                 try:
-                    definition = self.get_task_definition(config["task"])
+                    definition = self.tasks.get_task_definition(config["task"])
                     if definition is None:
                         raise ValueError("handler_unavailable")
                     from ..utils.timezones import resolve_timezone
@@ -1112,7 +430,7 @@ class Scheduler:
                 self._wake.set()
                 return
             else:
-                if not self.available(config["task"]):
+                if not self.tasks.available(config["task"]):
                     raise UserInputError("Scheduled task handler is unavailable")
 
                 self.context.get_server(
@@ -1158,7 +476,7 @@ class Scheduler:
 
         def unavailable(config):
             if (
-                not self.available(config["task"])
+                not self.tasks.available(config["task"])
                 or config["server_name"] not in self.context.state.servers.servers
             ):
                 return True

@@ -24,7 +24,7 @@ START = datetime(2026, 10, 26, 2, 59, tzinfo=timezone.utc)
 async def setup_job(context, server, monkeypatch, **extra):
     service = context.scheduler
     config = ScheduledTask(
-        task="verify",
+        task="backup:verify",
         server_name=server.server_name,
         time="03:00",
         stagger_minutes=0,
@@ -151,7 +151,7 @@ async def test_plugin_job_ignores_broken_backup_catalog_and_validates_options(
     bus = app_context.events
     bus.activate_owner("plugin:example")
     handler = AsyncMock()
-    app_context.scheduler.register(
+    app_context.scheduler.tasks.register(
         "example:job",
         handler,
         owner="plugin:example",
@@ -245,7 +245,7 @@ async def test_pause_during_execution_retains_new_cursor(
 )
 def test_dst_gap_and_fold_have_explicit_first_occurrence(day, time, hour):
     config = ScheduledTask(
-        task="verify",
+        task="backup:verify",
         server_name="test",
         timezone="America/Los_Angeles",
         time=time,
@@ -290,7 +290,7 @@ async def test_plugin_timeout_releases_lock(app_context, populated_server):
     async def handler(**kwargs):
         await asyncio.sleep(10)
 
-    service.register(
+    service.tasks.register(
         "timeout:job",
         handler,
         owner="plugin:timeout",
@@ -412,7 +412,7 @@ def test_forecast_includes_eligible_catch_up_before_first_claim(catch_up, expect
     from bedrock_server_manager.scheduler.runner import next_attempt
 
     config = ScheduledTask(
-        task="verify",
+        task="backup:verify",
         server_name="test",
         time="03:00",
         timezone="UTC",

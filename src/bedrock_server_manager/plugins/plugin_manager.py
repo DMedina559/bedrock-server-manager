@@ -1087,7 +1087,7 @@ class PluginManager:
         for _, method in inspect.getmembers(instance, predicate=inspect.ismethod):
             for task_cfg in getattr(method, "_scheduled_task_configs", ()):
                 if scheduler is not None:
-                    scheduler.register(
+                    scheduler.tasks.register(
                         task_cfg["name"],
                         method,
                         owner=owner,
@@ -1131,7 +1131,7 @@ class PluginManager:
                         if isinstance(api_target, str)
                         else getattr(api_target, "__name__", "api_task")
                     )
-                    scheduler.register_api_task(
+                    scheduler.tasks.register_api_task(
                         task_name,
                         api_target,
                         owner=owner,
@@ -1147,7 +1147,7 @@ class PluginManager:
                     )
                 elif isinstance(api_entry, (tuple, list)) and len(api_entry) == 2:
                     task_name, api_target = api_entry
-                    scheduler.register_api_task(
+                    scheduler.tasks.register_api_task(
                         task_name,
                         api_target,
                         owner=owner,

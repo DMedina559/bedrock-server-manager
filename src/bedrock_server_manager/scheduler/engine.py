@@ -38,7 +38,7 @@ def status(backups, value=None, moment=None):
         (config, record)
         for config, record, _ in records.values()
         if config.get("server_name") == backups.server.server_name
-        and config.get("task") in ("backup:create", "backup")
+        and config.get("task") == "backup:create"
     ]
     if not matching:
         return None

@@ -49,7 +49,7 @@ async def test_scheduler_persists_runs_and_restarts(
         service.repository, "_activation", lambda config: activation(config, moment)
     )
     config = ScheduledTask(
-        task="verify",
+        task="backup:verify",
         server_name=populated_server.server_name,
         time="03:00",
         stagger_minutes=0,
@@ -124,7 +124,7 @@ async def test_scheduler_endpoints_are_admin_only(
     assert (await unauth_client.get(path)).status_code == 401
     assert (await auth_client.get(path)).status_code == 403
     config = {
-        "task": "verify",
+        "task": "backup:verify",
         "server_name": populated_server.server_name,
         "enabled": False,
     }
@@ -145,19 +145,19 @@ async def test_plugin_registration_is_namespaced_and_revoked(
     bus.activate_owner("plugin:example")
     callback = AsyncMock()
     with pytest.raises(ValueError):
-        service.register(
+        service.tasks.register(
             "other:task",
             callback,
             owner="plugin:example",
             generation=bus.owner_generation("plugin:example"),
         )
-    service.register(
+    service.tasks.register(
         "example:task",
         callback,
         owner="plugin:example",
         generation=bus.owner_generation("plugin:example"),
     )
-    assert service.available("example:task")
+    assert service.tasks.available("example:task")
     await service._execute(
         {"task": "example:task", "options": {"x": 1}}, populated_server, "slot"
     )
@@ -165,14 +165,16 @@ async def test_plugin_registration_is_namespaced_and_revoked(
         server_name=populated_server.server_name, options={"x": 1}
     )
     bus.remove_owner("plugin:example")
-    assert not service.available("example:task")
+    assert not service.tasks.available("example:task")
 
 
 async def test_scheduler_shutdown_recovers_interrupted_attempts(
     app_context, populated_server
 ):
     service = app_context.scheduler
-    config = ScheduledTask(task="backup", server_name=populated_server.server_name)
+    config = ScheduledTask(
+        task="backup:create", server_name=populated_server.server_name
+    )
     await service.save(SaveScheduleRequest(schedule_id="nightly", configuration=config))
     await service.repository.state("nightly", {"status": "running", "attempts": 1})
     await service.repository.run("nightly", "slot", run_id="a" * 32, status="running")
@@ -223,7 +225,7 @@ async def test_run_history_is_bounded(app_context, populated_server):
         SaveScheduleRequest(
             schedule_id="bounded",
             configuration=ScheduledTask(
-                task="verify", server_name=populated_server.server_name
+                task="backup:verify", server_name=populated_server.server_name
             ),
         )
     )
@@ -255,7 +257,7 @@ async def test_verification_job_continues_after_a_corrupt_archive(
     monkeypatch.setattr(backups, "verify_snapshot", verify)
     with pytest.raises(RuntimeError, match="Some scheduled"):
         await app_context.scheduler._execute(
-            {"task": "verify", "options": {}}, populated_server, "slot"
+            {"task": "backup:verify", "options": {}}, populated_server, "slot"
         )
     assert verify.await_count == 2
 
@@ -332,7 +334,7 @@ async def test_scheduler_writes_publish_committed_state_and_storage_metrics(
         SaveScheduleRequest(
             schedule_id="state-test",
             configuration=ScheduledTask(
-                task="backup", server_name=populated_server.server_name
+                task="backup:create", server_name=populated_server.server_name
             ),
         )
     )
@@ -368,7 +370,7 @@ async def test_scheduler_rollback_keeps_committed_state(
                 SaveScheduleRequest(
                     schedule_id="failed",
                     configuration=ScheduledTask(
-                        task="backup", server_name=populated_server.server_name
+                        task="backup:create", server_name=populated_server.server_name
                     ),
                 )
             )
@@ -402,7 +404,7 @@ def test_pacific_schedule_observes_daylight_saving():
     from bedrock_server_manager.scheduler.engine import occurrences
 
     config = ScheduledTask(
-        task="backup",
+        task="backup:create",
         server_name="test",
         time="14:42",
         timezone="America/Los_Angeles",
@@ -433,7 +435,9 @@ async def test_diagnostic_history_links_scheduled_runs(
     app_context, populated_server, monkeypatch
 ):
     service = app_context.scheduler
-    config = ScheduledTask(task="verify", server_name=populated_server.server_name)
+    config = ScheduledTask(
+        task="backup:verify", server_name=populated_server.server_name
+    )
     await service.save(
         SaveScheduleRequest(schedule_id="trace-job", configuration=config)
     )
@@ -466,7 +470,7 @@ async def test_new_schedules_inherit_application_timezone_without_moving_saved_j
         return SaveScheduleRequest(
             schedule_id=name,
             configuration=ScheduledTask(
-                task="backup", server_name=populated_server.server_name, **extra
+                task="backup:create", server_name=populated_server.server_name, **extra
             ),
         )
 
@@ -487,7 +491,7 @@ async def test_builtin_tasks_registered_via_unified_registry_with_schemas(
 ):
 
     from bedrock_server_manager.error import UserInputError
-    from bedrock_server_manager.scheduler.service import TaskDefinition
+    from bedrock_server_manager.scheduler import TaskDefinition
 
     service = app_context.scheduler
     expected_builtins = {
@@ -585,34 +589,6 @@ async def test_builtin_tasks_registered_via_unified_registry_with_schemas(
         )
 
 
-async def test_legacy_task_names_log_deprecation_warning(
-    app_context, populated_server, caplog
-):
-    import logging
-
-    service = app_context.scheduler
-    caplog.clear()
-    with caplog.at_level(logging.WARNING):
-        await service.save(
-            SaveScheduleRequest(
-                schedule_id="legacy-verify-alias",
-                configuration=ScheduledTask(
-                    task="verify",
-                    server_name=populated_server.server_name,
-                ),
-            )
-        )
-    assert any(
-        "Scheduled task 'verify' is deprecated" in record.getMessage()
-        and "backup:verify" in record.getMessage()
-        for record in caplog.records
-    )
-    assert (
-        app_context.state.scheduler.records["legacy-verify-alias"][0]["task"]
-        == "backup:verify"
-    )
-
-
 async def test_api_task_handler_handles_global_requests_lock_contention_and_error_detail(
     app_context, populated_server
 ):
@@ -635,7 +611,7 @@ async def test_api_task_handler_handles_global_requests_lock_contention_and_erro
         seen_payloads.append(dict(request))
         return SimpleNamespace(status="success", message="ok")
 
-    service.register_api_task(
+    service.tasks.register_api_task(
         "system:global_test",
         global_api,
         owner="application",
@@ -654,7 +630,7 @@ async def test_api_task_handler_handles_global_requests_lock_contention_and_erro
             status="skipped", message="Backup/restore operation already in progress."
         )
 
-    service.register_api_task(
+    service.tasks.register_api_task(
         "system:busy_test",
         skipped_busy_api,
         owner="application",
@@ -670,7 +646,7 @@ async def test_api_task_handler_handles_global_requests_lock_contention_and_erro
     async def failed_api(request: GlobalRequest):
         return SimpleNamespace(status="error", message="Disk quota exceeded")
 
-    service.register_api_task(
+    service.tasks.register_api_task(
         "system:fail_test",
         failed_api,
         owner="application",

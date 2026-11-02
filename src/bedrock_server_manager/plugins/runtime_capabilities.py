@@ -213,7 +213,7 @@ def register_scheduled_task(
     )
     owner = f"plugin:{plugin_name}"
     bus = app_context.events
-    return app_context.scheduler.register(
+    return app_context.scheduler.tasks.register(
         name,
         handler,
         owner=owner,
@@ -242,7 +242,7 @@ def register_api_task(
     """Register an API method or callable to run as a scheduled plugin task."""
     owner = f"plugin:{plugin_name}"
     bus = app_context.events
-    return app_context.scheduler.register_api_task(
+    return app_context.scheduler.tasks.register_api_task(
         name,
         api_method,
         owner=owner,

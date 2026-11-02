@@ -494,9 +494,9 @@ class ModernPlugin(PluginBase):
         in app_context.plugin_manager.access_policy.descriptions
     )
     assert app_context.connection_manager.get_data_provider("modern_topic") is not None
-    assert app_context.scheduler.available("modern_plugin:custom_job")
-    assert app_context.scheduler.available("modern_plugin:cmd")
-    assert app_context.scheduler.available("modern_plugin:prune_api")
+    assert app_context.scheduler.tasks.available("modern_plugin:custom_job")
+    assert app_context.scheduler.tasks.available("modern_plugin:cmd")
+    assert app_context.scheduler.tasks.available("modern_plugin:prune_api")
 
     await app_context.scheduler._execute(
         {"task": "modern_plugin:custom_job", "options": {}},
@@ -506,9 +506,9 @@ class ModernPlugin(PluginBase):
     assert plugin.calls == [(populated_server.server_name, {"step": 3}, "slot-a")]
 
     await app_context.plugin_manager.unload_plugin_by_name("modern_plugin")
-    assert not app_context.scheduler.available("modern_plugin:custom_job")
-    assert not app_context.scheduler.available("modern_plugin:cmd")
-    assert not app_context.scheduler.available("modern_plugin:prune_api")
+    assert not app_context.scheduler.tasks.available("modern_plugin:custom_job")
+    assert not app_context.scheduler.tasks.available("modern_plugin:cmd")
+    assert not app_context.scheduler.tasks.available("modern_plugin:prune_api")
     assert app_context.connection_manager.get_data_provider("modern_topic") is None
 
 
@@ -561,4 +561,4 @@ class LegacyPlugin(PluginBase):
     assert "deprecated 'api.runtime.register_diagnostic_provider()'" in messages
     assert "deprecated 'api.runtime.register_data_provider()'" in messages
     assert "deprecated 'api.runtime.register_scheduled_task()'" in messages
-    assert app_context.scheduler.available("legacy_plugin:old_task")
+    assert app_context.scheduler.tasks.available("legacy_plugin:old_task")

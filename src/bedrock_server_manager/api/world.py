@@ -12,7 +12,6 @@ from ..events import trigger_event
 from ..logging import log_operation_error
 from ..plugins.api_bridge import api_method
 from ..utils import get_timestamp
-from .contract import validate_contract
 from .models.world import (
     ExportWorldRequest,
     ExportWorldResponse,
@@ -243,7 +242,7 @@ async def import_world(
         server.operation_lock.release()
 
 
-@validate_contract
+@api_method("reset_world")
 @trigger_event(
     before="before_world_reset",
     after="after_world_reset",

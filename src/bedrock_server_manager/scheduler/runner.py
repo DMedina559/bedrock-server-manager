@@ -87,22 +87,6 @@ async def run_schedule(
         if signature(current) != signature(config):
             return None
         if record.get("configuration") != signature(config):
-            # Upgrade legacy identities without replaying a completed occurrence.
-            old_sig = record.get("configuration")
-            old_slot = record.get("slot")
-            if old_slot and old_sig and old_sig + ":" in old_slot:
-                stamp = old_slot.split(old_sig + ":", 1)[1]
-                try:
-                    datetime.fromisoformat(stamp)
-                except ValueError:
-                    pass
-                else:
-                    record["slot"] = (
-                        "schedule:" + name + ":" + signature(config) + ":" + stamp
-                    )
-                    record.setdefault("occurrence_at", stamp)
-                    if record.get("status") in ("completed", "skipped"):
-                        record["completed_slots"] = [record["slot"]]
             record["configuration"] = signature(config)
             record.setdefault("activated_at", now.isoformat())
             record.setdefault("status", "waiting")

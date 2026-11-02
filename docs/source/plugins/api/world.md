@@ -95,3 +95,34 @@ data = result.model_dump(mode="json")
 | Name | Type | Default |
 |------|------|---------|
 | `request` | `bedrock_server_manager.api.models.world.ImportWorldRequest` | `REQUIRED` |
+
+---
+
+
+## `world.reset_world`
+```python
+await self.api.world.reset_world(request: bedrock_server_manager.api.models.world.ResetWorldRequest)
+```
+- **Async (Requires await):** Yes
+
+- **Description:** Resets the server's world by deleting the active world directory.
+
+- **Returns:** `ResetWorldResponse`
+
+Runtime context and plugin identity are injected by the bridge. Failures raise application exceptions; plugin cancellation raises `APICancelledError`.
+
+```python
+from bedrock_server_manager.api.models import ResetWorldRequest
+payload = {'server_name': 'example'}
+request = ResetWorldRequest(**payload)
+result = await self.api.world.reset_world(request)
+data = result.model_dump(mode="json")
+```
+- **Request schema:** [ResetWorldRequest](models.md#resetworldrequest)
+- **Response schema:** [ResetWorldResponse](models.md#resetworldresponse)
+- **Transport error schema:** [APIErrorResponse](models.md#apierrorresponse)
+**Parameters:**
+
+| Name | Type | Default |
+|------|------|---------|
+| `request` | `bedrock_server_manager.api.models.world.ResetWorldRequest` | `REQUIRED` |

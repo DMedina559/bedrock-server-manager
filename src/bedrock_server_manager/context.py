@@ -680,7 +680,7 @@ class AppContext:
 
     def _cleanup_plugin_capabilities(self, owner: str) -> None:
         self.diagnostics.remove_owner(f"plugin:{owner}")
-        self.scheduler.remove_owner(f"plugin:{owner}")
+        self.scheduler.tasks.remove_owner(f"plugin:{owner}")
 
     @property
     def plugin_manager(self) -> "PluginManager":
