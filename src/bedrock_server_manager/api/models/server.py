@@ -148,3 +148,18 @@ class GetValidServerNamesRequest(APIRequest):
 
 class GetValidServerNamesResponse(SuccessResponse):
     server_names: list[ServerName]
+
+
+class WaitForServerLogRequest(APIRequest):
+    server_name: ServerName
+    text: Annotated[str, Field(min_length=1, max_length=4096)]
+    exact: bool = False
+    after_sequence: Annotated[int, Field(ge=0)] | None = None
+    timeout: Annotated[float, Field(gt=0, le=300)] = 30
+
+
+class WaitForServerLogResponse(SuccessResponse):
+    server_name: ServerName
+    generation: str
+    sequence: int
+    line: str

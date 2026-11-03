@@ -3,7 +3,7 @@ import codecs
 import hashlib
 import logging
 import os
-from typing import TYPE_CHECKING, Callable, Dict, Optional
+from typing import TYPE_CHECKING, Any, Awaitable, Callable, Dict, Optional
 
 import aiofiles
 import aiofiles.ospath
@@ -51,6 +51,7 @@ class LogStreamer:
         self._file_identities: Dict[tuple[str, str], tuple[int, int]] = {}
         self._decoders: Dict[tuple[str, str], codecs.IncrementalDecoder] = {}
         self._failures = RepeatedFailureReporter(logger)
+        self._history_topics: set[str] = set()
 
     def start(self):
         """Start the log streaming background task."""
@@ -74,13 +75,17 @@ class LogStreamer:
             try:
                 # 1. Identify active log subscriptions
                 subscriptions = self.connection_manager.subscriptions
-                active_topics = subscriptions.keys()
+                active_topics = tuple(subscriptions)
+                self._history_topics.intersection_update(active_topics)
+                deliveries: list[
+                    tuple[Callable[..., Awaitable[Any]], tuple[Any, ...]]
+                ] = []
 
                 files_to_watch: Dict[str, str] = {}  # topic -> file_path
 
                 # Check for app log subscription
                 for topic in ("app_log", "app_logs"):
-                    if topic in active_topics and subscriptions[topic]:
+                    if topic in active_topics and subscriptions.get(topic):
                         log_path = await self._get_app_log_path()
                         if log_path:
                             files_to_watch[topic] = log_path
@@ -88,7 +93,7 @@ class LogStreamer:
                 # Check for server log subscriptions
                 # Topic format: server_log:{server_name}
                 for topic in active_topics:
-                    if topic.startswith("server_log:") and subscriptions[topic]:
+                    if topic.startswith("server_log:") and subscriptions.get(topic):
                         server_name = topic.split(":", 1)[1]
                         server = (
                             self.server_provider(server_name)
@@ -96,15 +101,37 @@ class LogStreamer:
                             else None
                         )
                         if server:
-                            log_path = server.paths.server_log_path
-                            if await aiofiles.ospath.exists(log_path):
-                                files_to_watch[topic] = log_path
+                            run = server.process.run
+                            if run is not None:
+                                self._history_topics.add(topic)
+                                deliveries.append((self._process_owned, (topic, run)))
+                            elif topic not in self._history_topics:
+                                self._history_topics.add(topic)
+                                deliveries.append((self._initial_history, (topic,)))
+                            # A single historical page is not a live tail adapter.
 
                 # 2. Read and broadcast updates
                 for topic, file_path in files_to_watch.items():
-                    await self._process_file(topic, file_path)
+                    deliveries.append((self._process_file, (topic, file_path)))
 
+                async def deliver(job):
+                    async with delivery_slots:
+                        callback, arguments = job
+                        await callback(*arguments)
+
+                delivery_slots = asyncio.Semaphore(16)
+                if deliveries:
+                    await asyncio.gather(*(deliver(job) for job in deliveries))
                 watched = set(files_to_watch.items())
+                for topic in list(active_topics):
+                    if (
+                        topic.startswith("server_log:")
+                        and subscriptions.get(topic)
+                        and callable(self.server_provider)
+                    ):
+                        server = self.server_provider(topic.split(":", 1)[1])
+                        if server.process.run is not None:
+                            watched.add((topic, server.process.run.log_path))
                 for key in list(self.file_positions):
                     if key not in watched:
                         self.file_positions.pop(key, None)
@@ -121,6 +148,59 @@ class LogStreamer:
                 )
 
             await asyncio.sleep(self.poll_interval)  # Check every second
+
+    async def _initial_history(self, topic: str) -> None:
+        try:
+            page = await self.read_history(topic)
+        except FileNotFoundError:
+            return
+        await self.connection_manager.broadcast_to_topic(
+            topic,
+            {
+                "type": "log_update",
+                "topic": topic,
+                "data": page.data,
+                "start": page.start,
+                "end": page.end,
+                "file_id": page.file_id,
+                "historical": True,
+                "live": False,
+            },
+        )
+
+    async def _process_owned(self, topic, run) -> None:
+        key = (topic, run.log_path)
+        cursor = self.file_positions.get(key)
+        if cursor is None:
+            cursor = run.journal[0][0] if run.journal else run.persisted_offset
+        for start, data in list(run.journal):
+            end = start + len(data)
+            if end <= cursor:
+                continue
+            stat = await asyncio.to_thread(os.stat, run.log_path)
+            decoder = self._decoders.setdefault(
+                key, codecs.getincrementaldecoder("utf-8")(errors="replace")
+            )
+            if start > cursor:
+                decoder.reset()
+            offset = max(0, cursor - start)
+            pending = len(decoder.getstate()[0])
+            text = decoder.decode(data[offset:])
+            await self.connection_manager.broadcast_to_topic(
+                topic,
+                {
+                    "type": "log_update",
+                    "topic": topic,
+                    "data": text,
+                    "start": start + offset - pending,
+                    "end": end - len(decoder.getstate()[0]),
+                    "file_id": self._file_id(run.log_path, stat),
+                    "generation": run.generation,
+                    "gap": start > cursor,
+                },
+            )
+            cursor = end
+        self.file_positions[key] = cursor
 
     async def _get_app_log_path(self) -> Optional[str]:
         log_dir = self.log_dir
@@ -165,7 +245,7 @@ class LogStreamer:
         if topic.startswith("server_log:") and callable(self.server_provider):
             server = self.server_provider(topic.split(":", 1)[1])
             if server is not None:
-                return server.paths.server_log_path
+                return server.process.log_path
         return None
 
     @staticmethod

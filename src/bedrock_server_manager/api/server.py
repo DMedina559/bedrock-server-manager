@@ -56,6 +56,8 @@ from .models.server import (
     SetServerStatusResponse,
     UpdateServerPlayerStatsRequest,
     UpdateServerPlayerStatsResponse,
+    WaitForServerLogRequest,
+    WaitForServerLogResponse,
 )
 
 logger = logging.getLogger(__name__)
@@ -508,6 +510,12 @@ async def update_server_player_stats(
     server_name = request.server_name
     player_count = request.player_count
     players = request.model_dump(mode="python")["players"]
+    run = app_context.get_server(server_name).process.run
+    if run is not None:
+        run.players = {item["xuid"]: item["name"] for item in players}
+        run.sessions = {
+            xuid: run.sessions.get(xuid, run.sequence) for xuid in run.players
+        }
     app_context.state.runtime.update_server_runtime(
         server_name, players=players, players_online=player_count
     )
@@ -608,3 +616,35 @@ async def server_lifecycle_manager(
                         original_error.add_note(
                             f"Server restart also failed: {type(e).__name__}"
                         )
+
+
+@api_method("wait_for_server_log", required_scope="logs:read")
+async def wait_for_server_log(
+    request: WaitForServerLogRequest,
+    *,
+    app_context: AppContext,
+    plugin_name: str | None = None,
+) -> WaitForServerLogResponse:
+    """Wait for owned live output, bounded and cancelled with its plugin owner."""
+    from ..error import ServerProcessError
+
+    run = app_context.get_server(request.server_name).process.run
+    if run is None:
+        raise ServerProcessError("Live output requires an owned BDS process.")
+    future = run.watch(request.text, exact=request.exact, after=request.after_sequence)
+    owner = f"plugin:{plugin_name}" if plugin_name else "application"
+    generation = app_context.events.owner_generation(owner)
+    try:
+        app_context.events.track_waiter(owner, future)
+        async with asyncio.timeout(request.timeout):
+            record = await future
+        app_context.events.check_owner(owner, generation)
+        return WaitForServerLogResponse(
+            server_name=request.server_name,
+            generation=record.generation,
+            sequence=record.sequence,
+            line=record.line,
+        )
+    finally:
+        future.cancel()
+        run._waiters.pop(future, None)

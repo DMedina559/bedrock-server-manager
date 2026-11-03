@@ -201,6 +201,8 @@ from bedrock_server_manager.api.models import (
     UpdateSubpackResponse,
     ValidatePropertyValueRequest,
     ValidatePropertyValueResponse,
+    WaitForServerLogRequest,
+    WaitForServerLogResponse,
 )
 from bedrock_server_manager.plugins.operation_api import (  # noqa: F401
     PluginOperationAPI as PluginOperationAPI,
@@ -578,6 +580,10 @@ class ServerAPI(Protocol):
         self, request: UpdateServerPlayerStatsRequest | Mapping[str, object]
     ) -> UpdateServerPlayerStatsResponse: ...
 
+    async def wait_for_log(
+        self, request: WaitForServerLogRequest | Mapping[str, object]
+    ) -> WaitForServerLogResponse: ...
+
 
 class SettingsAPI(Protocol):
     async def get_all_global_settings(
@@ -854,6 +860,7 @@ API_METHODS: dict[str, dict[str, str]] = {
         "start": "start_server",
         "stop": "stop_server",
         "update_player_stats": "update_server_player_stats",
+        "wait_for_log": "wait_for_server_log",
     },
     "settings": {
         "get_all_global_settings": "get_all_global_settings",

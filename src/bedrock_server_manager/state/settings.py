@@ -81,7 +81,12 @@ class RetentionSettings(SettingsRecord):
 class MonitoringSettings(SettingsRecord):
     max_retries: int = Field(default=3, ge=0)
     process_interval_sec: int = Field(default=10, gt=0)
-    player_interval_sec: int = Field(default=10, gt=0)
+    player_interval_sec: int = Field(
+        default=10,
+        gt=0,
+        deprecated=True,
+        description="Legacy input; owned player presence is now output-driven.",
+    )
     app_metrics_interval_sec: int = Field(default=3, ge=1, le=3600)
     bedrock_metrics_interval_sec: int = Field(default=3, ge=1, le=3600)
     untracked_process_interval_sec: int = Field(
@@ -180,6 +185,9 @@ class WebSettings(SettingsRecord):
 
 
 class LifecycleSettings(SettingsRecord):
+    command_timeout_seconds: float = Field(default=5.0, gt=0, le=60)
+    server_ready_timeout_seconds: float = Field(default=60.0, gt=0, le=600)
+    output_drain_timeout_seconds: float = Field(default=2.0, gt=0, le=60)
     server_stop_timeout_seconds: float = Field(default=10.0, gt=0, le=600)
     startup_timeout_seconds: float = Field(default=30.0, gt=0, le=600)
     shutdown_timeout_seconds: float = Field(default=15.0, gt=0, le=600)

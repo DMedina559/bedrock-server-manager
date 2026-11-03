@@ -8544,9 +8544,96 @@ Schemas are listed once. Local `$defs` references identify other models on this 
 {
   "additionalProperties": false,
   "properties": {
+    "ban_enforcement_available": {
+      "default": false,
+      "title": "Ban Enforcement Available",
+      "type": "boolean"
+    },
+    "ban_error": {
+      "anyOf": [
+        {
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "title": "Ban Error"
+    },
+    "command_available": {
+      "default": false,
+      "title": "Command Available",
+      "type": "boolean"
+    },
+    "cpu_percent": {
+      "anyOf": [
+        {
+          "type": "number"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "title": "Cpu Percent"
+    },
+    "exit_code": {
+      "anyOf": [
+        {
+          "type": "integer"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "title": "Exit Code"
+    },
+    "exit_reason": {
+      "anyOf": [
+        {
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "title": "Exit Reason"
+    },
     "expected_status": {
       "title": "Expected Status",
       "type": "string"
+    },
+    "generation": {
+      "anyOf": [
+        {
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "title": "Generation"
+    },
+    "healthy": {
+      "anyOf": [
+        {
+          "type": "boolean"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "title": "Healthy"
+    },
+    "in_restart_backoff": {
+      "default": false,
+      "title": "In Restart Backoff",
+      "type": "boolean"
     },
     "last_error_type": {
       "anyOf": [
@@ -8559,6 +8646,18 @@ Schemas are listed once. Local `$defs` references identify other models on this 
       ],
       "default": null,
       "title": "Last Error Type"
+    },
+    "memory_mb": {
+      "anyOf": [
+        {
+          "type": "number"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "title": "Memory Mb"
     },
     "observed_at": {
       "anyOf": [
@@ -8584,6 +8683,55 @@ Schemas are listed once. Local `$defs` references identify other models on this 
       "default": null,
       "title": "Observed Running"
     },
+    "output_available": {
+      "default": false,
+      "title": "Output Available",
+      "type": "boolean"
+    },
+    "output_dropped_bytes": {
+      "default": 0,
+      "title": "Output Dropped Bytes",
+      "type": "integer"
+    },
+    "output_error": {
+      "anyOf": [
+        {
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "title": "Output Error"
+    },
+    "output_queued_bytes": {
+      "default": 0,
+      "title": "Output Queued Bytes",
+      "type": "integer"
+    },
+    "output_source": {
+      "default": "unknown",
+      "enum": [
+        "file",
+        "pipe",
+        "unknown"
+      ],
+      "title": "Output Source",
+      "type": "string"
+    },
+    "phase": {
+      "anyOf": [
+        {
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "title": "Phase"
+    },
     "pid": {
       "anyOf": [
         {
@@ -8595,6 +8743,31 @@ Schemas are listed once. Local `$defs` references identify other models on this 
       ],
       "default": null,
       "title": "Pid"
+    },
+    "process_owned": {
+      "default": false,
+      "title": "Process Owned",
+      "type": "boolean"
+    },
+    "ready": {
+      "default": false,
+      "title": "Ready",
+      "type": "boolean"
+    },
+    "recovered_untracked": {
+      "default": false,
+      "title": "Recovered Untracked",
+      "type": "boolean"
+    },
+    "recovery_exhausted": {
+      "default": false,
+      "title": "Recovery Exhausted",
+      "type": "boolean"
+    },
+    "restart_attempts": {
+      "default": 0,
+      "title": "Restart Attempts",
+      "type": "integer"
     },
     "server_name": {
       "title": "Server Name",
@@ -8650,6 +8823,23 @@ Schemas are listed once. Local `$defs` references identify other models on this 
 {
   "additionalProperties": false,
   "properties": {
+    "command_unavailable_count": {
+      "default": 0,
+      "title": "Command Unavailable Count",
+      "type": "integer"
+    },
+    "identity_error": {
+      "anyOf": [
+        {
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "title": "Identity Error"
+    },
     "kind": {
       "const": "processes",
       "default": "processes",
@@ -8688,6 +8878,11 @@ Schemas are listed once. Local `$defs` references identify other models on this 
       "title": "Observed Running",
       "type": "integer"
     },
+    "pending_identities": {
+      "default": 0,
+      "title": "Pending Identities",
+      "type": "integer"
+    },
     "processes": {
       "items": {
         "$ref": "#/$defs/ProcessDiagnostic"
@@ -8699,10 +8894,30 @@ Schemas are listed once. Local `$defs` references identify other models on this 
       "title": "Registered",
       "type": "integer"
     },
+    "total_cpu_percent": {
+      "default": 0.0,
+      "title": "Total Cpu Percent",
+      "type": "number"
+    },
+    "total_memory_mb": {
+      "default": 0.0,
+      "title": "Total Memory Mb",
+      "type": "number"
+    },
     "truncated": {
       "default": false,
       "title": "Truncated",
       "type": "boolean"
+    },
+    "unhealthy_count": {
+      "default": 0,
+      "title": "Unhealthy Count",
+      "type": "integer"
+    },
+    "untracked_recoveries_count": {
+      "default": 0,
+      "title": "Untracked Recoveries Count",
+      "type": "integer"
     }
   },
   "required": [
@@ -11316,6 +11531,11 @@ Schemas are listed once. Local `$defs` references identify other models on this 
 {
   "additionalProperties": false,
   "properties": {
+    "command_available": {
+      "default": false,
+      "title": "Command Available",
+      "type": "boolean"
+    },
     "epoch": {
       "anyOf": [
         {
@@ -11328,9 +11548,26 @@ Schemas are listed once. Local `$defs` references identify other models on this 
       "default": null,
       "title": "Epoch"
     },
+    "generation": {
+      "anyOf": [
+        {
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "title": "Generation"
+    },
     "name": {
       "title": "Name",
       "type": "string"
+    },
+    "output_available": {
+      "default": false,
+      "title": "Output Available",
+      "type": "boolean"
     },
     "player_count": {
       "default": 0,
@@ -11348,6 +11585,16 @@ Schemas are listed once. Local `$defs` references identify other models on this 
     "players_available": {
       "default": true,
       "title": "Players Available",
+      "type": "boolean"
+    },
+    "process_owned": {
+      "default": false,
+      "title": "Process Owned",
+      "type": "boolean"
+    },
+    "ready": {
+      "default": false,
+      "title": "Ready",
       "type": "boolean"
     },
     "revision": {
@@ -12936,6 +13183,119 @@ Schemas are listed once. Local `$defs` references identify other models on this 
     "valid"
   ],
   "title": "ValidatePropertyValueResponse",
+  "type": "object"
+}
+```
+
+## WaitForServerLogRequest
+
+```json
+{
+  "additionalProperties": false,
+  "properties": {
+    "after_sequence": {
+      "anyOf": [
+        {
+          "minimum": 0,
+          "type": "integer"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "title": "After Sequence"
+    },
+    "exact": {
+      "default": false,
+      "title": "Exact",
+      "type": "boolean"
+    },
+    "server_name": {
+      "examples": [
+        "example"
+      ],
+      "minLength": 1,
+      "pattern": "^[a-zA-Z0-9_-]+$",
+      "title": "Server Name",
+      "type": "string"
+    },
+    "text": {
+      "maxLength": 4096,
+      "minLength": 1,
+      "title": "Text",
+      "type": "string"
+    },
+    "timeout": {
+      "default": 30,
+      "exclusiveMinimum": 0,
+      "maximum": 300,
+      "title": "Timeout",
+      "type": "number"
+    }
+  },
+  "required": [
+    "server_name",
+    "text"
+  ],
+  "title": "WaitForServerLogRequest",
+  "type": "object"
+}
+```
+
+## WaitForServerLogResponse
+
+```json
+{
+  "additionalProperties": false,
+  "properties": {
+    "generation": {
+      "title": "Generation",
+      "type": "string"
+    },
+    "line": {
+      "title": "Line",
+      "type": "string"
+    },
+    "message": {
+      "anyOf": [
+        {
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "title": "Message"
+    },
+    "sequence": {
+      "title": "Sequence",
+      "type": "integer"
+    },
+    "server_name": {
+      "examples": [
+        "example"
+      ],
+      "minLength": 1,
+      "pattern": "^[a-zA-Z0-9_-]+$",
+      "title": "Server Name",
+      "type": "string"
+    },
+    "status": {
+      "const": "success",
+      "default": "success",
+      "title": "Status",
+      "type": "string"
+    }
+  },
+  "required": [
+    "server_name",
+    "generation",
+    "sequence",
+    "line"
+  ],
+  "title": "WaitForServerLogResponse",
   "type": "object"
 }
 ```

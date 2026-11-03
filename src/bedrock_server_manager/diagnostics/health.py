@@ -203,6 +203,12 @@ def _processes(
     assert isinstance(data, ProcessesDiagnostics)
     if not data.observation_available:
         return "unknown", []
+    if data.identity_error is not None:
+        return _issue(
+            "player_identity_persistence_failed",
+            "Player identities are pending database persistence.",
+            "inspect_logs",
+        )
     if data.command_unavailable_count > 0:
         return _issue(
             "process_command_unavailable",

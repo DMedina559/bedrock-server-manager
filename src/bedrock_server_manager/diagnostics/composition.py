@@ -213,6 +213,7 @@ def configure_diagnostics(context: "AppContext") -> Diagnostics:
             is_healthy = None if is_running is None else True
             if (
                 exhausted
+                or (rt_info and rt_info.output_error is not None)
                 or last_error
                 or restarts > 0
                 or in_backoff
@@ -245,6 +246,19 @@ def configure_diagnostics(context: "AppContext") -> Diagnostics:
                     process_owned=bool(rt_info and rt_info.process_owned),
                     command_available=command_available,
                     output_source=rt_info.output_source if rt_info else "unknown",
+                    generation=rt_info.generation if rt_info else None,
+                    ready=bool(rt_info and rt_info.ready),
+                    phase=rt_info.phase if rt_info else None,
+                    output_available=bool(rt_info and rt_info.output_available),
+                    output_error=rt_info.output_error if rt_info else None,
+                    output_queued_bytes=rt_info.output_queued_bytes if rt_info else 0,
+                    output_dropped_bytes=rt_info.output_dropped_bytes if rt_info else 0,
+                    exit_code=rt_info.exit_code if rt_info else None,
+                    exit_reason=rt_info.exit_reason if rt_info else None,
+                    ban_enforcement_available=bool(
+                        rt_info and rt_info.ban_enforcement_available
+                    ),
+                    ban_error=rt_info.ban_error if rt_info else None,
                     recovery_exhausted=exhausted,
                     healthy=is_healthy,
                 )
@@ -266,6 +280,16 @@ def configure_diagnostics(context: "AppContext") -> Diagnostics:
             unhealthy_count=unhealthy,
             untracked_recoveries_count=untracked_count,
             command_unavailable_count=command_unavailable,
+            pending_identities=(
+                len(context.player_identity_writer.pending)
+                if getattr(context, "_player_identity_writer", None) is not None
+                else 0
+            ),
+            identity_error=(
+                context.player_identity_writer.last_error
+                if getattr(context, "_player_identity_writer", None) is not None
+                else None
+            ),
         )
 
     async def metrics():

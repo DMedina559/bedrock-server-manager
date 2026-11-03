@@ -675,7 +675,7 @@ class UnifiedServerBackups(ManagedBackups):
                 full = mode == "full"
                 server_root = Path(self.server.paths.server_dir)
                 if full:
-                    if await self.server.is_running():
+                    if await self.server.is_running(force_scan=True):
                         raise BackupRestoreError(
                             "Stop the server before a full-directory backup."
                         )
@@ -739,7 +739,7 @@ class UnifiedServerBackups(ManagedBackups):
 
                         await self._stage(progress, "Checking backup staging space")
                         await run_in_thread(capture_preflight, self, chosen, world)
-                        running = await self.server.is_running()
+                        running = await self.server.is_running(force_scan=True)
                         await self._stage(progress, "Capturing server files")
                         source_world = (
                             Path(self.server.paths.server_dir) / "worlds" / world
@@ -1530,7 +1530,9 @@ class UnifiedServerBackups(ManagedBackups):
     ) -> RestorePlan:
         async with self.server.operation_lock:
             await run_in_thread(RestoreJournal(self.server).ensure_clear)
-            if "server_directory" in components and await self.server.is_running():
+            if "server_directory" in components and await self.server.is_running(
+                force_scan=True
+            ):
                 raise BackupRestoreError(
                     "Stop the server before reviewing a full-directory restore."
                 )
@@ -1560,7 +1562,9 @@ class UnifiedServerBackups(ManagedBackups):
                         for name, state in manifest.components.items()
                         if state == "included"
                     ]
-                if "server_directory" in components and await self.server.is_running():
+                if "server_directory" in components and await self.server.is_running(
+                    force_scan=True
+                ):
                     raise BackupRestoreError(
                         "Stop the server before reviewing a full-directory restore."
                     )
@@ -1690,14 +1694,14 @@ class UnifiedServerBackups(ManagedBackups):
                     raise BackupRestoreError(
                         "Insufficient space on the server or backup volume for staging and a safety archive."
                     )
-                was_running = await self.server.is_running()
+                was_running = await self.server.is_running(force_scan=True)
                 await self._stage(progress, "Preparing restore recovery")
                 if was_running:
                     if stop_server is None:
                         raise BackupRestoreError("Stop the server before restoring.")
                     await self._stage(progress, "Stopping Minecraft server")
                     await stop_server()
-                    if await self.server.is_running():
+                    if await self.server.is_running(force_scan=True):
                         raise BackupRestoreError("The server did not stop.")
                 await run_in_thread(
                     self.catalog.update,
@@ -1853,7 +1857,7 @@ class UnifiedServerBackups(ManagedBackups):
                     await self._stage(progress, "Starting Minecraft server")
                     try:
                         await start_server()
-                        restarted = await self.server.is_running()
+                        restarted = await self.server.is_running(force_scan=True)
                         if not restarted:
                             restart_error = "Server start was skipped or cancelled."
                     except Exception as error:

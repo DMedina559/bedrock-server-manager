@@ -1,16 +1,14 @@
 """Bedrock world component."""
 
-import asyncio
 import logging
 import os
 import re
 import shutil
 import tempfile
 import threading
-import time
 import zipfile
 from pathlib import Path
-from typing import TYPE_CHECKING, List, Optional, Tuple
+from typing import TYPE_CHECKING, Optional
 
 import aiofiles
 import aiofiles.os
@@ -144,69 +142,14 @@ class ServerWorlds:
         capture_directory: str | None = None,
     ) -> None:
         """Executes a live world backup using Bedrock server's save hold/query/resume protocol."""
-        log_path = self.server.paths.server_log_path
-        start_cursor = 0
-        if log_path and await aiofiles.ospath.isfile(log_path):
-            start_cursor = await aiofiles.ospath.getsize(log_path)
-        self.logger.debug(
-            "Server '%s': Initiating live backup using 'save hold'...",
-            self.server.server_name,
-        )
-        try:
-            await self.server.send_command("save hold")
-        except Exception as e:
+        run = self.server.process.run
+        if run is None or not run.current():
             raise BackupRestoreError(
-                f"Failed to issue 'save hold' command to server '{self.server.server_name}': {e}"
-            ) from e
-        file_list_with_sizes: List[Tuple[str, int]] = []
-        query_success = False
-        start_time = time.time()
-        original_error: BaseException | None = None
-        try:
-            while time.time() - start_time < timeout:
-                await asyncio.sleep(poll_interval)
-                await self.server.send_command("save query")
-                if log_path and await aiofiles.ospath.isfile(log_path):
-                    async with aiofiles.open(
-                        log_path, "r", encoding="utf-8", errors="ignore"
-                    ) as f:
-                        await f.seek(start_cursor)
-                        log_text = await f.read()
-                    match = re.search(
-                        "(?:Data saved\\. Files are now ready to be copied\\.|Data the world is saved:?)\\s*([\\s\\S]*?)(?=\\n\\r?\\n|\\r?\\n\\r?\\n|\\[\\d{4}-|$)",
-                        log_text,
-                        re.IGNORECASE,
-                    )
-                    if match:
-                        files_str = match.group(1).strip()
-                        entries = [
-                            e.strip()
-                            for e in re.split("[,\\n\\r]+", files_str)
-                            if e.strip()
-                        ]
-                        parsed_files = []
-                        for entry in entries:
-                            if ":" in entry:
-                                rpath, rsize = entry.rsplit(":", 1)
-                                try:
-                                    parsed_files.append(
-                                        (rpath.strip(), int(rsize.strip()))
-                                    )
-                                except ValueError:
-                                    pass
-                        if parsed_files:
-                            file_list_with_sizes = parsed_files
-                            query_success = True
-                            self.logger.debug(
-                                "Server '%s': Received file list (%s files) from 'save query'.",
-                                self.server.server_name,
-                                len(file_list_with_sizes),
-                            )
-                            break
-            if not query_success:
-                raise BackupRestoreError(
-                    f"Timed out waiting for 'save query' response on server '{self.server.server_name}' after {timeout} seconds."
-                )
+                "Live backup requires an owned BDS process with console and output pipes."
+            )
+        async with run.save_session(
+            timeout=timeout, poll_interval=poll_interval
+        ) as file_list_with_sizes:
             full_source_world_dir = os.path.join(
                 self._worlds_base_dir_in_server, world_dir_name
             )
@@ -287,30 +230,6 @@ class ServerWorlds:
                 self.server.server_name,
                 target_mcworld_file_path,
             )
-        except BaseException as error:
-            original_error = error
-            raise
-        finally:
-            self.logger.debug(
-                "Server '%s': Sending 'save resume'...", self.server.server_name
-            )
-            try:
-                await self.server.send_command("save resume")
-            except Exception as e_res:
-                self.logger.warning(
-                    "Server '%s': Failed to send 'save resume': %s",
-                    self.server.server_name,
-                    e_res,
-                    exc_info=True,
-                )
-                if original_error is not None:
-                    original_error.add_note(
-                        f"Resuming server saves also failed: {type(e_res).__name__}"
-                    )
-                else:
-                    raise BackupRestoreError(
-                        "World export completed, but server saves could not be resumed."
-                    ) from e_res
 
     async def export_world(
         self, world_dir_name: str, target_mcworld_file_path: str
@@ -349,7 +268,7 @@ class ServerWorlds:
                     raise FileOperationError(
                         f"Cannot create target directory '{target_parent_dir}': {e}"
                     ) from e
-            is_running = await self.server.is_running()
+            is_running = await self.server.is_running(force_scan=True)
             active_world_name = await self.server.get_world_name()
             if (
                 is_running

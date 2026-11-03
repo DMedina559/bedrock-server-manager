@@ -429,6 +429,10 @@ class AppContext:
                     RuntimeError("Plugin router lifespans are still draining.")
                 )
                 raise ExceptionGroup("Application shutdown failed", errors)
+        for server in list(self._servers.values()):
+            await stop(f"drain process {server.server_name}", server.process.drain)
+        if getattr(self, "_player_identity_writer", None) is not None:
+            await stop("flush player identities", self._player_identity_writer.shutdown)
         if self._events is not None:
             await stop("drain events", self._events.close)
             if self._events.has_pending_work:
@@ -821,7 +825,9 @@ class AppContext:
         if self._server_service is None:
             from .services.server_service import ServerService
 
-            self._server_service = ServerService(state=self.state, storage=self.storage)
+            self._server_service = ServerService(
+                state=self.state, storage=self.storage, ban_changed=self._ban_changed
+            )
         return self._server_service
 
     @property
@@ -884,6 +890,9 @@ class AppContext:
     async def _stop_monitored_server(self, server_name: str) -> None:
         await self.api.server.stop({"server_name": server_name})
 
+    async def _start_monitored_server(self, server_name: str) -> None:
+        await self.api.server.start({"server_name": server_name})
+
     async def _get_monitored_bans(self, server_name: str):
         from .state.models import BanItem
 
@@ -905,6 +914,7 @@ class AppContext:
                 runtime=self.state.runtime,
                 events=self.events,
                 stop_server=self._stop_monitored_server,
+                start_server=self._start_monitored_server,
                 get_bans=self._get_monitored_bans,
                 record_failure=(
                     self._diagnostics.record_monitor_failure
@@ -959,6 +969,21 @@ class AppContext:
 
         return valid_server_names(self.state)
 
+    @property
+    def player_identity_writer(self):
+        from .core.server.runtime import PlayerIdentityWriter
+
+        writer = getattr(self, "_player_identity_writer", None)
+        if writer is None:
+            writer = PlayerIdentityWriter(self.storage)
+            self._player_identity_writer = writer
+        return writer
+
+    def _ban_changed(self, server_name: str) -> None:
+        server = self._servers.get(server_name)
+        if server is not None and server.process.run is not None:
+            server.process.run.invalidate_bans()
+
     def prepare_server(self, server_name: str) -> "BedrockServer":
         """
         Create a server handle for installation or disk discovery.
@@ -976,6 +1001,7 @@ class AppContext:
                 settings=self.settings,
                 state=self._state,
                 storage=self._storage,
+                identity_writer=self.player_identity_writer,
             )
         return self._servers[server_name]
 

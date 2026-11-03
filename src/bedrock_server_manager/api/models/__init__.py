@@ -202,6 +202,8 @@ from .server import (
     StopServerResponse,
     UpdateServerPlayerStatsRequest,
     UpdateServerPlayerStatsResponse,
+    WaitForServerLogRequest,
+    WaitForServerLogResponse,
 )
 from .settings import (
     GetAllGlobalSettingsRequest,
@@ -498,6 +500,8 @@ __all__ = [
     "UpdateServerStatusesResponse",
     "UpdateSubpackRequest",
     "UpdateSubpackResponse",
+    "WaitForServerLogRequest",
+    "WaitForServerLogResponse",
     "ValidatePropertyValueRequest",
     "ValidatePropertyValueResponse",
 ]

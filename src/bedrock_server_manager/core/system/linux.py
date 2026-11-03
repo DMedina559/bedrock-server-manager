@@ -19,6 +19,17 @@ from ...error import (
 logger = logging.getLogger(__name__)
 
 
+def _run_service_command(*args, **kwargs):
+    """Bound platform management commands without blocking an async hot path."""
+    kwargs.setdefault("timeout", 30)
+    try:
+        return subprocess.run(*args, **kwargs)
+    except subprocess.TimeoutExpired as error:
+        raise SystemError(
+            "Service management command exceeded its deadline."
+        ) from error
+
+
 # --- Systemd Service Management ---
 def get_systemd_service_file_path(service_name_full: str, system: bool = False) -> str:
     """Resolve a user or system unit path, adding the ``.service`` suffix if needed."""
@@ -160,7 +171,7 @@ WantedBy=default.target
             command.append("--user")
         command.append("daemon-reload")
 
-        subprocess.run(
+        _run_service_command(
             command,
             check=True,
             capture_output=True,
@@ -210,7 +221,7 @@ def enable_systemd_service(  # noqa: C901
         if not system:
             command.append("--user")
         command.extend(["is-enabled", name_to_use])
-        process = subprocess.run(
+        process = _run_service_command(
             command,
             capture_output=True,
             text=True,
@@ -241,7 +252,7 @@ def enable_systemd_service(  # noqa: C901
         if not system:
             command.append("--user")
         command.extend(["enable", name_to_use])
-        subprocess.run(
+        _run_service_command(
             command,
             check=True,
             capture_output=True,
@@ -292,7 +303,7 @@ def disable_systemd_service(  # noqa: C901
         if not system:
             command.append("--user")
         command.extend(["is-enabled", name_to_use])
-        process = subprocess.run(
+        process = _run_service_command(
             command,
             capture_output=True,
             text=True,
@@ -327,7 +338,7 @@ def disable_systemd_service(  # noqa: C901
         if not system:
             command.append("--user")
         command.extend(["disable", name_to_use])
-        subprocess.run(
+        _run_service_command(
             command,
             check=True,
             capture_output=True,

@@ -23,6 +23,11 @@ class PlayerRecord(PersistentRecord):
 
 
 class SummaryRecord(PersistentRecord):
+    generation: str | None = None
+    ready: bool = False
+    process_owned: bool = False
+    command_available: bool = False
+    output_available: bool = False
     players_available: bool = True
     name: str
     status: str

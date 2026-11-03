@@ -97,34 +97,26 @@ async def test_monitor_restarts_crashed_child_and_isolates_failures(
             release_pid.set()
             await asyncio.wait_for(asyncio.shield(recovery), 10)
             assert await real_bedrock_server.is_running()
+            await asyncio.wait_for(
+                real_bedrock_server.process.run.ready_event.wait(), 5
+            )
             assert await real_bedrock_server.get_status() == "RUNNING"
             assert manager.restart_attempts[real_bedrock_server.server_name] == 1
         finally:
             release_pid.set()
             await manager.quiesce()
 
-    # Player failure retains last known runtime
-    real_bedrock_server.players = [{"name": "Alex", "xuid": "1"}]
-    scanned = asyncio.Event()
-
-    async def fail_scan():
-        scanned.set()
-        raise RuntimeError("scan failed")
+    # Supervision no longer invokes the historical player scanner.
+    async def forbidden_scan():
+        raise AssertionError("Owned player presence must not poll log files")
 
     with monkeypatch.context() as fault:
         fault.setattr(
-            real_bedrock_server.player_tracker, "update_online_players", fail_scan
+            real_bedrock_server.player_tracker, "update_online_players", forbidden_scan
         )
-        await manager.start()
-        try:
-            await asyncio.wait_for(scanned.wait(), 5)
-            assert real_bedrock_server.players == [{"name": "Alex", "xuid": "1"}]
-            assert real_bedrock_server.player_count == 1
-            assert not real_bedrock_server.state.runtime.get_server_runtime(
-                real_bedrock_server.server_name
-            ).players_available
-        finally:
-            await manager.quiesce()
+        await manager._observe_server(
+            real_bedrock_server.server_name, real_bedrock_server, scan_players=True
+        )
 
     # Probe failure does not stop other servers
     other = app_context.prepare_server("other")
@@ -184,6 +176,7 @@ async def test_successful_recovery_clears_health_after_stable_running(
 
     server = real_bedrock_server
     await server.start()
+    await asyncio.wait_for(server.process.run.ready_event.wait(), 5)
     manager = app_context.bedrock_process_manager
     manager.restart_attempts[server.server_name] = 1
     manager._healthy_since[server.server_name] = time.monotonic() - 60

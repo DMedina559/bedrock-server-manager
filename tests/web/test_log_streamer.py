@@ -41,7 +41,16 @@ async def test_log_streamer_delivers_real_file_updates(
     streamer = app_context.log_streamer
     if server_log:
         topic = f"server_log:{real_bedrock_server.server_name}"
-        path = Path(real_bedrock_server.paths.server_log_path)
+        await real_bedrock_server.start()
+        run = real_bedrock_server.process.run
+        await asyncio.wait_for(run.ready_event.wait(), 5)
+        async with subscribed_socket(topic) as socket:
+            await real_bedrock_server.send_command("say PIPE_CONSOLE_TEST")
+            async with asyncio.timeout(5):
+                while "PIPE_CONSOLE_TEST" not in await receive_log(socket, topic):
+                    pass
+            assert run.persisted_offset > 0
+        return
     else:
         topic = "app_log"
         path = Path(app_context.log_dir) / "bedrock_server_manager.log"

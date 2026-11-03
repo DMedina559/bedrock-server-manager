@@ -2,12 +2,15 @@
 """Cross-platform subprocess, identity verification and PID-file helpers."""
 
 import asyncio
+import json
 import logging
+import math
 import os
 import platform
 import subprocess
 import time
 from typing import Any, Dict, List, Optional, Sequence, Union
+from uuid import uuid4
 
 import aiofiles
 import aiofiles.os
@@ -185,7 +188,8 @@ async def read_pid_from_file(pid_file_path: str) -> Optional[int]:
             if not pid_str:
                 logger.warning("PID file is empty: %s", pid_file_path)
                 return None
-            return int(pid_str)
+            pid = int(pid_str)
+            return pid if pid > 0 else None
     except ValueError:
         logger.warning(
             "Invalid content in PID file '%s'. Expected an integer.", pid_file_path
@@ -202,8 +206,8 @@ async def write_pid_to_file(pid_file_path: str, pid: int):
     """Write an integer PID to its file; propagate invalid arguments and write failures."""
     if not isinstance(pid_file_path, str) or not pid_file_path:
         raise MissingArgumentError("PID file path cannot be empty.")
-    if not isinstance(pid, int):
-        raise MissingArgumentError("PID must be an integer.")
+    if not isinstance(pid, int) or isinstance(pid, bool) or pid <= 0:
+        raise MissingArgumentError("PID must be a positive integer.")
 
     directory = os.path.dirname(pid_file_path)
     if directory and not await aiofiles.ospath.exists(directory):
@@ -225,14 +229,64 @@ async def write_pid_to_file(pid_file_path: str, pid: int):
         ) from e
 
 
+def read_process_record(path: str) -> dict[str, Any] | None:
+    try:
+        with open(path, encoding="utf-8") as file:
+            record = json.load(file)
+    except FileNotFoundError:
+        return None
+    except (OSError, ValueError) as error:
+        raise SystemError("Cannot read process generation record.") from error
+    if not isinstance(record, dict):
+        raise SystemError("Invalid process generation record.")
+    pid = record.get("pid")
+    created = record.get("created_at")
+    if (
+        not isinstance(pid, int)
+        or isinstance(pid, bool)
+        or pid <= 0
+        or not isinstance(created, (int, float))
+        or isinstance(created, bool)
+        or not math.isfinite(created)
+        or created <= 0
+        or not isinstance(record.get("generation"), str)
+        or not record["generation"]
+    ):
+        raise SystemError("Invalid process generation identity.")
+    return record
+
+
+async def write_process_record(path: str, record: dict[str, Any]) -> None:
+    """Publish a private identity record atomically, including first installation."""
+
+    def write() -> None:
+        directory = os.path.dirname(path)
+        os.makedirs(directory, exist_ok=True)
+        temporary = path + "." + uuid4().hex + ".tmp"
+        try:
+            descriptor = os.open(temporary, os.O_WRONLY | os.O_CREAT | os.O_EXCL, 0o600)
+            with os.fdopen(descriptor, "w", encoding="utf-8") as file:
+                json.dump(record, file)
+                file.flush()
+                os.fsync(file.fileno())
+            os.replace(temporary, path)
+        finally:
+            try:
+                os.remove(temporary)
+            except FileNotFoundError:
+                pass
+
+    await run_in_thread(write)
+
+
 async def is_process_running(pid: int) -> bool:
     """Return whether the PID exists according to psutil."""
     if not PSUTIL_AVAILABLE:
         raise SystemError(
             "psutil package is required to check if a process is running."
         )
-    if not isinstance(pid, int):
-        raise MissingArgumentError("PID must be an integer.")
+    if not isinstance(pid, int) or isinstance(pid, bool) or pid <= 0:
+        raise MissingArgumentError("PID must be a positive integer.")
     return await run_in_thread(psutil.pid_exists, pid)
 
 
@@ -249,8 +303,8 @@ async def verify_process_identity(  # noqa: C901
     """
     if not PSUTIL_AVAILABLE:
         raise SystemError("psutil package is required for process verification.")
-    if not isinstance(pid, int):
-        raise MissingArgumentError("PID must be an integer.")
+    if not isinstance(pid, int) or isinstance(pid, bool) or pid <= 0:
+        raise MissingArgumentError("PID must be a positive integer.")
     if not any([expected_executable_path, expected_cwd, expected_command_args]):
         raise MissingArgumentError(
             "At least one verification criteria must be provided."
@@ -350,8 +404,14 @@ def find_untracked_server_process(server_dir: str) -> Optional[int]:
                     and proc.status() != psutil.STATUS_ZOMBIE
                 ):
                     matches.append(int(proc.pid))
-        except (psutil.NoSuchProcess, psutil.AccessDenied, OSError):
+        except psutil.NoSuchProcess:
             continue
+        except psutil.AccessDenied as error:
+            raise PermissionsError(
+                "Cannot exclude an inaccessible Bedrock process; refusing an unsafe stopped decision."
+            ) from error
+        except OSError as error:
+            raise SystemError("Process identity observation is unavailable.") from error
     if len(matches) > 1:
         raise ServerProcessError(
             f"Multiple Bedrock processes match '{server_dir}': {matches}. Recovery requires attention."
@@ -399,7 +459,9 @@ async def get_verified_bedrock_process(
                 server_name,
                 f"bedrock_{server_name}.pid",
             )
-        pid = await read_pid_from_file(pid_file_path)
+        integer_pid = await read_pid_from_file(pid_file_path)
+        identity = await run_in_thread(read_process_record, pid_file_path + ".json")
+        pid = identity["pid"] if identity is not None else integer_pid
         exe_name = (
             "bedrock_server.exe" if platform.system() == "Windows" else "bedrock_server"
         )
@@ -410,7 +472,19 @@ async def get_verified_bedrock_process(
                     pid, expected_executable_path=expected_exe, expected_cwd=server_dir
                 )
                 process = psutil.Process(pid)
+
+                created_at = await run_in_thread(process.create_time)
+                if (
+                    identity is not None
+                    and abs(created_at - identity["created_at"]) > 0.001
+                ):
+                    raise ServerProcessError(
+                        "PID generation no longer matches its recorded creation time."
+                    )
                 if await run_in_thread(process.status) != psutil.STATUS_ZOMBIE:
+                    if integer_pid != pid:
+                        await write_pid_to_file(pid_file_path, pid)
+                        state.recovered_pids[key] = pid
                     state.last_negative_scan.pop(key, None)
                     return process
             except ServerProcessError:
@@ -419,9 +493,24 @@ async def get_verified_bedrock_process(
                 raise FileOperationError(
                     f"Cannot remove stale PID file '{pid_file_path}'."
                 )
+            if identity is not None:
+
+                def remove_stale_record() -> None:
+                    if read_process_record(pid_file_path + ".json") == identity:
+                        os.remove(pid_file_path + ".json")
+
+                await run_in_thread(remove_stale_record)
             state.recovered_pids.pop(key, None)
             state.last_negative_scan.pop(key, None)
         if not recover_untracked:
+            if (
+                force_scan
+                and await run_in_thread(find_untracked_server_process, server_dir)
+                is not None
+            ):
+                raise ServerProcessError(
+                    "An untracked Bedrock process exists, but recovery is disabled."
+                )
             return None
         interval = (
             scan_interval_sec
@@ -447,6 +536,27 @@ async def get_verified_bedrock_process(
         process = psutil.Process(pid)
         if await run_in_thread(process.status) == psutil.STATUS_ZOMBIE:
             return None
+        created_at = await run_in_thread(process.create_time)
+
+        recorded = (
+            await run_in_thread(read_process_record, pid_file_path + ".json") or {}
+        )
+        if (
+            recorded.get("pid") != pid
+            or abs(recorded.get("created_at", 0) - created_at) > 0.001
+        ):
+            await write_process_record(
+                pid_file_path + ".json",
+                {
+                    "generation": uuid4().hex,
+                    "pid": pid,
+                    "created_at": created_at,
+                    "executable": expected_exe,
+                    "cwd": server_dir,
+                    "recovered": True,
+                    "output_source": "unknown",
+                },
+            )
         await write_pid_to_file(pid_file_path, pid)
         state.recovered_pids[key] = pid
         state.last_negative_scan.pop(key, None)

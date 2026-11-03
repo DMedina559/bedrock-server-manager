@@ -297,6 +297,23 @@ class EventBus:
         """Consume the subscription before invoking its first callback."""
         return self.subscribe(name, callback, once=True, **options)
 
+    def track_waiter(self, owner: str, future: asyncio.Future) -> None:
+        """Register capability waits for prompt cancellation on owner unload."""
+        self.check_owner(owner, self.owner_generation(owner))
+        owned = self._waiters.setdefault(owner, set())
+        if len(owned) >= 32:
+            raise RuntimeError("Owner waiter capacity exhausted")
+        owned.add(future)
+
+        def finished(done: asyncio.Future) -> None:
+            pending = self._waiters.get(owner)
+            if pending is not None:
+                pending.discard(done)
+                if not pending:
+                    self._waiters.pop(owner, None)
+
+        future.add_done_callback(finished)
+
     async def wait_for(
         self,
         name: str,
@@ -402,6 +419,8 @@ class EventBus:
     def deactivate_owner(self, owner: str) -> None:
         with self._lock:
             self._owners.discard(owner)
+            for future in self._waiters.pop(owner, set()):
+                future.cancel()
 
     def remove_owner(self, owner: str) -> None:
         with self._lock:

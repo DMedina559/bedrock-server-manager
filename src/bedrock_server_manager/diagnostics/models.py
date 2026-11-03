@@ -219,7 +219,18 @@ class ProcessDiagnostic(DiagnosticModel):
     recovered_untracked: bool = False
     process_owned: bool = False
     command_available: bool = False
-    output_source: Literal["file", "unknown"] = "unknown"
+    output_source: Literal["file", "pipe", "unknown"] = "unknown"
+    generation: str | None = None
+    ready: bool = False
+    phase: str | None = None
+    output_available: bool = False
+    output_error: str | None = None
+    output_queued_bytes: int = 0
+    output_dropped_bytes: int = 0
+    exit_code: int | None = None
+    exit_reason: str | None = None
+    ban_enforcement_available: bool = False
+    ban_error: str | None = None
     recovery_exhausted: bool = False
     healthy: bool | None = None
 
@@ -238,6 +249,8 @@ class ProcessesDiagnostics(DiagnosticModel):
     unhealthy_count: int = 0
     untracked_recoveries_count: int = 0
     command_unavailable_count: int = 0
+    pending_identities: int = 0
+    identity_error: str | None = None
 
 
 class MetricsDiagnostics(DiagnosticModel):

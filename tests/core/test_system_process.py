@@ -272,10 +272,11 @@ def test_find_untracked_server_process_psutil(tmp_path: Path):
         patch("bedrock_server_manager.core.system.process.PSUTIL_AVAILABLE", True),
         patch("psutil.process_iter", return_value=[proc2]),
     ):
-        assert find_untracked_server_process(server_dir) is None
+        with pytest.raises(PermissionsError):
+            find_untracked_server_process(server_dir)
 
     valid = MockProc(105, exe_name, cwd_val=server_dir, exe_val=exe_path)
-    with patch("psutil.process_iter", return_value=[proc1, proc2, valid]):
+    with patch("psutil.process_iter", return_value=[proc1, valid]):
         assert find_untracked_server_process(server_dir) == 105
     duplicate = MockProc(106, exe_name, cwd_val=server_dir, exe_val=exe_path)
     with patch("psutil.process_iter", return_value=[valid, duplicate]):
@@ -345,6 +346,7 @@ async def test_untracked_discovery_concurrency_and_cache(tmp_path, monkeypatch):
     # Only a completed negative scan is cached; lifecycle calls force a fresh scan.
     pid_file = await get_bedrock_server_pid_file_path("test", str(config_dir))
     os.remove(pid_file)
+    os.remove(pid_file + ".json")
     monkeypatch.setattr(module, "find_untracked_server_process", lambda _: None)
     assert await probe() is None
     assert state.last_negative_scan

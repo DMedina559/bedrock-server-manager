@@ -510,6 +510,58 @@ async def some_function(self, request, server_name, target_version, server_zip_p
 ---
 
 
+## `after_server_player_connected`
+**Description:** Application lifecycle notification.
+- **Cancellable:** No
+- **Identity Keys (for re-entrancy):** `server_name, generation, xuid`
+
+### Listener Signature:
+```python
+@app_event("after_server_player_connected")
+async def some_function(self, name, xuid, server_name, generation, sequence, action, reason, **kwargs):
+    pass
+```
+### Available `kwargs`:
+| Key Name | Type |
+|----------|------|
+| `name` | `str` |
+| `xuid` | `str` |
+| `server_name` | `str` |
+| `generation` | `str` |
+| `sequence` | `int` |
+| `action` | `Literal['connected', 'disconnected']` |
+| `reason` | `str` |
+| `_triggering_plugin` | `str` (core, or plugin name) |
+
+---
+
+
+## `after_server_player_disconnected`
+**Description:** Application lifecycle notification.
+- **Cancellable:** No
+- **Identity Keys (for re-entrancy):** `server_name, generation, xuid`
+
+### Listener Signature:
+```python
+@app_event("after_server_player_disconnected")
+async def some_function(self, name, xuid, server_name, generation, sequence, action, reason, **kwargs):
+    pass
+```
+### Available `kwargs`:
+| Key Name | Type |
+|----------|------|
+| `name` | `str` |
+| `xuid` | `str` |
+| `server_name` | `str` |
+| `generation` | `str` |
+| `sequence` | `int` |
+| `action` | `Literal['connected', 'disconnected']` |
+| `reason` | `str` |
+| `_triggering_plugin` | `str` (core, or plugin name) |
+
+---
+
+
 ## `after_server_players_change`
 **Description:** Triggered after 'update_server_player_stats'. Internal API to trigger player stat updates for websockets/plugins.
 - **Cancellable:** No
@@ -528,6 +580,58 @@ async def some_function(self, server_name, player_count, players, request, resul
 | `players` | `list[bedrock_server_manager.events.player.PlayerPresence] | list[bedrock_server_manager.api.models.common.PlayerInfo]` |
 | `request` | `PlayerSnapshot | UpdateServerPlayerStatsRequest` |
 | `result` | `PlayerChangeResult | UpdateServerPlayerStatsResponse` |
+| `_triggering_plugin` | `str` (core, or plugin name) |
+
+---
+
+
+## `after_server_ready`
+**Description:** Application lifecycle notification.
+- **Cancellable:** No
+- **Identity Keys (for re-entrancy):** `server_name, generation`
+
+### Listener Signature:
+```python
+@app_event("after_server_ready")
+async def some_function(self, server_name, generation, phase, ready, running, exit_code, reason, **kwargs):
+    pass
+```
+### Available `kwargs`:
+| Key Name | Type |
+|----------|------|
+| `server_name` | `str` |
+| `generation` | `str` |
+| `phase` | `str` |
+| `ready` | `bool` |
+| `running` | `bool` |
+| `exit_code` | `int | None` |
+| `reason` | `str` |
+| `_triggering_plugin` | `str` (core, or plugin name) |
+
+---
+
+
+## `after_server_runtime_change`
+**Description:** Application lifecycle notification.
+- **Cancellable:** No
+- **Identity Keys (for re-entrancy):** `server_name, generation`
+
+### Listener Signature:
+```python
+@app_event("after_server_runtime_change")
+async def some_function(self, server_name, generation, phase, ready, running, exit_code, reason, **kwargs):
+    pass
+```
+### Available `kwargs`:
+| Key Name | Type |
+|----------|------|
+| `server_name` | `str` |
+| `generation` | `str` |
+| `phase` | `str` |
+| `ready` | `bool` |
+| `running` | `bool` |
+| `exit_code` | `int | None` |
+| `reason` | `str` |
 | `_triggering_plugin` | `str` (core, or plugin name) |
 
 ---

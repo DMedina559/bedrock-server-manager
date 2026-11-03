@@ -162,18 +162,25 @@ async def start_detached(
         probe.close()
 
     await asyncio.to_thread(_probe_control)
-    child = await asyncio.to_thread(
-        processes.GuardedProcess(command).popen,
-        stdin=subprocess.DEVNULL,
-        stdout=subprocess.DEVNULL,
-        stderr=subprocess.DEVNULL,
-        creationflags=(
-            getattr(subprocess, "CREATE_NO_WINDOW", 0) if os.name == "nt" else 0
-        ),
-        start_new_session=os.name != "nt",
-        close_fds=True,
+    for previous in list(_detached_children):
+        if previous.poll() is not None:
+            _detached_children.discard(previous)
+    spawn = asyncio.create_task(
+        asyncio.to_thread(
+            processes.GuardedProcess(command).popen,
+            stdin=subprocess.DEVNULL,
+            stdout=subprocess.DEVNULL,
+            stderr=subprocess.DEVNULL,
+            creationflags=(
+                getattr(subprocess, "CREATE_NO_WINDOW", 0) if os.name == "nt" else 0
+            ),
+            start_new_session=os.name != "nt",
+            close_fds=True,
+        )
     )
+    child = None
     try:
+        child = await asyncio.shield(spawn)
         async with AsyncClient(timeout=1, trust_env=False) as client:
             async with asyncio.timeout(timeout):
                 while True:
@@ -198,13 +205,32 @@ async def start_detached(
                             pass
                     await asyncio.sleep(0.05)
     except BaseException as error:
-        if child.poll() is None:
-            child.terminate()
+        while not spawn.done():
             try:
-                await asyncio.to_thread(child.wait, timeout=5)
-            except subprocess.TimeoutExpired:
-                child.kill()
-                await asyncio.to_thread(child.wait, timeout=5)
+                await asyncio.shield(spawn)
+            except asyncio.CancelledError:
+                continue
+        if child is None:
+            child = spawn.result()
+
+        def terminate_child() -> None:
+            if child.poll() is None:
+                child.terminate()
+                try:
+                    child.wait(timeout=5)
+                except subprocess.TimeoutExpired:
+                    child.kill()
+                    child.wait(timeout=5)
+
+        cleanup = asyncio.create_task(
+            asyncio.to_thread(terminate_child), name="detached-web-rollback"
+        )
+        while not cleanup.done():
+            try:
+                await asyncio.shield(cleanup)
+            except asyncio.CancelledError:
+                continue
+        cleanup.result()
         if isinstance(error, TimeoutError):
             raise ServerStartError(
                 "Detached web runtime did not become ready before the startup deadline"
