@@ -150,6 +150,7 @@ async def test_cancel_during_spawn_retains_child_until_cleanup(
                 child.kill()
                 await child.wait()
 
+
 @pytest.mark.parametrize("cancel_stop", [False, True])
 async def test_stop_joins_identity_cleanup_before_return(
     real_bedrock_server, monkeypatch, cancel_stop

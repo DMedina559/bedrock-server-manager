@@ -443,7 +443,9 @@ class ServerProcess:
             run = self.run
             if run is not None:
                 self.intentionally_stopped = True
-                cleanup = asyncio.create_task(self._stop_owned_run(run), name="bds-stop")
+                cleanup = asyncio.create_task(
+                    self._stop_owned_run(run), name="bds-stop"
+                )
                 cancelled = False
                 while not cleanup.done():
                     try:
