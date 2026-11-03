@@ -201,8 +201,20 @@ def _processes(
     data: DiagnosticData, options: DiagnosticOptions, *, subsystem: str | None = None
 ) -> tuple[Status, list[DiagnosticIssue]]:
     assert isinstance(data, ProcessesDiagnostics)
-    if not data.observation_available or data.last_monitor_at is None:
+    if not data.observation_available:
         return "unknown", []
+    if data.untracked_recoveries_count > 0:
+        return _issue(
+            "untracked_processes_recovered",
+            "One or more Bedrock server processes were recovered outside normal management.",
+            "inspect_logs",
+        )
+    if data.unhealthy_count > 0:
+        return _issue(
+            "unhealthy_processes_detected",
+            "One or more Bedrock server processes are unhealthy or crash-looping.",
+            "inspect_logs",
+        )
     if any(process.last_error_type for process in data.processes):
         return _issue(
             "process_probe_failed",
@@ -216,6 +228,15 @@ def _processes(
         return _issue(
             "process_state_mismatch",
             "An expected running process was observed stopped.",
+            "inspect_logs",
+        )
+    if any(
+        process.observed_running is True and process.expected_status == "STOPPED"
+        for process in data.processes
+    ):
+        return _issue(
+            "process_state_mismatch",
+            "A stopped server was observed running.",
             "inspect_logs",
         )
     return "ok", []

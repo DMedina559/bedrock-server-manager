@@ -84,10 +84,27 @@ class BedrockProcessManager:
             # Partial listener delivery is recorded, not replayed to successful listeners.
             self._pending_player_events.discard(server.server_name)
 
+    def check_health(self) -> bool:
+        """Check if server process monitoring and managed servers are healthy."""
+        if self._shutdown_event.is_set():
+            return True
+        if self.monitoring_task is not None and self.monitoring_task.done():
+            return False
+        from .system.process import has_untracked_recovered_processes
+
+        if has_untracked_recovered_processes():
+            return False
+        max_retries = self.settings.get("monitoring.max_retries", 3)
+        for attempts in self.restart_attempts.values():
+            if attempts > max_retries:
+                return False
+        return True
+
     async def start(self):
         """Call this from the main thread to start monitoring."""
         if self.monitoring_task is None or self.monitoring_task.done():
             self._shutdown_event = asyncio.Event()
+            self.monitor_observed_at = time.time()
             self.monitoring_task = asyncio.create_task(self._monitor_servers())
 
     async def add_server(self, server: "BedrockServer"):
@@ -292,6 +309,7 @@ class BedrockProcessManager:
                     break
 
                 self.player_scan_counter += monitoring_interval
+                self.monitor_observed_at = time.time()
                 scan_players = (
                     self.player_scan_counter >= player_log_monitoring_interval_sec
                 )

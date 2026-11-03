@@ -212,6 +212,12 @@ class ProcessDiagnostic(DiagnosticModel):
     pid: int | None = None
     observed_at: float | None = None
     last_error_type: str | None = None
+    cpu_percent: float | None = None
+    memory_mb: float | None = None
+    restart_attempts: int = 0
+    in_restart_backoff: bool = False
+    recovered_untracked: bool = False
+    healthy: bool = True
 
 
 class ProcessesDiagnostics(DiagnosticModel):
@@ -223,6 +229,10 @@ class ProcessesDiagnostics(DiagnosticModel):
     registered: int
     observed_running: int
     observation_available: bool
+    total_cpu_percent: float = 0.0
+    total_memory_mb: float = 0.0
+    unhealthy_count: int = 0
+    untracked_recoveries_count: int = 0
 
 
 class MetricsDiagnostics(DiagnosticModel):

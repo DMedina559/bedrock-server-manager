@@ -10,12 +10,16 @@ import pytest
 from bedrock_server_manager.config import GUARD_VARIABLE
 from bedrock_server_manager.core.system.process import (
     GuardedProcess,
+    clear_process_recovered_untracked,
     clear_untracked_scan_cache,
     find_untracked_server_process,
     get_bedrock_server_pid_file_path,
     get_pid_file_path,
     get_verified_bedrock_process,
+    has_untracked_recovered_processes,
+    is_process_recovered_untracked,
     is_process_running,
+    mark_process_recovered_untracked,
     read_pid_from_file,
     remove_pid_file_if_exists,
     verify_process_identity,
@@ -318,3 +322,53 @@ async def test_untracked_scan_throttling(tmp_path: Path):
         )
         assert res4 is None
         assert mock_scan.call_count == 2
+
+
+def test_untracked_process_recovery_flags():
+    """Test setting, checking, and clearing untracked process recovery tracking."""
+    srv = "test_server_recovery_flag"
+    clear_process_recovered_untracked(srv)
+    assert not is_process_recovered_untracked(srv)
+
+    mark_process_recovered_untracked(srv)
+    assert is_process_recovered_untracked(srv)
+    assert has_untracked_recovered_processes()
+
+    clear_process_recovered_untracked(srv)
+    assert not is_process_recovered_untracked(srv)
+
+
+async def test_get_verified_bedrock_process_marks_recovered(tmp_path: Path):
+    """Test that discovering an untracked process marks it as recovered_untracked."""
+    srv = "recovered_srv"
+    server_dir = str(tmp_path / "server")
+    config_dir = str(tmp_path / "config")
+    os.makedirs(server_dir, exist_ok=True)
+    os.makedirs(os.path.join(config_dir, "runtime", "servers", srv), exist_ok=True)
+
+    clear_untracked_scan_cache()
+    clear_process_recovered_untracked(srv)
+
+    fake_proc = psutil.Process()
+    with (
+        patch(
+            "bedrock_server_manager.core.system.process.find_untracked_server_process",
+            return_value=fake_proc.pid,
+        ),
+        patch(
+            "bedrock_server_manager.core.system.process.verify_process_identity",
+            return_value=True,
+        ),
+    ):
+        proc = await get_verified_bedrock_process(srv, server_dir, config_dir)
+        assert proc is not None
+        assert proc.pid == fake_proc.pid
+        assert is_process_recovered_untracked(srv)
+        assert has_untracked_recovered_processes()
+
+        # PID file should have been re-created
+        pid_file = await get_bedrock_server_pid_file_path(srv, config_dir)
+        assert os.path.exists(pid_file)
+        assert await read_pid_from_file(pid_file) == fake_proc.pid
+
+    clear_process_recovered_untracked(srv)

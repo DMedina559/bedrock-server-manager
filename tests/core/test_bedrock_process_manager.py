@@ -140,3 +140,45 @@ async def test_monitor_restarts_crashed_child_and_isolates_failures(
             assert real_bedrock_server.server_name in manager.servers
         finally:
             await manager.quiesce()
+
+
+async def test_process_manager_check_health(app_context):
+    """Test health checking logic of BedrockProcessManager."""
+    from bedrock_server_manager.core.system.process import (
+        clear_process_recovered_untracked,
+        mark_process_recovered_untracked,
+    )
+
+    manager = app_context.bedrock_process_manager
+    assert manager.check_health() is True
+
+    # Untracked recovered process marks it unhealthy
+    srv = "untracked_recovered_server"
+    mark_process_recovered_untracked(srv)
+    try:
+        assert manager.check_health() is False
+    finally:
+        clear_process_recovered_untracked(srv)
+    assert manager.check_health() is True
+
+    # Exceeded restart retries marks it unhealthy
+    manager.restart_attempts[srv] = 10
+    try:
+        assert manager.check_health() is False
+    finally:
+        manager.restart_attempts.clear()
+    assert manager.check_health() is True
+
+    # Done monitoring task without shutdown marks it unhealthy
+    dummy_task = asyncio.create_task(asyncio.sleep(0))
+    await dummy_task
+    manager.monitoring_task = dummy_task
+    try:
+        assert manager.check_health() is False
+        # Shutdown suppresses failure
+        manager._shutdown_event.set()
+        assert manager.check_health() is True
+    finally:
+        manager._shutdown_event.clear()
+        manager.monitoring_task = None
+    assert manager.check_health() is True

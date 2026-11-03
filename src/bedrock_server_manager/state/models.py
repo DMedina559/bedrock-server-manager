@@ -276,6 +276,7 @@ class ServerRuntimeInfo(PersistentRecord):
     players: List[RuntimePlayer] = Field(default_factory=list)
     cpu_percent: float = Field(default=0.0, ge=0)
     memory_mb: float = Field(default=0.0, ge=0)
+    recovered_untracked: bool = False
 
     @model_validator(mode="after")
     def coherent_runtime(self) -> Self:
@@ -283,6 +284,8 @@ class ServerRuntimeInfo(PersistentRecord):
             raise ValueError("Player count must match the player list.")
         if not self.running and self.pid is not None:
             raise ValueError("Stopped servers cannot retain a process ID.")
+        if not self.running and self.recovered_untracked:
+            self.recovered_untracked = False
         return self
 
 

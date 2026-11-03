@@ -174,31 +174,82 @@ def configure_diagnostics(context: "AppContext") -> Diagnostics:
         current = context.state
         observed = current.runtime.servers
         registered = current.servers.servers
-        manager = context._bedrock_process_manager
-        return ProcessesDiagnostics(
-            processes=[
+        manager = context.bedrock_process_manager
+        from ..core.system.process import is_process_recovered_untracked
+
+        proc_diagnostics: list[ProcessDiagnostic] = []
+        total_cpu = 0.0
+        total_mem = 0.0
+        unhealthy = 0
+        untracked_count = 0
+
+        for name, record in list(registered.items())[:100]:
+            rt_info = observed.get(name)
+            is_running = rt_info.running if rt_info else False
+            pid = rt_info.pid if rt_info else None
+            cpu = rt_info.cpu_percent if rt_info and is_running else None
+            mem = rt_info.memory_mb if rt_info and is_running else None
+            restarts = manager.restart_attempts.get(name, 0) if manager else 0
+            in_backoff = (
+                time.monotonic() < manager._restart_after.get(name, 0)
+                if manager
+                else False
+            )
+            is_recovered = is_process_recovered_untracked(name) if is_running else False
+            if is_recovered:
+                untracked_count += 1
+
+            is_healthy = True
+            if is_recovered:
+                is_healthy = False
+            elif record.status == "RUNNING" and not is_running:
+                is_healthy = False
+            elif record.status == "STOPPED" and is_running:
+                is_healthy = False
+            elif restarts > 0 or in_backoff:
+                is_healthy = False
+
+            if not is_healthy:
+                unhealthy += 1
+
+            if is_running and cpu is not None:
+                total_cpu += cpu
+            if is_running and mem is not None:
+                total_mem += mem
+
+            proc_diagnostics.append(
                 ProcessDiagnostic(
                     server_name=name,
                     expected_status=record.status,
-                    observed_running=(
-                        observed[name].running if name in observed else None
-                    ),
-                    pid=observed[name].pid if name in observed else None,
+                    observed_running=is_running,
+                    pid=pid,
                     observed_at=(
                         manager.monitor_observations.get(name) if manager else None
                     ),
                     last_error_type=(
                         manager.monitor_errors.get(name) if manager else None
                     ),
+                    cpu_percent=cpu,
+                    memory_mb=mem,
+                    restart_attempts=restarts,
+                    in_restart_backoff=in_backoff,
+                    recovered_untracked=is_recovered,
+                    healthy=is_healthy,
                 )
-                for name, record in list(registered.items())[:100]
-            ],
+            )
+
+        return ProcessesDiagnostics(
+            processes=proc_diagnostics,
             truncated=len(registered) > 100,
             last_monitor_at=manager.monitor_observed_at if manager else None,
             monitor_failures=manager.monitor_failures if manager else None,
             registered=current.servers.count,
             observed_running=sum(value.running for value in observed.values()),
-            observation_available=context._bedrock_process_manager is not None,
+            observation_available=manager is not None,
+            total_cpu_percent=round(total_cpu, 2),
+            total_memory_mb=round(total_mem, 2),
+            unhealthy_count=unhealthy,
+            untracked_recoveries_count=untracked_count,
         )
 
     async def metrics():

@@ -156,6 +156,15 @@ async def get_application_health(
             "Metrics sampler active",
             "Metrics sampler stopped or stale",
         ),
+        "process_manager": (
+            (
+                app_context.bedrock_process_manager.check_health()
+                if app_context.bedrock_process_manager
+                else True
+            ),
+            "Server processes and monitoring healthy",
+            "Server processes or monitoring unhealthy (recovered or crashed process detected)",
+        ),
     }
     checks = {
         name: HealthCheck(healthy=healthy, message=ok if healthy else failed)

@@ -44,11 +44,35 @@ logger = logging.getLogger(__name__)
 
 _last_untracked_scan: dict[str, float] = {}
 UNTRACKED_SCAN_INTERVAL_SECONDS: float = 5.0
+_recovered_untracked: set[str] = set()
 
 
 def clear_untracked_scan_cache() -> None:
     """Clear cached timestamps for untracked process scans."""
     _last_untracked_scan.clear()
+
+
+def is_process_recovered_untracked(server_name: str) -> bool:
+    """Return whether a server process was recovered from an untracked/orphan state."""
+    return server_name in _recovered_untracked
+
+
+def has_untracked_recovered_processes() -> bool:
+    """Return whether any server currently has an untracked recovered process."""
+    return bool(_recovered_untracked)
+
+
+def mark_process_recovered_untracked(server_name: str) -> None:
+    """Mark a server process as recovered from an untracked state."""
+    _recovered_untracked.add(server_name)
+
+
+def clear_process_recovered_untracked(server_name: Optional[str] = None) -> None:
+    """Clear untracked recovery flag for a specific server, or all if None."""
+    if server_name is None:
+        _recovered_untracked.clear()
+    else:
+        _recovered_untracked.discard(server_name)
 
 
 class GuardedProcess:
@@ -420,6 +444,7 @@ async def get_verified_bedrock_process(
             await remove_pid_file_if_exists(pid_file_path)
             pid = None
             _last_untracked_scan.pop(server_name, None)
+            clear_process_recovered_untracked(server_name)
 
         if pid is None:
             if not recover_untracked:
@@ -444,6 +469,7 @@ async def get_verified_bedrock_process(
             if pid is None:
                 return None
             _last_untracked_scan.pop(server_name, None)
+            mark_process_recovered_untracked(server_name)
             logger.warning(
                 "Discovered untracked Bedrock server process (PID %s) for server '%s'. Regenerating PID file.",
                 pid,

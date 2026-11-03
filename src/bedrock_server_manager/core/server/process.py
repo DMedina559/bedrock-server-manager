@@ -194,6 +194,9 @@ class ServerProcess:
                 await system_process.write_pid_to_file(
                     pid_file_path, started_process.pid
                 )
+                system_process.clear_process_recovered_untracked(
+                    self.server.server_name
+                )
                 self._publish_running(True)
                 self.intentionally_stopped = False
                 setattr(self.server, "players", [])
@@ -411,7 +414,17 @@ class ServerProcess:
         pid = getattr(process, "pid", None)
         if not isinstance(pid, int) or isinstance(pid, bool) or pid <= 0:
             pid = None
+        if not running:
+            system_process.clear_process_recovered_untracked(self.server.server_name)
+        recovered = (
+            system_process.is_process_recovered_untracked(self.server.server_name)
+            if running
+            else False
+        )
         self.server._runtime_state.update_server_runtime(
-            self.server.server_name, running=running, pid=pid
+            self.server.server_name,
+            running=running,
+            pid=pid,
+            recovered_untracked=recovered,
         )
         return running
