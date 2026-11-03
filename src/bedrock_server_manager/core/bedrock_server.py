@@ -67,8 +67,10 @@ class BedrockServer(ServerResources):
     async def validate_installation(self) -> bool:
         return await self.installation.validate_installation()
 
-    async def is_running(self, *, force_scan: bool = False) -> bool:
-        return await self.process.is_running(force_scan=force_scan)
+    async def is_running(
+        self, *, force_scan: bool = False, reconcile: bool = True
+    ) -> bool:
+        return await self.process.is_running(force_scan=force_scan, reconcile=reconcile)
 
     async def start(self) -> None:
         await self.process.start()
@@ -119,9 +121,13 @@ class BedrockServer(ServerResources):
     async def get_status_from_config(self) -> str:
         return self.configuration.snapshot().status
 
-    async def set_status_in_config(self, status_string: str) -> None:
+    async def set_status_in_config(
+        self, status_string: str, *, cancellable: bool = False
+    ) -> None:
         """Persist status and emit hooks without going through the API facade."""
-        await self.configuration.set_status(status_string, self.events)
+        await self.configuration.set_status(
+            status_string, self.events, cancellable=cancellable
+        )
 
     async def get_world_name(self) -> str:
         value = (
@@ -135,12 +141,13 @@ class BedrockServer(ServerResources):
             )
         return value
 
-    async def get_status(self) -> str:
+    async def get_status(self, running: bool | None = None) -> str:
         """Read effective process status without persisting or emitting events."""
-        running = await self.is_running()
         runtime = self._runtime_state.get_server_runtime(self.server_name)
         if runtime.phase is not None and runtime.generation is not None:
             return runtime.phase
+        if running is None:
+            running = await self.is_running(reconcile=False)
         stored = self.configuration.snapshot().status
         return (
             "RUNNING"
@@ -148,13 +155,13 @@ class BedrockServer(ServerResources):
             else "STOPPED" if stored in ("RUNNING", "UNKNOWN") else stored
         )
 
-    async def reconcile_status(self, running: bool) -> str:
+    async def reconcile_status(self, running: bool | None = None) -> str:
         """Owned runtime facts never depend on cancellable configuration hooks."""
         if self.process.run is not None:
             return self.process.run.phase
-        status = await self.get_status()
+        status = await self.get_status(running=running)
         if status != self.configuration.snapshot().status:
-            await self.set_status_in_config(status)
+            await self.set_status_in_config(status, cancellable=False)
         return status
 
     async def ensure_stopped(self) -> None:

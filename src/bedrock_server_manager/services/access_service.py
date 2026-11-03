@@ -740,6 +740,12 @@ class AccessService:
             return not authorization.resource_restricted and authorization.allows(
                 "runtime:metrics"
             )
+        if topic in {"diagnostics", "diagnostics:summary"}:
+            return not authorization.resource_restricted and authorization.allows(
+                "diagnostics:read"
+            )
+        if topic in {"health", "application-health"}:
+            return not authorization.restricted
         # Unknown/plugin/global event payloads have no resource contract. Retain
         # legacy session behavior but never expose them to restricted principals.
         return not authorization.restricted

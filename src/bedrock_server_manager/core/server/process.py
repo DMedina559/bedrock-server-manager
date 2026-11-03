@@ -65,9 +65,12 @@ class ServerProcess:
     failure_count: int
     _log_file_handle: BufferedWriter | None
 
-    async def is_running(self, *, force_scan: bool = False) -> bool:
+    async def is_running(
+        self, *, force_scan: bool = False, reconcile: bool = True
+    ) -> bool:
         """Check if the Bedrock server process is currently running and verified
-        asynchronously.
+        asynchronously. Set reconcile=False for status reads that must not
+        persist configuration or emit status-change hooks.
         """
         self.logger.debug(
             "Checking if server '%s' is running.", self.server.server_name
@@ -90,9 +93,12 @@ class ServerProcess:
             except system_process.psutil.NoSuchProcess:
                 running = False
             if self._process is not process:
-                return await self.is_running(force_scan=force_scan)
+                return await self.is_running(force_scan=force_scan, reconcile=reconcile)
             if running:
-                return self._publish_running(True)
+                is_running = self._publish_running(True)
+                if reconcile:
+                    await self.server.reconcile_status(is_running)
+                return is_running
         # Probes do not hold operation_lock: discard results from before a
         # concurrent start or another probe installed a different handle.
         observed_process = self._process
@@ -112,9 +118,12 @@ class ServerProcess:
             force_scan=force_scan,
         )
         if self._process is not observed_process:
-            return await self.is_running(force_scan=force_scan)
+            return await self.is_running(force_scan=force_scan, reconcile=reconcile)
         self._process = verified_process
-        return self._publish_running(verified_process is not None)
+        is_running = self._publish_running(verified_process is not None)
+        if reconcile:
+            await self.server.reconcile_status(is_running)
+        return is_running
 
     @property
     def run(self) -> OwnedBDSRun | None:
@@ -192,9 +201,9 @@ class ServerProcess:
                 if record.get("generation") != run.generation:
                     return
                 os.remove(self._record_path())
-                with contextlib.suppress(FileNotFoundError):
+                with contextlib.suppress(OSError):
                     os.remove(self.server.get_pid_file_path())
-            except (FileNotFoundError, ValueError):
+            except (FileNotFoundError, ValueError, OSError):
                 return
 
         await run_in_thread(remove)

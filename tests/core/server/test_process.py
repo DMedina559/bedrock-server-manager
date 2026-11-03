@@ -201,3 +201,34 @@ async def test_start_bypasses_negative_discovery_cache(
         await observer.start()
     assert observer.process._process.pid == owner.process._process.pid
     assert observer.process._recovery_state.recovered_pids
+
+
+async def test_recovered_process_emits_status_change_event(
+    real_bedrock_server, app_context
+):
+    server = real_bedrock_server
+    await server.start()
+    child = server.process._process
+    manager = app_context.bedrock_process_manager
+    await manager.remove_server(server.server_name)
+    server.process._process = None
+    # Simulate config being STOPPED while process was left running
+    await server.configuration.update("server_info.status", "STOPPED")
+    assert server.configuration.snapshot().status == "STOPPED"
+
+    emitted = []
+
+    async def on_status_change(**kwargs):
+        emitted.append(kwargs)
+
+    sub = app_context.events.subscribe("after_server_status_change", on_status_change)
+    try:
+        assert await server.is_running()
+        assert server.configuration.snapshot().status == "RUNNING"
+        assert len(emitted) == 1
+        assert emitted[0]["result"].new_status == "RUNNING"
+        assert emitted[0]["server_name"] == server.server_name
+    finally:
+        app_context.events.unsubscribe(sub)
+        await server.stop()
+        await asyncio.wait_for(child.wait(), 5)

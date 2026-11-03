@@ -48,6 +48,10 @@ async def test_configuration_paths_and_getters_setters(real_bedrock_server):
     await server.configuration.update("server_info.status", "RUNNING")
     assert await server.get_status() == "STOPPED"
     assert server.configuration.snapshot().status == "RUNNING"
+    # Normal process probes still reconcile the persisted status.
+    assert not await server.is_running()
+    assert server.configuration.snapshot().status == "STOPPED"
+    await server.configuration.update("server_info.status", "RUNNING")
     await server.reconcile_status(False)
     assert server.configuration.snapshot().status == "STOPPED"
 

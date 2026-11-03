@@ -304,7 +304,15 @@ def configure_diagnostics(context: "AppContext") -> Diagnostics:
             server = context.get_server(name, require_installation=False)
             if server.operation_lock.locked():
                 continue
-            health.append(await server.backups.backup_health())
+            try:
+                health.append(await server.backups.backup_health())
+            except Exception as error:
+                service._log_failures.report(
+                    f"backup-health:{name}",
+                    "Failed to check backup health for %s: %s",
+                    name,
+                    error,
+                )
         return BackupsDiagnostics(
             servers=len(health),
             archives=sum(h.count for h in health),
@@ -331,4 +339,95 @@ def configure_diagnostics(context: "AppContext") -> Diagnostics:
         service.register(name, provider)
     if context._events is not None:
         context._events.diagnostic_recorder = service.record_event
+
+    last_health_signature: list[str | None] = [None]
+    last_health_broadcast: list[float] = [0.0]
+    last_diag_signature: list[str | None] = [None]
+    last_diag_broadcast: list[float] = [0.0]
+
+    async def notify_subscribers(snapshot=None, code: str = "tick") -> None:
+        manager = getattr(context, "_connection_manager", None)
+        if manager is None:
+            return
+        has_health = manager.has_subscribers("health") or manager.has_subscribers(
+            "application-health"
+        )
+        has_diagnostics = manager.has_subscribers("diagnostics")
+        has_summary = manager.has_subscribers("diagnostics:summary")
+        if not (has_health or has_diagnostics or has_summary):
+            return
+
+        now = time.monotonic()
+
+        if has_diagnostics or has_summary:
+            try:
+                if snapshot is None:
+                    snapshot = await service.snapshot()
+                diag_sig = f"{snapshot.summary.status}:{snapshot.summary.ready}:{','.join(f'{s.name}:{s.status}' for s in snapshot.sections)}"
+                changed = last_diag_signature[0] != diag_sig
+                heartbeat = (now - last_diag_broadcast[0]) >= 30.0
+                if changed or heartbeat or code == "health_transition":
+                    last_diag_signature[0] = diag_sig
+                    last_diag_broadcast[0] = now
+                    if has_diagnostics:
+                        await manager.broadcast_to_topic(
+                            "diagnostics",
+                            {
+                                "type": "diagnostic_update",
+                                "topic": "diagnostics",
+                                "data": snapshot.model_dump(mode="json"),
+                            },
+                        )
+                    if has_summary:
+                        await manager.broadcast_to_topic(
+                            "diagnostics:summary",
+                            {
+                                "type": "diagnostic_summary",
+                                "topic": "diagnostics:summary",
+                                "data": snapshot.summary.model_dump(mode="json"),
+                            },
+                        )
+            except Exception as error:
+                service._log_failures.report(
+                    "notify-subscribers-diagnostics",
+                    "Diagnostics WebSocket notification failed: %s",
+                    error,
+                )
+
+        if has_health:
+            from ..api import system as system_api
+            from ..api.models.system import GetApplicationHealthRequest
+
+            try:
+                health_data = await system_api.get_application_health(
+                    GetApplicationHealthRequest(), app_context=context
+                )
+                checks_sig = ",".join(
+                    f"{k}:{v.healthy}" for k, v in sorted(health_data.checks.items())
+                )
+                health_sig = f"{health_data.health}:{health_data.ready}:{health_data.lifecycle}:{checks_sig}"
+                changed = last_health_signature[0] != health_sig
+                heartbeat = (now - last_health_broadcast[0]) >= 30.0
+                if changed or heartbeat or code == "health_transition":
+                    last_health_signature[0] = health_sig
+                    last_health_broadcast[0] = now
+                    payload = {
+                        "type": "health_update",
+                        "data": health_data.model_dump(mode="json"),
+                    }
+                    for topic in ("health", "application-health"):
+                        if manager.has_subscribers(topic):
+                            await manager.broadcast_to_topic(
+                                topic,
+                                {"topic": topic, **payload},
+                            )
+            except Exception as error:
+                service._log_failures.report(
+                    "notify-subscribers",
+                    "Health WebSocket notification failed: %s",
+                    error,
+                )
+
+    service.notifier = notify_subscribers
+    service.subscriber_notifier = lambda: notify_subscribers(snapshot=None, code="tick")
     return service

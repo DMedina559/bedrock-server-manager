@@ -249,19 +249,72 @@ async def websocket_endpoint(  # noqa: C901
             )
             # Replay the owner's current snapshot after acknowledging subscription.
             # Fast tasks may finish before the client receives their task ID.
-            if frame.action == "subscribe" and topic.startswith("task:"):
-                task = await app_context.task_manager.get_task(
-                    topic.removeprefix("task:"), username=user.username
-                )
-                if task is not None:
-                    await connection_manager.send_to_client(
-                        {
-                            "type": "task_update",
-                            "topic": topic,
-                            "data": task.model_dump(mode="json"),
-                        },
-                        client_id,
+            if frame.action == "subscribe":
+                if topic.startswith("task:"):
+                    task = await app_context.task_manager.get_task(
+                        topic.removeprefix("task:"), username=user.username
                     )
+                    if task is not None:
+                        await connection_manager.send_to_client(
+                            {
+                                "type": "task_update",
+                                "topic": topic,
+                                "data": task.model_dump(mode="json"),
+                            },
+                            client_id,
+                        )
+                elif topic in {"health", "application-health"}:
+                    try:
+                        from ...api import system as system_api
+                        from ...api.models.system import GetApplicationHealthRequest
+
+                        health = await system_api.get_application_health(
+                            GetApplicationHealthRequest(), app_context=app_context
+                        )
+                        await connection_manager.send_to_client(
+                            {
+                                "type": "health_update",
+                                "topic": topic,
+                                "data": health.model_dump(mode="json"),
+                            },
+                            client_id,
+                        )
+                    except Exception as error:
+                        log_operation_error(
+                            logger,
+                            "Failed to replay health state for client %s",
+                            client_id,
+                            error=error,
+                        )
+                elif topic in {"diagnostics", "diagnostics:summary"}:
+                    try:
+                        snapshot = await app_context.diagnostics.snapshot()
+                        if topic == "diagnostics":
+                            await connection_manager.send_to_client(
+                                {
+                                    "type": "diagnostic_update",
+                                    "topic": topic,
+                                    "data": snapshot.model_dump(mode="json"),
+                                },
+                                client_id,
+                            )
+                        else:
+                            await connection_manager.send_to_client(
+                                {
+                                    "type": "diagnostic_summary",
+                                    "topic": topic,
+                                    "data": snapshot.summary.model_dump(mode="json"),
+                                },
+                                client_id,
+                            )
+                    except Exception as error:
+                        log_operation_error(
+                            logger,
+                            "Failed to replay %s for client %s",
+                            topic,
+                            client_id,
+                            error=error,
+                        )
 
     except WebSocketDisconnect:
         logger.debug("WebSocket client disconnected: %s", client_id)

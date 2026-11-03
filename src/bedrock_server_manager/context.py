@@ -909,7 +909,10 @@ class AppContext:
 
             self._bedrock_process_manager = BedrockProcessManager(
                 settings=self.settings,
-                server_provider=self.get_server,
+                server_provider=lambda name: self.get_server(
+                    name, require_installation=False
+                ),
+                registered_servers=lambda: list(self.state.servers.servers),
                 runtime=self.state.runtime,
                 stop_server=self._stop_monitored_server,
                 start_server=self._start_monitored_server,

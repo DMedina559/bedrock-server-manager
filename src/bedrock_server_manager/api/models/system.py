@@ -49,7 +49,7 @@ class GetApplicationHealthResponse(SuccessResponse):
     version: str
     ready: bool
     lifecycle: LifecyclePhase = Field(strict=False)
-    health: Literal["healthy", "degraded"]
+    health: Literal["healthy", "degraded", "unhealthy"]
     checks: dict[str, HealthCheck]
     checked_at: float = Field(gt=0)
 

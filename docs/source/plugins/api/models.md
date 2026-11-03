@@ -4567,7 +4567,8 @@ Schemas are listed once. Local `$defs` references identify other models on this 
     "health": {
       "enum": [
         "healthy",
-        "degraded"
+        "degraded",
+        "unhealthy"
       ],
       "title": "Health",
       "type": "string"

@@ -183,3 +183,32 @@ async def test_successful_recovery_clears_health_after_stable_running(
     await manager._observe_server(server.server_name, server)
     assert server.server_name not in manager.restart_attempts
     assert manager.check_health()
+
+
+async def test_process_manager_recovers_untracked_server_in_background(
+    real_bedrock_server, app_context
+):
+    server = real_bedrock_server
+    await server.start()
+    child = server.process._process
+    manager = app_context.bedrock_process_manager
+    await manager.remove_server(server.server_name)
+    server.process._process = None
+    # Simulate config being STOPPED while process was left running
+    await server.configuration.update("server_info.status", "STOPPED")
+    assert server.configuration.snapshot().status == "STOPPED"
+
+    # Start the manager background monitoring task
+    await manager.start()
+    try:
+        # Wait until background monitor recovers the server status to RUNNING
+        async with asyncio.timeout(10):
+            while server.configuration.snapshot().status != "RUNNING":
+                await asyncio.sleep(0.1)
+        assert server.configuration.snapshot().status == "RUNNING"
+        runtime = app_context.state.runtime.get_server_runtime(server.server_name)
+        assert runtime.running and runtime.pid == child.pid
+    finally:
+        await manager.quiesce()
+        await server.stop()
+        await asyncio.wait_for(child.wait(), 5)
