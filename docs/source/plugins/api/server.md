@@ -37,6 +37,39 @@ data = result.model_dump(mode="json")
 ---
 
 
+## `server.get_process`
+```python
+await self.api.server.get_process(request: bedrock_server_manager.api.models.process.GetServerProcessRequest)
+```
+- **Async (Requires await):** Yes
+
+- **Description:** Return observed process capabilities independently of the server summary.
+
+- **Required Permission:** `servers:inspect`
+
+- **Returns:** `GetServerProcessResponse`
+
+Runtime context and plugin identity are injected by the bridge. Failures raise application exceptions; plugin cancellation raises `APICancelledError`.
+
+```python
+from bedrock_server_manager.api.models import GetServerProcessRequest
+payload = {'server_name': 'example'}
+request = GetServerProcessRequest(**payload)
+result = await self.api.server.get_process(request)
+data = result.model_dump(mode="json")
+```
+- **Request schema:** [GetServerProcessRequest](models.md#getserverprocessrequest)
+- **Response schema:** [GetServerProcessResponse](models.md#getserverprocessresponse)
+- **Transport error schema:** [APIErrorResponse](models.md#apierrorresponse)
+**Parameters:**
+
+| Name | Type | Default |
+|------|------|---------|
+| `request` | `bedrock_server_manager.api.models.process.GetServerProcessRequest` | `REQUIRED` |
+
+---
+
+
 ## `server.get_setting`
 ```python
 await self.api.server.get_setting(request: bedrock_server_manager.api.models.server.GetServerSettingRequest)
@@ -295,7 +328,7 @@ data = result.model_dump(mode="json")
 
 ## `server.wait_for_log`
 ```python
-await self.api.server.wait_for_log(request: bedrock_server_manager.api.models.server.WaitForServerLogRequest)
+await self.api.server.wait_for_log(request: bedrock_server_manager.api.models.logs.WaitForServerLogRequest)
 ```
 - **Async (Requires await):** Yes
 
@@ -321,4 +354,4 @@ data = result.model_dump(mode="json")
 
 | Name | Type | Default |
 |------|------|---------|
-| `request` | `bedrock_server_manager.api.models.server.WaitForServerLogRequest` | `REQUIRED` |
+| `request` | `bedrock_server_manager.api.models.logs.WaitForServerLogRequest` | `REQUIRED` |

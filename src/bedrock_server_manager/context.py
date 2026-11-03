@@ -431,6 +431,12 @@ class AppContext:
                 raise ExceptionGroup("Application shutdown failed", errors)
         for server in list(self._servers.values()):
             await stop(f"drain process {server.server_name}", server.process.drain)
+        if any(server.process.has_pending_work for server in self._servers.values()):
+            self.lifecycle_phase = LifecyclePhase.FAILED
+            raise ExceptionGroup(
+                "Application shutdown paused; process workers remain active",
+                errors or [RuntimeError("Process workers are still draining.")],
+            )
         if getattr(self, "_player_identity_writer", None) is not None:
             await stop("flush player identities", self._player_identity_writer.shutdown)
         if self._events is not None:
@@ -893,12 +899,6 @@ class AppContext:
     async def _start_monitored_server(self, server_name: str) -> None:
         await self.api.server.start({"server_name": server_name})
 
-    async def _get_monitored_bans(self, server_name: str):
-        from .state.models import BanItem
-
-        response = await self.api.ban.get_server_bans({"server_name": server_name})
-        return [BanItem.model_validate(item.model_dump()) for item in response.bans]
-
     @property
     def bedrock_process_manager(self) -> "BedrockProcessManager":
         """
@@ -909,13 +909,10 @@ class AppContext:
 
             self._bedrock_process_manager = BedrockProcessManager(
                 settings=self.settings,
-                storage=self.storage,
                 server_provider=self.get_server,
                 runtime=self.state.runtime,
-                events=self.events,
                 stop_server=self._stop_monitored_server,
                 start_server=self._start_monitored_server,
-                get_bans=self._get_monitored_bans,
                 record_failure=(
                     self._diagnostics.record_monitor_failure
                     if self._diagnostics is not None

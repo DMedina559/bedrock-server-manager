@@ -612,3 +612,51 @@ async def test_token_owner_reduced_role_invalidates_delegated_capability(
     # Subsequent request using the previously issued token loses the capability
     res2 = await admin_auth_client.get("/api/scheduler/schedules", headers=headers)
     assert res2.status_code == 403
+
+
+async def test_process_inspection_requires_scope_and_server_access(
+    admin_auth_client, app_context, access_servers
+):
+    # Registered offline servers need no executable to test authorization; the
+    # endpoint requires installation only after its resource checks have passed.
+    reader = await issue(
+        admin_auth_client,
+        permissions=["servers:read"],
+        server_ids=[access_servers["alpha"]],
+    )
+    assert (
+        await admin_auth_client.get(
+            "/api/server/alpha/process",
+            headers={"Authorization": f"Bearer {reader['token']}"},
+        )
+    ).status_code == 403
+    inspector = await issue(
+        admin_auth_client,
+        permissions=["servers:inspect"],
+        server_ids=[access_servers["alpha"]],
+    )
+    assert (
+        await admin_auth_client.get(
+            "/api/server/beta/process",
+            headers={"Authorization": f"Bearer {inspector['token']}"},
+        )
+    ).status_code == 403
+
+
+async def test_process_inspection_returns_dedicated_response(
+    admin_auth_client, real_bedrock_server
+):
+    name = real_bedrock_server.server_name
+    response = await admin_auth_client.get(f"/api/server/{name}/process")
+    assert response.status_code == 200, response.text
+    data = response.json()
+    assert data["server_name"] == name
+    assert data["process"]["running"] is False
+    assert set(data["process"]["output"]) == {
+        "source",
+        "available",
+        "error",
+        "queued_bytes",
+        "dropped_bytes",
+    }
+    assert "player_count" not in data["process"]

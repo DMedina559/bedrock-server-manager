@@ -8,6 +8,7 @@ import os
 import platform
 import subprocess
 import time
+from collections import deque
 from io import BufferedWriter
 from typing import TYPE_CHECKING, Any, Callable, Dict, Optional, Union
 
@@ -47,6 +48,7 @@ class ServerProcess:
             None
         )
         self._run: OwnedBDSRun | None = None
+        self._completed_console_runs: deque[tuple[float, OwnedBDSRun]] = deque(maxlen=4)
         self._draining_runs: set[OwnedBDSRun] = set()
         self.on_exit: Callable[[], None] | None = None
         self.intentionally_stopped = True
@@ -123,6 +125,26 @@ class ServerProcess:
         )
 
     @property
+    def console_runs(self) -> tuple[OwnedBDSRun, ...]:
+        """Deliver final journals before a replacement run, bounded to 4 runs/30s."""
+        cutoff = time.monotonic() - 30
+        while (
+            self._completed_console_runs and self._completed_console_runs[0][0] < cutoff
+        ):
+            self._completed_console_runs.popleft()
+        completed = tuple(run for _, run in self._completed_console_runs)
+        return completed + ((self.run,) if self.run is not None else ())
+
+    @property
+    def console_run(self) -> OwnedBDSRun | None:
+        runs = self.console_runs
+        return runs[-1] if runs else None
+
+    @property
+    def has_pending_work(self) -> bool:
+        return self._run is not None or bool(self._draining_runs)
+
+    @property
     def log_path(self) -> str:
         return (
             self._run.log_path
@@ -149,6 +171,7 @@ class ServerProcess:
     def _finish_run(self, run: OwnedBDSRun) -> None:
         if self._run is not run:
             return
+        self._completed_console_runs.append((time.monotonic(), run))
         self._run = None
         self._process = None
         self._log_file_handle = None
@@ -177,6 +200,8 @@ class ServerProcess:
         await run_in_thread(remove)
 
     async def drain(self) -> None:
+        if self._run is not None:
+            await self._run.stop()
         for run in list(self._draining_runs):
             results = await asyncio.gather(*run.tasks, return_exceptions=True)
             for result in results:
@@ -431,49 +456,61 @@ class ServerProcess:
             process = self._process
             if not isinstance(process, system_process.psutil.Process):
                 raise ServerStopError("No verified process handle.")
-            self.intentionally_stopped = True
-            timeout = self.server.settings.get(
-                "lifecycle.server_stop_timeout_seconds", 10.0
+            cleanup = asyncio.create_task(
+                self._stop_survivor(process), name="bds-survivor-stop"
             )
-            created_at = await run_in_thread(process.create_time)
-            try:
-                # A survivor has no graceful console path; report termination honestly.
-                with contextlib.suppress(
-                    system_process.psutil.NoSuchProcess, ProcessLookupError
-                ):
-                    process.terminate()
-                await self._wait_for_exit(process, timeout * 0.7)
-            except TimeoutError:
-                with contextlib.suppress(
-                    system_process.psutil.NoSuchProcess, ProcessLookupError
-                ):
-                    process.kill()
-                await self._wait_for_exit(process, timeout * 0.3)
-            self._process = None
-            self._publish_running(False)
-
-            def remove_survivor_identity() -> None:
-                record = system_process.read_process_record(self._record_path())
-                if record is not None and (
-                    record["pid"] != process.pid
-                    or abs(record["created_at"] - created_at) > 0.001
-                ):
-                    return
-                if record is not None:
-                    with contextlib.suppress(FileNotFoundError):
-                        os.remove(self._record_path())
+            cancelled = False
+            while not cleanup.done():
                 try:
-                    with open(
-                        self.server.get_pid_file_path(), encoding="utf-8"
-                    ) as file:
-                        pid = int(file.read().strip())
-                    if pid == process.pid:
-                        os.remove(self.server.get_pid_file_path())
-                except (FileNotFoundError, ValueError):
-                    pass
+                    await asyncio.shield(cleanup)
+                except asyncio.CancelledError:
+                    cancelled = True
+            cleanup.result()
+            if cancelled:
+                raise asyncio.CancelledError
 
-            await run_in_thread(remove_survivor_identity)
-            await self.server.set_status_in_config("STOPPED")
+    async def _stop_survivor(self, process: "psutil.Process") -> None:
+        self.intentionally_stopped = True
+        timeout = self.server.settings.get(
+            "lifecycle.server_stop_timeout_seconds", 10.0
+        )
+        created_at = await run_in_thread(process.create_time)
+        try:
+            # A survivor has no graceful console path; report termination honestly.
+            with contextlib.suppress(
+                system_process.psutil.NoSuchProcess, ProcessLookupError
+            ):
+                process.terminate()
+            await self._wait_for_exit(process, timeout * 0.7)
+        except TimeoutError:
+            with contextlib.suppress(
+                system_process.psutil.NoSuchProcess, ProcessLookupError
+            ):
+                process.kill()
+            await self._wait_for_exit(process, timeout * 0.3)
+        self._process = None
+        self._publish_running(False)
+
+        def remove_survivor_identity() -> None:
+            record = system_process.read_process_record(self._record_path())
+            if record is not None and (
+                record["pid"] != process.pid
+                or abs(record["created_at"] - created_at) > 0.001
+            ):
+                return
+            if record is not None:
+                with contextlib.suppress(FileNotFoundError):
+                    os.remove(self._record_path())
+            try:
+                with open(self.server.get_pid_file_path(), encoding="utf-8") as file:
+                    pid = int(file.read().strip())
+                if pid == process.pid:
+                    os.remove(self.server.get_pid_file_path())
+            except (FileNotFoundError, ValueError):
+                pass
+
+        await run_in_thread(remove_survivor_identity)
+        await self.server.set_status_in_config("STOPPED")
 
     async def get_process_info(self) -> Optional[Dict[str, Any]]:
         if not await self.is_running():

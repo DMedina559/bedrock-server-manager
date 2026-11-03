@@ -101,10 +101,10 @@ class LogStreamer:
                             else None
                         )
                         if server:
-                            run = server.process.run
-                            if run is not None:
+                            runs = server.process.console_runs
+                            if runs:
                                 self._history_topics.add(topic)
-                                deliveries.append((self._process_owned, (topic, run)))
+                                deliveries.append((self._process_runs, (topic, runs)))
                             elif topic not in self._history_topics:
                                 self._history_topics.add(topic)
                                 deliveries.append((self._initial_history, (topic,)))
@@ -130,8 +130,8 @@ class LogStreamer:
                         and callable(self.server_provider)
                     ):
                         server = self.server_provider(topic.split(":", 1)[1])
-                        if server.process.run is not None:
-                            watched.add((topic, server.process.run.log_path))
+                        for run in server.process.console_runs:
+                            watched.add((topic, run.log_path))
                 for key in list(self.file_positions):
                     if key not in watched:
                         self.file_positions.pop(key, None)
@@ -168,6 +168,10 @@ class LogStreamer:
             },
         )
 
+    async def _process_runs(self, topic, runs) -> None:
+        for run in runs:
+            await self._process_owned(topic, run)
+
     async def _process_owned(self, topic, run) -> None:
         key = (topic, run.log_path)
         cursor = self.file_positions.get(key)
@@ -196,6 +200,7 @@ class LogStreamer:
                     "end": end - len(decoder.getstate()[0]),
                     "file_id": self._file_id(run.log_path, stat),
                     "generation": run.generation,
+                    "live": not run.closed.is_set(),
                     "gap": start > cursor,
                 },
             )

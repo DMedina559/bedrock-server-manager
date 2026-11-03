@@ -157,14 +157,20 @@ class OwnedBDSRun:
         self._write_lock = asyncio.Lock()
         self._command_slots = asyncio.Semaphore(64)
         self.protocol_lock = asyncio.Lock()
-        self._raw: asyncio.Queue[bytes] = asyncio.Queue(maxsize=128)
+        self._raw: asyncio.Queue[bytes | None] = asyncio.Queue(maxsize=128)
         self.queued_bytes = 0
         self.dropped_bytes = 0
         self.persisted_offset = 0
         self.journal: deque[tuple[int, bytes]] = deque(maxlen=32)
         self._partial = bytearray()
         self._waiters: dict[asyncio.Future, tuple[str, bool, int]] = {}
-        self._lines: deque[OutputLine] = deque(maxlen=256)
+        self._lines: deque[OutputLine] = deque()
+        self._line_bytes = 0
+        self._replay_floor = 0
+        self._save_bytes = 0
+        self.workers: dict[str, asyncio.Task] = {}
+        self._phases: deque[dict] = deque(maxlen=32)
+        self._last_queued_phase: str | None = None
         self._deltas: deque[dict] = deque(maxlen=1024)
         self._save_future: asyncio.Future[list[tuple[str, int]]] | None = None
         self._save_header = False
@@ -190,12 +196,12 @@ class OwnedBDSRun:
             ("bans", self._enforce_bans()),
             ("readiness", self._readiness()),
         ):
-            self.tasks.append(
-                asyncio.create_task(
-                    coroutine,
-                    name=f"bds:{self.server.server_name}:{self.generation}:{name}",
-                )
+            task = asyncio.create_task(
+                coroutine,
+                name=f"bds:{self.server.server_name}:{self.generation}:{name}",
             )
+            self.workers[name] = task
+            self.tasks.append(task)
         self.exit_task = asyncio.create_task(
             self._exited(), name=f"bds:{self.server.server_name}:exit"
         )
@@ -205,6 +211,12 @@ class OwnedBDSRun:
     def publish(self) -> None:
         if not self.current():
             return
+        payload = self.runtime_payload()
+        if self._last_queued_phase != self.phase:
+            if len(self._phases) == self._phases.maxlen:
+                raise ServerProcessError("Runtime transition capacity exhausted.")
+            self._phases.append(payload)
+            self._last_queued_phase = self.phase
         self.server._runtime_state.update_server_runtime(
             self.server.server_name,
             running=self.process.returncode is None,
@@ -332,6 +344,9 @@ class OwnedBDSRun:
             self._fail(type(error).__name__)
         finally:
             self.reader_done.set()
+            # A full queue already wakes the writer; it also checks reader_done.
+            with contextlib.suppress(asyncio.QueueFull):
+                self._raw.put_nowait(None)
             if self.process.returncode is None and not self.stop_requested:
                 self._fail("Output pipe closed while process remained alive.")
 
@@ -354,6 +369,13 @@ class OwnedBDSRun:
         line = raw.decode("utf-8", errors="replace")
         record = OutputLine(self.generation, self.sequence, line)
         self._lines.append(record)
+        self._line_bytes += len(line.encode("utf-8"))
+        while self._lines and (
+            len(self._lines) > 256 or self._line_bytes > 1024 * 1024
+        ):
+            evicted = self._lines.popleft()
+            self._line_bytes -= len(evicted.line.encode("utf-8"))
+            self._replay_floor = evicted.sequence
         for future, (text, exact, after) in list(self._waiters.items()):
             if (
                 not future.done()
@@ -362,7 +384,12 @@ class OwnedBDSRun:
             ):
                 future.set_result(record)
         message = _PREFIX.sub("", line).strip()
-        if message.lower() in {"server started.", "server started"} and not self.ready:
+        if (
+            message.lower() in {"server started.", "server started"}
+            and self.phase == "STARTING"
+            and not self.stop_requested
+            and self.current()
+        ):
             self.ready = True
             self.phase = "RUNNING"
             self.ready_event.set()
@@ -432,15 +459,18 @@ class OwnedBDSRun:
         if len(self._save_entries) + len(entries) > 100000:
             self._fail("Save response entry capacity exhausted.")
             return
+        self._save_bytes += len(message.encode("utf-8"))
+        if self._save_bytes > 8 * 1024 * 1024:
+            self._fail("Save response byte capacity exhausted.")
+            return
         self._save_entries.extend(entries)
 
     async def _log_writer(self) -> None:
         try:
             while not self.reader_done.is_set() or not self._raw.empty():
-                try:
-                    data = await asyncio.wait_for(self._raw.get(), timeout=0.1)
-                except TimeoutError:
-                    continue
+                data = await self._raw.get()
+                if data is None:
+                    break
 
                 def write() -> None:
                     self.log_file.write(data)
@@ -458,7 +488,7 @@ class OwnedBDSRun:
             await run_in_thread(self.log_file.close)
 
     async def _notify(self) -> None:
-        last_phase = None
+        projected_phase = None
         while True:
             await self._effects.wait()
             self._effects.clear()
@@ -469,28 +499,51 @@ class OwnedBDSRun:
                 return
             try:
                 events = self.server.events
-                if last_phase != self.phase:
-                    phase = self.phase
+                while self._phases:
+                    transition = self._phases[0]
                     if events is not None and events.accepting:
-                        await events.emit(
-                            "after_server_runtime_change", self.runtime_payload()
-                        )
-                        if (
-                            self.ready
-                            and last_phase != "RUNNING"
-                            and phase == "RUNNING"
-                        ):
-                            await events.emit(
-                                "after_server_ready", self.runtime_payload()
+                        if not transition.get("runtime_delivered"):
+                            receipt = await events.emit(
+                                "after_server_runtime_change",
+                                {
+                                    k: v
+                                    for k, v in transition.items()
+                                    if not k.endswith("_delivered")
+                                },
                             )
+                            if receipt.rejection_reason in {"capacity", "depth_limit"}:
+                                break
+                            transition["runtime_delivered"] = True
+                        if (
+                            transition["ready"]
+                            and transition["phase"] == "RUNNING"
+                            and not transition.get("ready_delivered")
+                        ):
+                            receipt = await events.emit(
+                                "after_server_ready",
+                                {
+                                    k: v
+                                    for k, v in transition.items()
+                                    if not k.endswith("_delivered")
+                                },
+                            )
+                            if receipt.rejection_reason in {"capacity", "depth_limit"}:
+                                break
+                            transition["ready_delivered"] = True
+                    self._phases.popleft()
+                if projected_phase != self.phase:
+                    phase = self.phase
                     try:
                         await self.server.set_status_in_config(phase)
                     except Exception:
                         logger.warning(
-                            "Legacy status projection failed; runtime facts retained",
-                            exc_info=True,
+                            "Legacy status projection failed; retrying", exc_info=True
                         )
-                    last_phase = phase
+                        self._effects.set()
+                    else:
+                        projected_phase = phase
+                if self._phases:
+                    self._effects.set()
                 while self._deltas:
                     delta = self._deltas[0]
                     if events is not None and events.accepting:
@@ -522,8 +575,10 @@ class OwnedBDSRun:
                     if receipt.rejection_reason in {"capacity", "depth_limit"}:
                         await asyncio.sleep(0.1)
                         self._effects.set()
-                if not self._effects.is_set() and not self._deltas:
+                if not self._effects.is_set() and not self._deltas and not self._phases:
                     self._notifications_idle.set()
+                elif self._effects.is_set():
+                    await asyncio.sleep(0.1)
             except asyncio.CancelledError:
                 raise
             except Exception:
@@ -550,6 +605,7 @@ class OwnedBDSRun:
         revision = -1
         bans: dict = {}
         attempts: dict[tuple[str, int], int] = {}
+        delivery_errors: dict[tuple[str, int], str] = {}
         while True:
             await self._bans_changed.wait()
             self._bans_changed.clear()
@@ -583,18 +639,39 @@ class OwnedBDSRun:
                         bans[xuid].reason or "You have been banned from this server."
                     )
                     attempts[key] = attempts.get(key, 0) + 1
-                    await self.send(kick_command(name, reason))
+                    try:
+                        await self.send(kick_command(name, reason))
+                    except Exception as error:
+                        delivery_errors[key] = (
+                            f"Kick delivery failed: {type(error).__name__}"
+                        )
+                    else:
+                        delivery_errors.pop(key, None)
+                    if attempts[key] >= 3 and self.sessions.get(xuid) == session_id:
+                        delivery_errors.setdefault(
+                            key, "Kick retry limit reached; awaiting disconnect."
+                        )
                     self._bans_changed.set()
                 attempts = {
                     key: value
                     for key, value in attempts.items()
                     if self.sessions.get(key[0]) == key[1]
                 }
+                delivery_errors = {
+                    key: value
+                    for key, value in delivery_errors.items()
+                    if self.sessions.get(key[0]) == key[1] and key[0] in bans
+                }
+                self.ban_error = next(iter(delivery_errors.values()), None)
+                self.publish()
                 if self._bans_changed.is_set():
                     await asyncio.sleep(1)
             except asyncio.CancelledError:
                 raise
-            except Exception:
+            except Exception as error:
+                self.ban_available = False
+                self.ban_error = f"Ban refresh failed: {type(error).__name__}"
+                self.publish()
                 logger.warning(
                     "Ban enforcement failed; retaining retry state", exc_info=True
                 )
@@ -608,11 +685,25 @@ class OwnedBDSRun:
             ):
                 await self.ready_event.wait()
         except TimeoutError:
-            self._fail("BDS did not report readiness before the startup deadline.")
+            if self.current() and self.phase == "STARTING" and not self.stop_requested:
+                self._fail("BDS did not report readiness before the startup deadline.")
 
     def watch(
-        self, text: str, *, exact: bool = False, after: int | None = None
+        self,
+        text: str,
+        *,
+        exact: bool = False,
+        after: int | None = None,
+        generation: str | None = None,
     ) -> asyncio.Future[OutputLine]:
+        if generation is not None and generation != self.generation:
+            raise ServerProcessError(
+                "Log cursor belongs to a different process generation."
+            )
+        if after is not None and after < self._replay_floor:
+            raise ServerProcessError(
+                "Log cursor expired; requested output is no longer retained."
+            )
         if not text or len(text.encode()) > 4096 or len(self._waiters) >= 128:
             raise ServerProcessError("Invalid log match or waiter capacity exhausted.")
         if (
@@ -641,13 +732,14 @@ class OwnedBDSRun:
         *,
         exact: bool = False,
         after: int | None = None,
+        generation: str | None = None,
         timeout: float = 30,
     ) -> OutputLine:
         if not 0 < timeout <= 300:
             raise ServerProcessError(
                 "Log wait timeout must be between 0 and 300 seconds."
             )
-        future = self.watch(text, exact=exact, after=after)
+        future = self.watch(text, exact=exact, after=after, generation=generation)
         try:
             async with asyncio.timeout(timeout):
                 return await future
@@ -675,6 +767,7 @@ class OwnedBDSRun:
             self._save_future = future
             self._save_header = False
             self._save_entries = []
+            self._save_bytes = 0
             self._protocol_task = asyncio.current_task()
             error: BaseException | None = None
             try:
@@ -699,6 +792,9 @@ class OwnedBDSRun:
                 raise
             finally:
                 self._save_future = None
+                self._save_entries = []
+                self._save_bytes = 0
+                self._protocol_task = None
                 future.cancel()
                 # Observe exceptions even if command delivery failed before awaiting.
                 if not future.cancelled():
@@ -755,6 +851,9 @@ class OwnedBDSRun:
 
     async def _stop(self) -> None:
         self.stop_requested = True
+        readiness = self.workers.get("readiness")
+        if readiness is not None:
+            readiness.cancel()
         self.ready = False
         self.exit_reason = "requested"
         if self.failure is None:
@@ -797,9 +896,8 @@ class OwnedBDSRun:
                 "lifecycle.output_drain_timeout_seconds", 2.0
             )
             deadline = asyncio.get_running_loop().time() + drain
-            for task in self.tasks[:2][
-                ::-1
-            ]:  # Reader finishes before writer is drained.
+            for name in ("output", "log-writer"):
+                task = self.workers[name]
                 try:
                     await asyncio.wait_for(
                         asyncio.shield(task),
@@ -839,10 +937,13 @@ class OwnedBDSRun:
                 )
             except TimeoutError:
                 logger.warning("Process notifications did not drain before deadline")
-            for task in self.tasks[2:]:
+            effects = [
+                self.workers[name] for name in ("notifications", "bans", "readiness")
+            ]
+            for task in effects:
                 task.cancel()
             await asyncio.wait(
-                self.tasks[2:],
+                effects,
                 timeout=max(0.01, deadline - asyncio.get_running_loop().time()),
             )
         except Exception as error:

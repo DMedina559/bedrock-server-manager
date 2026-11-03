@@ -18,7 +18,7 @@ async def test_monitor_keeps_peer_responsive_and_drains_checks(
     entered, observed = asyncio.Event(), asyncio.Event()
     calls = []
 
-    async def observe(name, server, *, scan_players):
+    async def observe(name, server):
         calls.append(name)
         if name == "slow":
             entered.set()

@@ -188,3 +188,66 @@ async def test_history_and_live_stream_join_without_gaps(
         with path.open("ab") as output:
             output.write(b"\x8c\x8d\n")
         assert await receive_log(socket, "app_log") == "🌍\n"
+
+
+async def test_completed_run_keeps_final_output_available(real_bedrock_server):
+    from unittest.mock import AsyncMock, Mock
+
+    from bedrock_server_manager.web.log_streamer import LogStreamer
+
+    server = real_bedrock_server
+    await server.start()
+    run = server.process.run
+    await asyncio.wait_for(run.ready_event.wait(), 5)
+    await server.send_command("say FINAL_JOURNAL_MARKER")
+    await server.stop()
+    assert server.process.run is None
+    assert server.process.console_run is run
+    manager = Mock()
+    manager.broadcast_to_topic = AsyncMock()
+    streamer = LogStreamer(manager, "", lambda _: server)
+    await streamer._process_owned(
+        f"server_log:{server.server_name}", server.process.console_run
+    )
+    messages = [call.args[1] for call in manager.broadcast_to_topic.await_args_list]
+    assert "FINAL_JOURNAL_MARKER" in "".join(message["data"] for message in messages)
+    assert all(
+        message["generation"] == run.generation and not message["live"]
+        for message in messages
+    )
+
+
+async def test_quick_restart_delivers_old_final_journal_before_new_run(
+    real_bedrock_server,
+):
+    from unittest.mock import AsyncMock, Mock
+
+    from bedrock_server_manager.web.log_streamer import LogStreamer
+
+    server = real_bedrock_server
+    await server.start()
+    old = server.process.run
+    await asyncio.wait_for(old.ready_event.wait(), 5)
+    await server.send_command("say BEFORE_RESTART_MARKER")
+    await server.stop()
+    await server.start()
+    new = server.process.run
+    await asyncio.wait_for(new.ready_event.wait(), 5)
+    assert server.process.console_runs == (old, new)
+    manager = Mock()
+    manager.broadcast_to_topic = AsyncMock()
+    streamer = LogStreamer(manager, "", lambda _: server)
+    await streamer._process_runs(
+        f"server_log:{server.server_name}", server.process.console_runs
+    )
+    messages = [call.args[1] for call in manager.broadcast_to_topic.await_args_list]
+    old_messages = [
+        message for message in messages if message["generation"] == old.generation
+    ]
+    assert "BEFORE_RESTART_MARKER" in "".join(
+        message["data"] for message in old_messages
+    )
+    generations = [message["generation"] for message in messages]
+    assert generations.index(new.generation) > max(
+        i for i, generation in enumerate(generations) if generation == old.generation
+    )

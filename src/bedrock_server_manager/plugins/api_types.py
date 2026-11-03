@@ -80,6 +80,8 @@ from bedrock_server_manager.api.models import (
     GetRawPropertiesResponse,
     GetServerBansRequest,
     GetServerBansResponse,
+    GetServerProcessRequest,
+    GetServerProcessResponse,
     GetServerRunningStatusRequest,
     GetServerRunningStatusResponse,
     GetServerSettingRequest,
@@ -536,6 +538,10 @@ class ServerAPI(Protocol):
         self, request: GetAllServerSettingsRequest | Mapping[str, object]
     ) -> GetAllServerSettingsResponse: ...
 
+    async def get_process(
+        self, request: GetServerProcessRequest | Mapping[str, object]
+    ) -> GetServerProcessResponse: ...
+
     async def get_setting(
         self, request: GetServerSettingRequest | Mapping[str, object]
     ) -> GetServerSettingResponse: ...
@@ -849,6 +855,7 @@ API_METHODS: dict[str, dict[str, str]] = {
     "server": {
         "delete_data": "delete_server_data",
         "get_all_settings": "get_all_server_settings",
+        "get_process": "get_server_process",
         "get_setting": "get_server_setting",
         "get_summary": "get_server_summary",
         "get_valid_names": "get_valid_server_names",

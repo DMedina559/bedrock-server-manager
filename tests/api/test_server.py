@@ -154,3 +154,38 @@ def test_server_request_validations():
         UpdateServerPlayerStatsRequest(
             server_name="test_server", player_count=2, players=[]
         )
+
+
+async def test_process_status_is_separate_from_summary(
+    app_context, real_bedrock_server
+):
+    from bedrock_server_manager.api.models import (
+        GetServerProcessRequest,
+        GetServerSummaryRequest,
+    )
+    from bedrock_server_manager.api.server import get_server_process, get_server_summary
+
+    name = real_bedrock_server.server_name
+    await real_bedrock_server.start()
+    run = real_bedrock_server.process.run
+    await asyncio.wait_for(run.ready_event.wait(), 5)
+    result = await get_server_process(
+        GetServerProcessRequest(server_name=name), app_context=app_context
+    )
+    assert result.process.generation == run.generation
+    assert result.process.running and result.process.ready and result.process.owned
+    assert result.process.command_available
+    assert result.process.output.source == "pipe"
+    assert result.process.output.available
+    summary = await get_server_summary(
+        GetServerSummaryRequest(server_name=name), app_context=app_context
+    )
+    assert "generation" not in summary.summary.model_dump()
+    assert "output_available" not in summary.summary.model_dump()
+    await real_bedrock_server.stop()
+    stopped = await get_server_process(
+        GetServerProcessRequest(server_name=name), app_context=app_context
+    )
+    assert not stopped.process.running
+    assert not stopped.process.command_available
+    assert stopped.process.exit.code is not None

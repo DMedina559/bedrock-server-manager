@@ -171,11 +171,6 @@ class BedrockServer(ServerResources):
         return SummaryRecord(
             name=self.server_name,
             status=status,
-            generation=runtime.generation,
-            ready=runtime.ready,
-            process_owned=runtime.process_owned,
-            command_available=runtime.command_available,
-            output_available=runtime.output_available,
             version=await self.get_version(),
             players_available=runtime.players_available,
             player_count=runtime.players_online,

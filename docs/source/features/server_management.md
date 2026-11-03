@@ -75,3 +75,25 @@ A complete response frame is required before copying; failures and cancellation
 attempt a bounded resume of the same process generation. Live backup cannot run on
 a recovered process without console control. Offline-only maintenance requires a
 fresh verified stopped decision, including when orphan adoption is disabled.
+
+## Process inspection and live output waits
+
+`GET /api/server/{server_name}/process` returns process ownership, generation,
+readiness, and command availability. Its dedicated response groups output pressure
+and errors under `output`, ban enforcement under `bans`, and exit evidence under
+`exit`. It requires `servers:inspect` and access to that server. The server summary
+continues to describe status, version, and player presence; resource usage remains
+available through the existing `process_info` endpoint.
+
+Plugins can use `server.get_process` for the same inspection and
+`server.wait_for_log` to wait for one matching live output line. Log waits require
+`logs:read`. By default they match future output only. For replay, pass
+`after_sequence` together with the `generation` from the previous response. A
+mismatched generation or a cursor older than the retained window raises an error;
+the function does not silently skip missing history. Replay retains at most 256
+lines and 1 MiB per process. Waits end on a match, timeout, process exit, or plugin
+unload. Exact matches include the full output line, including any BDS prefix.
+
+Recovered survivors have no live pipe, so live output waits and console commands
+remain unavailable until stop/start. They are not added to lifecycle monitoring
+or automatic restart.

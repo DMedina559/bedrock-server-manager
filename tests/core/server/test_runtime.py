@@ -310,3 +310,223 @@ async def test_reducer_failure_still_drains_pipe_during_controlled_stop(tmp_path
         for task in (run._failure_task, run._stop_task):
             if task is not None:
                 await asyncio.gather(task, return_exceptions=True)
+
+
+async def test_stopping_run_rejects_late_readiness(tmp_path):
+    run = make_run(tmp_path)
+    try:
+        run.stop_requested = True
+        run.phase = "STOPPING"
+        run.feed(b"[INFO] Server started.\n")
+        assert run.phase == "STOPPING"
+        assert not run.ready
+        assert not run.ready_event.is_set()
+    finally:
+        run.log_file.close()
+
+
+async def test_runtime_notifications_retry_admission_without_replaying_success(
+    tmp_path,
+):
+    run = make_run(tmp_path)
+    runtime_calls, ready_calls = [], []
+    allow_ready = asyncio.Event()
+
+    async def emit(name, payload):
+        if name == "after_server_runtime_change":
+            runtime_calls.append(payload.copy())
+        if name == "after_server_ready":
+            ready_calls.append(payload.copy())
+            if not allow_ready.is_set():
+                return SimpleNamespace(rejection_reason="capacity")
+        return SimpleNamespace(rejection_reason=None)
+
+    run.server.events = SimpleNamespace(accepting=True, emit=emit)
+    run.feed(b"Server started.\n")
+    task = asyncio.create_task(run._notify())
+    try:
+        async with asyncio.timeout(1):
+            while len(ready_calls) < 2:
+                await asyncio.sleep(0.01)
+        assert len(runtime_calls) == 1
+        allow_ready.set()
+        await asyncio.wait_for(run._notifications_idle.wait(), 1)
+        assert len(runtime_calls) == 1
+        assert ready_calls[-1]["generation"] == run.generation
+        assert not any(key.endswith("_delivered") for key in ready_calls[-1])
+    finally:
+        task.cancel()
+        await asyncio.gather(task, return_exceptions=True)
+        run.log_file.close()
+
+
+async def test_log_replay_rejects_wrong_generation_and_expired_cursor(tmp_path):
+    run = make_run(tmp_path)
+    try:
+        run.feed(b"old match\n")
+        for _ in range(260):
+            run.feed(b"new line\n")
+        with pytest.raises(ServerProcessError, match="generation"):
+            run.watch("new", generation="old-generation")
+        with pytest.raises(ServerProcessError, match="expired"):
+            run.watch("old match", after=0)
+        future = run.watch(
+            "new line", after=run.sequence - 1, generation=run.generation
+        )
+        assert (await future).sequence == run.sequence
+        # A future-only subscription never needs replay history.
+        pending = run.watch("future")
+        run.feed(b"future\n")
+        assert (await pending).line == "future"
+    finally:
+        run.log_file.close()
+
+
+async def test_replay_history_is_bounded_by_bytes(tmp_path):
+    run = make_run(tmp_path)
+    try:
+        for _ in range(12):
+            run.feed(b"x" * 200000 + b"\n")
+        assert run._line_bytes <= 1024 * 1024
+        assert run._replay_floor > 0
+        assert not run.failure
+    finally:
+        run.log_file.close()
+
+
+async def test_ban_refresh_failure_updates_diagnostics(tmp_path):
+    from contextlib import asynccontextmanager
+
+    @asynccontextmanager
+    async def unavailable():
+        raise RuntimeError("database unavailable")
+        yield
+
+    run = make_run(tmp_path)
+    run.server.storage = SimpleNamespace(transaction=unavailable)
+    run.ban_available = True
+    task = asyncio.create_task(run._enforce_bans())
+    run.invalidate_bans()
+    try:
+        async with asyncio.timeout(1):
+            while run.ban_error is None:
+                await asyncio.sleep(0.01)
+        assert not run.ban_available
+        assert "RuntimeError" in run.ban_error
+    finally:
+        task.cancel()
+        await asyncio.gather(task, return_exceptions=True)
+        run.log_file.close()
+
+
+async def test_drain_stops_active_run_before_releasing_ownership():
+    from bedrock_server_manager.core.server.process import ServerProcess
+
+    server = make_server()
+    process = ServerProcess(server)
+    entered = asyncio.Event()
+
+    async def stop():
+        entered.set()
+        process._run = None
+
+    process._run = SimpleNamespace(stop=stop)
+    assert process.has_pending_work
+    await process.drain()
+    assert entered.is_set()
+    assert not process.has_pending_work
+
+
+async def test_survivor_stop_finishes_despite_repeated_caller_cancellation():
+    import psutil
+
+    from bedrock_server_manager.core.server.process import ServerProcess
+
+    server = make_server()
+    server.operation_lock = asyncio.Lock()
+    process = ServerProcess(server)
+    process._process = Mock(spec=psutil.Process)
+    process.is_running = AsyncMock(return_value=True)
+    entered, release = asyncio.Event(), asyncio.Event()
+    completed = []
+
+    async def stop_survivor(child):
+        entered.set()
+        await release.wait()
+        completed.append(child)
+
+    process._stop_survivor = stop_survivor
+    task = asyncio.create_task(process.stop())
+    await entered.wait()
+    task.cancel()
+    await asyncio.sleep(0)
+    task.cancel()
+    await asyncio.sleep(0)
+    assert server.operation_lock.locked()
+    assert not task.done()
+    release.set()
+    with pytest.raises(asyncio.CancelledError):
+        await task
+    assert completed == [process._process]
+    assert not server.operation_lock.locked()
+
+
+async def test_status_projection_retry_does_not_repeat_runtime_event(tmp_path):
+    run = make_run(tmp_path)
+    run.server.set_status_in_config = AsyncMock(
+        side_effect=[RuntimeError("storage"), None]
+    )
+    emit = AsyncMock(return_value=SimpleNamespace(rejection_reason=None))
+    run.server.events = SimpleNamespace(accepting=True, emit=emit)
+    run.publish()
+    run._effects.set()
+    task = asyncio.create_task(run._notify())
+    try:
+        await asyncio.wait_for(run._notifications_idle.wait(), 1)
+        assert run.server.set_status_in_config.await_count == 2
+        assert (
+            sum(
+                call.args[0] == "after_server_runtime_change"
+                for call in emit.await_args_list
+            )
+            == 1
+        )
+    finally:
+        task.cancel()
+        await asyncio.gather(task, return_exceptions=True)
+        run.log_file.close()
+
+
+async def test_invalid_ban_reason_does_not_block_other_players(tmp_path):
+    from contextlib import asynccontextmanager
+
+    @asynccontextmanager
+    async def transaction():
+        yield None
+
+    run = make_run(tmp_path)
+    run.players = {"1": "Bad", "2": "Good"}
+    run.sessions = {"1": 1, "2": 2}
+    run.server.storage = SimpleNamespace(
+        transaction=transaction,
+        ban_repo=SimpleNamespace(
+            get_bans=AsyncMock(
+                return_value=[
+                    SimpleNamespace(xuid="1", reason="invalid\nreason"),
+                    SimpleNamespace(xuid="2", reason="Banned"),
+                ]
+            )
+        ),
+    )
+    task = asyncio.create_task(run._enforce_bans())
+    run.invalidate_bans()
+    try:
+        async with asyncio.timeout(1):
+            while not run.process.stdin.write.called:
+                await asyncio.sleep(0.01)
+        assert run.process.stdin.write.call_args.args[0] == b'kick "Good" Banned\n'
+        assert run.ban_error is not None
+    finally:
+        task.cancel()
+        await asyncio.gather(task, return_exceptions=True)
+        run.log_file.close()

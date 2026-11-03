@@ -115,7 +115,7 @@ async def test_monitor_restarts_crashed_child_and_isolates_failures(
             real_bedrock_server.player_tracker, "update_online_players", forbidden_scan
         )
         await manager._observe_server(
-            real_bedrock_server.server_name, real_bedrock_server, scan_players=True
+            real_bedrock_server.server_name, real_bedrock_server
         )
 
     # Probe failure does not stop other servers
@@ -181,6 +181,6 @@ async def test_successful_recovery_clears_health_after_stable_running(
     manager.restart_attempts[server.server_name] = 1
     manager._healthy_since[server.server_name] = time.monotonic() - 60
     assert not manager.check_health()
-    await manager._observe_server(server.server_name, server, scan_players=False)
+    await manager._observe_server(server.server_name, server)
     assert server.server_name not in manager.restart_attempts
     assert manager.check_health()

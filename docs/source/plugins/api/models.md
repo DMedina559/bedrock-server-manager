@@ -1450,6 +1450,37 @@ Schemas are listed once. Local `$defs` references identify other models on this 
 }
 ```
 
+## BanEnforcementStatus
+
+```json
+{
+  "additionalProperties": false,
+  "properties": {
+    "available": {
+      "title": "Available",
+      "type": "boolean"
+    },
+    "error": {
+      "anyOf": [
+        {
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "title": "Error"
+    }
+  },
+  "required": [
+    "available"
+  ],
+  "title": "BanEnforcementStatus",
+  "type": "object"
+}
+```
+
 ## BanInfo
 
 ```json
@@ -5856,6 +5887,76 @@ Schemas are listed once. Local `$defs` references identify other models on this 
 }
 ```
 
+## GetServerProcessRequest
+
+```json
+{
+  "additionalProperties": false,
+  "properties": {
+    "server_name": {
+      "examples": [
+        "example"
+      ],
+      "minLength": 1,
+      "pattern": "^[a-zA-Z0-9_-]+$",
+      "title": "Server Name",
+      "type": "string"
+    }
+  },
+  "required": [
+    "server_name"
+  ],
+  "title": "GetServerProcessRequest",
+  "type": "object"
+}
+```
+
+## GetServerProcessResponse
+
+```json
+{
+  "additionalProperties": false,
+  "properties": {
+    "message": {
+      "anyOf": [
+        {
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "title": "Message"
+    },
+    "process": {
+      "$ref": "#/$defs/ServerProcessStatus"
+    },
+    "server_name": {
+      "examples": [
+        "example"
+      ],
+      "minLength": 1,
+      "pattern": "^[a-zA-Z0-9_-]+$",
+      "title": "Server Name",
+      "type": "string"
+    },
+    "status": {
+      "const": "success",
+      "default": "success",
+      "title": "Status",
+      "type": "string"
+    }
+  },
+  "required": [
+    "server_name",
+    "process"
+  ],
+  "title": "GetServerProcessResponse",
+  "type": "object"
+}
+```
+
 ## GetServerRunningStatusRequest
 
 ```json
@@ -8783,6 +8884,42 @@ Schemas are listed once. Local `$defs` references identify other models on this 
 }
 ```
 
+## ProcessExitStatus
+
+```json
+{
+  "additionalProperties": false,
+  "properties": {
+    "code": {
+      "anyOf": [
+        {
+          "type": "integer"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "title": "Code"
+    },
+    "reason": {
+      "anyOf": [
+        {
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "title": "Reason"
+    }
+  },
+  "title": "ProcessExitStatus",
+  "type": "object"
+}
+```
+
 ## ProcessInfo
 
 ```json
@@ -8813,6 +8950,59 @@ Schemas are listed once. Local `$defs` references identify other models on this 
     "uptime"
   ],
   "title": "ProcessInfo",
+  "type": "object"
+}
+```
+
+## ProcessOutputStatus
+
+```json
+{
+  "additionalProperties": false,
+  "properties": {
+    "available": {
+      "title": "Available",
+      "type": "boolean"
+    },
+    "dropped_bytes": {
+      "minimum": 0,
+      "title": "Dropped Bytes",
+      "type": "integer"
+    },
+    "error": {
+      "anyOf": [
+        {
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "title": "Error"
+    },
+    "queued_bytes": {
+      "minimum": 0,
+      "title": "Queued Bytes",
+      "type": "integer"
+    },
+    "source": {
+      "enum": [
+        "file",
+        "pipe",
+        "unknown"
+      ],
+      "title": "Source",
+      "type": "string"
+    }
+  },
+  "required": [
+    "source",
+    "available",
+    "queued_bytes",
+    "dropped_bytes"
+  ],
+  "title": "ProcessOutputStatus",
   "type": "object"
 }
 ```
@@ -11525,28 +11715,21 @@ Schemas are listed once. Local `$defs` references identify other models on this 
 }
 ```
 
-## ServerSummary
+## ServerProcessStatus
 
 ```json
 {
   "additionalProperties": false,
   "properties": {
+    "bans": {
+      "$ref": "#/$defs/BanEnforcementStatus"
+    },
     "command_available": {
-      "default": false,
       "title": "Command Available",
       "type": "boolean"
     },
-    "epoch": {
-      "anyOf": [
-        {
-          "type": "string"
-        },
-        {
-          "type": "null"
-        }
-      ],
-      "default": null,
-      "title": "Epoch"
+    "exit": {
+      "$ref": "#/$defs/ProcessExitStatus"
     },
     "generation": {
       "anyOf": [
@@ -11560,14 +11743,98 @@ Schemas are listed once. Local `$defs` references identify other models on this 
       "default": null,
       "title": "Generation"
     },
+    "observed_at": {
+      "anyOf": [
+        {
+          "type": "number"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "title": "Observed At"
+    },
+    "output": {
+      "$ref": "#/$defs/ProcessOutputStatus"
+    },
+    "owned": {
+      "title": "Owned",
+      "type": "boolean"
+    },
+    "phase": {
+      "anyOf": [
+        {
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "title": "Phase"
+    },
+    "pid": {
+      "anyOf": [
+        {
+          "type": "integer"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "title": "Pid"
+    },
+    "ready": {
+      "title": "Ready",
+      "type": "boolean"
+    },
+    "recovered": {
+      "title": "Recovered",
+      "type": "boolean"
+    },
+    "running": {
+      "title": "Running",
+      "type": "boolean"
+    }
+  },
+  "required": [
+    "running",
+    "ready",
+    "owned",
+    "recovered",
+    "command_available",
+    "output",
+    "bans",
+    "exit"
+  ],
+  "title": "ServerProcessStatus",
+  "type": "object"
+}
+```
+
+## ServerSummary
+
+```json
+{
+  "additionalProperties": false,
+  "properties": {
+    "epoch": {
+      "anyOf": [
+        {
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "title": "Epoch"
+    },
     "name": {
       "title": "Name",
       "type": "string"
-    },
-    "output_available": {
-      "default": false,
-      "title": "Output Available",
-      "type": "boolean"
     },
     "player_count": {
       "default": 0,
@@ -11585,16 +11852,6 @@ Schemas are listed once. Local `$defs` references identify other models on this 
     "players_available": {
       "default": true,
       "title": "Players Available",
-      "type": "boolean"
-    },
-    "process_owned": {
-      "default": false,
-      "title": "Process Owned",
-      "type": "boolean"
-    },
-    "ready": {
-      "default": false,
-      "title": "Ready",
       "type": "boolean"
     },
     "revision": {
@@ -13210,6 +13467,18 @@ Schemas are listed once. Local `$defs` references identify other models on this 
       "default": false,
       "title": "Exact",
       "type": "boolean"
+    },
+    "generation": {
+      "anyOf": [
+        {
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "title": "Generation"
     },
     "server_name": {
       "examples": [

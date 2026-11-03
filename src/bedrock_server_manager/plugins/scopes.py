@@ -23,6 +23,8 @@ SCOPE_DESCRIPTIONS: Final[dict[str, str]] = {
     "path:content": "Access content import directories (worlds and packs)",
     "path:downloads": "Access cached server download archives",
     "path:themes": "Access custom Web UI themes",
+    "servers:inspect": "Inspect server process ownership, readiness, and runtime capabilities",
+    "logs:read": "Wait for matching live Bedrock server output",
     "server:command": "Send interactive console commands to running servers",
     "server:lifecycle": "Start, stop, and restart game servers",
     "server:install": "Install new servers and update server software binaries",

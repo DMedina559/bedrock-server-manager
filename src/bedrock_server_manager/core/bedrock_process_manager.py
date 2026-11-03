@@ -3,8 +3,7 @@
 
 This module provides the :class:`~.BedrockProcessManager` class, which is responsible
 for monitoring running Bedrock server instances. It detects crashes or unexpected
-shutdowns and attempts to restart servers based on configuration policies. It also
-handles periodic tasks like player scanning from logs.
+shutdowns and attempts to restart servers based on configuration policies. Player presence is reduced by each owned output stream.
 """
 
 import asyncio
@@ -17,38 +16,27 @@ from ..logging import RepeatedFailureReporter, log_operation_error
 
 if TYPE_CHECKING:
     from ..config.settings import Settings
-    from ..db.storage import Storage
-    from ..events.publisher import EventPublisher
-    from ..state.models import BanItem, RuntimeState
+    from ..state.models import RuntimeState
     from .bedrock_server import BedrockServer
 
 
 class BedrockProcessManager:
-    """Monitor owned server processes and restart unintended stops asynchronously.
-
-    Publish player observations through the injected event publisher.
-    """
+    """Monitor owned server processes and restart unintended stops asynchronously."""
 
     def __init__(
         self,
         settings: "Settings",
-        storage: "Storage",
         server_provider: Optional[Callable[[str], "BedrockServer"]] = None,
         *,
-        events: Optional["EventPublisher"] = None,
         stop_server: Callable[[str], Awaitable[None]] | None = None,
-        get_bans: Callable[[str], Awaitable[list["BanItem"]]] | None = None,
         record_failure: Callable[[str, Exception, float], None] | None = None,
         runtime: "RuntimeState | None" = None,
         start_server: Callable[[str], Awaitable[None]] | None = None,
     ):
         """Initialize the BedrockProcessManager with explicit dependencies."""
         self.settings = settings
-        self.storage = storage
         self.server_provider = server_provider
-        self.events = events
         self.stop_server = stop_server
-        self.get_bans = get_bans
         self.record_failure = record_failure
         self.runtime = runtime
         self.start_server = start_server
@@ -60,7 +48,6 @@ class BedrockProcessManager:
         self.monitor_errors: dict[str, str] = {}
         self.servers: Dict[str, "BedrockServer"] = {}
         self.restart_attempts: dict[str, int] = {}
-        self._pending_player_events: set[str] = set()
         self._server_checks: dict[str, asyncio.Task] = {}
         self._check_slots = asyncio.Semaphore(4)
         self._restart_after: dict[str, float] = {}
@@ -70,25 +57,6 @@ class BedrockProcessManager:
         self._wake = asyncio.Event()
         self.monitoring_task: Optional[asyncio.Task[Any]] = None
         self.logger.debug("BedrockProcessManager initialized.")
-
-    async def _publish_players(self, server: "BedrockServer") -> None:
-        from ..events.player import PlayerSnapshot, publish_player_snapshot
-
-        if self.events is None:
-            raise BSMError("Player event publisher is not available.")
-        receipt = await publish_player_snapshot(
-            self.events,
-            PlayerSnapshot(
-                server_name=server.server_name,
-                player_count=server.player_count,
-                players=server.players,
-            ),
-        )
-        if receipt.rejection_reason in {"capacity", "depth_limit"}:
-            self._pending_player_events.add(server.server_name)
-        else:
-            # Partial listener delivery is recorded, not replayed to successful listeners.
-            self._pending_player_events.discard(server.server_name)
 
     def check_health(self) -> bool:
         """Check if server process monitoring and managed servers are healthy."""
@@ -159,7 +127,6 @@ class BedrockProcessManager:
             self.monitor_errors.pop(server_name, None)
             self.restart_attempts.pop(server_name, None)
             self._restart_after.pop(server_name, None)
-            self._pending_player_events.discard(server_name)
             task = self._server_checks.get(server_name)
             if task is not None and task is not asyncio.current_task():
                 task.cancel()
@@ -340,7 +307,7 @@ class BedrockProcessManager:
                 for server_name, server in list(self.servers.items()):
                     if server_name not in self._server_checks:
                         task = asyncio.create_task(
-                            self._check_server(server_name, server, scan_players=False),
+                            self._check_server(server_name, server),
                             name=f"server-monitor:{server_name}",
                         )
                         self._server_checks[server_name] = task
@@ -366,16 +333,16 @@ class BedrockProcessManager:
                 "Server monitor failed for '%s'.", name, exc_info=task.exception()
             )
 
-    async def _check_server(self, server_name, server, *, scan_players):
+    async def _check_server(self, server_name, server):
         async with self._check_slots:
             if (
                 self.servers.get(server_name) is not server
                 or self._shutdown_event.is_set()
             ):
                 return
-            await self._observe_server(server_name, server, scan_players=False)
+            await self._observe_server(server_name, server)
 
-    async def _observe_server(self, server_name, server, *, scan_players):
+    async def _observe_server(self, server_name, server):
         # Determine run state
         probe_started = time.monotonic()
         try:

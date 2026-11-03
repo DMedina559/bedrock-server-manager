@@ -35,6 +35,8 @@ from .models import (
     StopServerRequest,
     StopServerResponse,
 )
+from .models.logs import WaitForServerLogRequest, WaitForServerLogResponse
+from .models.process import GetServerProcessRequest, GetServerProcessResponse
 from .models.server import (
     DeleteServerDataRequest,
     DeleteServerDataResponse,
@@ -56,8 +58,6 @@ from .models.server import (
     SetServerStatusResponse,
     UpdateServerPlayerStatsRequest,
     UpdateServerPlayerStatsResponse,
-    WaitForServerLogRequest,
-    WaitForServerLogResponse,
 )
 
 logger = logging.getLogger(__name__)
@@ -631,7 +631,12 @@ async def wait_for_server_log(
     run = app_context.get_server(request.server_name).process.run
     if run is None:
         raise ServerProcessError("Live output requires an owned BDS process.")
-    future = run.watch(request.text, exact=request.exact, after=request.after_sequence)
+    future = run.watch(
+        request.text,
+        exact=request.exact,
+        after=request.after_sequence,
+        generation=request.generation,
+    )
     owner = f"plugin:{plugin_name}" if plugin_name else "application"
     generation = app_context.events.owner_generation(owner)
     try:
@@ -648,3 +653,41 @@ async def wait_for_server_log(
     finally:
         future.cancel()
         run._waiters.pop(future, None)
+
+
+@api_method("get_server_process", required_scope="servers:inspect")
+async def get_server_process(
+    request: GetServerProcessRequest, *, app_context: AppContext
+) -> GetServerProcessResponse:
+    """Return observed process capabilities independently of the server summary."""
+    server = app_context.get_server(request.server_name)
+    await server.is_running()
+    runtime = server._runtime_state.get_server_runtime(request.server_name)
+    return GetServerProcessResponse.model_validate(
+        {
+            "server_name": request.server_name,
+            "process": {
+                "generation": runtime.generation,
+                "running": runtime.running,
+                "phase": runtime.phase,
+                "ready": runtime.ready,
+                "pid": runtime.pid,
+                "owned": runtime.process_owned,
+                "recovered": runtime.recovered_untracked,
+                "command_available": runtime.command_available,
+                "observed_at": runtime.process_observed_at,
+                "output": {
+                    "source": runtime.output_source,
+                    "available": runtime.output_available,
+                    "error": runtime.output_error,
+                    "queued_bytes": runtime.output_queued_bytes,
+                    "dropped_bytes": runtime.output_dropped_bytes,
+                },
+                "bans": {
+                    "available": runtime.ban_enforcement_available,
+                    "error": runtime.ban_error,
+                },
+                "exit": {"code": runtime.exit_code, "reason": runtime.exit_reason},
+            },
+        }
+    )
