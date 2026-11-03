@@ -92,7 +92,9 @@ class ServerProcess:
             if self._process is not process:
                 return await self.is_running(force_scan=force_scan)
             if running:
-                return self._publish_running(True)
+                is_running = self._publish_running(True)
+                await self.server.reconcile_status(is_running)
+                return is_running
         # Probes do not hold operation_lock: discard results from before a
         # concurrent start or another probe installed a different handle.
         observed_process = self._process
@@ -114,7 +116,9 @@ class ServerProcess:
         if self._process is not observed_process:
             return await self.is_running(force_scan=force_scan)
         self._process = verified_process
-        return self._publish_running(verified_process is not None)
+        is_running = self._publish_running(verified_process is not None)
+        await self.server.reconcile_status(is_running)
+        return is_running
 
     @property
     def run(self) -> OwnedBDSRun | None:
@@ -192,9 +196,9 @@ class ServerProcess:
                 if record.get("generation") != run.generation:
                     return
                 os.remove(self._record_path())
-                with contextlib.suppress(FileNotFoundError):
+                with contextlib.suppress(OSError):
                     os.remove(self.server.get_pid_file_path())
-            except (FileNotFoundError, ValueError):
+            except (FileNotFoundError, ValueError, OSError):
                 return
 
         await run_in_thread(remove)

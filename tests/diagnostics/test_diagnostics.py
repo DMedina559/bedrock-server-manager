@@ -356,3 +356,134 @@ async def test_process_totals_include_rows_beyond_detail_limit(app_context):
     assert data.command_unavailable_count == 1
     assert data.unhealthy_count == 1
     assert snapshot.sections[0].status == "degraded"
+
+
+def test_tasks_health_rule_evaluations():
+    from bedrock_server_manager.diagnostics.health import evaluate_health
+    from bedrock_server_manager.diagnostics.models import (
+        DiagnosticOptions,
+        TasksDiagnostics,
+    )
+
+    options = DiagnosticOptions()
+
+    healthy_tasks = TasksDiagnostics(
+        active=2,
+        capacity=10,
+        concurrency_limit=5,
+        accepting=True,
+        counts_by_status={"running": 2},
+    )
+    status, issues = evaluate_health(healthy_tasks, options)
+    assert status == "ok"
+    assert issues == []
+
+    not_accepting = TasksDiagnostics(
+        active=0,
+        capacity=10,
+        accepting=False,
+        counts_by_status={},
+    )
+    status, issues = evaluate_health(not_accepting, options)
+    assert status == "degraded"
+    assert any(i.code == "tasks_not_accepting" for i in issues)
+
+    at_capacity = TasksDiagnostics(
+        active=5,
+        capacity=10,
+        concurrency_limit=5,
+        accepting=True,
+        counts_by_status={"running": 5},
+    )
+    status, issues = evaluate_health(at_capacity, options)
+    assert status == "degraded"
+    assert any(i.code == "task_capacity_reached" for i in issues)
+
+
+def test_backups_health_rule_evaluations():
+    from bedrock_server_manager.diagnostics.health import evaluate_health
+    from bedrock_server_manager.diagnostics.models import (
+        BackupsDiagnostics,
+        DiagnosticOptions,
+    )
+
+    options = DiagnosticOptions()
+
+    # Fresh install: server exists, 0 archives, no failures -> ok
+    fresh = BackupsDiagnostics(
+        servers=1,
+        archives=0,
+        total_bytes=0,
+        failed=0,
+        missing_keys=0,
+        destination_failures=0,
+        without_backup=1,
+    )
+    status, issues = evaluate_health(fresh, options)
+    assert status == "ok"
+    assert issues == []
+
+    # Failure present -> degraded
+    failed = BackupsDiagnostics(
+        servers=1,
+        archives=1,
+        total_bytes=1000,
+        failed=1,
+        missing_keys=0,
+        destination_failures=0,
+        without_backup=0,
+    )
+    status, issues = evaluate_health(failed, options)
+    assert status == "degraded"
+    assert any(i.code == "backup_attention" for i in issues)
+
+    # Some servers have backups, some don't -> degraded (backup_missing)
+    missing = BackupsDiagnostics(
+        servers=2,
+        archives=5,
+        total_bytes=5000,
+        failed=0,
+        missing_keys=0,
+        destination_failures=0,
+        without_backup=1,
+    )
+    status, issues = evaluate_health(missing, options)
+    assert status == "degraded"
+    assert any(i.code == "backup_missing" for i in issues)
+
+
+@pytest.mark.asyncio
+async def test_diagnostic_notifier_broadcasts_only_when_subscribed(app_context):
+    manager = app_context.connection_manager
+    service = app_context.diagnostics
+
+    broadcasts = []
+
+    async def mock_broadcast(topic, message):
+        broadcasts.append((topic, message))
+        return None
+
+    manager.broadcast_to_topic = mock_broadcast
+
+    # 1. No subscribers: notifier runs without broadcasting
+    snapshot = await service.snapshot()
+    assert service.notifier is not None
+    await service.notifier(snapshot, "health_sample")
+    assert broadcasts == []
+
+    # 2. Add subscription for diagnostics
+    manager.subscriptions["diagnostics"] = ["test_client"]
+    await service.notifier(snapshot, "health_sample")
+    assert len(broadcasts) == 1
+    assert broadcasts[0][0] == "diagnostics"
+    assert broadcasts[0][1]["type"] == "diagnostic_update"
+
+    # 3. Add subscription for health
+    broadcasts.clear()
+    manager.subscriptions["health"] = ["test_client_2"]
+    await service.notifier(snapshot, "health_transition")
+    topics = [t for t, _ in broadcasts]
+    assert "diagnostics" in topics
+    assert "health" in topics
+    health_msg = next(m for t, m in broadcasts if t == "health")
+    assert health_msg["type"] == "health_update"

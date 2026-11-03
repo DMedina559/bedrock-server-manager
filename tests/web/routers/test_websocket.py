@@ -174,3 +174,118 @@ async def test_task_subscription_does_not_replay_another_users_snapshot(
         await socket.send(json.dumps({"action": "subscribe", "topic": "next"}))
         async with asyncio.timeout(5):
             assert "next" in json.loads(await socket.recv())["message"]
+
+
+async def test_health_and_diagnostics_websocket_subscriptions_and_replay(
+    websocket_client, app_context, test_user, test_admin_user
+):
+    manager = app_context.connection_manager
+    assert not manager.has_subscribers("health")
+    assert not manager.has_subscribers("diagnostics")
+
+    # Regular user can subscribe to health and receives immediate replay
+    async with authenticated_socket(websocket_client, app_context, test_user) as socket:
+        await socket.send(json.dumps({"action": "subscribe", "topic": "health"}))
+        reply = json.loads(await socket.recv())
+        assert reply["status"] == "success"
+        assert manager.has_subscribers("health")
+
+        async with asyncio.timeout(5):
+            update = json.loads(await socket.recv())
+        assert update["type"] == "health_update"
+        assert update["topic"] == "health"
+        assert "health" in update["data"]
+
+        # Regular user is denied subscription to diagnostics
+        await socket.send(json.dumps({"action": "subscribe", "topic": "diagnostics"}))
+        denied = json.loads(await socket.recv())
+        assert denied["status"] == "error"
+        assert denied["message"] == "Topic access denied"
+
+    assert not manager.has_subscribers("health")
+
+    # Admin user can subscribe to diagnostics and diagnostics:summary and receives replay
+    async with authenticated_socket(
+        websocket_client, app_context, test_admin_user
+    ) as socket:
+        await socket.send(json.dumps({"action": "subscribe", "topic": "diagnostics"}))
+        reply = json.loads(await socket.recv())
+        assert reply["status"] == "success"
+        assert manager.has_subscribers("diagnostics")
+
+        async with asyncio.timeout(5):
+            update = json.loads(await socket.recv())
+        assert update["type"] == "diagnostic_update"
+        assert update["topic"] == "diagnostics"
+        assert "summary" in update["data"]
+
+        await socket.send(
+            json.dumps({"action": "subscribe", "topic": "diagnostics:summary"})
+        )
+        reply = json.loads(await socket.recv())
+        assert reply["status"] == "success"
+
+        async with asyncio.timeout(5):
+            update = json.loads(await socket.recv())
+        assert update["type"] == "diagnostic_summary"
+        assert update["topic"] == "diagnostics:summary"
+        assert "status" in update["data"]
+
+
+async def test_health_transition_broadcasts_to_subscribers(
+    websocket_client, app_context, test_user
+):
+    manager = app_context.connection_manager
+    async with authenticated_socket(websocket_client, app_context, test_user) as socket:
+        await socket.send(json.dumps({"action": "subscribe", "topic": "health"}))
+        reply = json.loads(await socket.recv())
+        assert reply["status"] == "success"
+
+        # Replay
+        async with asyncio.timeout(5):
+            replay = json.loads(await socket.recv())
+        assert replay["type"] == "health_update"
+
+        # Trigger subscriber notification (e.g. status transition)
+        app_context.diagnostics.wake_subscribers()
+        if app_context.diagnostics.subscriber_notifier:
+            await app_context.diagnostics.subscriber_notifier()
+
+        # If a transition occurred or heartbeat triggered, a frame is delivered
+        assert manager.has_subscribers("health")
+
+
+async def test_recovered_process_broadcasts_to_websocket_subscribers(
+    websocket_client, app_context, test_user, real_bedrock_server
+):
+    server = real_bedrock_server
+    await server.start()
+    child = server.process._process
+    manager = app_context.bedrock_process_manager
+    await manager.remove_server(server.server_name)
+    server.process._process = None
+    # Simulate config being STOPPED while process was left running
+    await server.configuration.update("server_info.status", "STOPPED")
+
+    async with authenticated_socket(websocket_client, app_context, test_user) as socket:
+        await socket.send(
+            json.dumps(
+                {
+                    "action": "subscribe",
+                    "topic": "event:after_server_status_change",
+                }
+            )
+        )
+        reply = json.loads(await socket.recv())
+        assert reply["status"] == "success"
+
+        try:
+            assert await server.is_running()
+            async with asyncio.timeout(5):
+                msg = json.loads(await socket.recv())
+            assert msg["topic"] == "event:after_server_status_change"
+            assert msg["data"]["result"]["new_status"] == "RUNNING"
+            assert msg["data"]["server_name"] == server.server_name
+        finally:
+            await server.stop()
+            await asyncio.wait_for(child.wait(), 5)

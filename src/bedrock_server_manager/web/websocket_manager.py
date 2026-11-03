@@ -229,6 +229,10 @@ class ConnectionManager:
                 del self.subscriptions[topic]
             logger.debug("Client %s unsubscribed from topic '%s'", client_id, topic)
 
+    def has_subscribers(self, topic: str) -> bool:
+        """Return whether any connected client is subscribed to topic or wildcard."""
+        return bool(self.subscriptions.get(topic) or self.subscriptions.get("*"))
+
     async def shutdown(self):
         """Gracefully disconnects all active WebSocket connections."""
         self._accepting = False

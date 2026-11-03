@@ -21,12 +21,16 @@ class HealthSampler:
         record: Callable[..., None],
         instance_id: str,
         telemetry: CollectionDiagnostics,
+        notifier: (
+            Callable[[DiagnosticSnapshot, str], Coroutine[Any, Any, None]] | None
+        ) = None,
     ) -> None:
         self.interval = interval
         self.collect = collect
         self.record = record
         self.instance_id = instance_id
         self.telemetry = telemetry
+        self.notifier = notifier
         self._task: asyncio.Task | None = None
         self._signature: str | None = None
         self._closed = False
@@ -98,6 +102,11 @@ class HealthSampler:
         )
         self._signature = signature
         self.telemetry.periodic_cycles += 1
+        if self.notifier is not None:
+            try:
+                await self.notifier(snapshot, code)
+            except Exception:
+                pass
 
     async def _run(self) -> None:
         assert self.interval is not None

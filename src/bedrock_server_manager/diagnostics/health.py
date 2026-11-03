@@ -20,6 +20,7 @@ from .models import (
     RuntimeDiagnostics,
     StateDiagnostics,
     StorageDiagnostics,
+    TasksDiagnostics,
     TransportDiagnostics,
 )
 
@@ -41,17 +42,26 @@ def evaluate_health(
             ]
         return data.health, []
     if isinstance(data, BackupsDiagnostics):
-        if (
-            data.failed
-            or data.missing_keys
-            or data.destination_failures
-            or data.without_backup
-        ):
+        if data.failed or data.missing_keys or data.destination_failures:
             return "degraded", [
                 DiagnosticIssue(
                     code="backup_attention",
                     message="Backup verification, recovery keys, or storage copies need attention.",
                     action="check_configuration",
+                    severity=(
+                        "error"
+                        if (data.failed or data.destination_failures)
+                        else "warning"
+                    ),
+                )
+            ]
+        if data.without_backup and data.servers > 0 and data.archives > 0:
+            return "degraded", [
+                DiagnosticIssue(
+                    code="backup_missing",
+                    message="One or more servers do not have any backup archives.",
+                    action="check_configuration",
+                    severity="warning",
                 )
             ]
         return "ok", []
@@ -77,6 +87,7 @@ def evaluate_health(
         "processes": _processes,
         "transport": _transport,
         "state": _state,
+        "tasks": _tasks,
     }
     rule = rules.get(data.kind)
     return rule(data, options) if rule is not None else ("ok", [])
@@ -282,6 +293,27 @@ def _state(
             "state_persistence_delayed",
             "Pending changes have exceeded the configured age threshold.",
             "inspect_storage",
+        )
+    return "ok", []
+
+
+def _tasks(
+    data: DiagnosticData, options: DiagnosticOptions, *, subsystem: str | None = None
+) -> tuple[Status, list[DiagnosticIssue]]:
+    assert isinstance(data, TasksDiagnostics)
+    if not data.accepting:
+        return _issue(
+            "tasks_not_accepting",
+            "Task execution is not accepting new work.",
+            "wait_for_drain",
+        )
+    if data.active >= data.capacity or (
+        data.concurrency_limit is not None and data.active >= data.concurrency_limit
+    ):
+        return _issue(
+            "task_capacity_reached",
+            "Active task capacity has been reached.",
+            "wait_for_drain",
         )
     return "ok", []
 

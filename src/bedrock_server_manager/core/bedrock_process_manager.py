@@ -32,6 +32,7 @@ class BedrockProcessManager:
         record_failure: Callable[[str, Exception, float], None] | None = None,
         runtime: "RuntimeState | None" = None,
         start_server: Callable[[str], Awaitable[None]] | None = None,
+        registered_servers: Optional[Callable[[], list[str]]] = None,
     ):
         """Initialize the BedrockProcessManager with explicit dependencies."""
         self.settings = settings
@@ -40,6 +41,7 @@ class BedrockProcessManager:
         self.record_failure = record_failure
         self.runtime = runtime
         self.start_server = start_server
+        self.registered_servers = registered_servers
         self.recovery_failures: set[str] = set()
         self._healthy_since: dict[str, float] = {}
         self.monitor_observed_at: float | None = None
@@ -275,11 +277,20 @@ class BedrockProcessManager:
         """
 
         try:
-            monitoring_interval = int(
+            process_interval = int(
                 self.settings.get("monitoring.process_interval_sec", 10)
             )
         except Exception:
-            monitoring_interval = 10
+            process_interval = 10
+
+        try:
+            untracked_interval = int(
+                self.settings.get("monitoring.untracked_process_interval_sec", 5)
+            )
+        except Exception:
+            untracked_interval = 5
+
+        monitoring_interval = max(1, min(process_interval, untracked_interval))
 
         self.logger.debug(
             "Async server monitoring loop started with a %s second interval.",
@@ -316,6 +327,26 @@ class BedrockProcessManager:
                                 name, finished
                             )
                         )
+                if self.registered_servers and callable(self.server_provider):
+                    for server_name in list(self.registered_servers()):
+                        if (
+                            server_name not in self.servers
+                            and server_name not in self._server_checks
+                        ):
+                            try:
+                                server = self.server_provider(server_name)
+                                task = asyncio.create_task(
+                                    self._check_untracked_server(server_name, server),
+                                    name=f"server-untracked:{server_name}",
+                                )
+                                self._server_checks[server_name] = task
+                                task.add_done_callback(
+                                    lambda finished, name=server_name: self._check_finished(
+                                        name, finished
+                                    )
+                                )
+                            except Exception:
+                                pass
         finally:
             tasks = list(self._server_checks.values())
             for task in tasks:
@@ -332,6 +363,17 @@ class BedrockProcessManager:
             self.logger.error(
                 "Server monitor failed for '%s'.", name, exc_info=task.exception()
             )
+
+    async def _check_untracked_server(self, server_name: str, server: "BedrockServer"):
+        async with self._check_slots:
+            if server_name in self.servers or self._shutdown_event.is_set():
+                return
+            try:
+                await server.is_running()
+            except Exception as error:
+                self.logger.debug(
+                    "Untracked server probe failed for '%s': %s", server_name, error
+                )
 
     async def _check_server(self, server_name, server):
         async with self._check_slots:

@@ -104,6 +104,10 @@ class Diagnostics:
         self._lock = asyncio.Lock()
         self._last_snapshot: DiagnosticSnapshot | None = None
         self.accepting = True
+        self._subscriber_task: asyncio.Task | None = None
+        self._subscriber_wake: asyncio.Event | None = None
+        self.subscriber_notifier: Callable[[], Coroutine[Any, Any, None]] | None = None
+        self.subscriber_interval_seconds: float = 3.0
 
     def register(
         self, name: str, provider: Provider, *, owner: str = "application"
@@ -173,11 +177,73 @@ class Diagnostics:
     def has_pending_providers(self) -> bool:
         return any(not task.done() for task in self._pending.values())
 
+    @property
+    def notifier(
+        self,
+    ) -> Callable[[DiagnosticSnapshot, str], Coroutine[Any, Any, None]] | None:
+        return self._sampler.notifier
+
+    @notifier.setter
+    def notifier(
+        self,
+        value: Callable[[DiagnosticSnapshot, str], Coroutine[Any, Any, None]] | None,
+    ) -> None:
+        self._sampler.notifier = value
+
     def owner_pending(self, owner: str) -> bool:
         return any(
             not task.done() and self._pending_owners.get(name) == owner
             for name, task in self._pending.items()
         )
+
+    def wake_subscribers(self) -> None:
+        """Wake the subscriber loop immediately when an event or status transition occurs."""
+        if self._subscriber_wake is not None:
+            self._subscriber_wake.set()
+
+    def start_subscriber_monitor(self) -> None:
+        """Start monitoring active WebSocket subscriptions to push health/diagnostic updates."""
+        if not self.accepting:
+            return
+        if self._subscriber_task is None or self._subscriber_task.done():
+            self._subscriber_wake = asyncio.Event()
+            self._subscriber_task = asyncio.create_task(
+                self._subscriber_loop(), name="diagnostics-subscribers"
+            )
+
+    async def stop_subscriber_monitor(self) -> None:
+        """Stop the subscriber monitor task and await completion."""
+        task, self._subscriber_task = self._subscriber_task, None
+        self._subscriber_wake = None
+        if task is not None:
+            task.cancel()
+            await asyncio.gather(task, return_exceptions=True)
+
+    async def _subscriber_loop(self) -> None:
+        while self.accepting:
+            try:
+                try:
+                    if self._subscriber_wake is not None:
+                        await asyncio.wait_for(
+                            self._subscriber_wake.wait(),
+                            timeout=self.subscriber_interval_seconds,
+                        )
+                    else:
+                        await asyncio.sleep(self.subscriber_interval_seconds)
+                except asyncio.TimeoutError:
+                    pass
+                if self._subscriber_wake is not None:
+                    self._subscriber_wake.clear()
+                if not self.accepting:
+                    break
+                if self.subscriber_notifier is not None:
+                    await self.subscriber_notifier()
+            except asyncio.CancelledError:
+                break
+            except Exception as e:
+                self._log_failures.report(
+                    "subscriber-monitor", "Subscriber monitor failed: %s", e
+                )
 
     def _enqueue(self, **values: Any) -> None:
         try:
@@ -318,6 +384,8 @@ class Diagnostics:
             operation_id=operation_id,
             duration_ms=max(0, (time.monotonic() - started) * 1000),
         )
+        if error is not None:
+            self.wake_subscribers()
 
     def record_task(
         self,
@@ -342,6 +410,8 @@ class Diagnostics:
             correlation_id=correlation_id,
             duration_ms=max(0, (time.monotonic() - started) * 1000),
         )
+        if record.error is not None:
+            self.wake_subscribers()
 
     def record_event(self, record) -> None:
         """Persist listener failure identities and correlation without payloads."""
@@ -360,6 +430,7 @@ class Diagnostics:
                 owner=failure.owner[:160],
                 operation_id=record.event_id,
             )
+        self.wake_subscribers()
 
     async def _collect(
         self, name: str, owner: str, provider: Provider, registration: object
@@ -813,10 +884,12 @@ class Diagnostics:
             return
         self.history.start()
         self._sampler.start()
+        self.start_subscriber_monitor()
 
     async def close(self) -> None:
         if not self.accepting:
             return
+        await self.stop_subscriber_monitor()
         await self._sampler.close()
         self.record("runtime", "diagnostics_closed", started=time.monotonic())
         self.accepting = False
