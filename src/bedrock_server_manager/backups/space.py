@@ -1,12 +1,14 @@
 """Conservative restore capacity estimates grouped by physical filesystem."""
 
+import os
 import shutil
+import stat
 from pathlib import Path
 
 from ..error import BackupRestoreError
 from ..utils.threads import check_cancellation
+from .archive import safe_name
 from .models import PACK_COMPONENTS, RestoreVolume
-from .work import tree_paths
 
 HEADROOM = 16 * 1024 * 1024
 
@@ -17,8 +19,67 @@ def ensure_free_space(path: Path, required: int) -> None:
         raise BackupRestoreError("Insufficient space for backup staging or recovery.")
 
 
+def scan_source_tree(
+    root: Path,
+    cancellation_event=None,
+    *,
+    is_link_fn=None,
+    max_files: int | None = None,
+    max_bytes: int | None = None,
+) -> tuple[int, int]:
+    """Validate source tree safety and compute total size/count in a single pass."""
+    check_cancellation(cancellation_event)
+    if is_link_fn is not None and is_link_fn(root):
+        raise BackupRestoreError("Backup sources must not contain symbolic links.")
+    safe_name(root.name)
+
+    if root.is_file():
+        st = root.stat()
+        return st.st_size, 1
+    if not root.is_dir():
+        raise BackupRestoreError("Backup sources must be regular files.")
+
+    size = 0
+    count = 1
+
+    def _walk(dir_path: str) -> None:
+        nonlocal size, count
+        with os.scandir(dir_path) as it:
+            for entry in it:
+                check_cancellation(cancellation_event)
+                is_link = entry.is_symlink()
+                st = entry.stat(follow_symlinks=False)
+                if not is_link:
+                    is_link = bool(
+                        getattr(st, "st_file_attributes", 0)
+                        & getattr(stat, "FILE_ATTRIBUTE_REPARSE_POINT", 0)
+                    )
+                if is_link:
+                    raise BackupRestoreError(
+                        "Backup sources must not contain symbolic links."
+                    )
+                safe_name(entry.name)
+                count += 1
+                if entry.is_dir(follow_symlinks=False):
+                    _walk(entry.path)
+                elif entry.is_file(follow_symlinks=False):
+                    size += st.st_size
+                else:
+                    raise BackupRestoreError("Backup sources must be regular files.")
+                if (max_files is not None and count + 1 > max_files) or (
+                    max_bytes is not None and size > max_bytes
+                ):
+                    raise BackupRestoreError(
+                        "Backup contents exceed configured recovery limits."
+                    )
+
+    _walk(str(root))
+    return size, count
+
+
 def capture_preflight(backups, chosen, world, cancellation_event=None):
     from .selection import server_entries
+    from .server import is_link
 
     root = Path(backups.server.paths.server_dir)
     names = {
@@ -35,24 +96,21 @@ def capture_preflight(backups, chosen, world, cancellation_event=None):
         else [backups._safe_target(names[c]) for c in chosen if c in names]
     )
     size = count = 0
+    max_files = backups.server.settings.get("backups.max_files", 1_000_000)
+    max_bytes = backups.server.settings.get("backups.max_expanded_bytes", 1024**4)
     for source in sources:
         check_cancellation(cancellation_event)
         if not source.exists():
             continue
-        backups._check_tree(source, cancellation_event)
-        for item in tree_paths(source, cancellation_event):
-            check_cancellation(cancellation_event)
-            if item.is_file():
-                size += item.stat().st_size
-            count += 1
-            if count + 1 > backups.server.settings.get(
-                "backups.max_files", 1_000_000
-            ) or size > backups.server.settings.get(
-                "backups.max_expanded_bytes", 1024**4
-            ):
-                raise BackupRestoreError(
-                    "Backup contents exceed configured recovery limits."
-                )
+        src_size, src_count = scan_source_tree(
+            source,
+            cancellation_event,
+            is_link_fn=is_link,
+            max_files=max_files - count,
+            max_bytes=max_bytes - size,
+        )
+        size += src_size
+        count += src_count
     ensure_free_space(Path(backups._directory()), size * 5 + count * 8192)
 
 
@@ -65,6 +123,8 @@ def existing_parent(path: Path) -> Path:
 def capture_size(
     backups, world: str | None, cancellation_event=None
 ) -> tuple[int, int]:
+    from .server import is_link
+
     names = [
         f"worlds/{world}" if world else "worlds",
         "server.properties",
@@ -78,14 +138,11 @@ def capture_size(
         root = backups._safe_target(name)
         if not root.exists():
             continue
-        check_cancellation(cancellation_event)
-        backups._check_tree(root, cancellation_event)
-        paths = tree_paths(root, cancellation_event)
-        for item in paths:
-            check_cancellation(cancellation_event)
-            if item.is_file():
-                size += item.stat().st_size
-                count += 1
+        src_size, src_count = scan_source_tree(
+            root, cancellation_event, is_link_fn=is_link
+        )
+        size += src_size
+        count += src_count
     return size, count
 
 
