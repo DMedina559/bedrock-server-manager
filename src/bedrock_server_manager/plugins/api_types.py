@@ -80,6 +80,8 @@ from bedrock_server_manager.api.models import (
     GetRawPropertiesResponse,
     GetServerBansRequest,
     GetServerBansResponse,
+    GetServerProcessRequest,
+    GetServerProcessResponse,
     GetServerRunningStatusRequest,
     GetServerRunningStatusResponse,
     GetServerSettingRequest,
@@ -201,6 +203,8 @@ from bedrock_server_manager.api.models import (
     UpdateSubpackResponse,
     ValidatePropertyValueRequest,
     ValidatePropertyValueResponse,
+    WaitForServerLogRequest,
+    WaitForServerLogResponse,
 )
 from bedrock_server_manager.plugins.operation_api import (  # noqa: F401
     PluginOperationAPI as PluginOperationAPI,
@@ -534,6 +538,10 @@ class ServerAPI(Protocol):
         self, request: GetAllServerSettingsRequest | Mapping[str, object]
     ) -> GetAllServerSettingsResponse: ...
 
+    async def get_process(
+        self, request: GetServerProcessRequest | Mapping[str, object]
+    ) -> GetServerProcessResponse: ...
+
     async def get_setting(
         self, request: GetServerSettingRequest | Mapping[str, object]
     ) -> GetServerSettingResponse: ...
@@ -577,6 +585,10 @@ class ServerAPI(Protocol):
     async def update_player_stats(
         self, request: UpdateServerPlayerStatsRequest | Mapping[str, object]
     ) -> UpdateServerPlayerStatsResponse: ...
+
+    async def wait_for_log(
+        self, request: WaitForServerLogRequest | Mapping[str, object]
+    ) -> WaitForServerLogResponse: ...
 
 
 class SettingsAPI(Protocol):
@@ -843,6 +855,7 @@ API_METHODS: dict[str, dict[str, str]] = {
     "server": {
         "delete_data": "delete_server_data",
         "get_all_settings": "get_all_server_settings",
+        "get_process": "get_server_process",
         "get_setting": "get_server_setting",
         "get_summary": "get_server_summary",
         "get_valid_names": "get_valid_server_names",
@@ -854,6 +867,7 @@ API_METHODS: dict[str, dict[str, str]] = {
         "start": "start_server",
         "stop": "stop_server",
         "update_player_stats": "update_server_player_stats",
+        "wait_for_log": "wait_for_server_log",
     },
     "settings": {
         "get_all_global_settings": "get_all_global_settings",

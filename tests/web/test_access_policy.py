@@ -202,6 +202,7 @@ ROLE_BASELINE = {
     "get_permissions": ["moderator", "admin"],
     "get_log_history": ["moderator", "admin"],
     "get_server_summary": ["moderator", "admin"],
+    "get_server_process": ["moderator", "admin"],
     "start_server": ["moderator", "admin"],
     "stop_server": ["moderator", "admin"],
     "restart_server": ["moderator", "admin"],

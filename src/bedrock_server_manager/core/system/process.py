@@ -2,11 +2,15 @@
 """Cross-platform subprocess, identity verification and PID-file helpers."""
 
 import asyncio
+import json
 import logging
+import math
 import os
 import platform
 import subprocess
+import time
 from typing import Any, Dict, List, Optional, Sequence, Union
+from uuid import uuid4
 
 import aiofiles
 import aiofiles.os
@@ -40,6 +44,29 @@ from ...error import (
 from ...logging import log_operation_error
 
 logger = logging.getLogger(__name__)
+
+UNTRACKED_SCAN_INTERVAL_SECONDS: float = 5.0
+
+
+class ProcessRecoveryState:
+    """Coordinate probes within one server owner; never share application state globally."""
+
+    def __init__(self) -> None:
+        self.locks: dict[tuple[str, str, str], asyncio.Lock] = {}
+        self.last_negative_scan: dict[tuple[str, str, str], float] = {}
+        self.recovered_pids: dict[tuple[str, str, str], int] = {}
+
+    @staticmethod
+    def key(server_name: str, server_dir: str, config_dir: str) -> tuple[str, str, str]:
+        return (
+            server_name,
+            os.path.normcase(os.path.realpath(server_dir)),
+            os.path.normcase(os.path.realpath(config_dir)),
+        )
+
+    def clear(self) -> None:
+        self.last_negative_scan.clear()
+        self.recovered_pids.clear()
 
 
 class GuardedProcess:
@@ -161,7 +188,8 @@ async def read_pid_from_file(pid_file_path: str) -> Optional[int]:
             if not pid_str:
                 logger.warning("PID file is empty: %s", pid_file_path)
                 return None
-            return int(pid_str)
+            pid = int(pid_str)
+            return pid if pid > 0 else None
     except ValueError:
         logger.warning(
             "Invalid content in PID file '%s'. Expected an integer.", pid_file_path
@@ -178,8 +206,8 @@ async def write_pid_to_file(pid_file_path: str, pid: int):
     """Write an integer PID to its file; propagate invalid arguments and write failures."""
     if not isinstance(pid_file_path, str) or not pid_file_path:
         raise MissingArgumentError("PID file path cannot be empty.")
-    if not isinstance(pid, int):
-        raise MissingArgumentError("PID must be an integer.")
+    if not isinstance(pid, int) or isinstance(pid, bool) or pid <= 0:
+        raise MissingArgumentError("PID must be a positive integer.")
 
     directory = os.path.dirname(pid_file_path)
     if directory and not await aiofiles.ospath.exists(directory):
@@ -201,14 +229,64 @@ async def write_pid_to_file(pid_file_path: str, pid: int):
         ) from e
 
 
+def read_process_record(path: str) -> dict[str, Any] | None:
+    try:
+        with open(path, encoding="utf-8") as file:
+            record = json.load(file)
+    except FileNotFoundError:
+        return None
+    except (OSError, ValueError) as error:
+        raise SystemError("Cannot read process generation record.") from error
+    if not isinstance(record, dict):
+        raise SystemError("Invalid process generation record.")
+    pid = record.get("pid")
+    created = record.get("created_at")
+    if (
+        not isinstance(pid, int)
+        or isinstance(pid, bool)
+        or pid <= 0
+        or not isinstance(created, (int, float))
+        or isinstance(created, bool)
+        or not math.isfinite(created)
+        or created <= 0
+        or not isinstance(record.get("generation"), str)
+        or not record["generation"]
+    ):
+        raise SystemError("Invalid process generation identity.")
+    return record
+
+
+async def write_process_record(path: str, record: dict[str, Any]) -> None:
+    """Publish a private identity record atomically, including first installation."""
+
+    def write() -> None:
+        directory = os.path.dirname(path)
+        os.makedirs(directory, exist_ok=True)
+        temporary = path + "." + uuid4().hex + ".tmp"
+        try:
+            descriptor = os.open(temporary, os.O_WRONLY | os.O_CREAT | os.O_EXCL, 0o600)
+            with os.fdopen(descriptor, "w", encoding="utf-8") as file:
+                json.dump(record, file)
+                file.flush()
+                os.fsync(file.fileno())
+            os.replace(temporary, path)
+        finally:
+            try:
+                os.remove(temporary)
+            except FileNotFoundError:
+                pass
+
+    await run_in_thread(write)
+
+
 async def is_process_running(pid: int) -> bool:
     """Return whether the PID exists according to psutil."""
     if not PSUTIL_AVAILABLE:
         raise SystemError(
             "psutil package is required to check if a process is running."
         )
-    if not isinstance(pid, int):
-        raise MissingArgumentError("PID must be an integer.")
+    if not isinstance(pid, int) or isinstance(pid, bool) or pid <= 0:
+        raise MissingArgumentError("PID must be a positive integer.")
     return await run_in_thread(psutil.pid_exists, pid)
 
 
@@ -225,8 +303,8 @@ async def verify_process_identity(  # noqa: C901
     """
     if not PSUTIL_AVAILABLE:
         raise SystemError("psutil package is required for process verification.")
-    if not isinstance(pid, int):
-        raise MissingArgumentError("PID must be an integer.")
+    if not isinstance(pid, int) or isinstance(pid, bool) or pid <= 0:
+        raise MissingArgumentError("PID must be a positive integer.")
     if not any([expected_executable_path, expected_cwd, expected_command_args]):
         raise MissingArgumentError(
             "At least one verification criteria must be provided."
@@ -247,9 +325,9 @@ async def verify_process_identity(  # noqa: C901
             # Verify Executable Path
             if expected_executable_path:
                 expected_exe_norm = os.path.normcase(
-                    os.path.abspath(expected_executable_path)
+                    os.path.realpath(expected_executable_path)
                 )
-                proc_exe_norm = os.path.normcase(os.path.abspath(proc_exe))
+                proc_exe_norm = os.path.normcase(os.path.realpath(proc_exe))
                 if proc_exe_norm != expected_exe_norm:
                     mismatches.append(
                         f"Executable path mismatch (Expected: '{expected_exe_norm}', Got: '{proc_exe_norm}')"
@@ -257,8 +335,8 @@ async def verify_process_identity(  # noqa: C901
 
             # Verify Current Working Directory
             if expected_cwd:
-                expected_cwd_norm = os.path.normcase(os.path.abspath(expected_cwd))
-                proc_cwd_norm = os.path.normcase(os.path.abspath(proc_cwd))
+                expected_cwd_norm = os.path.normcase(os.path.realpath(expected_cwd))
+                proc_cwd_norm = os.path.normcase(os.path.realpath(proc_cwd))
                 if proc_cwd_norm != expected_cwd_norm:
                     mismatches.append(
                         f"CWD mismatch (Expected: '{expected_cwd_norm}', Got: '{proc_cwd_norm}')"
@@ -301,107 +379,193 @@ async def verify_process_identity(  # noqa: C901
     )
 
 
-async def get_verified_bedrock_process(
-    server_name: str, server_dir: str, config_dir: str
-) -> Optional["psutil.Process"]:
-    """Asynchronously finds, verifies, and returns the Bedrock server process using its PID file.
+def find_untracked_server_process(server_dir: str) -> Optional[int]:
+    """Find exactly one process matching both executable and working directory.
 
-    This function utilizes the async variants of the core system checks to verify
-    if a Bedrock server process is currently running and matches expectations.
+    Reject ambiguity rather than adopting an arbitrary process. Normalize paths
+    identically to verify_process_identity; inaccessible candidates are skipped.
+    """
+    target_dir = os.path.normcase(os.path.realpath(server_dir))
+    exe_name = (
+        "bedrock_server.exe" if platform.system() == "Windows" else "bedrock_server"
+    )
+    expected_exe = os.path.join(target_dir, exe_name)
+    matches: list[int] = []
+    if not PSUTIL_AVAILABLE:
+        raise SystemError("psutil is required for process discovery.")
+    for proc in psutil.process_iter(["pid", "name"]):
+        try:
+            if str(proc.info.get("name", "")).lower() != exe_name.lower():
+                continue
+            with proc.oneshot():
+                if (
+                    os.path.normcase(os.path.realpath(proc.cwd())) == target_dir
+                    and os.path.normcase(os.path.realpath(proc.exe())) == expected_exe
+                    and proc.status() != psutil.STATUS_ZOMBIE
+                ):
+                    matches.append(int(proc.pid))
+        except psutil.NoSuchProcess:
+            continue
+        except psutil.AccessDenied as error:
+            raise PermissionsError(
+                "Cannot exclude an inaccessible Bedrock process; refusing an unsafe stopped decision."
+            ) from error
+        except OSError as error:
+            raise SystemError("Process identity observation is unavailable.") from error
+    if len(matches) > 1:
+        raise ServerProcessError(
+            f"Multiple Bedrock processes match '{server_dir}': {matches}. Recovery requires attention."
+        )
+    return matches[0] if matches else None
+
+
+async def get_verified_bedrock_process(
+    server_name: str,
+    server_dir: str,
+    config_dir: str,
+    *,
+    scan_interval_sec: Optional[float] = None,
+    recover_untracked: bool = True,
+    recovery_state: ProcessRecoveryState | None = None,
+    force_scan: bool = False,
+) -> Optional["psutil.Process"]:
+    """Verify or discover a process, serializing concurrent probes for this owner.
+
+    Only completed negative scans are cached. Lifecycle callers bypass that cache.
+    Unexpected verification/discovery failures propagate so they cannot authorize
+    starting a duplicate server. Direct callers may supply their own scoped state.
     """
     if not PSUTIL_AVAILABLE:
-        logger.error("'psutil' is required for this function. Returning None.")
+        raise SystemError("psutil is required for process verification.")
+    if not server_name:
+        raise MissingArgumentError("Server name is required.")
+    if not server_dir or not await aiofiles.ospath.isdir(server_dir):
         return None
-
-    if not isinstance(server_name, str) or not server_name:
-        logger.debug("Cannot verify process without a server name.")
+    if not config_dir or not await aiofiles.ospath.isdir(config_dir):
         return None
-    if (
-        not isinstance(server_dir, str)
-        or not server_dir
-        or not await aiofiles.ospath.isdir(server_dir)
-    ):
-        logger.debug(
-            "get_verified_bedrock_process: server_dir '%s' is invalid or not a directory.",
-            server_dir,
-        )
-        return None
-    if (
-        not isinstance(config_dir, str)
-        or not config_dir
-        or not await aiofiles.ospath.isdir(config_dir)
-    ):
-        logger.debug(
-            "get_verified_bedrock_process: config_dir '%s' is invalid or not a directory.",
-            config_dir,
-        )
-        return None
-
-    try:
-        pid_file_path = await get_bedrock_server_pid_file_path(server_name, config_dir)
-        pid = await read_pid_from_file(pid_file_path)
-
-        if pid is None:
-            logger.debug("No valid PID found in file for server '%s'.", server_name)
-            return None
-
-        if not await is_process_running(pid):
-            logger.debug(
-                "Stale PID %s found for '%s'. Process not running.", pid, server_name
+    state = recovery_state if recovery_state is not None else ProcessRecoveryState()
+    key = state.key(server_name, server_dir, config_dir)
+    async with state.locks.setdefault(key, asyncio.Lock()):
+        try:
+            pid_file_path = await get_bedrock_server_pid_file_path(
+                server_name, config_dir
             )
-            await remove_pid_file_if_exists(pid_file_path)
-            return None
-
+        except AppFileNotFoundError:
+            # An installation without a runtime directory can still have an orphan.
+            pid_file_path = os.path.join(
+                config_dir,
+                "runtime",
+                "servers",
+                server_name,
+                f"bedrock_{server_name}.pid",
+            )
+        integer_pid = await read_pid_from_file(pid_file_path)
+        identity = await run_in_thread(read_process_record, pid_file_path + ".json")
+        pid = identity["pid"] if identity is not None else integer_pid
         exe_name = (
             "bedrock_server.exe" if platform.system() == "Windows" else "bedrock_server"
         )
-        expected_exe_abs = os.path.abspath(os.path.join(server_dir, exe_name))
-        expected_cwd_abs = os.path.abspath(server_dir)
-
-        await verify_process_identity(
-            pid,
-            expected_executable_path=expected_exe_abs,
-            expected_cwd=expected_cwd_abs,
-        )
-
-        return psutil.Process(pid)
-
-    except (
-        AppFileNotFoundError,  # From get_bedrock_server_pid_file_path or verify if paths are bad
-        FileOperationError,  # From read_pid_from_file
-        ServerProcessError,  # From await verify_process_identity
-        PermissionsError,  # From await verify_process_identity
-        MissingArgumentError,  # From called functions if somehow inputs are bad despite checks
-    ) as e:
-        # These are expected "not running" or "mismatch" scenarios.
-        logger.debug("Verification failed for server '%s': %s", server_name, e)
-        # Attempt to clean up PID file if verification failed for a running PID
-        if (
-            "pid" in locals()
-            and pid is not None
-            and await aiofiles.ospath.exists(pid_file_path)
-        ):
-            if isinstance(e, ServerProcessError):  # Mismatch
-                logger.debug(
-                    "Cleaning up PID file '%s' due to verification mismatch for PID %s.",
-                    pid_file_path,
-                    pid,
+        expected_exe = os.path.join(server_dir, exe_name)
+        if pid is not None:
+            try:
+                await verify_process_identity(
+                    pid, expected_executable_path=expected_exe, expected_cwd=server_dir
                 )
-                await remove_pid_file_if_exists(pid_file_path)
-        return None
-    except (
-        SystemError,
-        Exception,
-    ) as e:  # SystemError from psutil functions, or any other unexpected
-        # These are more serious, unexpected errors.
-        log_operation_error(
-            logger,
-            "Unexpected error getting verified process for '%s': %s",
-            server_name,
-            e,
-            error=e,
+                process = psutil.Process(pid)
+
+                created_at = await run_in_thread(process.create_time)
+                if (
+                    identity is not None
+                    and abs(created_at - identity["created_at"]) > 0.001
+                ):
+                    raise ServerProcessError(
+                        "PID generation no longer matches its recorded creation time."
+                    )
+                if await run_in_thread(process.status) != psutil.STATUS_ZOMBIE:
+                    if integer_pid != pid:
+                        await write_pid_to_file(pid_file_path, pid)
+                        state.recovered_pids[key] = pid
+                    state.last_negative_scan.pop(key, None)
+                    return process
+            except ServerProcessError:
+                pass
+            if not await remove_pid_file_if_exists(pid_file_path):
+                raise FileOperationError(
+                    f"Cannot remove stale PID file '{pid_file_path}'."
+                )
+            if identity is not None:
+
+                def remove_stale_record() -> None:
+                    if read_process_record(pid_file_path + ".json") == identity:
+                        os.remove(pid_file_path + ".json")
+
+                await run_in_thread(remove_stale_record)
+            state.recovered_pids.pop(key, None)
+            state.last_negative_scan.pop(key, None)
+        if not recover_untracked:
+            if (
+                force_scan
+                and await run_in_thread(find_untracked_server_process, server_dir)
+                is not None
+            ):
+                raise ServerProcessError(
+                    "An untracked Bedrock process exists, but recovery is disabled."
+                )
+            return None
+        interval = (
+            scan_interval_sec
+            if scan_interval_sec is not None
+            else UNTRACKED_SCAN_INTERVAL_SECONDS
         )
-        return None
+        last_scan = state.last_negative_scan.get(key)
+        if (
+            not force_scan
+            and last_scan is not None
+            and time.monotonic() - last_scan < interval
+        ):
+            return None
+        pid = await run_in_thread(find_untracked_server_process, server_dir)
+        if pid is None:
+            state.last_negative_scan[key] = time.monotonic()
+            state.recovered_pids.pop(key, None)
+            return None
+        # Do not publish a candidate until final verification and PID persistence succeed.
+        await verify_process_identity(
+            pid, expected_executable_path=expected_exe, expected_cwd=server_dir
+        )
+        process = psutil.Process(pid)
+        if await run_in_thread(process.status) == psutil.STATUS_ZOMBIE:
+            return None
+        created_at = await run_in_thread(process.create_time)
+
+        recorded = (
+            await run_in_thread(read_process_record, pid_file_path + ".json") or {}
+        )
+        if (
+            recorded.get("pid") != pid
+            or abs(recorded.get("created_at", 0) - created_at) > 0.001
+        ):
+            await write_process_record(
+                pid_file_path + ".json",
+                {
+                    "generation": uuid4().hex,
+                    "pid": pid,
+                    "created_at": created_at,
+                    "executable": expected_exe,
+                    "cwd": server_dir,
+                    "recovered": True,
+                    "output_source": "unknown",
+                },
+            )
+        await write_pid_to_file(pid_file_path, pid)
+        state.recovered_pids[key] = pid
+        state.last_negative_scan.pop(key, None)
+        logger.warning(
+            "Recovered verified Bedrock process %s for '%s'; console commands remain unavailable.",
+            pid,
+            server_name,
+        )
+        return process
 
 
 async def remove_pid_file_if_exists(pid_file_path: str) -> bool:

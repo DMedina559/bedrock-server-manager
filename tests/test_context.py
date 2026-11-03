@@ -139,3 +139,27 @@ def test_server_lookup_rechecks_properties(app_context, real_bedrock_server):
     with pytest.raises(AppFileNotFoundError):
         app_context.get_server(name)
     assert name not in app_context.get_valid_server_names()
+
+
+async def test_shutdown_keeps_dependencies_when_process_workers_cannot_drain(
+    app_context, real_bedrock_server, monkeypatch
+):
+    from types import SimpleNamespace
+    from unittest.mock import AsyncMock
+
+    process = real_bedrock_server.process
+    process._run = SimpleNamespace()
+    close_database = AsyncMock()
+    events = app_context.events
+    try:
+        with monkeypatch.context() as fault:
+            fault.setattr(
+                process, "drain", AsyncMock(side_effect=RuntimeError("workers blocked"))
+            )
+            fault.setattr(app_context.db, "shutdown", close_database)
+            with pytest.raises(ExceptionGroup, match="process workers remain active"):
+                await app_context._shutdown_components()
+            close_database.assert_not_awaited()
+            assert events.accepting
+    finally:
+        process._run = None

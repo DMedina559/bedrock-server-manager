@@ -10,7 +10,7 @@ import shutil
 import stat
 import threading
 import time
-from contextlib import AsyncExitStack, ExitStack
+from contextlib import AsyncExitStack
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from typing import TYPE_CHECKING, Awaitable, Callable, Literal
@@ -93,6 +93,7 @@ def copy_source(
     """Sequential portable copy with aggregate timing and bounded progress."""
     work = FileWork("Copying backup files", stage_callback)
     status = "failed"
+    created_dirs: set[Path] = set()
     try:
         work.progress(force=True)
         _copy_source(
@@ -103,6 +104,7 @@ def copy_source(
             inherited_private=inherited_private,
             spool=spool,
             work=work,
+            created_dirs=created_dirs,
         )
         work.progress(force=True)
         status = "completed"
@@ -119,6 +121,7 @@ def _copy_source(
     inherited_private: bool = False,
     spool: CaptureSpool | None = None,
     work: FileWork,
+    created_dirs: set[Path] | None = None,
 ) -> None:
     """Copy only portable regular files and directories, never following links."""
     check_cancellation(cancellation_event)
@@ -131,37 +134,138 @@ def _copy_source(
         raise BackupRestoreError("Backup sources must not contain symbolic links.")
     if directory:
         with work.phase("metadata"):
-            target.mkdir(parents=True, exist_ok=True)
-        for child in source.iterdir():
-            _copy_source(
-                child,
-                target / child.name,
-                cancellation_event,
-                hashes=hashes,
-                inherited_private=inherited_private,
-                spool=spool,
-                work=work,
-            )
+            if created_dirs is not None:
+                if target not in created_dirs:
+                    target.mkdir(parents=True, exist_ok=True)
+                    created_dirs.add(target)
+            else:
+                target.mkdir(parents=True, exist_ok=True)
+        with os.scandir(source) as it:
+            for entry in it:
+                _copy_entry(
+                    entry,
+                    source / entry.name,
+                    target / entry.name,
+                    cancellation_event,
+                    hashes=hashes,
+                    inherited_private=inherited_private,
+                    spool=spool,
+                    work=work,
+                    created_dirs=created_dirs,
+                )
     elif regular:
+        _copy_file_content(
+            source,
+            target,
+            cancellation_event,
+            hashes=hashes,
+            inherited_private=inherited_private,
+            spool=spool,
+            work=work,
+            created_dirs=created_dirs,
+            source_stat=None,
+        )
+    else:
+        raise BackupRestoreError("Backup source is not a regular file or directory.")
+
+
+def _copy_entry(
+    entry: os.DirEntry,
+    source: Path,
+    target: Path,
+    cancellation_event: threading.Event | None = None,
+    *,
+    hashes: dict[Path, tuple[int, int, str]] | None = None,
+    inherited_private: bool = False,
+    spool: CaptureSpool | None = None,
+    work: FileWork,
+    created_dirs: set[Path] | None = None,
+) -> None:
+    check_cancellation(cancellation_event)
+    safe_name(entry.name)
+    with work.phase("metadata"):
+        st = entry.stat(follow_symlinks=False)
+        linked = entry.is_symlink() or bool(
+            getattr(st, "st_file_attributes", 0)
+            & getattr(stat, "FILE_ATTRIBUTE_REPARSE_POINT", 0)
+        )
+        directory = entry.is_dir(follow_symlinks=False)
+        regular = entry.is_file(follow_symlinks=False)
+    if linked:
+        raise BackupRestoreError("Backup sources must not contain symbolic links.")
+    if directory:
         with work.phase("metadata"):
-            target.parent.mkdir(parents=True, exist_ok=True)
-        hasher = hashlib.sha256() if hashes is not None else None
-        spool_stream = spool.stream if spool is not None else None
-        offset = spool_stream.tell() if spool_stream is not None else 0
+            if created_dirs is not None:
+                if target not in created_dirs:
+                    target.mkdir(parents=True, exist_ok=True)
+                    created_dirs.add(target)
+            else:
+                target.mkdir(parents=True, exist_ok=True)
+        with os.scandir(source) as it:
+            for child in it:
+                _copy_entry(
+                    child,
+                    source / child.name,
+                    target / child.name,
+                    cancellation_event,
+                    hashes=hashes,
+                    inherited_private=inherited_private,
+                    spool=spool,
+                    work=work,
+                    created_dirs=created_dirs,
+                )
+    elif regular:
+        _copy_file_content(
+            source,
+            target,
+            cancellation_event,
+            hashes=hashes,
+            inherited_private=inherited_private,
+            spool=spool,
+            work=work,
+            created_dirs=created_dirs,
+            source_stat=st,
+        )
+    else:
+        raise BackupRestoreError("Backup source is not a regular file or directory.")
 
-        def captured(chunk: bytes) -> None:
-            if hasher is not None:
-                hasher.update(chunk)
-            if spool_stream is not None:
-                spool_stream.write(chunk)
 
-        with ExitStack() as resources:
-            with work.phase("source_open"):
-                stream = source.open("rb")
-            resources.callback(_close_copy_stream, stream, work, "source_close")
-            with work.phase("target_open"):
-                output = target.open("wb")
-            resources.callback(_close_copy_stream, output, work, "target_close")
+def _copy_file_content(
+    source: Path,
+    target: Path,
+    cancellation_event: threading.Event | None = None,
+    *,
+    hashes: dict[Path, tuple[int, int, str]] | None = None,
+    inherited_private: bool = False,
+    spool: CaptureSpool | None = None,
+    work: FileWork,
+    created_dirs: set[Path] | None = None,
+    source_stat: os.stat_result | None = None,
+) -> None:
+    parent = target.parent
+    with work.phase("metadata"):
+        if created_dirs is not None:
+            if parent not in created_dirs:
+                parent.mkdir(parents=True, exist_ok=True)
+                created_dirs.add(parent)
+        else:
+            parent.mkdir(parents=True, exist_ok=True)
+    hasher = hashlib.sha256() if hashes is not None else None
+    spool_stream = spool.stream if spool is not None else None
+    offset = spool_stream.tell() if spool_stream is not None else 0
+
+    def captured(chunk: bytes) -> None:
+        if hasher is not None:
+            hasher.update(chunk)
+        if spool_stream is not None:
+            spool_stream.write(chunk)
+
+    with work.phase("source_open"):
+        stream = source.open("rb")
+    try:
+        with work.phase("target_open"):
+            output = target.open("wb")
+        try:
             while True:
                 check_cancellation(cancellation_event)
                 with work.phase("read"):
@@ -176,26 +280,61 @@ def _copy_source(
                         captured(chunk)
                 work.bytes += len(chunk)
                 work.progress()
-            with work.phase("permissions"):
-                if not (inherited_private and os.name == "nt"):
-                    protect(target)
-                if os.name != "nt" and source.stat().st_mode & stat.S_IXUSR:
-                    target.chmod(0o700)
+        finally:
+            with work.phase("target_close"):
+                output.close()
+    finally:
+        with work.phase("source_close"):
+            stream.close()
 
-        work.files += 1
-        work.progress()
+    with work.phase("permissions"):
+        if not (inherited_private and os.name == "nt"):
+            protect(target)
+        mode = source_stat.st_mode if source_stat is not None else source.stat().st_mode
+        if os.name != "nt" and mode & stat.S_IXUSR:
+            target.chmod(0o700)
+
+    work.files += 1
+    work.progress()
+    if spool is not None or hashes is not None:
+        metadata = target.stat()
         if spool is not None:
-            metadata = target.stat()
             spool.entries[target] = (metadata.st_size, metadata.st_mtime_ns, offset)
         if hashes is not None and hasher is not None:
-            metadata = target.stat()
             hashes[target] = (
                 metadata.st_size,
                 metadata.st_mtime_ns,
                 hasher.hexdigest(),
             )
-    else:
-        raise BackupRestoreError("Backup source is not a regular file or directory.")
+
+
+def _fast_tree_scan(
+    root: Path, cancellation_event: threading.Event | None = None
+) -> list[tuple[Path, bool, os.stat_result]]:
+    """Enumerate directory trees quickly using os.scandir with cached stats."""
+    check_cancellation(cancellation_event)
+    if not root.exists():
+        return []
+    root_st = root.stat()
+    if not root.is_dir():
+        return [(root, False, root_st)]
+
+    items: list[tuple[Path, bool, os.stat_result]] = [(root, True, root_st)]
+
+    def _walk(dir_path: Path):
+        with os.scandir(dir_path) as it:
+            for entry in it:
+                check_cancellation(cancellation_event)
+                p = dir_path / entry.name
+                is_d = entry.is_dir(follow_symlinks=False)
+                st = entry.stat(follow_symlinks=False)
+                items.append((p, is_d, st))
+                if is_d:
+                    _walk(p)
+
+    _walk(root)
+    items.sort(key=lambda x: x[0])
+    return items
 
 
 def inventory(
@@ -211,14 +350,12 @@ def inventory(
         if state != "included":
             continue
         root = staging / PREFIXES[component]
-        paths = sorted(tree_paths(root, cancellation_event))
-        for path in paths:
+        for path, is_d, metadata in _fast_tree_scan(root, cancellation_event):
             check_cancellation(cancellation_event)
             name = safe_name(path.relative_to(staging).as_posix())
-            if path.is_dir():
+            if is_d:
                 directories.append(name)
             else:
-                metadata = path.stat()
                 cached = hashes.get(path) if hashes is not None else None
                 checksum = (
                     cached[2]
@@ -538,7 +675,7 @@ class UnifiedServerBackups(ManagedBackups):
                 full = mode == "full"
                 server_root = Path(self.server.paths.server_dir)
                 if full:
-                    if await self.server.is_running():
+                    if await self.server.is_running(force_scan=True):
                         raise BackupRestoreError(
                             "Stop the server before a full-directory backup."
                         )
@@ -602,7 +739,7 @@ class UnifiedServerBackups(ManagedBackups):
 
                         await self._stage(progress, "Checking backup staging space")
                         await run_in_thread(capture_preflight, self, chosen, world)
-                        running = await self.server.is_running()
+                        running = await self.server.is_running(force_scan=True)
                         await self._stage(progress, "Capturing server files")
                         source_world = (
                             Path(self.server.paths.server_dir) / "worlds" / world
@@ -1393,7 +1530,9 @@ class UnifiedServerBackups(ManagedBackups):
     ) -> RestorePlan:
         async with self.server.operation_lock:
             await run_in_thread(RestoreJournal(self.server).ensure_clear)
-            if "server_directory" in components and await self.server.is_running():
+            if "server_directory" in components and await self.server.is_running(
+                force_scan=True
+            ):
                 raise BackupRestoreError(
                     "Stop the server before reviewing a full-directory restore."
                 )
@@ -1423,7 +1562,9 @@ class UnifiedServerBackups(ManagedBackups):
                         for name, state in manifest.components.items()
                         if state == "included"
                     ]
-                if "server_directory" in components and await self.server.is_running():
+                if "server_directory" in components and await self.server.is_running(
+                    force_scan=True
+                ):
                     raise BackupRestoreError(
                         "Stop the server before reviewing a full-directory restore."
                     )
@@ -1553,14 +1694,14 @@ class UnifiedServerBackups(ManagedBackups):
                     raise BackupRestoreError(
                         "Insufficient space on the server or backup volume for staging and a safety archive."
                     )
-                was_running = await self.server.is_running()
+                was_running = await self.server.is_running(force_scan=True)
                 await self._stage(progress, "Preparing restore recovery")
                 if was_running:
                     if stop_server is None:
                         raise BackupRestoreError("Stop the server before restoring.")
                     await self._stage(progress, "Stopping Minecraft server")
                     await stop_server()
-                    if await self.server.is_running():
+                    if await self.server.is_running(force_scan=True):
                         raise BackupRestoreError("The server did not stop.")
                 await run_in_thread(
                     self.catalog.update,
@@ -1716,7 +1857,7 @@ class UnifiedServerBackups(ManagedBackups):
                     await self._stage(progress, "Starting Minecraft server")
                     try:
                         await start_server()
-                        restarted = await self.server.is_running()
+                        restarted = await self.server.is_running(force_scan=True)
                         if not restarted:
                             restart_error = "Server start was skipped or cancelled."
                     except Exception as error:

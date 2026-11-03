@@ -35,6 +35,8 @@ from .models import (
     StopServerRequest,
     StopServerResponse,
 )
+from .models.logs import WaitForServerLogRequest, WaitForServerLogResponse
+from .models.process import GetServerProcessRequest, GetServerProcessResponse
 from .models.server import (
     DeleteServerDataRequest,
     DeleteServerDataResponse,
@@ -245,7 +247,7 @@ async def start_server(
     """Start an offline server under its lock, dispatching hooks only when needed."""
     server = app_context.get_server(request.server_name)
     async with server.operation_lock:
-        if await server.is_running():
+        if await server.is_running(force_scan=True):
             return StartServerResponse(
                 server_name=request.server_name,
                 outcome="already_running",
@@ -289,8 +291,9 @@ async def stop_server(
     async with server.operation_lock:
         stopped = False
         try:
-            if not await server.is_running():
+            if not await server.is_running(force_scan=True):
                 await server.set_status_in_config("STOPPED")
+                await app_context.bedrock_process_manager.remove_server(server_name)
                 stopped = True
                 return StopServerResponse(
                     server_name=server_name,
@@ -337,7 +340,7 @@ async def restart_server(
     server_name = request.server_name
     server = app_context.get_server(server_name)
     async with server.operation_lock:
-        was_running = await server.is_running()
+        was_running = await server.is_running(force_scan=True)
         if was_running:
             if request.send_message:
                 try:
@@ -447,11 +450,11 @@ async def delete_server_data(
             server_name,
             stop_if_running,
         )
-        if not stop_if_running and await server.is_running():
+        if not stop_if_running and await server.is_running(force_scan=True):
             raise ServerRunningError(
                 f"Server '{server_name}' must be stopped before deletion."
             )
-        if stop_if_running and await server.is_running():
+        if stop_if_running and await server.is_running(force_scan=True):
             logger.debug(
                 "Server '%s' is running. Stopping before deletion...", server_name
             )
@@ -507,6 +510,12 @@ async def update_server_player_stats(
     server_name = request.server_name
     player_count = request.player_count
     players = request.model_dump(mode="python")["players"]
+    run = app_context.get_server(server_name).process.run
+    if run is not None:
+        run.players = {item["xuid"]: item["name"] for item in players}
+        run.sessions = {
+            xuid: run.sessions.get(xuid, run.sequence) for xuid in run.players
+        }
     app_context.state.runtime.update_server_runtime(
         server_name, players=players, players_online=player_count
     )
@@ -552,7 +561,7 @@ async def server_lifecycle_manager(
         return
 
     try:
-        if await server.is_running():
+        if await server.is_running(force_scan=True):
             logger.debug("Server '%s' is running. Stopping...", server_name)
             await stop_server(
                 StopServerRequest(server_name=server_name), app_context=app_context
@@ -607,3 +616,78 @@ async def server_lifecycle_manager(
                         original_error.add_note(
                             f"Server restart also failed: {type(e).__name__}"
                         )
+
+
+@api_method("wait_for_server_log", required_scope="logs:read")
+async def wait_for_server_log(
+    request: WaitForServerLogRequest,
+    *,
+    app_context: AppContext,
+    plugin_name: str | None = None,
+) -> WaitForServerLogResponse:
+    """Wait for owned live output, bounded and cancelled with its plugin owner."""
+    from ..error import ServerProcessError
+
+    run = app_context.get_server(request.server_name).process.run
+    if run is None:
+        raise ServerProcessError("Live output requires an owned BDS process.")
+    future = run.watch(
+        request.text,
+        exact=request.exact,
+        after=request.after_sequence,
+        generation=request.generation,
+    )
+    owner = f"plugin:{plugin_name}" if plugin_name else "application"
+    generation = app_context.events.owner_generation(owner)
+    try:
+        app_context.events.track_waiter(owner, future)
+        async with asyncio.timeout(request.timeout):
+            record = await future
+        app_context.events.check_owner(owner, generation)
+        return WaitForServerLogResponse(
+            server_name=request.server_name,
+            generation=record.generation,
+            sequence=record.sequence,
+            line=record.line,
+        )
+    finally:
+        future.cancel()
+        run._waiters.pop(future, None)
+
+
+@api_method("get_server_process", required_scope="servers:inspect")
+async def get_server_process(
+    request: GetServerProcessRequest, *, app_context: AppContext
+) -> GetServerProcessResponse:
+    """Return observed process capabilities independently of the server summary."""
+    server = app_context.get_server(request.server_name)
+    await server.is_running()
+    runtime = server._runtime_state.get_server_runtime(request.server_name)
+    return GetServerProcessResponse.model_validate(
+        {
+            "server_name": request.server_name,
+            "process": {
+                "generation": runtime.generation,
+                "running": runtime.running,
+                "phase": runtime.phase,
+                "ready": runtime.ready,
+                "pid": runtime.pid,
+                "owned": runtime.process_owned,
+                "recovered": runtime.recovered_untracked,
+                "command_available": runtime.command_available,
+                "observed_at": runtime.process_observed_at,
+                "output": {
+                    "source": runtime.output_source,
+                    "available": runtime.output_available,
+                    "error": runtime.output_error,
+                    "queued_bytes": runtime.output_queued_bytes,
+                    "dropped_bytes": runtime.output_dropped_bytes,
+                },
+                "bans": {
+                    "available": runtime.ban_enforcement_available,
+                    "error": runtime.ban_error,
+                },
+                "exit": {"code": runtime.exit_code, "reason": runtime.exit_reason},
+            },
+        }
+    )

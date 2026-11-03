@@ -134,6 +134,10 @@ async def test_diagnostics_routes_require_admin_and_publish_typed_sections(
         "processes",
     } <= sections.keys()
     assert sections["state"]["data"]["kind"] == "state"
+    assert "total_cpu_percent" in sections["processes"]["data"]
+    assert "total_memory_mb" in sections["processes"]["data"]
+    assert "unhealthy_count" in sections["processes"]["data"]
+    assert "untracked_recoveries_count" in sections["processes"]["data"]
     assert data["counter_scope"] == "current_instance"
     assert (await admin_auth_client.get("/api/diagnostics/unknown")).status_code == 404
     assert (
@@ -169,6 +173,16 @@ class Probe(PluginBase):
     )
     assert snapshot.sections[0].owner == "plugin:diagnostic_probe"
     assert snapshot.sections[0].data.values["pending"] == 3
+
+    # Full diagnostic snapshot should not mark active loaded plugin as draining
+    full_snapshot = await app_context.diagnostics.snapshot()
+    plugins_section = next(s for s in full_snapshot.sections if s.name == "plugins")
+    probe_diag = next(
+        p for p in plugins_section.data.plugins if p.name == "diagnostic_probe"
+    )
+    assert probe_diag.draining is False
+    assert plugins_section.status == "ok"
+
     assert await app_context.plugin_manager.unload_plugin_by_name("diagnostic_probe")
     assert not (
         await app_context.diagnostics.snapshot("plugin:diagnostic_probe:queue")
@@ -255,3 +269,90 @@ def test_retry_classification_distinguishes_locks_from_invalid_sql():
     invalid.sqlite_errorcode = sqlite3.SQLITE_ERROR
     assert not module.retryable_write(OperationalError("query", {}, invalid))
     assert not module.retryable_write(RuntimeError("invalid record"))
+
+
+@pytest.mark.asyncio
+async def test_processes_diagnostics_metrics_and_unhealthy_tracking(app_context):
+    await app_context.server_service.register_or_update_server(
+        "proc_diag_test",
+        installed_version="1.21.0.0",
+        status="RUNNING",
+        target_version="LATEST",
+    )
+    app_context.state.runtime.update_server_runtime(
+        "proc_diag_test",
+        running=True,
+        pid=12345,
+        cpu_percent=12.5,
+        memory_mb=256.0,
+        recovered_untracked=True,
+        process_observed_at=time.time(),
+    )
+    snapshot = await app_context.diagnostics.snapshot("processes")
+    assert len(snapshot.sections) == 1
+    assert snapshot.sections[0].status == "degraded"
+    assert any(
+        issue.code == "process_command_unavailable"
+        for issue in snapshot.sections[0].issues
+    )
+    proc_diag = snapshot.sections[0].data
+    assert proc_diag.total_cpu_percent == 12.5
+    assert proc_diag.total_memory_mb == 256.0
+    assert proc_diag.untracked_recoveries_count == 1
+    assert proc_diag.unhealthy_count >= 1
+
+    entry = next(p for p in proc_diag.processes if p.server_name == "proc_diag_test")
+    assert entry.cpu_percent == 12.5
+    assert entry.memory_mb == 256.0
+    assert entry.recovered_untracked is True
+    assert entry.healthy is False
+    # When recovered process flag is cleared and process matches expected stopped state
+    app_context.state.runtime.update_server_runtime(
+        "proc_diag_test", running=False, pid=None
+    )
+    await app_context.server_service.register_or_update_server(
+        "proc_diag_test",
+        installed_version="1.21.0.0",
+        status="STOPPED",
+        target_version="LATEST",
+    )
+    clean_snapshot = await app_context.diagnostics.snapshot("processes")
+    assert clean_snapshot.sections[0].status == "ok"
+
+
+async def test_process_totals_include_rows_beyond_detail_limit(app_context):
+    from bedrock_server_manager.state.models import ServerConfigState
+
+    for index in range(101):
+        name = f"summary_{index:03}"
+        app_context.state.servers.set(
+            ServerConfigState(server_name=name, status="RUNNING")
+        )
+        app_context.state.runtime.update_server_runtime(
+            name,
+            running=True,
+            pid=index + 1,
+            command_available=True,
+            process_owned=True,
+            output_source="file",
+            process_observed_at=time.time(),
+            cpu_percent=1,
+            memory_mb=2,
+        )
+    # The unhealthy survivor lies beyond the 100 detailed entries.
+    app_context.state.runtime.update_server_runtime(
+        "summary_100",
+        command_available=False,
+        process_owned=False,
+        recovered_untracked=True,
+        output_source="unknown",
+    )
+    snapshot = await app_context.diagnostics.snapshot("processes")
+    data = snapshot.sections[0].data
+    assert len(data.processes) == 100 and data.truncated
+    assert data.total_cpu_percent == 101
+    assert data.total_memory_mb == 202
+    assert data.untracked_recoveries_count == 1
+    assert data.command_unavailable_count == 1
+    assert data.unhealthy_count == 1
+    assert snapshot.sections[0].status == "degraded"

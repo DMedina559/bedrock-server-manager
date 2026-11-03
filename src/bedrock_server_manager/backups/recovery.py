@@ -257,7 +257,7 @@ class RestoreJournal:
                 await apply_settings(self.server, exported)
             await run_in_thread(shutil.rmtree, self.path)
             return
-        if await self.server.is_running():
+        if await self.server.is_running(force_scan=True):
             raise BackupRestoreError(
                 "Stop the server before recovering its interrupted restore."
             )

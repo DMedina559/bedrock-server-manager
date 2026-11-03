@@ -283,3 +283,30 @@ def test_plugin_settings_migration_round_trip(tmp_path):
             } == expected
     finally:
         engine.dispose()
+
+
+@pytest.mark.parametrize("flat", [False, True])
+async def test_load_removes_retired_player_interval_from_database(db, tmp_path, flat):
+    from sqlalchemy import select
+
+    from bedrock_server_manager.db.models import Setting
+
+    storage = Storage(db=db, data_dir=str(tmp_path))
+    async with storage.transaction() as session:
+        session.add(
+            Setting(
+                key="monitoring",
+                value={"process_interval_sec": 17, "player_interval_sec": 10},
+            )
+        )
+        if flat:
+            session.add(Setting(key="monitoring.player_interval_sec", value=25))
+    for _ in range(2):
+        state = await storage.load_state(AppState())
+        assert state.settings.monitoring.process_interval_sec == 17
+        assert "player_interval_sec" not in state.settings.to_dict()["monitoring"]
+        async with storage.transaction() as session:
+            records = (await session.execute(select(Setting))).scalars().all()
+            values = {record.key: record.value for record in records}
+            assert "monitoring.player_interval_sec" not in values
+            assert values["monitoring"] == {"process_interval_sec": 17}

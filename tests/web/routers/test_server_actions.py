@@ -72,7 +72,6 @@ async def test_dummy_player_events_and_delete_task(
     server = real_bedrock_server
     name = server.server_name
     await app_context.settings.set("monitoring.process_interval_sec", 1)
-    await app_context.settings.set("monitoring.player_interval_sec", 1)
     base = f"/api/server/{name}"
     assert (await admin_auth_client.post(base + "/start")).status_code == 200
     manager = app_context.bedrock_process_manager

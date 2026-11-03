@@ -1541,6 +1541,17 @@ class PluginManager:
             owner = f"plugin:{name}"
             observation = self._plugin_observations.get(name, {})
             config = self.state.plugins.get(name)
+            draining_owners = self._draining_plugins.get(name)
+            is_draining = (name in self._unloading) or bool(
+                draining_owners is not None
+                and (
+                    self.diagnostic_pending(name)
+                    or any(self.events.owner_pending(o) for o in draining_owners)
+                )
+            )
+            if draining_owners is not None and not is_draining:
+                self._draining_plugins.pop(name, None)
+
             result.append(
                 PluginDiagnostic(
                     name=name,
@@ -1554,9 +1565,7 @@ class PluginManager:
                         and task.status in {"queued", "running", "cancelling"}
                         for task in managed_tasks
                     ),
-                    draining=name in self._unloading
-                    or name in self._draining_plugins
-                    or self.diagnostic_pending(name),
+                    draining=is_draining,
                     version=config.version if config else None,
                     listeners=event_activity.subscriptions_by_owner.get(owner, 0),
                     workers=event_activity.workers_by_owner.get(owner, 0),
@@ -1714,6 +1723,7 @@ class PluginManager:
             if self.diagnostic_pending(plugin_name) or any(
                 self.events.owner_pending(owner) for owner in owners
             ):
+                self._draining_plugins[plugin_name] = owners
                 self._draining_plugins[plugin_key] = owners
             self.access_policy.remove_owner(plugin_key)
             self._pending_plugins.pop(plugin_key, None)

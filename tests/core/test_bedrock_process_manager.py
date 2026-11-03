@@ -38,6 +38,8 @@ async def test_process_manager_add_remove_error_status_and_restart_limits(
     manager.restart_attempts[real_bedrock_server.server_name] = 1
     await manager._try_restart_server(real_bedrock_server)
     assert real_bedrock_server.server_name not in manager.servers
+    assert real_bedrock_server.server_name in manager.recovery_failures
+    assert not manager.check_health()
     assert not await real_bedrock_server.is_running()
     await app_context.reload()
     assert await real_bedrock_server.get_status() == "ERROR"
@@ -63,7 +65,6 @@ async def test_monitor_restarts_crashed_child_and_isolates_failures(
     app_context, real_bedrock_server, monkeypatch
 ):
     await app_context.settings.set("monitoring.process_interval_sec", 1)
-    await app_context.settings.set("monitoring.player_interval_sec", 1)
     await real_bedrock_server.start()
     child = real_bedrock_server.process._process
     child.kill()
@@ -95,34 +96,26 @@ async def test_monitor_restarts_crashed_child_and_isolates_failures(
             release_pid.set()
             await asyncio.wait_for(asyncio.shield(recovery), 10)
             assert await real_bedrock_server.is_running()
+            await asyncio.wait_for(
+                real_bedrock_server.process.run.ready_event.wait(), 5
+            )
             assert await real_bedrock_server.get_status() == "RUNNING"
             assert manager.restart_attempts[real_bedrock_server.server_name] == 1
         finally:
             release_pid.set()
             await manager.quiesce()
 
-    # Player failure retains last known runtime
-    real_bedrock_server.players = [{"name": "Alex", "xuid": "1"}]
-    scanned = asyncio.Event()
-
-    async def fail_scan():
-        scanned.set()
-        raise RuntimeError("scan failed")
+    # Supervision no longer invokes the historical player scanner.
+    async def forbidden_scan():
+        raise AssertionError("Owned player presence must not poll log files")
 
     with monkeypatch.context() as fault:
         fault.setattr(
-            real_bedrock_server.player_tracker, "update_online_players", fail_scan
+            real_bedrock_server.player_tracker, "update_online_players", forbidden_scan
         )
-        await manager.start()
-        try:
-            await asyncio.wait_for(scanned.wait(), 5)
-            assert real_bedrock_server.players == [{"name": "Alex", "xuid": "1"}]
-            assert real_bedrock_server.player_count == 1
-            assert not real_bedrock_server.state.runtime.get_server_runtime(
-                real_bedrock_server.server_name
-            ).players_available
-        finally:
-            await manager.quiesce()
+        await manager._observe_server(
+            real_bedrock_server.server_name, real_bedrock_server
+        )
 
     # Probe failure does not stop other servers
     other = app_context.prepare_server("other")
@@ -140,3 +133,53 @@ async def test_monitor_restarts_crashed_child_and_isolates_failures(
             assert real_bedrock_server.server_name in manager.servers
         finally:
             await manager.quiesce()
+
+
+async def test_process_manager_check_health(app_context):
+    """Test health checking logic of BedrockProcessManager."""
+    manager = app_context.bedrock_process_manager
+    assert manager.check_health() is True
+    srv = "untracked_recovered_server"
+    app_context.state.runtime.update_server_runtime(srv, running=True, pid=123)
+    assert manager.check_health() is False
+    app_context.state.runtime.update_server_runtime(srv, running=False, pid=None)
+    assert manager.check_health() is True
+
+    # Exceeded restart retries marks it unhealthy
+    manager.restart_attempts[srv] = 10
+    try:
+        assert manager.check_health() is False
+    finally:
+        manager.restart_attempts.clear()
+    assert manager.check_health() is True
+
+    # Done monitoring task without shutdown marks it unhealthy
+    dummy_task = asyncio.create_task(asyncio.sleep(0))
+    await dummy_task
+    manager.monitoring_task = dummy_task
+    try:
+        assert manager.check_health() is False
+        # Shutdown suppresses failure
+        manager._shutdown_event.set()
+        assert manager.check_health() is True
+    finally:
+        manager._shutdown_event.clear()
+        manager.monitoring_task = None
+    assert manager.check_health() is True
+
+
+async def test_successful_recovery_clears_health_after_stable_running(
+    real_bedrock_server, app_context
+):
+    import time
+
+    server = real_bedrock_server
+    await server.start()
+    await asyncio.wait_for(server.process.run.ready_event.wait(), 5)
+    manager = app_context.bedrock_process_manager
+    manager.restart_attempts[server.server_name] = 1
+    manager._healthy_since[server.server_name] = time.monotonic() - 60
+    assert not manager.check_health()
+    await manager._observe_server(server.server_name, server)
+    assert server.server_name not in manager.restart_attempts
+    assert manager.check_health()

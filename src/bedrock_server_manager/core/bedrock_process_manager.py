@@ -3,8 +3,7 @@
 
 This module provides the :class:`~.BedrockProcessManager` class, which is responsible
 for monitoring running Bedrock server instances. It detects crashes or unexpected
-shutdowns and attempts to restart servers based on configuration policies. It also
-handles periodic tasks like player scanning from logs.
+shutdowns and attempts to restart servers based on configuration policies. Player presence is reduced by each owned output stream.
 """
 
 import asyncio
@@ -17,77 +16,86 @@ from ..logging import RepeatedFailureReporter, log_operation_error
 
 if TYPE_CHECKING:
     from ..config.settings import Settings
-    from ..db.storage import Storage
-    from ..events.publisher import EventPublisher
-    from ..state.models import BanItem
+    from ..state.models import RuntimeState
     from .bedrock_server import BedrockServer
 
 
 class BedrockProcessManager:
-    """Monitor owned server processes and restart unintended stops asynchronously.
-
-    Publish player observations through the injected event publisher.
-    """
+    """Monitor owned server processes and restart unintended stops asynchronously."""
 
     def __init__(
         self,
         settings: "Settings",
-        storage: "Storage",
         server_provider: Optional[Callable[[str], "BedrockServer"]] = None,
         *,
-        events: Optional["EventPublisher"] = None,
         stop_server: Callable[[str], Awaitable[None]] | None = None,
-        get_bans: Callable[[str], Awaitable[list["BanItem"]]] | None = None,
         record_failure: Callable[[str, Exception, float], None] | None = None,
+        runtime: "RuntimeState | None" = None,
+        start_server: Callable[[str], Awaitable[None]] | None = None,
     ):
         """Initialize the BedrockProcessManager with explicit dependencies."""
         self.settings = settings
-        self.storage = storage
         self.server_provider = server_provider
-        self.events = events
         self.stop_server = stop_server
-        self.get_bans = get_bans
         self.record_failure = record_failure
+        self.runtime = runtime
+        self.start_server = start_server
+        self.recovery_failures: set[str] = set()
+        self._healthy_since: dict[str, float] = {}
         self.monitor_observed_at: float | None = None
         self.monitor_failures = 0
         self.monitor_observations: dict[str, float] = {}
         self.monitor_errors: dict[str, str] = {}
         self.servers: Dict[str, "BedrockServer"] = {}
         self.restart_attempts: dict[str, int] = {}
-        self._pending_player_events: set[str] = set()
         self._server_checks: dict[str, asyncio.Task] = {}
         self._check_slots = asyncio.Semaphore(4)
         self._restart_after: dict[str, float] = {}
         self.logger = logging.getLogger(__name__)
         self._failures = RepeatedFailureReporter(self.logger)
         self._shutdown_event = asyncio.Event()
-        self.player_scan_counter = 0
+        self._wake = asyncio.Event()
         self.monitoring_task: Optional[asyncio.Task[Any]] = None
         self.logger.debug("BedrockProcessManager initialized.")
 
-    async def _publish_players(self, server: "BedrockServer") -> None:
-        from ..events.player import PlayerSnapshot, publish_player_snapshot
-
-        if self.events is None:
-            raise BSMError("Player event publisher is not available.")
-        receipt = await publish_player_snapshot(
-            self.events,
-            PlayerSnapshot(
-                server_name=server.server_name,
-                player_count=server.player_count,
-                players=server.players,
-            ),
+    def check_health(self) -> bool:
+        """Check if server process monitoring and managed servers are healthy."""
+        if self._shutdown_event.is_set():
+            return True
+        if self.monitoring_task is not None and self.monitoring_task.done():
+            return False
+        if self.recovery_failures or self.monitor_errors:
+            return False
+        if (
+            self.monitor_observed_at is not None
+            and time.time() - self.monitor_observed_at
+            > max(30, self.settings.get("monitoring.process_interval_sec", 10) * 3)
+        ):
+            return False
+        runtimes = (
+            self.runtime.servers.values()
+            if self.runtime is not None
+            else (
+                server._runtime_state.get_server_runtime(name)
+                for name, server in self.servers.items()
+            )
         )
-        if receipt.rejection_reason in {"capacity", "depth_limit"}:
-            self._pending_player_events.add(server.server_name)
-        else:
-            # Partial listener delivery is recorded, not replayed to successful listeners.
-            self._pending_player_events.discard(server.server_name)
+        if any(
+            record.output_error is not None
+            or (record.running and not record.command_available)
+            for record in runtimes
+        ):
+            return False
+        for attempts in self.restart_attempts.values():
+            if attempts > 0:
+                return False
+        return True
 
     async def start(self):
         """Call this from the main thread to start monitoring."""
         if self.monitoring_task is None or self.monitoring_task.done():
             self._shutdown_event = asyncio.Event()
+            self.monitor_observed_at = time.time()
             self.monitoring_task = asyncio.create_task(self._monitor_servers())
 
     async def add_server(self, server: "BedrockServer"):
@@ -99,6 +107,8 @@ class BedrockProcessManager:
             "Adding server '%s' to process manager for monitoring.", server.server_name
         )
         self.servers[server.server_name] = server
+        server.process.on_exit = self._wake.set
+        self.recovery_failures.discard(server.server_name)
 
     async def remove_server(self, server_name: str):
         """Remove a server from the process manager.
@@ -108,6 +118,8 @@ class BedrockProcessManager:
 
         :param server_name: The name of the server to remove.
         """
+        self.recovery_failures.discard(server_name)
+        self._healthy_since.pop(server_name, None)
         if server_name in self.servers:
             self.logger.debug("Removing server '%s' from process manager.", server_name)
             del self.servers[server_name]
@@ -115,7 +127,6 @@ class BedrockProcessManager:
             self.monitor_errors.pop(server_name, None)
             self.restart_attempts.pop(server_name, None)
             self._restart_after.pop(server_name, None)
-            self._pending_player_events.discard(server_name)
             task = self._server_checks.get(server_name)
             if task is not None and task is not asyncio.current_task():
                 task.cancel()
@@ -203,6 +214,7 @@ class BedrockProcessManager:
             )
             await self.write_error_status(server.server_name)
             await self.remove_server(server.server_name)  # Stop monitoring
+            self.recovery_failures.add(server.server_name)
             return
 
         self.logger.info(
@@ -212,7 +224,11 @@ class BedrockProcessManager:
             max_retries,
         )
         try:
-            await server.start()
+            if self.start_server is not None:
+                await self.start_server(server.server_name)
+            else:
+                await server.start()
+            self._restart_after.pop(server.server_name, None)
             self.logger.debug("Server '%s' restarted successfully.", server.server_name)
         except Exception as e:
             log_operation_error(
@@ -255,20 +271,15 @@ class BedrockProcessManager:
         This method runs as a background task. It periodically checks:
         1. If registered servers are running. If a server has crashed (stopped
            without ``intentionally_stopped`` flag), it attempts restart.
-        2. Queries server status for player counts.
-        3. Scans logs for player activity.
+        Player presence, bans and identities are driven by the owned output stream.
         """
 
         try:
             monitoring_interval = int(
                 self.settings.get("monitoring.process_interval_sec", 10)
             )
-            player_log_monitoring_interval_sec = int(
-                self.settings.get("monitoring.player_interval_sec", 10)
-            )
         except Exception:
             monitoring_interval = 10
-            player_log_monitoring_interval_sec = 10
 
         self.logger.debug(
             "Async server monitoring loop started with a %s second interval.",
@@ -281,7 +292,7 @@ class BedrockProcessManager:
                 try:
                     try:
                         await asyncio.wait_for(
-                            self._shutdown_event.wait(), timeout=monitoring_interval
+                            self._wake.wait(), timeout=monitoring_interval
                         )
                     except asyncio.TimeoutError:
                         pass
@@ -291,16 +302,12 @@ class BedrockProcessManager:
                 except asyncio.CancelledError:
                     break
 
-                self.player_scan_counter += monitoring_interval
-                scan_players = (
-                    self.player_scan_counter >= player_log_monitoring_interval_sec
-                )
+                self._wake.clear()
+                self.monitor_observed_at = time.time()
                 for server_name, server in list(self.servers.items()):
                     if server_name not in self._server_checks:
                         task = asyncio.create_task(
-                            self._check_server(
-                                server_name, server, scan_players=scan_players
-                            ),
+                            self._check_server(server_name, server),
                             name=f"server-monitor:{server_name}",
                         )
                         self._server_checks[server_name] = task
@@ -309,8 +316,6 @@ class BedrockProcessManager:
                                 name, finished
                             )
                         )
-                if self.player_scan_counter >= player_log_monitoring_interval_sec:
-                    self.player_scan_counter = 0
         finally:
             tasks = list(self._server_checks.values())
             for task in tasks:
@@ -328,16 +333,16 @@ class BedrockProcessManager:
                 "Server monitor failed for '%s'.", name, exc_info=task.exception()
             )
 
-    async def _check_server(self, server_name, server, *, scan_players):
+    async def _check_server(self, server_name, server):
         async with self._check_slots:
             if (
                 self.servers.get(server_name) is not server
                 or self._shutdown_event.is_set()
             ):
                 return
-            await self._observe_server(server_name, server, scan_players=scan_players)
+            await self._observe_server(server_name, server)
 
-    async def _observe_server(self, server_name, server, *, scan_players):
+    async def _observe_server(self, server_name, server):
         # Determine run state
         probe_started = time.monotonic()
         try:
@@ -359,6 +364,7 @@ class BedrockProcessManager:
             return
 
         if not is_running:
+            self._healthy_since.pop(server_name, None)
             if not server.process.intentionally_stopped:
                 if time.monotonic() < self._restart_after.get(server_name, 0):
                     return
@@ -383,103 +389,16 @@ class BedrockProcessManager:
                     server.server_name,
                 )
                 await self.remove_server(server_name)
-        elif scan_players:
-            observed = False
-            try:
-                previous_player_count = server.player_count
-                previous_players = server.players
+        else:
+            run = server.process.run
+            if run is not None and not run.ready:
+                self._healthy_since.pop(server_name, None)
+                return
+            stable_since = self._healthy_since.setdefault(server_name, time.monotonic())
+            if time.monotonic() - stable_since >= max(
+                30, self.settings.get("monitoring.process_interval_sec", 10) * 3
+            ):
+                self.restart_attempts.pop(server_name, None)
+                self._restart_after.pop(server_name, None)
 
-                server.players = await server.player_tracker.update_online_players()
-                observed = True
-                server._runtime_state.update_server_runtime(
-                    server_name, players_available=True
-                )
-
-                if (
-                    server.player_count != previous_player_count
-                    or server.players != previous_players
-                    or server_name in self._pending_player_events
-                ):
-                    self.logger.debug(
-                        "Player list/count changed for server '%s': count %s -> %s",
-                        server.server_name,
-                        previous_player_count,
-                        server.player_count,
-                    )
-                    # Publish the authoritative snapshot through the application event bus.
-                    try:
-                        await self._publish_players(server)
-                    except Exception as e:
-                        self._pending_player_events.add(server_name)
-                        self.logger.warning(
-                            "Could not publish player stats update: %s",
-                            type(e).__name__,
-                            exc_info=True,
-                        )
-
-                # Enforce bans
-                if server.players:
-                    try:
-                        if self.get_bans is None:
-                            raise BSMError("Ban lookup capability is not available.")
-                        bans = await self.get_bans(server.server_name)
-
-                        if bans:
-                            banned_xuids = {b.xuid: b for b in bans}
-                            for p in server.players:
-                                xuid = p.get("xuid")
-                                if xuid in banned_xuids:
-                                    reason = (
-                                        banned_xuids[xuid].reason
-                                        or "You have been banned from this server."
-                                    )
-                                    p_name = p.get("name", "Unknown")
-                                    self.logger.warning(
-                                        "Kicking banned player '%s' from server '%s'.",
-                                        p_name,
-                                        server.server_name,
-                                    )
-                                    try:
-                                        await server.send_command(
-                                            f'kick "{p_name}" {reason}'
-                                        )
-                                    except Exception as kick_err:
-                                        log_operation_error(
-                                            self.logger,
-                                            "Failed to kick banned player '%s': %s",
-                                            p_name,
-                                            kick_err,
-                                            error=kick_err,
-                                        )
-                    except Exception as e:
-                        self._failures.report(
-                            f"bans:{server_name}",
-                            "Ban enforcement unavailable (%s): %s; retrying.",
-                            e,
-                        )
-                    else:
-                        self._failures.recover(f"bans:{server_name}")
-
-                if server.players:
-                    self.logger.debug(
-                        "Server '%s' has %s players online. Scanning for players.",
-                        server.server_name,
-                        server.player_count,
-                    )
-                    players = await server.player_tracker.scan_log_for_players(
-                        incremental=True
-                    )
-
-                    if players and self.storage is not None:
-                        await self.storage.save_players(players)
-                self._failures.recover(f"players:{server_name}")
-            except Exception as e:
-                if not observed:
-                    server._runtime_state.update_server_runtime(
-                        server_name, players_available=False
-                    )
-                self._failures.report(
-                    f"players:{server_name}",
-                    "Player monitoring unavailable (%s): %s; retrying.",
-                    e,
-                )
+        # Owned output applies presence, bans and persistence independently of supervision.

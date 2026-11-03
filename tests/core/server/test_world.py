@@ -73,18 +73,18 @@ async def test_live_export_world_and_error_handling(
     with open(icon_file, "wb") as f:
         f.write(b"Z" * 30)
 
-    log_file = server.paths.server_log_path
-    os.makedirs(os.path.dirname(log_file), exist_ok=True)
+    await server.start()
+    run = server.process.run
+    await __import__("asyncio").wait_for(run.ready_event.wait(), 5)
     sent_commands = []
 
     async def mock_send_command(cmd):
         sent_commands.append(cmd)
         if cmd == "save query":
-            with open(log_file, "a", encoding="utf-8") as lf:
-                lf.write(
-                    "[2026-09-27 17:24:30:850 INFO] Data saved. Files are now ready to be copied.\n"
-                    "test_world/db/000001.ldb:20, test_world/level.dat:15\n"
-                )
+            run.feed(
+                b"[2026-09-27 17:24:30:850 INFO] Data saved. Files are now ready to be copied.\n"
+                b"test_world/db/000001.ldb:20, test_world/level.dat:15\n"
+            )
 
     server.send_command = AsyncMock(side_effect=mock_send_command)
     export_target = os.path.join(str(tmp_path), "live_exported_world.mcworld")
@@ -98,9 +98,9 @@ async def test_live_export_world_and_error_handling(
         await server.worlds.export_world("test_world", export_target)
 
     assert os.path.exists(export_target)
-    assert ["save hold", "save query", "save resume"] == [
-        c for c in sent_commands if c in ("save hold", "save query", "save resume")
-    ][:3]
+    assert sent_commands[0] == "save hold"
+    assert sent_commands[-1] == "save resume"
+    assert sent_commands.count("save query") >= 2
 
     await server.worlds.extract_mcworld(export_target, "extracted_live")
     ext_dir = os.path.join(server.paths.server_dir, "worlds", "extracted_live")
@@ -124,10 +124,8 @@ async def test_live_export_world_and_error_handling(
     world = Path(server.paths.server_dir) / "worlds" / "resume_world"
     world.mkdir(parents=True)
     (world / "level.dat").write_bytes(b"level-data")
-    log = Path(server.paths.server_log_path)
 
     for query_succeeds in (False, True):
-        log.write_text("", encoding="utf-8")
         target = tmp_path / f"resume_{query_succeeds}.mcworld"
         commands = []
 
@@ -136,11 +134,10 @@ async def test_live_export_world_and_error_handling(
             if command == "save resume":
                 raise SendCommandError("command channel unavailable")
             if command == "save query" and qs:
-                with log.open("a", encoding="utf-8") as output:
-                    output.write(
-                        "Data saved. Files are now ready to be copied.\n"
-                        "resume_world/level.dat:5\n"
-                    )
+                run.feed(
+                    b"Data saved. Files are now ready to be copied.\n"
+                    b"resume_world/level.dat:5\n"
+                )
 
         with monkeypatch.context() as fault:
             fault.setattr(server, "send_command", send_command)

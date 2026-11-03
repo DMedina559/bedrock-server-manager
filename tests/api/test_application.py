@@ -43,6 +43,9 @@ async def test_application_api_worlds_servers_and_system_info(
         real_bedrock_server.server_name
     ]
     await real_bedrock_server.start()
+    await __import__("asyncio").wait_for(
+        real_bedrock_server.process.run.ready_event.wait(), 5
+    )
     result = await update_server_statuses(
         UpdateServerStatusesRequest(), app_context=app_context
     )

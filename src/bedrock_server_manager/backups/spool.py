@@ -40,12 +40,14 @@ class CaptureSpool:
         assert self.stream is not None
         self.stream.flush()
 
-    def offset(self, source: Path) -> int | None:
+    def offset(self, source: Path, expected_size: int | None = None) -> int | None:
         entry = self.entries.get(source)
         if entry is None:
             return None
-        metadata = source.stat()
         size, modified, offset = entry
+        if expected_size is not None and expected_size == size:
+            return offset
+        metadata = source.stat()
         return (
             offset
             if (metadata.st_size, metadata.st_mtime_ns) == (size, modified)

@@ -27,6 +27,7 @@ from ...api.models import (
     StopServerRequest,
     StopServerResponse,
 )
+from ...api.models.process import GetServerProcessRequest, GetServerProcessResponse
 from ...context import AppContext
 from ..access_metadata import describe_access
 from ..access_policy import Permission
@@ -78,6 +79,25 @@ async def get_server_summary(
     )
 
     return ServerSchemaResponse.model_validate(result.summary)
+
+
+@router.get(
+    "/api/server/{server_name}/process",
+    operation_id="get_server_process",
+    tags=["Server Management"],
+    response_model=GetServerProcessResponse,
+)
+async def get_server_process(
+    current_user: UserResponse = Security(
+        require_permissions, scopes=[Permission.SERVERS_INSPECT]
+    ),
+    server_name: str = Depends(validate_server_exists),
+    app_context: AppContext = Depends(get_app_context),
+) -> GetServerProcessResponse:
+    """Inspect process ownership, live capabilities and failure evidence."""
+    return await server_api.get_server_process(
+        GetServerProcessRequest(server_name=server_name), app_context=app_context
+    )
 
 
 # --- API Route: Start Server ---

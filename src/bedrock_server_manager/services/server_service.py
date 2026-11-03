@@ -25,9 +25,11 @@ class ServerService:
         self,
         state: "AppState",
         storage: "Storage",
+        ban_changed: Callable[[str], None] | None = None,
     ):
         self.state = state
         self.storage = storage
+        self._ban_changed = ban_changed
 
     def get_server_state(self, server_name: str) -> Optional[ServerConfigState]:
         """Return a server configuration state model snapshot."""
@@ -152,14 +154,20 @@ class ServerService:
     ) -> BanMutation:
         """Adds or updates a server ban record."""
         async with self.storage.transaction() as session:
-            return await self.storage.ban_repo.add_or_update_ban(
+            result = await self.storage.ban_repo.add_or_update_ban(
                 session, server_name, player_name, xuid, reason
             )
+        if self._ban_changed is not None:
+            self._ban_changed(server_name)
+        return result
 
     async def remove_server_ban(self, server_name: str, xuid: str) -> BanMutation:
         """Remove a server ban record by XUID."""
         async with self.storage.transaction() as session:
-            return await self.storage.ban_repo.remove_ban(session, server_name, xuid)
+            result = await self.storage.ban_repo.remove_ban(session, server_name, xuid)
+        if self._ban_changed is not None:
+            self._ban_changed(server_name)
+        return result
 
     async def get_server_bans(self, server_name: str) -> list[BanItem]:
         """Return all bans for a specific server."""

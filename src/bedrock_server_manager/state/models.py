@@ -276,6 +276,22 @@ class ServerRuntimeInfo(PersistentRecord):
     players: List[RuntimePlayer] = Field(default_factory=list)
     cpu_percent: float = Field(default=0.0, ge=0)
     memory_mb: float = Field(default=0.0, ge=0)
+    recovered_untracked: bool = False
+    process_owned: bool = False
+    command_available: bool = False
+    output_source: Literal["file", "pipe", "unknown"] = "unknown"
+    process_observed_at: float | None = None
+    generation: str | None = None
+    ready: bool = False
+    phase: str | None = None
+    output_available: bool = False
+    output_error: str | None = None
+    output_queued_bytes: int = Field(default=0, ge=0)
+    output_dropped_bytes: int = Field(default=0, ge=0)
+    exit_code: int | None = None
+    exit_reason: str | None = None
+    ban_enforcement_available: bool = False
+    ban_error: str | None = None
 
     @model_validator(mode="after")
     def coherent_runtime(self) -> Self:
@@ -283,6 +299,14 @@ class ServerRuntimeInfo(PersistentRecord):
             raise ValueError("Player count must match the player list.")
         if not self.running and self.pid is not None:
             raise ValueError("Stopped servers cannot retain a process ID.")
+        if not self.running:
+            # Assignment validation would recursively call this validator.
+            object.__setattr__(self, "recovered_untracked", False)
+            object.__setattr__(self, "process_owned", False)
+            object.__setattr__(self, "command_available", False)
+            object.__setattr__(self, "output_source", "unknown")
+            object.__setattr__(self, "ready", False)
+            object.__setattr__(self, "output_available", False)
         return self
 
 

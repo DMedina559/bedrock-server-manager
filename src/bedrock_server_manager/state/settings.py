@@ -81,9 +81,20 @@ class RetentionSettings(SettingsRecord):
 class MonitoringSettings(SettingsRecord):
     max_retries: int = Field(default=3, ge=0)
     process_interval_sec: int = Field(default=10, gt=0)
-    player_interval_sec: int = Field(default=10, gt=0)
     app_metrics_interval_sec: int = Field(default=3, ge=1, le=3600)
     bedrock_metrics_interval_sec: int = Field(default=3, ge=1, le=3600)
+    untracked_process_interval_sec: int = Field(
+        default=5,
+        ge=1,
+        le=3600,
+        title="Untracked process scan interval",
+        description="Minimum seconds between system process scans when verifying stopped servers without a PID file.",
+    )
+    recover_untracked_processes: bool = Field(
+        default=True,
+        title="Recover untracked server processes",
+        description="Automatically scan the system process table and regenerate PID files for orphaned or unmonitored Bedrock servers.",
+    )
 
 
 DEFAULT_CORS_ORIGINS: tuple[str, ...] = ()
@@ -168,6 +179,9 @@ class WebSettings(SettingsRecord):
 
 
 class LifecycleSettings(SettingsRecord):
+    command_timeout_seconds: float = Field(default=5.0, gt=0, le=60)
+    server_ready_timeout_seconds: float = Field(default=60.0, gt=0, le=600)
+    output_drain_timeout_seconds: float = Field(default=2.0, gt=0, le=60)
     server_stop_timeout_seconds: float = Field(default=10.0, gt=0, le=600)
     startup_timeout_seconds: float = Field(default=30.0, gt=0, le=600)
     shutdown_timeout_seconds: float = Field(default=15.0, gt=0, le=600)
@@ -511,6 +525,7 @@ class SettingsState(BaseModel):
             "retention": ("logs",),
             "web": ("threads",),
             "backups": ("schedules",),
+            "monitoring": ("player_interval_sec",),
         }
         for section, removed_names in removed_fields.items():
             values = merged.get(section)
@@ -535,9 +550,9 @@ class SettingsState(BaseModel):
             "monitoring": (
                 "max_retries",
                 "process_interval_sec",
-                "player_interval_sec",
                 "app_metrics_interval_sec",
                 "bedrock_metrics_interval_sec",
+                "untracked_process_interval_sec",
             ),
             "web": ("port", "token_expires_weeks"),
         }

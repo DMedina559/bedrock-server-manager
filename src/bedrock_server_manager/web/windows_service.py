@@ -100,7 +100,27 @@ class WebServerWindowsService(win32serviceutil.ServiceFramework):
             )
             web_thread.start()
 
-            self.ReportServiceStatus(win32service.SERVICE_RUNNING)
+            from ..services.lifecycle import LifecyclePhase
+
+            timeout = (
+                self.app_context.settings.get("lifecycle.startup_timeout_seconds", 30)
+                if self.app_context
+                else 30
+            )
+            import time
+
+            deadline = time.monotonic() + timeout
+            while self.runtime.snapshot().phase != LifecyclePhase.READY:
+                if self.shutdown_event.wait(0.1) or not web_thread.is_alive():
+                    break
+                if time.monotonic() >= deadline:
+                    self.runtime.request_shutdown("service")
+                    raise RuntimeError(
+                        "Web runtime did not become ready before the service deadline"
+                    )
+                self.ReportServiceStatus(win32service.SERVICE_START_PENDING)
+            if self.runtime.snapshot().phase == LifecyclePhase.READY:
+                self.ReportServiceStatus(win32service.SERVICE_RUNNING)
             self.logger.debug(
                 "Web Service '%s': Status reported as RUNNING.", self._svc_name_
             )

@@ -114,6 +114,7 @@ from .install import (
     UpdateServerRequest,
     UpdateServerResponse,
 )
+from .logs import WaitForServerLogRequest, WaitForServerLogResponse
 from .misc import (
     PruneDownloadCacheRequest,
     PruneDownloadCacheResponse,
@@ -154,6 +155,14 @@ from .plugins import (
     TriggerExternalAppEventRequest,
     TriggerExternalAppEventResponse,
     UpdatePluginSettingsRequest,
+)
+from .process import (
+    BanEnforcementStatus,
+    GetServerProcessRequest,
+    GetServerProcessResponse,
+    ProcessExitStatus,
+    ProcessOutputStatus,
+    ServerProcessStatus,
 )
 from .properties import (
     GetPropertiesRequest,
@@ -498,6 +507,14 @@ __all__ = [
     "UpdateServerStatusesResponse",
     "UpdateSubpackRequest",
     "UpdateSubpackResponse",
+    "GetServerProcessRequest",
+    "GetServerProcessResponse",
+    "ServerProcessStatus",
+    "ProcessOutputStatus",
+    "BanEnforcementStatus",
+    "ProcessExitStatus",
+    "WaitForServerLogRequest",
+    "WaitForServerLogResponse",
     "ValidatePropertyValueRequest",
     "ValidatePropertyValueResponse",
 ]

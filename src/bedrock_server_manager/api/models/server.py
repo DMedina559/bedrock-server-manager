@@ -148,3 +148,7 @@ class GetValidServerNamesRequest(APIRequest):
 
 class GetValidServerNamesResponse(SuccessResponse):
     server_names: list[ServerName]
+
+
+# Compatibility imports for the initial process-refactor preview.
+from .logs import WaitForServerLogRequest, WaitForServerLogResponse  # noqa: E402,F401

@@ -47,6 +47,7 @@ async def test_health_requires_login_and_checks_database_and_state(
         "metrics",
         "scheduler",
         "timezone_data",
+        "process_manager",
     }
     assert all(check.healthy for check in health.checks.values())
 
@@ -133,4 +134,19 @@ async def test_unavailable_timezone_data_is_degraded_then_recovers(
     monkeypatch.setattr(timezones, "timezone_database_available", lambda: True)
     recovered = (await auth_client.get("/api/health")).json()
     assert recovered["checks"]["timezone_data"]["healthy"]
+    assert recovered["health"] == "healthy"
+
+
+async def test_unhealthy_process_manager_is_degraded_then_recovers(
+    auth_client, running_health_services, app_context
+):
+    srv = "health_test_untracked_server"
+    app_context.state.runtime.update_server_runtime(srv, running=True, pid=123)
+    health = (await auth_client.get("/api/health")).json()
+    assert health["health"] == "degraded"
+    assert not health["checks"]["process_manager"]["healthy"]
+    assert "console unavailable" in health["checks"]["process_manager"]["message"]
+    app_context.state.runtime.update_server_runtime(srv, running=False, pid=None)
+    recovered = (await auth_client.get("/api/health")).json()
+    assert recovered["checks"]["process_manager"]["healthy"]
     assert recovered["health"] == "healthy"

@@ -66,6 +66,15 @@ async def test_failed_start_reaps_child_and_closes_handles(
     server = real_bedrock_server
     observed = {}
     write_pid = process.write_pid_to_file
+    remove_identity = server.process._remove_identity
+    cleanup_calls = 0
+
+    async def counted_remove(run):
+        nonlocal cleanup_calls
+        cleanup_calls += 1
+        await remove_identity(run)
+
+    monkeypatch.setattr(server.process, "_remove_identity", counted_remove)
 
     async def fail_after_pid_write(path, pid):
         observed["child"] = server.process._process
@@ -82,6 +91,9 @@ async def test_failed_start_reaps_child_and_closes_handles(
         )
         with pytest.raises(expected):
             await server.start()
+    assert cleanup_calls == 1
+    assert not server.process.has_pending_work
+    assert not Path(server.get_pid_file_path() + ".json").exists()
     assert observed["child"].returncode is not None
     assert observed["log"].closed
     assert server.process._process is None
@@ -137,3 +149,44 @@ async def test_cancel_during_spawn_retains_child_until_cleanup(
             if child is not None and child.returncode is None:
                 child.kill()
                 await child.wait()
+
+
+@pytest.mark.parametrize("cancel_stop", [False, True])
+async def test_stop_joins_identity_cleanup_before_return(
+    real_bedrock_server, monkeypatch, cancel_stop
+):
+    server = real_bedrock_server
+    await server.start()
+    entered, release = asyncio.Event(), asyncio.Event()
+    remove_identity = server.process._remove_identity
+    calls = 0
+
+    async def delayed_remove(run):
+        nonlocal calls
+        calls += 1
+        entered.set()
+        await release.wait()
+        await remove_identity(run)
+
+    monkeypatch.setattr(server.process, "_remove_identity", delayed_remove)
+    stop = asyncio.create_task(server.stop())
+    try:
+        async with asyncio.timeout(10):
+            await entered.wait()
+            if cancel_stop:
+                stop.cancel()
+            await asyncio.sleep(0)
+            assert not stop.done()
+            release.set()
+            if cancel_stop:
+                with pytest.raises(asyncio.CancelledError):
+                    await stop
+            else:
+                await stop
+        assert calls == 1
+        assert not Path(server.get_pid_file_path()).exists()
+        assert not Path(server.get_pid_file_path() + ".json").exists()
+        assert not server.process.has_pending_work
+    finally:
+        release.set()
+        await asyncio.gather(stop, return_exceptions=True)

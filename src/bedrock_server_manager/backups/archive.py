@@ -188,7 +188,9 @@ def build_payload(
                     info.mode = 0o700 if item.executable else 0o600
                     info.size = item.size
                     opened = time.perf_counter()
-                    offset = spool.offset(source) if spool is not None else None
+                    offset = (
+                        spool.offset(source, item.size) if spool is not None else None
+                    )
                     if offset is not None and spool_reader is not None:
                         spool_reader.seek(offset)
                         open_seconds += time.perf_counter() - opened

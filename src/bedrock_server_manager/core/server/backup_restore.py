@@ -187,7 +187,7 @@ class ServerBackups(UnifiedServerBackups):
         if component is not None and component != filename:
             raise UserInputError("Backup file does not match the selected component.")
         async with self.server.operation_lock:
-            if await self.server.is_running():
+            if await self.server.is_running(force_scan=True):
                 raise BackupRestoreError(
                     "Stop the server before restoring its configuration."
                 )

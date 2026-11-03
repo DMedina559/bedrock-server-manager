@@ -175,30 +175,121 @@ def configure_diagnostics(context: "AppContext") -> Diagnostics:
         observed = current.runtime.servers
         registered = current.servers.servers
         manager = context._bedrock_process_manager
-        return ProcessesDiagnostics(
-            processes=[
+
+        proc_diagnostics: list[ProcessDiagnostic] = []
+        total_cpu = 0.0
+        total_mem = 0.0
+        unhealthy = 0
+        untracked_count = 0
+        command_unavailable = 0
+
+        for name, record in registered.items():
+            rt_info = observed.get(name)
+            is_running = (
+                rt_info.running
+                if rt_info and rt_info.process_observed_at is not None
+                else None
+            )
+            pid = rt_info.pid if rt_info else None
+            cpu = rt_info.cpu_percent if rt_info and is_running else None
+            mem = rt_info.memory_mb if rt_info and is_running else None
+            restarts = manager.restart_attempts.get(name, 0) if manager else 0
+            in_backoff = (
+                time.monotonic() < manager._restart_after.get(name, 0)
+                if manager
+                else False
+            )
+            is_recovered = (
+                rt_info.recovered_untracked if rt_info and is_running else False
+            )
+            command_available = bool(rt_info and rt_info.command_available)
+            exhausted = bool(manager and name in manager.recovery_failures)
+            last_error = manager.monitor_errors.get(name) if manager else None
+            if is_running and not command_available:
+                command_unavailable += 1
+            if is_recovered:
+                untracked_count += 1
+
+            is_healthy = None if is_running is None else True
+            if (
+                exhausted
+                or (rt_info and rt_info.output_error is not None)
+                or last_error
+                or restarts > 0
+                or in_backoff
+                or (is_running and not command_available)
+                or (record.status == "RUNNING" and is_running is False)
+                or (record.status == "STOPPED" and is_running is True)
+            ):
+                is_healthy = False
+            if is_healthy is False:
+                unhealthy += 1
+
+            if is_running and cpu is not None:
+                total_cpu += cpu
+            if is_running and mem is not None:
+                total_mem += mem
+
+            proc_diagnostics.append(
                 ProcessDiagnostic(
                     server_name=name,
                     expected_status=record.status,
-                    observed_running=(
-                        observed[name].running if name in observed else None
+                    observed_running=is_running,
+                    pid=pid,
+                    observed_at=(rt_info.process_observed_at if rt_info else None),
+                    last_error_type=last_error,
+                    cpu_percent=cpu,
+                    memory_mb=mem,
+                    restart_attempts=restarts,
+                    in_restart_backoff=in_backoff,
+                    recovered_untracked=is_recovered,
+                    process_owned=bool(rt_info and rt_info.process_owned),
+                    command_available=command_available,
+                    output_source=rt_info.output_source if rt_info else "unknown",
+                    generation=rt_info.generation if rt_info else None,
+                    ready=bool(rt_info and rt_info.ready),
+                    phase=rt_info.phase if rt_info else None,
+                    output_available=bool(rt_info and rt_info.output_available),
+                    output_error=rt_info.output_error if rt_info else None,
+                    output_queued_bytes=rt_info.output_queued_bytes if rt_info else 0,
+                    output_dropped_bytes=rt_info.output_dropped_bytes if rt_info else 0,
+                    exit_code=rt_info.exit_code if rt_info else None,
+                    exit_reason=rt_info.exit_reason if rt_info else None,
+                    ban_enforcement_available=bool(
+                        rt_info and rt_info.ban_enforcement_available
                     ),
-                    pid=observed[name].pid if name in observed else None,
-                    observed_at=(
-                        manager.monitor_observations.get(name) if manager else None
-                    ),
-                    last_error_type=(
-                        manager.monitor_errors.get(name) if manager else None
-                    ),
+                    ban_error=rt_info.ban_error if rt_info else None,
+                    recovery_exhausted=exhausted,
+                    healthy=is_healthy,
                 )
-                for name, record in list(registered.items())[:100]
-            ],
+            )
+
+        return ProcessesDiagnostics(
+            processes=proc_diagnostics[:100],
             truncated=len(registered) > 100,
             last_monitor_at=manager.monitor_observed_at if manager else None,
             monitor_failures=manager.monitor_failures if manager else None,
             registered=current.servers.count,
             observed_running=sum(value.running for value in observed.values()),
-            observation_available=context._bedrock_process_manager is not None,
+            observation_available=manager is not None
+            or any(
+                record.process_observed_at is not None for record in observed.values()
+            ),
+            total_cpu_percent=round(total_cpu, 2),
+            total_memory_mb=round(total_mem, 2),
+            unhealthy_count=unhealthy,
+            untracked_recoveries_count=untracked_count,
+            command_unavailable_count=command_unavailable,
+            pending_identities=(
+                len(context.player_identity_writer.pending)
+                if getattr(context, "_player_identity_writer", None) is not None
+                else 0
+            ),
+            identity_error=(
+                context.player_identity_writer.last_error
+                if getattr(context, "_player_identity_writer", None) is not None
+                else None
+            ),
         )
 
     async def metrics():

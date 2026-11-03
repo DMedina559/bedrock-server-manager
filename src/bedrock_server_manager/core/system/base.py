@@ -351,32 +351,10 @@ async def delete_path_robustly(path_to_delete: str, item_description: str) -> bo
 class ProcessResourceMonitor:
     """Collect process CPU, memory and uptime observations."""
 
-    _instance: Optional["ProcessResourceMonitor"] = None
-    _lock = threading.Lock()
-
-    def __new__(cls, *args: Any, **kwargs: Any) -> "ProcessResourceMonitor":
-        """Ensure that only one instance of ProcessResourceMonitor is created (Singleton
-        pattern).
-        """
-        if cls._instance is None:
-            with cls._lock:
-                # Double-check locking
-                if cls._instance is None:
-                    cls._instance = super().__new__(cls)
-        return cls._instance
-
     def __init__(self) -> None:
-        """Initialize the resource monitor's state.
-
-        This constructor is called only once for the singleton instance. It sets up
-        the ``_processes`` dictionary to cache psutil.Process objects and an
-        ``_initialized`` flag.
-        """
-        if not hasattr(self, "_initialized"):  # Ensure this runs only once
-            with self._lock:
-                if not hasattr(self, "_initialized"):
-                    self._processes: Dict[int, "psutil.Process"] = {}
-                    self._initialized: bool = True
+        self._processes: Dict[int, "psutil.Process"] = {}
+        self._sample_lock = threading.Lock()
+        self._last_cleanup = 0.0
 
     def _cleanup_stale_processes(self) -> None:
         """Remove cached process objects that are no longer running."""
@@ -391,6 +369,20 @@ class ProcessResourceMonitor:
             del self._processes[pid]
 
     def get_stats(self, process: "psutil.Process") -> Optional[Dict[str, Any]]:
+        if not PSUTIL_AVAILABLE:
+            return self._get_stats(process)
+        if not hasattr(process, "pid"):
+            raise TypeError("Input must be a process object.")
+        with self._sample_lock:
+            if time.monotonic() - self._last_cleanup > 30:
+                self._cleanup_stale_processes()
+                self._last_cleanup = time.monotonic()
+            cached = self._processes.get(process.pid)
+            if cached is not None and cached.create_time() != process.create_time():
+                self._processes.pop(process.pid, None)
+            return self._get_stats(process)
+
+    def _get_stats(self, process: "psutil.Process") -> Optional[Dict[str, Any]]:
         """Return PID, CPU percentage, memory in MiB and formatted uptime.
 
         Return ``None`` for inaccessible processes or an unavailable psutil
@@ -410,9 +402,6 @@ class ProcessResourceMonitor:
             )
 
         pid = process.pid
-
-        # Periodically clean up stale processes
-        self._cleanup_stale_processes()
 
         try:
             # Cache the process object so psutil can calculate the CPU delta internally

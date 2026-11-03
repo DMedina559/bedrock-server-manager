@@ -212,6 +212,27 @@ class ProcessDiagnostic(DiagnosticModel):
     pid: int | None = None
     observed_at: float | None = None
     last_error_type: str | None = None
+    cpu_percent: float | None = None
+    memory_mb: float | None = None
+    restart_attempts: int = 0
+    in_restart_backoff: bool = False
+    recovered_untracked: bool = False
+    process_owned: bool = False
+    command_available: bool = False
+    output_source: Literal["file", "pipe", "unknown"] = "unknown"
+    generation: str | None = None
+    ready: bool = False
+    phase: str | None = None
+    output_available: bool = False
+    output_error: str | None = None
+    output_queued_bytes: int = 0
+    output_dropped_bytes: int = 0
+    exit_code: int | None = None
+    exit_reason: str | None = None
+    ban_enforcement_available: bool = False
+    ban_error: str | None = None
+    recovery_exhausted: bool = False
+    healthy: bool | None = None
 
 
 class ProcessesDiagnostics(DiagnosticModel):
@@ -223,6 +244,13 @@ class ProcessesDiagnostics(DiagnosticModel):
     registered: int
     observed_running: int
     observation_available: bool
+    total_cpu_percent: float = 0.0
+    total_memory_mb: float = 0.0
+    unhealthy_count: int = 0
+    untracked_recoveries_count: int = 0
+    command_unavailable_count: int = 0
+    pending_identities: int = 0
+    identity_error: str | None = None
 
 
 class MetricsDiagnostics(DiagnosticModel):

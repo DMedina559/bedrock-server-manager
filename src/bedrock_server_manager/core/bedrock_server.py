@@ -24,6 +24,7 @@ if TYPE_CHECKING:
     from ..events.operations import OperationService
     from ..events.publisher import EventPublisher
     from ..state.app_state import AppState
+    from .server.runtime import PlayerIdentityWriter
 
 
 class BedrockServer(ServerResources):
@@ -38,6 +39,7 @@ class BedrockServer(ServerResources):
         operations: "OperationService | None" = None,
         state: "AppState | None" = None,
         storage: "Storage | None" = None,
+        identity_writer: "PlayerIdentityWriter | None" = None,
     ) -> None:
         super().__init__(
             server_name,
@@ -47,6 +49,7 @@ class BedrockServer(ServerResources):
             state=state,
             storage=storage,
         )
+        self.identity_writer = identity_writer
         self.configuration = ServerConfiguration(self)
         self.properties = ServerProperties(self)
         self.installation = ServerInstallation(self)
@@ -64,8 +67,8 @@ class BedrockServer(ServerResources):
     async def validate_installation(self) -> bool:
         return await self.installation.validate_installation()
 
-    async def is_running(self) -> bool:
-        return await self.process.is_running()
+    async def is_running(self, *, force_scan: bool = False) -> bool:
+        return await self.process.is_running(force_scan=force_scan)
 
     async def start(self) -> None:
         await self.process.start()
@@ -135,22 +138,32 @@ class BedrockServer(ServerResources):
     async def get_status(self) -> str:
         """Read effective process status without persisting or emitting events."""
         running = await self.is_running()
+        runtime = self._runtime_state.get_server_runtime(self.server_name)
+        if runtime.phase is not None and runtime.generation is not None:
+            return runtime.phase
         stored = self.configuration.snapshot().status
-        if running:
-            return "RUNNING"
-        return "STOPPED" if stored in ("RUNNING", "UNKNOWN") else stored
-
-    async def reconcile_status(self, running: bool) -> str:
-        """Publish an observed process transition from the monitor."""
-        stored = self.configuration.snapshot().status
-        status = (
+        return (
             "RUNNING"
             if running
             else "STOPPED" if stored in ("RUNNING", "UNKNOWN") else stored
         )
-        if status != stored:
+
+    async def reconcile_status(self, running: bool) -> str:
+        """Owned runtime facts never depend on cancellable configuration hooks."""
+        if self.process.run is not None:
+            return self.process.run.phase
+        status = await self.get_status()
+        if status != self.configuration.snapshot().status:
             await self.set_status_in_config(status)
         return status
+
+    async def ensure_stopped(self) -> None:
+        from ..error import ServerRunningError
+
+        if await self.is_running(force_scan=True):
+            raise ServerRunningError(
+                f"Server '{self.server_name}' must be stopped for this operation."
+            )
 
     async def get_summary_info(self) -> SummaryRecord:
         status = await self.get_status()
