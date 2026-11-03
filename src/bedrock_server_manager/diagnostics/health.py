@@ -221,10 +221,6 @@ def _processes(
             "One or more Bedrock server processes are unhealthy or crash-looping.",
             "inspect_logs",
         )
-    if data.last_monitor_at is None and not any(
-        process.observed_at is not None for process in data.processes
-    ):
-        return "unknown", []
     if any(process.last_error_type for process in data.processes):
         return _issue(
             "process_probe_failed",

@@ -679,8 +679,9 @@ class AppContext:
         return self._events
 
     def _cleanup_plugin_capabilities(self, owner: str) -> None:
-        self.diagnostics.remove_owner(f"plugin:{owner}")
-        self.scheduler.tasks.remove_owner(f"plugin:{owner}")
+        key = owner if owner.startswith("plugin:") else f"plugin:{owner}"
+        self.diagnostics.remove_owner(key)
+        self.scheduler.tasks.remove_owner(key)
 
     @property
     def plugin_manager(self) -> "PluginManager":
@@ -711,7 +712,7 @@ class AppContext:
                     else None
                 ),
                 diagnostic_pending=lambda owner: self.diagnostics.owner_pending(
-                    f"plugin:{owner}"
+                    owner if owner.startswith("plugin:") else f"plugin:{owner}"
                 ),
             )
         return self._plugin_manager
