@@ -173,6 +173,16 @@ class Probe(PluginBase):
     )
     assert snapshot.sections[0].owner == "plugin:diagnostic_probe"
     assert snapshot.sections[0].data.values["pending"] == 3
+
+    # Full diagnostic snapshot should not mark active loaded plugin as draining
+    full_snapshot = await app_context.diagnostics.snapshot()
+    plugins_section = next(s for s in full_snapshot.sections if s.name == "plugins")
+    probe_diag = next(
+        p for p in plugins_section.data.plugins if p.name == "diagnostic_probe"
+    )
+    assert probe_diag.draining is False
+    assert plugins_section.status == "ok"
+
     assert await app_context.plugin_manager.unload_plugin_by_name("diagnostic_probe")
     assert not (
         await app_context.diagnostics.snapshot("plugin:diagnostic_probe:queue")
