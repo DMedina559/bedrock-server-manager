@@ -203,6 +203,12 @@ def _processes(
     assert isinstance(data, ProcessesDiagnostics)
     if not data.observation_available:
         return "unknown", []
+    if data.command_unavailable_count > 0:
+        return _issue(
+            "process_command_unavailable",
+            "A surviving Bedrock process has no console command channel; kicks and console commands are unavailable.",
+            "inspect_logs",
+        )
     if data.untracked_recoveries_count > 0:
         return _issue(
             "untracked_processes_recovered",
@@ -215,6 +221,10 @@ def _processes(
             "One or more Bedrock server processes are unhealthy or crash-looping.",
             "inspect_logs",
         )
+    if data.last_monitor_at is None and not any(
+        process.observed_at is not None for process in data.processes
+    ):
+        return "unknown", []
     if any(process.last_error_type for process in data.processes):
         return _issue(
             "process_probe_failed",

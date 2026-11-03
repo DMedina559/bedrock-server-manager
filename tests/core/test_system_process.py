@@ -1,5 +1,6 @@
 """Tests for system process management utilities in bedrock_server_manager.core.system.process."""
 
+import asyncio
 import os
 from pathlib import Path
 from unittest.mock import patch
@@ -10,16 +11,12 @@ import pytest
 from bedrock_server_manager.config import GUARD_VARIABLE
 from bedrock_server_manager.core.system.process import (
     GuardedProcess,
-    clear_process_recovered_untracked,
-    clear_untracked_scan_cache,
+    ProcessRecoveryState,
     find_untracked_server_process,
     get_bedrock_server_pid_file_path,
     get_pid_file_path,
     get_verified_bedrock_process,
-    has_untracked_recovered_processes,
-    is_process_recovered_untracked,
     is_process_running,
-    mark_process_recovered_untracked,
     read_pid_from_file,
     remove_pid_file_if_exists,
     verify_process_identity,
@@ -118,10 +115,8 @@ async def test_guarded_process_and_psutil_edge_cases():
             await is_process_running(1234)
         with pytest.raises(SystemError):
             await verify_process_identity(1234, expected_executable_path="/app")
-        assert (
+        with pytest.raises(SystemError):
             await get_verified_bedrock_process("myserver", "/server/dir", "/config")
-            is None
-        )
 
     with (
         patch("bedrock_server_manager.core.system.process.PSUTIL_AVAILABLE", True),
@@ -142,7 +137,8 @@ async def test_guarded_process_and_psutil_edge_cases():
     with pytest.raises(MissingArgumentError):
         await verify_process_identity(1234)
 
-    assert await get_verified_bedrock_process("", "/server/dir", "/config") is None
+    with pytest.raises(MissingArgumentError):
+        await get_verified_bedrock_process("", "/server/dir", "/config")
     assert await get_verified_bedrock_process("server", "", "/config") is None
     assert await get_verified_bedrock_process("server", "/server/dir", "") is None
 
@@ -249,18 +245,21 @@ def test_find_untracked_server_process_psutil(tmp_path: Path):
                 raise self._cwd
             return self._cwd
 
+        def status(self):
+            return psutil.STATUS_RUNNING
+
         def exe(self):
             if isinstance(self._exe, Exception):
                 raise self._exe
             return self._exe
 
-    # Case 1: CWD match
+    # A partial CWD match must not hide the later fully verified candidate.
     proc1 = MockProc(101, exe_name, cwd_val=server_dir, exe_val="/some/other/exe")
     with (
         patch("bedrock_server_manager.core.system.process.PSUTIL_AVAILABLE", True),
         patch("psutil.process_iter", return_value=[proc1]),
     ):
-        assert find_untracked_server_process(server_dir) == 101
+        assert find_untracked_server_process(server_dir) is None
 
     # Case 2: CWD raises AccessDenied, Exe matches
     proc2 = MockProc(
@@ -273,7 +272,15 @@ def test_find_untracked_server_process_psutil(tmp_path: Path):
         patch("bedrock_server_manager.core.system.process.PSUTIL_AVAILABLE", True),
         patch("psutil.process_iter", return_value=[proc2]),
     ):
-        assert find_untracked_server_process(server_dir) == 102
+        assert find_untracked_server_process(server_dir) is None
+
+    valid = MockProc(105, exe_name, cwd_val=server_dir, exe_val=exe_path)
+    with patch("psutil.process_iter", return_value=[proc1, proc2, valid]):
+        assert find_untracked_server_process(server_dir) == 105
+    duplicate = MockProc(106, exe_name, cwd_val=server_dir, exe_val=exe_path)
+    with patch("psutil.process_iter", return_value=[valid, duplicate]):
+        with pytest.raises(ServerProcessError, match="Multiple Bedrock"):
+            find_untracked_server_process(server_dir)
 
     # Case 3: Name does not match or oneshot raises
     proc3 = MockProc(103, "other_proc.exe")
@@ -285,90 +292,132 @@ def test_find_untracked_server_process_psutil(tmp_path: Path):
         assert find_untracked_server_process(server_dir) is None
 
 
-async def test_untracked_scan_throttling(tmp_path: Path):
-    """Test that untracked process scans are throttled when a server is stopped."""
-    server_dir = str(tmp_path / "server")
-    config_dir = str(tmp_path / "config")
-    os.makedirs(server_dir, exist_ok=True)
-    os.makedirs(
-        os.path.join(config_dir, "runtime", "servers", "test_srv"), exist_ok=True
+async def test_untracked_discovery_concurrency_and_cache(tmp_path, monkeypatch):
+    from bedrock_server_manager.core.system import process as module
+
+    server_dir = tmp_path / "server"
+    config_dir = tmp_path / "config"
+    server_dir.mkdir()
+    config_dir.mkdir()
+    state = ProcessRecoveryState()
+    original_thread = module.run_in_thread
+    started, release = asyncio.Event(), asyncio.Event()
+    scans = 0
+
+    def discover(_):
+        nonlocal scans
+        scans += 1
+        return psutil.Process().pid
+
+    async def pause(fn, *args):
+        if fn is module.find_untracked_server_process:
+            started.set()
+            await release.wait()
+        return await original_thread(fn, *args)
+
+    monkeypatch.setattr(module, "find_untracked_server_process", discover)
+    monkeypatch.setattr(module, "run_in_thread", pause)
+
+    async def verify(*args, **kwargs):
+        return None
+
+    monkeypatch.setattr(module, "verify_process_identity", verify)
+
+    async def probe(**kwargs):
+        return await get_verified_bedrock_process(
+            "test", str(server_dir), str(config_dir), recovery_state=state, **kwargs
+        )
+
+    first = asyncio.create_task(probe())
+    await asyncio.wait_for(started.wait(), 5)
+    second = asyncio.create_task(probe())
+    await asyncio.sleep(0)
+    assert not second.done()
+    second.cancel()
+    await asyncio.gather(second, return_exceptions=True)
+    third = asyncio.create_task(probe())
+    release.set()
+    one, three = await asyncio.gather(first, third)
+    assert one.pid == three.pid == psutil.Process().pid
+    assert scans == 1
+    assert state.recovered_pids
+
+    # Only a completed negative scan is cached; lifecycle calls force a fresh scan.
+    pid_file = await get_bedrock_server_pid_file_path("test", str(config_dir))
+    os.remove(pid_file)
+    monkeypatch.setattr(module, "find_untracked_server_process", lambda _: None)
+    assert await probe() is None
+    assert state.last_negative_scan
+    monkeypatch.setattr(module, "find_untracked_server_process", discover)
+    assert await probe() is None
+    assert (await probe(force_scan=True)).pid == psutil.Process().pid
+    assert scans == 2
+
+
+async def test_recovery_verification_and_write_failures_publish_nothing(
+    tmp_path, monkeypatch
+):
+    from bedrock_server_manager.core.system import process as module
+    from bedrock_server_manager.error import FileOperationError
+
+    state = ProcessRecoveryState()
+    monkeypatch.setattr(
+        module, "find_untracked_server_process", lambda _: psutil.Process().pid
     )
 
-    clear_untracked_scan_cache()
+    async def reject(*args, **kwargs):
+        raise ServerProcessError("mismatch")
 
-    with patch(
-        "bedrock_server_manager.core.system.process.find_untracked_server_process",
-        return_value=None,
-    ) as mock_scan:
-        res1 = await get_verified_bedrock_process("test_srv", server_dir, config_dir)
-        assert res1 is None
-        assert mock_scan.call_count == 1
-
-        # Second call immediately after should be throttled
-        res2 = await get_verified_bedrock_process("test_srv", server_dir, config_dir)
-        assert res2 is None
-        assert mock_scan.call_count == 1
-
-        # Clearing cache allows scanning again
-        clear_untracked_scan_cache()
-        res3 = await get_verified_bedrock_process("test_srv", server_dir, config_dir)
-        assert res3 is None
-        assert mock_scan.call_count == 2
-
-        # Disabled recover_untracked skips scan entirely
-        clear_untracked_scan_cache()
-        res4 = await get_verified_bedrock_process(
-            "test_srv", server_dir, config_dir, recover_untracked=False
+    monkeypatch.setattr(module, "verify_process_identity", reject)
+    with pytest.raises(ServerProcessError, match="mismatch"):
+        await get_verified_bedrock_process(
+            "test", str(tmp_path), str(tmp_path), recovery_state=state
         )
-        assert res4 is None
-        assert mock_scan.call_count == 2
+    pid_file = tmp_path / "runtime" / "servers" / "test" / "bedrock_test.pid"
+    assert not pid_file.exists()
+    assert not state.recovered_pids
+
+    async def verify(*args, **kwargs):
+        return None
+
+    async def fail_write(*args):
+        raise FileOperationError("disk full")
+
+    monkeypatch.setattr(module, "verify_process_identity", verify)
+    monkeypatch.setattr(module, "write_pid_to_file", fail_write)
+    with pytest.raises(FileOperationError, match="disk full"):
+        await get_verified_bedrock_process(
+            "test", str(tmp_path), str(tmp_path), recovery_state=state
+        )
+    assert not state.recovered_pids
 
 
-def test_untracked_process_recovery_flags():
-    """Test setting, checking, and clearing untracked process recovery tracking."""
-    srv = "test_server_recovery_flag"
-    clear_process_recovered_untracked(srv)
-    assert not is_process_recovered_untracked(srv)
+async def test_recovery_cache_is_scoped_and_can_be_disabled(tmp_path, monkeypatch):
+    from bedrock_server_manager.core.system import process as module
 
-    mark_process_recovered_untracked(srv)
-    assert is_process_recovered_untracked(srv)
-    assert has_untracked_recovered_processes()
+    state = ProcessRecoveryState()
+    with patch.object(
+        module, "find_untracked_server_process", return_value=None
+    ) as scan:
 
-    clear_process_recovered_untracked(srv)
-    assert not is_process_recovered_untracked(srv)
+        async def probe(root, **kwargs):
+            root.mkdir(exist_ok=True)
+            return await get_verified_bedrock_process(
+                "same_name", str(root), str(root), recovery_state=state, **kwargs
+            )
 
-
-async def test_get_verified_bedrock_process_marks_recovered(tmp_path: Path):
-    """Test that discovering an untracked process marks it as recovered_untracked."""
-    srv = "recovered_srv"
-    server_dir = str(tmp_path / "server")
-    config_dir = str(tmp_path / "config")
-    os.makedirs(server_dir, exist_ok=True)
-    os.makedirs(os.path.join(config_dir, "runtime", "servers", srv), exist_ok=True)
-
-    clear_untracked_scan_cache()
-    clear_process_recovered_untracked(srv)
-
-    fake_proc = psutil.Process()
-    with (
-        patch(
-            "bedrock_server_manager.core.system.process.find_untracked_server_process",
-            return_value=fake_proc.pid,
-        ),
-        patch(
-            "bedrock_server_manager.core.system.process.verify_process_identity",
-            return_value=True,
-        ),
-    ):
-        proc = await get_verified_bedrock_process(srv, server_dir, config_dir)
-        assert proc is not None
-        assert proc.pid == fake_proc.pid
-        assert is_process_recovered_untracked(srv)
-        assert has_untracked_recovered_processes()
-
-        # PID file should have been re-created
-        pid_file = await get_bedrock_server_pid_file_path(srv, config_dir)
-        assert os.path.exists(pid_file)
-        assert await read_pid_from_file(pid_file) == fake_proc.pid
-
-    clear_process_recovered_untracked(srv)
+        assert await probe(tmp_path / "one") is None
+        assert await probe(tmp_path / "one") is None
+        assert scan.call_count == 1
+        assert await probe(tmp_path / "two") is None
+        assert scan.call_count == 2
+        assert await probe(tmp_path / "three", recover_untracked=False) is None
+        assert scan.call_count == 2
+        other_state = ProcessRecoveryState()
+        await get_verified_bedrock_process(
+            "same_name",
+            str(tmp_path / "one"),
+            str(tmp_path / "one"),
+            recovery_state=other_state,
+        )
+        assert scan.call_count == 3

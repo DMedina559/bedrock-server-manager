@@ -245,7 +245,7 @@ async def start_server(
     """Start an offline server under its lock, dispatching hooks only when needed."""
     server = app_context.get_server(request.server_name)
     async with server.operation_lock:
-        if await server.is_running():
+        if await server.is_running(force_scan=True):
             return StartServerResponse(
                 server_name=request.server_name,
                 outcome="already_running",
@@ -289,8 +289,9 @@ async def stop_server(
     async with server.operation_lock:
         stopped = False
         try:
-            if not await server.is_running():
+            if not await server.is_running(force_scan=True):
                 await server.set_status_in_config("STOPPED")
+                await app_context.bedrock_process_manager.remove_server(server_name)
                 stopped = True
                 return StopServerResponse(
                     server_name=server_name,
@@ -337,7 +338,7 @@ async def restart_server(
     server_name = request.server_name
     server = app_context.get_server(server_name)
     async with server.operation_lock:
-        was_running = await server.is_running()
+        was_running = await server.is_running(force_scan=True)
         if was_running:
             if request.send_message:
                 try:
@@ -447,11 +448,11 @@ async def delete_server_data(
             server_name,
             stop_if_running,
         )
-        if not stop_if_running and await server.is_running():
+        if not stop_if_running and await server.is_running(force_scan=True):
             raise ServerRunningError(
                 f"Server '{server_name}' must be stopped before deletion."
             )
-        if stop_if_running and await server.is_running():
+        if stop_if_running and await server.is_running(force_scan=True):
             logger.debug(
                 "Server '%s' is running. Stopping before deletion...", server_name
             )
@@ -552,7 +553,7 @@ async def server_lifecycle_manager(
         return
 
     try:
-        if await server.is_running():
+        if await server.is_running(force_scan=True):
             logger.debug("Server '%s' is running. Stopping...", server_name)
             await stop_server(
                 StopServerRequest(server_name=server_name), app_context=app_context

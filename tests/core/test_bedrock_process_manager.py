@@ -38,6 +38,8 @@ async def test_process_manager_add_remove_error_status_and_restart_limits(
     manager.restart_attempts[real_bedrock_server.server_name] = 1
     await manager._try_restart_server(real_bedrock_server)
     assert real_bedrock_server.server_name not in manager.servers
+    assert real_bedrock_server.server_name in manager.recovery_failures
+    assert not manager.check_health()
     assert not await real_bedrock_server.is_running()
     await app_context.reload()
     assert await real_bedrock_server.get_status() == "ERROR"
@@ -144,21 +146,12 @@ async def test_monitor_restarts_crashed_child_and_isolates_failures(
 
 async def test_process_manager_check_health(app_context):
     """Test health checking logic of BedrockProcessManager."""
-    from bedrock_server_manager.core.system.process import (
-        clear_process_recovered_untracked,
-        mark_process_recovered_untracked,
-    )
-
     manager = app_context.bedrock_process_manager
     assert manager.check_health() is True
-
-    # Untracked recovered process marks it unhealthy
     srv = "untracked_recovered_server"
-    mark_process_recovered_untracked(srv)
-    try:
-        assert manager.check_health() is False
-    finally:
-        clear_process_recovered_untracked(srv)
+    app_context.state.runtime.update_server_runtime(srv, running=True, pid=123)
+    assert manager.check_health() is False
+    app_context.state.runtime.update_server_runtime(srv, running=False, pid=None)
     assert manager.check_health() is True
 
     # Exceeded restart retries marks it unhealthy
@@ -182,3 +175,19 @@ async def test_process_manager_check_health(app_context):
         manager._shutdown_event.clear()
         manager.monitoring_task = None
     assert manager.check_health() is True
+
+
+async def test_successful_recovery_clears_health_after_stable_running(
+    real_bedrock_server, app_context
+):
+    import time
+
+    server = real_bedrock_server
+    await server.start()
+    manager = app_context.bedrock_process_manager
+    manager.restart_attempts[server.server_name] = 1
+    manager._healthy_since[server.server_name] = time.monotonic() - 60
+    assert not manager.check_health()
+    await manager._observe_server(server.server_name, server, scan_players=False)
+    assert server.server_name not in manager.restart_attempts
+    assert manager.check_health()

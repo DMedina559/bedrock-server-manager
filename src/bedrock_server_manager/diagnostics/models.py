@@ -217,7 +217,11 @@ class ProcessDiagnostic(DiagnosticModel):
     restart_attempts: int = 0
     in_restart_backoff: bool = False
     recovered_untracked: bool = False
-    healthy: bool = True
+    process_owned: bool = False
+    command_available: bool = False
+    output_source: Literal["file", "unknown"] = "unknown"
+    recovery_exhausted: bool = False
+    healthy: bool | None = None
 
 
 class ProcessesDiagnostics(DiagnosticModel):
@@ -233,6 +237,7 @@ class ProcessesDiagnostics(DiagnosticModel):
     total_memory_mb: float = 0.0
     unhealthy_count: int = 0
     untracked_recoveries_count: int = 0
+    command_unavailable_count: int = 0
 
 
 class MetricsDiagnostics(DiagnosticModel):

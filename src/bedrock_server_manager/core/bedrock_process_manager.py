@@ -19,7 +19,7 @@ if TYPE_CHECKING:
     from ..config.settings import Settings
     from ..db.storage import Storage
     from ..events.publisher import EventPublisher
-    from ..state.models import BanItem
+    from ..state.models import BanItem, RuntimeState
     from .bedrock_server import BedrockServer
 
 
@@ -39,6 +39,7 @@ class BedrockProcessManager:
         stop_server: Callable[[str], Awaitable[None]] | None = None,
         get_bans: Callable[[str], Awaitable[list["BanItem"]]] | None = None,
         record_failure: Callable[[str, Exception, float], None] | None = None,
+        runtime: "RuntimeState | None" = None,
     ):
         """Initialize the BedrockProcessManager with explicit dependencies."""
         self.settings = settings
@@ -48,6 +49,9 @@ class BedrockProcessManager:
         self.stop_server = stop_server
         self.get_bans = get_bans
         self.record_failure = record_failure
+        self.runtime = runtime
+        self.recovery_failures: set[str] = set()
+        self._healthy_since: dict[str, float] = {}
         self.monitor_observed_at: float | None = None
         self.monitor_failures = 0
         self.monitor_observations: dict[str, float] = {}
@@ -90,13 +94,26 @@ class BedrockProcessManager:
             return True
         if self.monitoring_task is not None and self.monitoring_task.done():
             return False
-        from .system.process import has_untracked_recovered_processes
-
-        if has_untracked_recovered_processes():
+        if self.recovery_failures or self.monitor_errors:
             return False
-        max_retries = self.settings.get("monitoring.max_retries", 3)
+        if (
+            self.monitor_observed_at is not None
+            and time.time() - self.monitor_observed_at
+            > max(30, self.settings.get("monitoring.process_interval_sec", 10) * 3)
+        ):
+            return False
+        runtimes = (
+            self.runtime.servers.values()
+            if self.runtime is not None
+            else (
+                server._runtime_state.get_server_runtime(name)
+                for name, server in self.servers.items()
+            )
+        )
+        if any(record.running and not record.command_available for record in runtimes):
+            return False
         for attempts in self.restart_attempts.values():
-            if attempts > max_retries:
+            if attempts > 0:
                 return False
         return True
 
@@ -116,6 +133,7 @@ class BedrockProcessManager:
             "Adding server '%s' to process manager for monitoring.", server.server_name
         )
         self.servers[server.server_name] = server
+        self.recovery_failures.discard(server.server_name)
 
     async def remove_server(self, server_name: str):
         """Remove a server from the process manager.
@@ -125,6 +143,8 @@ class BedrockProcessManager:
 
         :param server_name: The name of the server to remove.
         """
+        self.recovery_failures.discard(server_name)
+        self._healthy_since.pop(server_name, None)
         if server_name in self.servers:
             self.logger.debug("Removing server '%s' from process manager.", server_name)
             del self.servers[server_name]
@@ -220,6 +240,7 @@ class BedrockProcessManager:
             )
             await self.write_error_status(server.server_name)
             await self.remove_server(server.server_name)  # Stop monitoring
+            self.recovery_failures.add(server.server_name)
             return
 
         self.logger.info(
@@ -230,6 +251,7 @@ class BedrockProcessManager:
         )
         try:
             await server.start()
+            self._restart_after.pop(server.server_name, None)
             self.logger.debug("Server '%s' restarted successfully.", server.server_name)
         except Exception as e:
             log_operation_error(
@@ -377,6 +399,7 @@ class BedrockProcessManager:
             return
 
         if not is_running:
+            self._healthy_since.pop(server_name, None)
             if not server.process.intentionally_stopped:
                 if time.monotonic() < self._restart_after.get(server_name, 0):
                     return
@@ -401,7 +424,15 @@ class BedrockProcessManager:
                     server.server_name,
                 )
                 await self.remove_server(server_name)
-        elif scan_players:
+        else:
+            stable_since = self._healthy_since.setdefault(server_name, time.monotonic())
+            if time.monotonic() - stable_since >= max(
+                30, self.settings.get("monitoring.process_interval_sec", 10) * 3
+            ):
+                self.restart_attempts.pop(server_name, None)
+                self._restart_after.pop(server_name, None)
+
+        if is_running and scan_players:
             observed = False
             try:
                 previous_player_count = server.player_count

@@ -163,7 +163,7 @@ async def get_application_health(
                 else True
             ),
             "Server processes and monitoring healthy",
-            "Server processes or monitoring unhealthy (recovered or crashed process detected)",
+            "Server processes or monitoring unhealthy (console unavailable, recovery failure, or stale monitoring)",
         ),
     }
     checks = {

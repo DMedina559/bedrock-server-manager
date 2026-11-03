@@ -273,11 +273,6 @@ def test_retry_classification_distinguishes_locks_from_invalid_sql():
 
 @pytest.mark.asyncio
 async def test_processes_diagnostics_metrics_and_unhealthy_tracking(app_context):
-    from bedrock_server_manager.core.system.process import (
-        clear_process_recovered_untracked,
-        mark_process_recovered_untracked,
-    )
-
     await app_context.server_service.register_or_update_server(
         "proc_diag_test",
         installed_version="1.21.0.0",
@@ -285,33 +280,32 @@ async def test_processes_diagnostics_metrics_and_unhealthy_tracking(app_context)
         target_version="LATEST",
     )
     app_context.state.runtime.update_server_runtime(
-        "proc_diag_test", running=True, pid=12345, cpu_percent=12.5, memory_mb=256.0
+        "proc_diag_test",
+        running=True,
+        pid=12345,
+        cpu_percent=12.5,
+        memory_mb=256.0,
+        recovered_untracked=True,
+        process_observed_at=time.time(),
     )
-    mark_process_recovered_untracked("proc_diag_test")
-    try:
-        snapshot = await app_context.diagnostics.snapshot("processes")
-        assert len(snapshot.sections) == 1
-        assert snapshot.sections[0].status == "degraded"
-        assert any(
-            issue.code == "untracked_processes_recovered"
-            for issue in snapshot.sections[0].issues
-        )
-        proc_diag = snapshot.sections[0].data
-        assert proc_diag.total_cpu_percent == 12.5
-        assert proc_diag.total_memory_mb == 256.0
-        assert proc_diag.untracked_recoveries_count == 1
-        assert proc_diag.unhealthy_count >= 1
+    snapshot = await app_context.diagnostics.snapshot("processes")
+    assert len(snapshot.sections) == 1
+    assert snapshot.sections[0].status == "degraded"
+    assert any(
+        issue.code == "process_command_unavailable"
+        for issue in snapshot.sections[0].issues
+    )
+    proc_diag = snapshot.sections[0].data
+    assert proc_diag.total_cpu_percent == 12.5
+    assert proc_diag.total_memory_mb == 256.0
+    assert proc_diag.untracked_recoveries_count == 1
+    assert proc_diag.unhealthy_count >= 1
 
-        entry = next(
-            p for p in proc_diag.processes if p.server_name == "proc_diag_test"
-        )
-        assert entry.cpu_percent == 12.5
-        assert entry.memory_mb == 256.0
-        assert entry.recovered_untracked is True
-        assert entry.healthy is False
-    finally:
-        clear_process_recovered_untracked("proc_diag_test")
-
+    entry = next(p for p in proc_diag.processes if p.server_name == "proc_diag_test")
+    assert entry.cpu_percent == 12.5
+    assert entry.memory_mb == 256.0
+    assert entry.recovered_untracked is True
+    assert entry.healthy is False
     # When recovered process flag is cleared and process matches expected stopped state
     app_context.state.runtime.update_server_runtime(
         "proc_diag_test", running=False, pid=None
@@ -324,3 +318,41 @@ async def test_processes_diagnostics_metrics_and_unhealthy_tracking(app_context)
     )
     clean_snapshot = await app_context.diagnostics.snapshot("processes")
     assert clean_snapshot.sections[0].status == "ok"
+
+
+async def test_process_totals_include_rows_beyond_detail_limit(app_context):
+    from bedrock_server_manager.state.models import ServerConfigState
+
+    for index in range(101):
+        name = f"summary_{index:03}"
+        app_context.state.servers.set(
+            ServerConfigState(server_name=name, status="RUNNING")
+        )
+        app_context.state.runtime.update_server_runtime(
+            name,
+            running=True,
+            pid=index + 1,
+            command_available=True,
+            process_owned=True,
+            output_source="file",
+            process_observed_at=time.time(),
+            cpu_percent=1,
+            memory_mb=2,
+        )
+    # The unhealthy survivor lies beyond the 100 detailed entries.
+    app_context.state.runtime.update_server_runtime(
+        "summary_100",
+        command_available=False,
+        process_owned=False,
+        recovered_untracked=True,
+        output_source="unknown",
+    )
+    snapshot = await app_context.diagnostics.snapshot("processes")
+    data = snapshot.sections[0].data
+    assert len(data.processes) == 100 and data.truncated
+    assert data.total_cpu_percent == 101
+    assert data.total_memory_mb == 202
+    assert data.untracked_recoveries_count == 1
+    assert data.command_unavailable_count == 1
+    assert data.unhealthy_count == 1
+    assert snapshot.sections[0].status == "degraded"

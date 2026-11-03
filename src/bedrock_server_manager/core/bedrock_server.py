@@ -64,8 +64,8 @@ class BedrockServer(ServerResources):
     async def validate_installation(self) -> bool:
         return await self.installation.validate_installation()
 
-    async def is_running(self) -> bool:
-        return await self.process.is_running()
+    async def is_running(self, *, force_scan: bool = False) -> bool:
+        return await self.process.is_running(force_scan=force_scan)
 
     async def start(self) -> None:
         await self.process.start()

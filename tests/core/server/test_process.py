@@ -47,12 +47,12 @@ async def test_stale_probe_cannot_replace_newly_started_child(
     original_write_pid = module.system_process.write_pid_to_file
     probe_task = None
 
-    async def verify(*args):
+    async def verify(*args, **kwargs):
         if asyncio.current_task() is probe_task:
             entered.set()
             await release.wait()
             return None
-        return await original_verify(*args)
+        return await original_verify(*args, **kwargs)
 
     async def write_pid(path, pid):
         release.set()
@@ -134,3 +134,70 @@ async def test_recovered_process_exit_polling_times_out(real_bedrock_server):
     with pytest.raises(TimeoutError):
         await real_bedrock_server.process._wait_for_exit(recovered, 0.01)
     recovered.wait.assert_not_called()
+
+
+@pytest.mark.parametrize("missing_pid", [False, True])
+async def test_recovered_survivor_stays_outside_monitoring(
+    real_bedrock_server, app_context, missing_pid
+):
+    from pathlib import Path
+
+    from bedrock_server_manager.error import SendCommandError
+
+    server = real_bedrock_server
+    await server.start()
+    child = server.process._process
+    manager = app_context.bedrock_process_manager
+    await manager.remove_server(server.server_name)
+    server.process._process = None  # Simulate loss of handles across BSM restart.
+    if missing_pid:
+        Path(server.get_pid_file_path()).unlink()
+    try:
+        assert await server.is_running()
+        assert server.server_name not in manager.servers
+        runtime = app_context.state.runtime.get_server_runtime(server.server_name)
+        assert runtime.running and runtime.pid == child.pid
+        assert runtime.recovered_untracked is missing_pid
+        assert not runtime.process_owned
+        assert not runtime.command_available
+        assert runtime.output_source == "unknown"
+        assert not manager.check_health()
+        with pytest.raises(SendCommandError):
+            await server.send_command("list")
+        result = await app_context.api.server.start({"server_name": server.server_name})
+        assert result.outcome == "already_running"
+        assert server.server_name not in manager.servers
+    finally:
+        await server.stop()
+        await asyncio.wait_for(child.wait(), 5)
+    assert (
+        app_context.state.runtime.get_server_runtime(
+            server.server_name
+        ).command_available
+        is False
+    )
+
+
+async def test_start_bypasses_negative_discovery_cache(
+    real_bedrock_server, app_context
+):
+    from pathlib import Path
+
+    from bedrock_server_manager.core.bedrock_server import BedrockServer
+
+    owner = real_bedrock_server
+    observer = BedrockServer(
+        owner.server_name,
+        settings=owner.settings,
+        events=owner.events,
+        state=owner.state,
+        storage=owner.storage,
+    )
+    assert not await observer.is_running()
+    assert observer.process._recovery_state.last_negative_scan
+    await owner.start()
+    Path(owner.get_pid_file_path()).unlink()
+    with pytest.raises(ServerStartError, match="already running"):
+        await observer.start()
+    assert observer.process._process.pid == owner.process._process.pid
+    assert observer.process._recovery_state.recovered_pids

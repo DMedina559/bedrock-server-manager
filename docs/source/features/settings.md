@@ -56,8 +56,17 @@ Changing a `paths.*` setting does not move existing files on disk. Plan and back
 | `monitoring.player_interval_sec` | `10` | `> 0` | Interval in seconds between player log scans on running servers |
 | `monitoring.app_metrics_interval_sec` | `3` | `1–3600` | Sampling interval in seconds for host and BSM application resource metrics |
 | `monitoring.bedrock_metrics_interval_sec` | `3` | `1–3600` | Sampling interval in seconds for per-server Bedrock process metrics |
-| `monitoring.untracked_process_interval_sec` | `5` | `1–3600` | Minimum seconds between process table scans when verifying stopped servers |
+| `monitoring.untracked_process_interval_sec` | `5` | `1–3600` | Minimum seconds between completed negative process table scans; start/stop checks bypass this cache |
 | `monitoring.recover_untracked_processes` | `true` | Boolean | Automatically scan and recover orphaned Bedrock server processes if the PID file is missing |
+
+Process recovery verifies both the executable and working directory before rebuilding
+its PID file. Multiple matching processes require manual investigation. Recovered
+survivors are **not added to lifecycle monitoring or automatic restart**. BSM can
+observe their PID/resources and terminate them, but cannot recover their original
+console input pipe. Diagnostics report console commands and kicks as unavailable
+until the server is stopped and started by BSM. BSM continues starting BDS with
+direct-to-file output; recovery does not attach a new output pipe. Recovery state and scan caches are scoped
+to each server handle and configuration directory.
 
 ### Web and proxy settings
 

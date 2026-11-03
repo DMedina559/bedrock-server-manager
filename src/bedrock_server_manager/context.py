@@ -901,6 +901,7 @@ class AppContext:
                 settings=self.settings,
                 storage=self.storage,
                 server_provider=self.get_server,
+                runtime=self.state.runtime,
                 events=self.events,
                 stop_server=self._stop_monitored_server,
                 get_bans=self._get_monitored_bans,

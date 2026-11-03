@@ -4,6 +4,7 @@ import asyncio
 import logging
 import platform
 import subprocess
+import time
 from io import BufferedWriter
 from typing import TYPE_CHECKING, Any, Dict, Optional, Union
 
@@ -43,6 +44,7 @@ class ServerProcess:
             None
         )
         self.intentionally_stopped = True
+        self._recovery_state = system_process.ProcessRecoveryState()
         self._log_file_handle: BufferedWriter | None = None
         self._resource_monitor = system_base.ProcessResourceMonitor()
 
@@ -51,7 +53,7 @@ class ServerProcess:
     failure_count: int
     _log_file_handle: BufferedWriter | None
 
-    async def is_running(self) -> bool:
+    async def is_running(self, *, force_scan: bool = False) -> bool:
         """Check if the Bedrock server process is currently running and verified
         asynchronously.
         """
@@ -63,9 +65,15 @@ class ServerProcess:
             if process.returncode is None:
                 return self._publish_running(True)
         elif isinstance(process, system_process.psutil.Process):
-            running = await run_in_thread(process.is_running)
+            try:
+                running = await run_in_thread(
+                    lambda: process.is_running()
+                    and process.status() != system_process.psutil.STATUS_ZOMBIE
+                )
+            except system_process.psutil.NoSuchProcess:
+                running = False
             if self._process is not process:
-                return await self.is_running()
+                return await self.is_running(force_scan=force_scan)
             if running:
                 return self._publish_running(True)
         # Probes do not hold operation_lock: discard results from before a
@@ -83,9 +91,11 @@ class ServerProcess:
             self.server.paths.app_config_dir,
             scan_interval_sec=float(scan_interval),
             recover_untracked=bool(recover),
+            recovery_state=self._recovery_state,
+            force_scan=force_scan,
         )
         if self._process is not observed_process:
-            return await self.is_running()
+            return await self.is_running(force_scan=force_scan)
         self._process = verified_process
         return self._publish_running(verified_process is not None)
 
@@ -125,7 +135,7 @@ class ServerProcess:
                 raise ServerStartError(
                     f"Cannot start server '{self.server.server_name}': Not installed or invalid installation at {self.server.paths.server_dir} (is_installed check failed or method missing)."
                 )
-            if await self.is_running():
+            if await self.is_running(force_scan=True):
                 self.logger.debug(
                     "Attempted to start server '%s' but it is already running.",
                     self.server.server_name,
@@ -194,9 +204,7 @@ class ServerProcess:
                 await system_process.write_pid_to_file(
                     pid_file_path, started_process.pid
                 )
-                system_process.clear_process_recovered_untracked(
-                    self.server.server_name
-                )
+                self._recovery_state.clear()
                 self._publish_running(True)
                 self.intentionally_stopped = False
                 setattr(self.server, "players", [])
@@ -290,7 +298,7 @@ class ServerProcess:
     async def stop(self) -> None:
         """Publish stopped state only after graceful or forced exit is confirmed."""
         async with self.server.operation_lock:
-            if not await self.is_running():
+            if not await self.is_running(force_scan=True):
                 self.intentionally_stopped = True
                 await self.server.set_status_in_config("STOPPED")
                 return
@@ -367,26 +375,16 @@ class ServerProcess:
         Return ``None`` when no verified running process is available.
         """
         try:
-            scan_interval = self.server.settings.get(
-                "monitoring.untracked_process_interval_sec", 5
-            )
-            recover = self.server.settings.get(
-                "monitoring.recover_untracked_processes", True
-            )
-            process_obj = await system_process.get_verified_bedrock_process(
-                self.server.server_name,
-                self.server.paths.server_dir,
-                self.server.paths.app_config_dir,
-                scan_interval_sec=float(scan_interval),
-                recover_untracked=bool(recover),
-            )
-            if process_obj is None:
-                self.logger.debug(
-                    "No verified process found for server '%s' to get info.",
-                    self.server.server_name,
-                )
-                await self.is_running()
+            if not await self.is_running():
                 return None
+            process = self._process
+            if process is None:
+                return None
+            process_obj = (
+                process
+                if isinstance(process, system_process.psutil.Process)
+                else system_process.psutil.Process(process.pid)
+            )
             data = await run_in_thread(self._resource_monitor.get_stats, process_obj)
             if data is None:
                 raise DependencyUnavailableError("Process statistics are unavailable.")
@@ -415,16 +413,28 @@ class ServerProcess:
         if not isinstance(pid, int) or isinstance(pid, bool) or pid <= 0:
             pid = None
         if not running:
-            system_process.clear_process_recovered_untracked(self.server.server_name)
-        recovered = (
-            system_process.is_process_recovered_untracked(self.server.server_name)
-            if running
-            else False
+            self._recovery_state.recovered_pids.clear()
+        key = self._recovery_state.key(
+            self.server.server_name,
+            self.server.paths.server_dir,
+            self.server.paths.app_config_dir,
+        )
+        owned = running and isinstance(process, asyncio.subprocess.Process)
+        command_available = (
+            running
+            and isinstance(process, asyncio.subprocess.Process)
+            and process.stdin is not None
+            and not process.stdin.is_closing()
         )
         self.server._runtime_state.update_server_runtime(
             self.server.server_name,
             running=running,
             pid=pid,
-            recovered_untracked=recovered,
+            recovered_untracked=running
+            and self._recovery_state.recovered_pids.get(key) == pid,
+            process_owned=owned,
+            command_available=command_available,
+            output_source="file" if owned else "unknown",
+            process_observed_at=time.time(),
         )
         return running

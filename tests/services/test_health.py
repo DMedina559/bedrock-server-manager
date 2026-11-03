@@ -138,23 +138,15 @@ async def test_unavailable_timezone_data_is_degraded_then_recovers(
 
 
 async def test_unhealthy_process_manager_is_degraded_then_recovers(
-    auth_client, running_health_services
+    auth_client, running_health_services, app_context
 ):
-    from bedrock_server_manager.core.system.process import (
-        clear_process_recovered_untracked,
-        mark_process_recovered_untracked,
-    )
-
     srv = "health_test_untracked_server"
-    mark_process_recovered_untracked(srv)
-    try:
-        health = (await auth_client.get("/api/health")).json()
-        assert health["health"] == "degraded"
-        assert not health["checks"]["process_manager"]["healthy"]
-        assert "unhealthy" in health["checks"]["process_manager"]["message"].lower()
-    finally:
-        clear_process_recovered_untracked(srv)
-
+    app_context.state.runtime.update_server_runtime(srv, running=True, pid=123)
+    health = (await auth_client.get("/api/health")).json()
+    assert health["health"] == "degraded"
+    assert not health["checks"]["process_manager"]["healthy"]
+    assert "console unavailable" in health["checks"]["process_manager"]["message"]
+    app_context.state.runtime.update_server_runtime(srv, running=False, pid=None)
     recovered = (await auth_client.get("/api/health")).json()
     assert recovered["checks"]["process_manager"]["healthy"]
     assert recovered["health"] == "healthy"
