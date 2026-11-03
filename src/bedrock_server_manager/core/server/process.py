@@ -375,6 +375,11 @@ class ServerProcess:
                     f"Failed to start server '{self.server.server_name}': {e}"
                 )
 
+    async def _stop_owned_run(self, run: OwnedBDSRun) -> None:
+        """Stop and join generation cleanup before allowing identity reuse."""
+        await run.stop()
+        await self.drain()
+
     async def _rollback_start(self, process: asyncio.subprocess.Process | None) -> None:
         """Release resources acquired by a startup that did not complete."""
         run = self._run or next(
@@ -382,14 +387,15 @@ class ServerProcess:
         )
         if run is not None and run.process is process:
             self.intentionally_stopped = True
-            cleanup = asyncio.create_task(run.stop(), name="bds-startup-rollback")
+            cleanup = asyncio.create_task(
+                self._stop_owned_run(run), name="bds-startup-rollback"
+            )
             while not cleanup.done():
                 try:
                     await asyncio.shield(cleanup)
                 except asyncio.CancelledError:
                     continue
             cleanup.result()
-            await self._remove_identity(run)
         else:
             if process is not None:
                 with contextlib.suppress(ProcessLookupError):
@@ -437,7 +443,7 @@ class ServerProcess:
             run = self.run
             if run is not None:
                 self.intentionally_stopped = True
-                cleanup = asyncio.create_task(run.stop(), name="bds-stop")
+                cleanup = asyncio.create_task(self._stop_owned_run(run), name="bds-stop")
                 cancelled = False
                 while not cleanup.done():
                     try:
