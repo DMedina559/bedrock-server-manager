@@ -70,9 +70,7 @@ class BedrockServer(ServerResources):
     async def is_running(
         self, *, force_scan: bool = False, reconcile: bool = True
     ) -> bool:
-        return await self.process.is_running(
-            force_scan=force_scan, reconcile=reconcile
-        )
+        return await self.process.is_running(force_scan=force_scan, reconcile=reconcile)
 
     async def start(self) -> None:
         await self.process.start()
