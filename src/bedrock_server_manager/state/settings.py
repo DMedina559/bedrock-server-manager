@@ -81,12 +81,6 @@ class RetentionSettings(SettingsRecord):
 class MonitoringSettings(SettingsRecord):
     max_retries: int = Field(default=3, ge=0)
     process_interval_sec: int = Field(default=10, gt=0)
-    player_interval_sec: int = Field(
-        default=10,
-        gt=0,
-        deprecated=True,
-        description="Legacy input; owned player presence is now output-driven.",
-    )
     app_metrics_interval_sec: int = Field(default=3, ge=1, le=3600)
     bedrock_metrics_interval_sec: int = Field(default=3, ge=1, le=3600)
     untracked_process_interval_sec: int = Field(
@@ -531,6 +525,7 @@ class SettingsState(BaseModel):
             "retention": ("logs",),
             "web": ("threads",),
             "backups": ("schedules",),
+            "monitoring": ("player_interval_sec",),
         }
         for section, removed_names in removed_fields.items():
             values = merged.get(section)
@@ -555,7 +550,6 @@ class SettingsState(BaseModel):
             "monitoring": (
                 "max_retries",
                 "process_interval_sec",
-                "player_interval_sec",
                 "app_metrics_interval_sec",
                 "bedrock_metrics_interval_sec",
                 "untracked_process_interval_sec",

@@ -396,6 +396,8 @@ class Storage:
 
     async def _load_state(self, state: AppState) -> AppState:
         async with self.db.session_manager() as session:
+            if await self.settings_repo.remove_obsolete_player_interval(session):
+                await session.commit()
             settings_dict = await self.settings_repo.get_all_settings(session)
             if settings_dict:
                 loaded_settings = SettingsState.from_dict(

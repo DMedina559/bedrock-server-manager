@@ -33,7 +33,7 @@ def test_invalid_settings_never_change_live_state():
         ("retention.downloads", -1),
         ("monitoring.max_retries", -1),
         ("monitoring.process_interval_sec", 0),
-        ("monitoring.player_interval_sec", -1),
+        ("monitoring.player_interval_sec", 10),
         ("custom.value", float("nan")),
     ):
         with pytest.raises(ValidationError):
@@ -356,3 +356,21 @@ def test_application_timezone_is_validated_and_defaults_for_old_settings():
     with pytest.raises(ValidationError):
         state.set("general.timezone", "PDT")
     assert state.get("general.timezone") == "America/Los_Angeles"
+
+
+@pytest.mark.parametrize(
+    "legacy",
+    [
+        {"monitoring": {"player_interval_sec": "obsolete", "process_interval_sec": 19}},
+        {"monitoring.player_interval_sec": 10, "monitoring.process_interval_sec": 19},
+    ],
+)
+def test_retired_player_interval_is_ignored_only_at_load_boundary(legacy):
+    state = SettingsState.from_dict(legacy)
+    assert state.monitoring.process_interval_sec == 19
+    assert "player_interval_sec" not in state.to_dict()["monitoring"]
+    assert (
+        "player_interval_sec" not in state.monitoring.model_json_schema()["properties"]
+    )
+    with pytest.raises(ValidationError):
+        state.set("monitoring.player_interval_sec", 10)

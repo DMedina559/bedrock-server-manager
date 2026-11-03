@@ -53,7 +53,6 @@ Changing a `paths.*` setting does not move existing files on disk. Plan and back
 |---|---|---|---|
 | `monitoring.max_retries` | `3` | `>= 0` | Automatic restart attempts when a monitored Bedrock server crashes |
 | `monitoring.process_interval_sec` | `10` | `> 0` | Interval in seconds between Bedrock process health/PID checks |
-| `monitoring.player_interval_sec` | `10` | `> 0` | Deprecated compatibility setting; owned player presence is driven by BDS output |
 | `monitoring.app_metrics_interval_sec` | `3` | `1–3600` | Sampling interval in seconds for host and BSM application resource metrics |
 | `monitoring.bedrock_metrics_interval_sec` | `3` | `1–3600` | Sampling interval in seconds for per-server Bedrock process metrics |
 | `monitoring.untracked_process_interval_sec` | `5` | `1–3600` | Minimum seconds between completed negative process table scans; start/stop checks bypass this cache |

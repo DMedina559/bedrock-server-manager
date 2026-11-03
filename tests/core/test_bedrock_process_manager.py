@@ -65,7 +65,6 @@ async def test_monitor_restarts_crashed_child_and_isolates_failures(
     app_context, real_bedrock_server, monkeypatch
 ):
     await app_context.settings.set("monitoring.process_interval_sec", 1)
-    await app_context.settings.set("monitoring.player_interval_sec", 1)
     await real_bedrock_server.start()
     child = real_bedrock_server.process._process
     child.kill()

@@ -19,6 +19,30 @@ class SettingsRepository:
     def __init__(self):
         self.plugin_settings = PluginSettingsRepository()
 
+    async def remove_obsolete_player_interval(self, session: AsyncSession) -> bool:
+        """Remove the retired polling key from section JSON and legacy flat rows."""
+        result = await session.execute(
+            select(Setting).where(
+                Setting.key.in_(("monitoring", "monitoring.player_interval_sec"))
+            )
+        )
+        changed = False
+        for record in result.scalars():
+            if record.key == "monitoring.player_interval_sec":
+                await session.delete(record)
+                changed = True
+            elif (
+                isinstance(record.value, dict) and "player_interval_sec" in record.value
+            ):
+                record.value = {
+                    key: value
+                    for key, value in record.value.items()
+                    if key != "player_interval_sec"
+                }
+                flag_modified(record, "value")
+                changed = True
+        return changed
+
     async def get_all_settings(self, session: AsyncSession) -> Dict[str, Any]:
         """Return all settings as a dictionary of key-value pairs."""
         result = await session.execute(select(Setting))
