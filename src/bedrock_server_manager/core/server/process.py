@@ -65,9 +65,12 @@ class ServerProcess:
     failure_count: int
     _log_file_handle: BufferedWriter | None
 
-    async def is_running(self, *, force_scan: bool = False) -> bool:
+    async def is_running(
+        self, *, force_scan: bool = False, reconcile: bool = True
+    ) -> bool:
         """Check if the Bedrock server process is currently running and verified
-        asynchronously.
+        asynchronously. Set reconcile=False for status reads that must not
+        persist configuration or emit status-change hooks.
         """
         self.logger.debug(
             "Checking if server '%s' is running.", self.server.server_name
@@ -90,10 +93,11 @@ class ServerProcess:
             except system_process.psutil.NoSuchProcess:
                 running = False
             if self._process is not process:
-                return await self.is_running(force_scan=force_scan)
+                return await self.is_running(force_scan=force_scan, reconcile=reconcile)
             if running:
                 is_running = self._publish_running(True)
-                await self.server.reconcile_status(is_running)
+                if reconcile:
+                    await self.server.reconcile_status(is_running)
                 return is_running
         # Probes do not hold operation_lock: discard results from before a
         # concurrent start or another probe installed a different handle.
@@ -114,10 +118,11 @@ class ServerProcess:
             force_scan=force_scan,
         )
         if self._process is not observed_process:
-            return await self.is_running(force_scan=force_scan)
+            return await self.is_running(force_scan=force_scan, reconcile=reconcile)
         self._process = verified_process
         is_running = self._publish_running(verified_process is not None)
-        await self.server.reconcile_status(is_running)
+        if reconcile:
+            await self.server.reconcile_status(is_running)
         return is_running
 
     @property

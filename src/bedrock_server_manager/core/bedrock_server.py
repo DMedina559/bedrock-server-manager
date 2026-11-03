@@ -67,8 +67,12 @@ class BedrockServer(ServerResources):
     async def validate_installation(self) -> bool:
         return await self.installation.validate_installation()
 
-    async def is_running(self, *, force_scan: bool = False) -> bool:
-        return await self.process.is_running(force_scan=force_scan)
+    async def is_running(
+        self, *, force_scan: bool = False, reconcile: bool = True
+    ) -> bool:
+        return await self.process.is_running(
+            force_scan=force_scan, reconcile=reconcile
+        )
 
     async def start(self) -> None:
         await self.process.start()
@@ -145,7 +149,7 @@ class BedrockServer(ServerResources):
         if runtime.phase is not None and runtime.generation is not None:
             return runtime.phase
         if running is None:
-            running = await self.is_running()
+            running = await self.is_running(reconcile=False)
         stored = self.configuration.snapshot().status
         return (
             "RUNNING"
