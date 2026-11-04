@@ -14,6 +14,8 @@ await self.api.properties.get_properties(request: bedrock_server_manager.api.mod
 
 - **Description:** Return the current server properties for a given server.
 
+- **Required Permission:** `properties:read`
+
 - **Returns:** `GetPropertiesResponse`
 
 Runtime context and plugin identity are injected by the bridge. Failures raise application exceptions; plugin cancellation raises `APICancelledError`.
@@ -44,6 +46,8 @@ await self.api.properties.get_raw_properties(request: bedrock_server_manager.api
 - **Async (Requires await):** Yes
 
 - **Description:** Read the complete properties document without parsing its keys or comments.
+
+- **Required Permission:** `properties:read`
 
 - **Returns:** `GetRawPropertiesResponse`
 
@@ -76,7 +80,7 @@ await self.api.properties.set_properties(request: bedrock_server_manager.api.mod
 
 - **Description:** Set one or multiple server properties for a given server.
 
-- **Required Permission:** `server:properties`
+- **Required Permission:** `properties:manage`
 
 - **Returns:** `SetPropertiesResponse`
 

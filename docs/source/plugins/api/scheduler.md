@@ -14,6 +14,8 @@ await self.api.scheduler.list_schedules(request: bedrock_server_manager.api.mode
 
 - **Description:** Read schedule configuration, availability and bounded last-run metadata.
 
+- **Required Permission:** `scheduler:read`
+
 - **Returns:** `ListSchedulesResponse`
 
 Runtime context and plugin identity are injected by the bridge. Failures raise application exceptions; plugin cancellation raises `APICancelledError`.

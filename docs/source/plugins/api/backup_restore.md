@@ -14,7 +14,7 @@ await self.api.backup_restore.backup_all(request: bedrock_server_manager.api.mod
 
 - **Description:** Performs a full backup of the server's world and configuration files.
 
-- **Required Permission:** `backup:create`
+- **Required Permission:** `backups:create`
 
 - **Returns:** `BackupAllResponse`
 
@@ -47,7 +47,7 @@ await self.api.backup_restore.backup_config_file(request: bedrock_server_manager
 
 - **Description:** Create a backup of a specific server configuration file.
 
-- **Required Permission:** `backup:create`
+- **Required Permission:** `backups:create`
 
 - **Returns:** `BackupConfigFileResponse`
 
@@ -80,7 +80,7 @@ await self.api.backup_restore.backup_world(request: bedrock_server_manager.api.m
 
 - **Description:** Create a backup of the server's world directory.
 
-- **Required Permission:** `backup:create`
+- **Required Permission:** `backups:create`
 
 - **Returns:** `BackupWorldResponse`
 
@@ -113,6 +113,8 @@ await self.api.backup_restore.can_reuse_server_backup(request: bedrock_server_ma
 
 - **Description:** Check coverage and availability without exposing archive paths or file values.
 
+- **Required Permission:** `backups:read`
+
 - **Returns:** `SnapshotReuseResponse`
 
 Runtime context and plugin identity are injected by the bridge. Failures raise application exceptions; plugin cancellation raises `APICancelledError`.
@@ -144,7 +146,7 @@ await self.api.backup_restore.create_server_backup(request: bedrock_server_manag
 
 - **Description:** Capture one coherent, optionally encrypted server archive.
 
-- **Required Permission:** `backup:create`
+- **Required Permission:** `backups:create`
 
 - **Returns:** `CreateSnapshotResponse`
 
@@ -177,6 +179,8 @@ await self.api.backup_restore.download_backup_recovery_report(request: bedrock_s
 
 - **Description:** Export allowlisted recovery evidence without file paths or secret values.
 
+- **Required Permission:** `backups:read`
+
 - **Returns:** `RecoveryReportResponse`
 
 Runtime context and plugin identity are injected by the bridge. Failures raise application exceptions; plugin cancellation raises `APICancelledError`.
@@ -208,7 +212,7 @@ await self.api.backup_restore.dry_run_server_restore(request: bedrock_server_man
 
 - **Description:** Validate and copy selected contents in isolation without stopping Minecraft.
 
-- **Required Permission:** `backup:restore`
+- **Required Permission:** `backups:restore`
 
 - **Returns:** `PlanSnapshotRestoreResponse`
 
@@ -241,6 +245,8 @@ await self.api.backup_restore.get_backup_health(request: bedrock_server_manager.
 
 - **Description:** Report durable backup health without opening secret archive contents.
 
+- **Required Permission:** `backups:read`
+
 - **Returns:** `BackupHealthResponse`
 
 Runtime context and plugin identity are injected by the bridge. Failures raise application exceptions; plugin cancellation raises `APICancelledError`.
@@ -271,6 +277,8 @@ await self.api.backup_restore.get_restore_recovery(request: bedrock_server_manag
 - **Async (Requires await):** Yes
 
 - **Description:** Inspect recovery state without exposing journal files or secret settings.
+
+- **Required Permission:** `backups:read`
 
 - **Returns:** `RestoreRecoveryResponse`
 
@@ -303,6 +311,8 @@ await self.api.backup_restore.inspect_server_backup(request: bedrock_server_mana
 
 - **Description:** Authenticate a backup and return its manifest without secret file values.
 
+- **Required Permission:** `backups:read`
+
 - **Returns:** `InspectSnapshotResponse`
 
 Runtime context and plugin identity are injected by the bridge. Failures raise application exceptions; plugin cancellation raises `APICancelledError`.
@@ -333,6 +343,8 @@ await self.api.backup_restore.list_backup_files(request: bedrock_server_manager.
 - **Async (Requires await):** Yes
 
 - **Description:** Lists available backup files for a given server and type.
+
+- **Required Permission:** `backups:read`
 
 - **Returns:** `ListBackupFilesResponse`
 
@@ -365,6 +377,8 @@ await self.api.backup_restore.list_server_snapshots(request: bedrock_server_mana
 
 - **Description:** List portable archives without decrypting their private manifests.
 
+- **Required Permission:** `backups:read`
+
 - **Returns:** `ListSnapshotsResponse`
 
 Runtime context and plugin identity are injected by the bridge. Failures raise application exceptions; plugin cancellation raises `APICancelledError`.
@@ -396,7 +410,7 @@ await self.api.backup_restore.manage_server_snapshot(request: bedrock_server_man
 
 - **Description:** Verify, pin, copy, or test a recovery key against an authenticated archive.
 
-- **Required Permission:** `backup:manage`
+- **Required Permission:** `backups:manage`
 
 - **Returns:** `ManageSnapshotResponse`
 
@@ -429,6 +443,8 @@ await self.api.backup_restore.plan_server_restore(request: bedrock_server_manage
 
 - **Description:** Validate selected contents and bind a restore plan to current destinations.
 
+- **Required Permission:** `backups:restore`
+
 - **Returns:** `PlanSnapshotRestoreResponse`
 
 Runtime context and plugin identity are injected by the bridge. Failures raise application exceptions; plugin cancellation raises `APICancelledError`.
@@ -460,7 +476,7 @@ await self.api.backup_restore.prune_old_backups(request: bedrock_server_manager.
 
 - **Description:** Prunes old backups for a server based on retention settings.
 
-- **Required Permission:** `maintenance:backups`
+- **Required Permission:** `backups:prune`
 
 - **Returns:** `PruneOldBackupsResponse`
 
@@ -493,7 +509,7 @@ await self.api.backup_restore.recover_server_backup(request: bedrock_server_mana
 
 - **Description:** Retry an interrupted restore's recovery while preserving its journal on failure.
 
-- **Required Permission:** `backup:restore`
+- **Required Permission:** `backups:restore`
 
 - **Returns:** `RestoreRecoveryResponse`
 
@@ -526,7 +542,7 @@ await self.api.backup_restore.restore_all(request: bedrock_server_manager.api.mo
 
 - **Description:** Restores the server from the latest available backups.
 
-- **Required Permission:** `backup:restore`
+- **Required Permission:** `backups:restore`
 
 - **Returns:** `RestoreAllResponse`
 
@@ -559,7 +575,7 @@ await self.api.backup_restore.restore_config_file(request: bedrock_server_manage
 
 - **Description:** Restores a specific config file from a backup.
 
-- **Required Permission:** `backup:restore`
+- **Required Permission:** `backups:restore`
 
 - **Returns:** `RestoreConfigFileResponse`
 
@@ -592,7 +608,7 @@ await self.api.backup_restore.restore_server_snapshot(request: bedrock_server_ma
 
 - **Description:** Apply a reviewed restore and keep restart failures separate from data recovery.
 
-- **Required Permission:** `backup:restore`
+- **Required Permission:** `backups:restore`
 
 - **Returns:** `RestoreSnapshotResponse`
 
@@ -625,7 +641,7 @@ await self.api.backup_restore.restore_world(request: bedrock_server_manager.api.
 
 - **Description:** Restores a server's world from a specific backup file.
 
-- **Required Permission:** `backup:restore`
+- **Required Permission:** `backups:restore`
 
 - **Returns:** `RestoreWorldResponse`
 

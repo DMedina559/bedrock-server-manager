@@ -10,11 +10,13 @@ from .decorators import (
 )
 from .plugin_base import PluginBase
 from .plugin_manager import PluginManager
+from .scopes import PluginScope
 from .task_loop import task_loop
 
 __all__ = [
     "PluginBase",
     "PluginManager",
+    "PluginScope",
     "AppAPI",
     "api_method",
     "app_event",

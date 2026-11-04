@@ -38,7 +38,7 @@ def scoped_test_routes(test_app):
     @test_app.post("/_resource/{server_name}")
     async def control(
         server_name: str,
-        user=Security(require_permissions, scopes=[Permission.SERVERS_CONTROL]),
+        user=Security(require_permissions, scopes=[Permission.SERVERS_LIFECYCLE]),
     ):
         return {"server": server_name}
 
@@ -138,7 +138,7 @@ async def test_assignments_filter_resources_and_do_not_elevate_roles(
             "grants": [
                 {
                     "server_id": access_servers["alpha"],
-                    "permissions": ["servers:read", "servers:control"],
+                    "permissions": ["servers:read", "servers:lifecycle"],
                 }
             ],
         },
@@ -153,7 +153,8 @@ async def test_assignments_filter_resources_and_do_not_elevate_roles(
     assert account["policy_revision"] != before
     assert account["server_access"] == "assigned"
     assert (
-        "servers:control" not in account["server_permissions"][access_servers["alpha"]]
+        "servers:lifecycle"
+        not in account["server_permissions"][access_servers["alpha"]]
     )
     assert (
         await auth_client.put(path, json={"mode": "all", "grants": []})
@@ -313,7 +314,12 @@ async def test_token_tracks_role_and_assignment_changes(
 ):
     issued = await issue(
         admin_auth_client,
-        permissions=["account:read", "servers:read", "servers:control", "backups:keys"],
+        permissions=[
+            "account:read",
+            "servers:read",
+            "servers:lifecycle",
+            "backups:keys",
+        ],
     )
     bearer = {"Authorization": f"Bearer {issued['token']}"}
     assert (
@@ -660,3 +666,89 @@ async def test_process_inspection_returns_dedicated_response(
         "dropped_bytes",
     }
     assert "player_count" not in data["process"]
+
+
+async def test_server_scoped_plugin_permissions_and_health_topic(
+    admin_auth_client, app_context, access_servers, test_user
+):
+    policy = app_context.plugin_manager.access_policy
+    policy.register(
+        "srv_plugin",
+        "plugin:srv_plugin:inspect",
+        "Inspect server plugin",
+        ["user", "moderator", "admin"],
+        server_scoped=True,
+    )
+    policy.register(
+        "srv_plugin",
+        "plugin:srv_plugin:global",
+        "Global plugin action",
+        ["user", "moderator", "admin"],
+        server_scoped=False,
+    )
+    try:
+        assert "plugin:srv_plugin:inspect" in policy.server_permissions
+        assert "plugin:srv_plugin:global" not in policy.server_permissions
+
+        # Server-scoped token retains server_scoped plugin permission but strips global plugin permission
+        issued = await issue(
+            admin_auth_client,
+            permissions=[
+                "account:read",
+                "servers:read",
+                "health:read",
+                "plugin:srv_plugin:inspect",
+                "plugin:srv_plugin:global",
+            ],
+            server_ids=[access_servers["alpha"]],
+        )
+        headers = {"Authorization": f"Bearer {issued['token']}"}
+        account = (await admin_auth_client.get("/api/account", headers=headers)).json()
+        assert "plugin:srv_plugin:inspect" in account["permissions"]
+        assert "plugin:srv_plugin:global" not in account["permissions"]
+        assert (
+            "plugin:srv_plugin:inspect"
+            in account["server_permissions"][access_servers["alpha"]]
+        )
+
+        # User server assignment accepts server-scoped plugin permission
+        path = f"/api/access/users/{test_user.id}/servers"
+        assign_res = await admin_auth_client.put(
+            path,
+            json={
+                "mode": "assigned",
+                "grants": [
+                    {
+                        "server_id": access_servers["alpha"],
+                        "permissions": ["servers:read", "plugin:srv_plugin:inspect"],
+                    }
+                ],
+            },
+        )
+        assert assign_res.status_code == 200, assign_res.text
+
+        # Token with health:read can subscribe to health and application-health topics
+        unrestricted_health = await issue(
+            admin_auth_client,
+            permissions=["account:read", "health:read"],
+        )
+        auth_snap = (
+            await app_context.access_service.authenticate(unrestricted_health["token"])
+        )[1]
+        assert await app_context.access_service.topic_allowed(auth_snap, "health")
+        assert await app_context.access_service.topic_allowed(
+            auth_snap, "application-health"
+        )
+
+        no_health = await issue(
+            admin_auth_client,
+            permissions=["account:read"],
+        )
+        no_health_snap = (
+            await app_context.access_service.authenticate(no_health["token"])
+        )[1]
+        assert not await app_context.access_service.topic_allowed(
+            no_health_snap, "health"
+        )
+    finally:
+        policy.remove_owner("srv_plugin")

@@ -14,7 +14,7 @@ await self.api.ban.add_server_ban(request: bedrock_server_manager.api.models.ban
 
 - **Description:** Adds a player to the server ban list.
 
-- **Required Permission:** `server:ban`
+- **Required Permission:** `bans:manage`
 
 - **Returns:** `AddServerBanResponse`
 
@@ -47,6 +47,8 @@ await self.api.ban.get_server_bans(request: bedrock_server_manager.api.models.ba
 
 - **Description:** Return all bans for a specific server.
 
+- **Required Permission:** `bans:read`
+
 - **Returns:** `GetServerBansResponse`
 
 Runtime context and plugin identity are injected by the bridge. Failures raise application exceptions; plugin cancellation raises `APICancelledError`.
@@ -78,7 +80,7 @@ await self.api.ban.remove_server_ban(request: bedrock_server_manager.api.models.
 
 - **Description:** Remove a player from the server ban list.
 
-- **Required Permission:** `server:ban`
+- **Required Permission:** `bans:manage`
 
 - **Returns:** `RemoveServerBanResponse`
 

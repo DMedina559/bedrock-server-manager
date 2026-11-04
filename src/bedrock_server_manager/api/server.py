@@ -25,6 +25,7 @@ from ..events import trigger_event
 from ..events.operations import OperationName, track_operation
 from ..logging import log_operation_error
 from ..plugins.api_bridge import api_method
+from ..plugins.scopes import PluginScope
 from ..state.revision import revision_clock
 from ..utils.threads import run_in_thread
 from .models import (
@@ -63,7 +64,7 @@ from .models.server import (
 logger = logging.getLogger(__name__)
 
 
-@api_method("get_server_setting")
+@api_method("get_server_setting", required_scope=PluginScope.SERVERS_READ)
 async def get_server_setting(
     request: GetServerSettingRequest, *, app_context: AppContext
 ) -> GetServerSettingResponse:
@@ -174,7 +175,7 @@ async def set_server_custom_value(
         raise
 
 
-@api_method("get_all_server_settings")
+@api_method("get_all_server_settings", required_scope=PluginScope.SERVERS_READ)
 async def get_all_server_settings(
     request: GetAllServerSettingsRequest, *, app_context: AppContext
 ) -> GetAllServerSettingsResponse:
@@ -209,7 +210,7 @@ async def get_all_server_settings(
         raise
 
 
-@api_method("get_server_summary")
+@api_method("get_server_summary", required_scope=PluginScope.SERVERS_READ)
 async def get_server_summary(
     request: GetServerSummaryRequest, *, app_context: AppContext
 ) -> GetServerSummaryResponse:
@@ -239,7 +240,7 @@ async def get_server_summary(
         raise
 
 
-@api_method("start_server", required_scope="server:lifecycle")
+@api_method("start_server", required_scope=PluginScope.SERVERS_LIFECYCLE)
 @track_operation(OperationName.SERVER_START)
 async def start_server(
     request: StartServerRequest, *, app_context: AppContext
@@ -275,7 +276,7 @@ async def _start_server(
     )
 
 
-@api_method("stop_server", required_scope="server:lifecycle")
+@api_method("stop_server", required_scope=PluginScope.SERVERS_LIFECYCLE)
 @track_operation(OperationName.SERVER_STOP)
 @trigger_event(
     before="before_server_stop",
@@ -331,7 +332,7 @@ async def stop_server(
                     )
 
 
-@api_method("restart_server", required_scope="server:lifecycle")
+@api_method("restart_server", required_scope=PluginScope.SERVERS_LIFECYCLE)
 @track_operation(OperationName.SERVER_RESTART)
 async def restart_server(
     request: RestartServerRequest, *, app_context: AppContext
@@ -367,7 +368,7 @@ async def restart_server(
         )
 
 
-@api_method("send_command", required_scope="server:command")
+@api_method("send_command", required_scope=PluginScope.SERVERS_COMMAND)
 @trigger_event(
     before="before_command_send",
     after="after_command_send",
@@ -529,7 +530,7 @@ async def update_server_player_stats(
     )
 
 
-@api_method("get_valid_server_names")
+@api_method("get_valid_server_names", required_scope=PluginScope.SERVERS_READ)
 async def get_valid_server_names(
     request: GetValidServerNamesRequest, *, app_context: AppContext
 ) -> GetValidServerNamesResponse:
@@ -618,7 +619,7 @@ async def server_lifecycle_manager(
                         )
 
 
-@api_method("wait_for_server_log", required_scope="logs:read")
+@api_method("wait_for_server_log", required_scope=PluginScope.LOGS_READ)
 async def wait_for_server_log(
     request: WaitForServerLogRequest,
     *,
@@ -655,7 +656,7 @@ async def wait_for_server_log(
         run._waiters.pop(future, None)
 
 
-@api_method("get_server_process", required_scope="servers:inspect")
+@api_method("get_server_process", required_scope=PluginScope.SERVERS_INSPECT)
 async def get_server_process(
     request: GetServerProcessRequest, *, app_context: AppContext
 ) -> GetServerProcessResponse:

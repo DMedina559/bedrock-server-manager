@@ -12,6 +12,7 @@ from ..error import BSMError, UserInputError
 from ..events import trigger_event
 from ..logging import log_operation_error
 from ..plugins.api_bridge import api_method
+from ..plugins.scopes import PluginScope
 from .models.player import (
     AddPlayersManuallyRequest,
     AddPlayersManuallyResponse,
@@ -24,7 +25,7 @@ from .models.player import (
 logger = logging.getLogger(__name__)
 
 
-@api_method("add_players_manually")
+@api_method("add_players_manually", required_scope=PluginScope.PLAYERS_MANAGE)
 @trigger_event(before="before_players_add", after="after_players_add", identity_keys=())
 async def add_players_manually(
     request: AddPlayersManuallyRequest, *, app_context: AppContext
@@ -59,7 +60,7 @@ async def add_players_manually(
         raise
 
 
-@api_method("get_all_known_players")
+@api_method("get_all_known_players", required_scope=PluginScope.PLAYERS_READ)
 async def get_all_known_players(
     request: GetAllKnownPlayersRequest, *, app_context: AppContext
 ) -> GetAllKnownPlayersResponse:
@@ -78,7 +79,7 @@ async def get_all_known_players(
         raise
 
 
-@api_method("scan_and_update_player_db")
+@api_method("scan_and_update_player_db", required_scope=PluginScope.PLAYERS_MANAGE)
 @trigger_event(
     before="before_player_db_scan", after="after_player_db_scan", identity_keys=()
 )

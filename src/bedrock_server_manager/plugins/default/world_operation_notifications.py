@@ -34,7 +34,7 @@ class WorldOperationNotificationsPlugin(PluginBase):
 
     name = "World Operation Notifications"
     version = "1.4.0"
-    permissions = ["server:command"]
+    permissions = ["servers:command", "servers:read"]
     description = "Notifies in-game players before significant world operations (export, import, reset) are performed on a running server."
     author = "dmedina559"
 

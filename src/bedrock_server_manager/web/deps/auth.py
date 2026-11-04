@@ -183,9 +183,11 @@ async def require_permissions(
             detail="You do not have permission to access this resource.",
             headers=headers,
         )
+    from ..authorization import STEP_UP_PERMISSIONS, operation_permissions
+
     if (
         authorization is not None
-        and required & {"users:manage", "access:manage", "sessions:admin"}
+        and required & STEP_UP_PERMISSIONS
         and request.method not in {"GET", "HEAD", "OPTIONS"}
         and not getattr(
             getattr(request.scope.get("route"), "endpoint", None),
@@ -196,7 +198,6 @@ async def require_permissions(
         await request.app.state.app_context.session_service.require_recent(
             user, getattr(request.state, "session_id", None)
         )
-    from ..authorization import operation_permissions
 
     operation_permissions.set(operation_permissions.get() | frozenset(required))
     return user

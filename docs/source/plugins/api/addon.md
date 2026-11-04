@@ -14,7 +14,7 @@ await self.api.addon.disable_addon(request: bedrock_server_manager.api.models.ad
 
 - **Description:** Disables an active addon for a server's active world, preserving files.
 
-- **Required Permission:** `addon:manage`
+- **Required Permission:** `addons:manage`
 
 - **Returns:** `DisableAddonResponse`
 
@@ -47,7 +47,7 @@ await self.api.addon.enable_addon(request: bedrock_server_manager.api.models.add
 
 - **Description:** Enables a disabled addon for a server's active world.
 
-- **Required Permission:** `addon:manage`
+- **Required Permission:** `addons:manage`
 
 - **Returns:** `EnableAddonResponse`
 
@@ -80,7 +80,7 @@ await self.api.addon.import_addon(request: bedrock_server_manager.api.models.add
 
 - **Description:** Installs an addon to a specified Bedrock server.
 
-- **Required Permission:** `addon:manage`
+- **Required Permission:** `addons:manage`
 
 - **Returns:** `ImportAddonResponse`
 
@@ -113,6 +113,8 @@ await self.api.addon.list_available_addons(request: bedrock_server_manager.api.m
 
 - **Description:** Lists available .mcaddon and .mcpack files from the content directory.
 
+- **Required Permission:** `content:read`
+
 - **Returns:** `ListAvailableAddonsResponse`
 
 Runtime context and plugin identity are injected by the bridge. Failures raise application exceptions; plugin cancellation raises `APICancelledError`.
@@ -143,6 +145,8 @@ await self.api.addon.list_installed_addons(request: bedrock_server_manager.api.m
 - **Async (Requires await):** Yes
 
 - **Description:** Lists all addons for a server's active world.
+
+- **Required Permission:** `addons:read`
 
 - **Returns:** `ListInstalledAddonsResponse`
 
@@ -175,7 +179,7 @@ await self.api.addon.reorder_addons(request: bedrock_server_manager.api.models.a
 
 - **Description:** Reorder the active addons for a server's active world.
 
-- **Required Permission:** `addon:manage`
+- **Required Permission:** `addons:manage`
 
 - **Returns:** `ReorderAddonsResponse`
 
@@ -208,7 +212,7 @@ await self.api.addon.update_subpack(request: bedrock_server_manager.api.models.a
 
 - **Description:** Updates the active subpack for an addon on a server's active world.
 
-- **Required Permission:** `addon:manage`
+- **Required Permission:** `addons:manage`
 
 - **Returns:** `UpdateSubpackResponse`
 

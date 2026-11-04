@@ -55,7 +55,7 @@ class AutoBackupOnStart(PluginBase):
     settings_model = PluginSettings
 
     version = "1.5.0"
-    permissions = ["backup:create"]
+    permissions = ["backups:create", "backups:read", "servers:read"]
     description = "Backs up selected server contents before starting a server. This plugin hooks into the `before_server_start` event."
     author = "dmedina559"
     name = "Auto Backup On Start"

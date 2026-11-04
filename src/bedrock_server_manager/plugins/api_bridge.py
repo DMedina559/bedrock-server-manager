@@ -208,10 +208,10 @@ def create_app_api(
             if not is_core:
                 require_owner()
                 if name == "server_lifecycle_manager":
-                    from .scopes import require_plugin_permission
+                    from .scopes import PluginScope, require_plugin_permission
 
                     require_plugin_permission(
-                        app_context, plugin_name, "server:lifecycle"
+                        app_context, plugin_name, PluginScope.SERVERS_LIFECYCLE
                     )
             bound = signature.bind_partial(*args, **kwargs)
             if {"app_context", "plugin_name"} & bound.arguments.keys():

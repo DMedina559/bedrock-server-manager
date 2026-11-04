@@ -44,7 +44,7 @@ class ServerLifecycleNotificationsPlugin(PluginBase):
     settings_model = PluginSettings
 
     version = "1.4.0"
-    permissions = ["server:command"]
+    permissions = ["servers:command", "servers:read"]
     description = "Enhances server management by sending in-game notifications and introducing delays at critical server lifecycle points."
     author = "dmedina559"
     name = "Server Lifecycle Notifications"

@@ -21,11 +21,11 @@ from ..db.models import (
     ServerAccessGrant,
     User,
 )
+from ..web.access_policy import Permission
 from ..web.authorization import (
     NON_DELEGATABLE,
     PERSONAL_PERMISSIONS,
     SERVER_EVENTS,
-    SERVER_PERMISSIONS,
     Authorization,
 )
 from ..web.schemas import UserResponse
@@ -187,7 +187,7 @@ class AccessService:
                 ).all()
                 grants = {row.server_id: frozenset(row.permissions) for row in rows}
             if grants is not None or token_servers is not None:
-                permission_set &= SERVER_PERMISSIONS | PERSONAL_PERMISSIONS
+                permission_set &= self.policy.server_permissions | PERSONAL_PERMISSIONS
             servers = {}
             if grants is not None or token_servers is not None:
                 identities = (
@@ -319,18 +319,19 @@ class AccessService:
         ):
             raise HTTPException(422, "Unknown server identity")
         available = requested & authorization.permissions - NON_DELEGATABLE
+        server_perms = self.policy.server_permissions
         # Setting token server IDs makes global capabilities unavailable, even for admins.
         if payload.server_ids is not None:
-            available &= SERVER_PERMISSIONS | PERSONAL_PERMISSIONS
+            available &= server_perms | PERSONAL_PERMISSIONS
         server_permissions = {
             identity: sorted(
                 permission
-                for permission in available & SERVER_PERMISSIONS
+                for permission in available & server_perms
                 if authorization.allows(permission, name)
             )
             for name, identity in identities.items()
             if (payload.server_ids is None or identity in payload.server_ids)
-            and authorization.allows("servers:read", name)
+            and authorization.allows(Permission.SERVERS_READ, name)
         }
         effective = {
             permission
@@ -373,7 +374,7 @@ class AccessService:
                 }
                 if payload.mode == "assigned"
                 else {
-                    identity: sorted(SERVER_PERMISSIONS & role_permissions)
+                    identity: sorted(self.policy.server_permissions & role_permissions)
                     for identity in known
                 }
             )
@@ -582,9 +583,9 @@ class AccessService:
             raise HTTPException(422, "Duplicate server grants")
         for grant in payload.grants:
             self.validate(grant.permissions)
-            if "servers:read" not in grant.permissions:
+            if Permission.SERVERS_READ not in grant.permissions:
                 raise HTTPException(422, "Server grants must include servers:read")
-            if not set(grant.permissions) <= SERVER_PERMISSIONS:
+            if not set(grant.permissions) <= self.policy.server_permissions:
                 raise HTTPException(
                     422, "Server grants may only contain server capabilities"
                 )
@@ -745,7 +746,7 @@ class AccessService:
                 "diagnostics:read"
             )
         if topic in {"health", "application-health"}:
-            return not authorization.restricted
+            return authorization.allows(Permission.HEALTH_READ)
         # Unknown/plugin/global event payloads have no resource contract. Retain
         # legacy session behavior but never expose them to restricted principals.
         return not authorization.restricted

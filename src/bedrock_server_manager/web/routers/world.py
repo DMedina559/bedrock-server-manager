@@ -66,7 +66,7 @@ async def get_worlds_list(
 async def post_world_install(
     payload: FileNamePayload,
     current_user: UserResponse = Security(
-        require_permissions, scopes=[Permission.CONTENT_MANAGE]
+        require_permissions, scopes=[Permission.WORLDS_MANAGE]
     ),
     server_name: str = Depends(validate_server_exists),
     app_context: AppContext = Depends(get_app_context),
@@ -137,7 +137,7 @@ async def post_world_install(
 )
 async def post_world_export(
     current_user: UserResponse = Security(
-        require_permissions, scopes=[Permission.CONTENT_MANAGE]
+        require_permissions, scopes=[Permission.WORLDS_MANAGE]
     ),
     server_name: str = Depends(validate_server_exists),
     app_context: AppContext = Depends(get_app_context),
@@ -170,7 +170,7 @@ async def post_world_export(
 )
 async def delete_world_reset(
     current_user: UserResponse = Security(
-        require_permissions, scopes=[Permission.CONTENT_MANAGE]
+        require_permissions, scopes=[Permission.WORLDS_RESET]
     ),
     server_name: str = Depends(validate_server_exists),
     app_context: AppContext = Depends(get_app_context),
@@ -210,7 +210,7 @@ async def delete_world_reset(
 )
 async def get_world_icon(
     current_user: UserResponse = Security(
-        require_permissions, scopes=[Permission.SERVERS_READ]
+        require_permissions, scopes=[Permission.WORLDS_READ]
     ),
     server_name: str = Depends(validate_server_exists),
     app_context: AppContext = Depends(get_app_context),

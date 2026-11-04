@@ -14,6 +14,8 @@ await self.api.diagnostics.compare_diagnostic_snapshots(request: bedrock_server_
 
 - **Description:** Compare metadata snapshots without treating restarted counters as activity.
 
+- **Required Permission:** `diagnostics:read`
+
 - **Returns:** `CompareDiagnosticSnapshotsResponse`
 
 Runtime context and plugin identity are injected by the bridge. Failures raise application exceptions; plugin cancellation raises `APICancelledError`.
@@ -44,6 +46,8 @@ await self.api.diagnostics.get_application_diagnostics(request: bedrock_server_m
 - **Async (Requires await):** Yes
 
 - **Description:** Read bounded subsystem metadata; unavailable providers remain isolated.
+
+- **Required Permission:** `diagnostics:read`
 
 - **Returns:** `GetApplicationDiagnosticsResponse`
 
@@ -76,6 +80,8 @@ await self.api.diagnostics.get_diagnostic_activity(request: bedrock_server_manag
 
 - **Description:** Read all-chain event, operation, and subscription metadata without payloads.
 
+- **Required Permission:** `diagnostics:read`
+
 - **Returns:** `GetDiagnosticActivityResponse`
 
 Runtime context and plugin identity are injected by the bridge. Failures raise application exceptions; plugin cancellation raises `APICancelledError`.
@@ -106,6 +112,8 @@ await self.api.diagnostics.get_diagnostic_history(request: bedrock_server_manage
 - **Async (Requires await):** Yes
 
 - **Description:** Read sanitized retained records, optionally scoped to an application run.
+
+- **Required Permission:** `diagnostics:read`
 
 - **Returns:** `GetDiagnosticHistoryResponse`
 
@@ -138,6 +146,8 @@ await self.api.diagnostics.get_diagnostic_report(request: bedrock_server_manager
 
 - **Description:** Build a support report without secrets, task arguments, or event payloads.
 
+- **Required Permission:** `diagnostics:read`
+
 - **Returns:** `GetDiagnosticReportResponse`
 
 Runtime context and plugin identity are injected by the bridge. Failures raise application exceptions; plugin cancellation raises `APICancelledError`.
@@ -169,6 +179,8 @@ await self.api.diagnostics.get_diagnostic_runs(request: bedrock_server_manager.a
 
 - **Description:** List retained application instances without guessing whether older runs are alive.
 
+- **Required Permission:** `diagnostics:read`
+
 - **Returns:** `GetDiagnosticRunsResponse`
 
 Runtime context and plugin identity are injected by the bridge. Failures raise application exceptions; plugin cancellation raises `APICancelledError`.
@@ -199,6 +211,8 @@ await self.api.diagnostics.get_diagnostic_trace(request: bedrock_server_manager.
 - **Async (Requires await):** Yes
 
 - **Description:** Read events, tasks, and retained failures sharing one correlation identity.
+
+- **Required Permission:** `diagnostics:read`
 
 - **Returns:** `GetDiagnosticTraceResponse`
 

@@ -49,8 +49,8 @@ Import decorators and `PluginBase` directly from `bedrock_server_manager`. BSM a
 | WebSocket data providers | `@data_provider("topic")` / `@websocket_provider("topic")` | Handle WebSocket `request` messages for `topic` (use `"<plugin_name>:..."` by convention) |
 | FastAPI routes | `router = APIRouter(...)` or `routers = [...]` | Mount custom authenticated HTTP/UI routes on the web application |
 | Static asset mounts | `static_mounts = [(prefix, path, name)]` | Mount static directories under the plugin web namespace |
-| Capability permissions | `permissions = ["path:servers", ...]` | Declare required filesystem and system storage capabilities |
-| HTTP permissions | `http_permissions = [(perm, description, roles)]` | Register custom `plugin:<plugin_name>:<perm>` HTTP scopes |
+| Capability permissions | `permissions = ["path:servers", "servers:read", ...]` | Declare required API and filesystem capability scopes |
+| HTTP permissions | `http_permissions = [(perm, description, roles[, server_scoped])]` | Register custom `plugin:<plugin_name>:<perm>` HTTP scopes |
 | Typed settings | `settings_model`, `global_settings_model`, `server_settings_model` | Validate plugin, global, and per-server settings and generate web forms |
 | Scoped plugin files | `self.api.runtime.read_plugin_file` / `write_plugin_file` / `get_plugin_data_path` | Read and write private (`<config_dir>/plugins/<plugin_name>/`) or shared (`<config_dir>/plugins/public/`) files |
 
@@ -65,7 +65,7 @@ Decorate an `async def` method with `@diagnostic_provider("name")` (or `@diagnos
 - Providers **must be asynchronous** (`async def`). Synchronous functions raise a `ValueError` during registration.
 - Return a flat mapping (`dict[str, int | float | bool]`) or `PluginValues(health=..., values={...}, units={...}, labels={...})` with at most 32 keys. Only booleans and finite numbers (`int`, `float`) are accepted; strings, nested objects, `None`, `NaN`, and `Infinity` are rejected so diagnostic snapshots cannot leak secrets or unbounded payloads.
 - Provider `health` defaults to `"unknown"`; pass `health="ok"` or `health="degraded"` on `PluginValues` when the provider has health evidence. Optional `units` may use `"count"`, `"seconds"`, `"milliseconds"`, `"bytes"`, or `"percent"`, and optional `labels` are bounded to 80 characters.
-- Plugins can also read typed diagnostics through `self.api.diagnostics.get_application_diagnostics({})`, `get_diagnostic_history({})`, and `get_diagnostic_report({})`.
+- Plugins can also read typed diagnostics through `self.api.diagnostics.get_application_diagnostics({})`, `get_diagnostic_history({})`, and `get_diagnostic_report({})` (requires `diagnostics:read` when capability permissions are declared).
 
 ```python
 from bedrock_server_manager import PluginBase, diagnostic_provider
@@ -107,7 +107,7 @@ Declare the capabilities used by your plugin on its `PluginBase` subclass:
 ```python
 class MyPlugin(PluginBase):
     version = "1.0.0"
-    permissions = ["server:command", "maintenance:backups"]
+    permissions = ["servers:command", "backups:prune"]
 ```
 
 Declarations accept lists, tuples, sets, or frozensets of nonempty scope strings.
@@ -133,32 +133,50 @@ permission, and account permissions do not grant plugin capabilities.
 | `path:content` | Access content import directories (worlds and packs) |
 | `path:downloads` | Access cached server download archives |
 | `path:themes` | Access custom Web UI themes |
-| `server:lifecycle` | Start, stop, and restart game servers |
-| `server:command` | Send interactive console commands to running servers |
-| `addon:manage` | Enable, disable, import, or reorder server addons |
-| `server:allowlist` | Add or remove players from the server allowlist |
-| `backup:create` | Create server backups and snapshots |
-| `backup:restore` | Restore server snapshots and recovery data |
-| `maintenance:backups` | Prune server backups using configured retention |
-| `backup:manage` | Manage, verify, drill, and pin server snapshots |
-| `server:ban` | Add or remove server player bans |
-| `server:install` | Install new servers and update server software binaries |
-| `maintenance:downloads` | Prune the configured server download cache |
-| `server:permissions` | Modify Minecraft player operator permissions (permissions.json) |
-| `server:properties` | Modify server.properties configuration |
+| `health:read` | Check application health and readiness |
+| `runtime:metrics` | Read application and host performance metrics |
+| `servers:read` | List servers and read their status, settings, and resource usage |
+| `servers:inspect` | Inspect server process ownership, readiness, and runtime capabilities |
+| `logs:read` | Wait for matching live Bedrock server output |
+| `servers:command` | Send interactive console commands to running servers |
+| `servers:lifecycle` | Start, stop, and restart game servers |
+| `servers:install` | Install new servers and update server software binaries |
+| `properties:read` | Read server.properties configuration |
+| `properties:manage` | Modify server.properties configuration |
+| `permissions:read` | Read Minecraft player permission levels |
+| `permissions:manage` | Modify Minecraft player operator permissions (permissions.json) |
+| `allowlist:read` | Read a server allowlist |
+| `allowlist:manage` | Add or remove players from the server allowlist |
+| `bans:read` | Read server player bans |
+| `bans:manage` | Add or remove server player bans |
+| `players:read` | Read the global known-player directory |
+| `players:manage` | Add or scan player records in the global player database |
+| `worlds:read` | Read server world metadata and active world name |
+| `worlds:manage` | Import or export Minecraft server worlds |
+| `worlds:reset` | Reset and regenerate server worlds |
+| `addons:read` | Read installed server add-ons |
+| `addons:manage` | Enable, disable, import, or reorder server addons |
+| `content:read` | Read shared world and add-on template libraries |
+| `backups:read` | List, inspect, and check stored backup archives and recovery state |
+| `backups:create` | Create server backups and snapshots |
+| `backups:restore` | Restore server snapshots and recovery data |
+| `backups:manage` | Manage, verify, drill, and pin server snapshots |
+| `backups:prune` | Prune server backups using configured retention |
+| `downloads:prune` | Prune the configured server download cache |
+| `plugins:read` | Read plugin status and metadata |
+| `scheduler:read` | Read global schedules and run history |
+| `diagnostics:read` | Inspect runtime, event, and activity diagnostics |
 | `websocket:send` | Broadcast and send messages to WebSocket clients |
-| `world:manage` | Import or export Minecraft server worlds |
-| `world:reset` | Reset and regenerate server worlds |
 
-Pruning requires `maintenance:backups` or `maintenance:downloads` respectively.
-`backup:manage` covers snapshot verification, recovery drills, and pinning instead.
+Pruning requires `backups:prune` or `downloads:prune` respectively.
+`backups:manage` covers snapshot verification, recovery drills, and pinning instead.
 Plugin download pruning is confined to the configured download cache or a
 subdirectory; an explicit path outside that tree, including a symlink resolving
 outside it, is rejected. `path:downloads` permits retrieving the configured path
 but does not independently permit a prune operation.
 
 The root `paths` setting and `paths.plugins` are permanently restricted.
-`api.runtime.server_lifecycle_manager()` requires `server:lifecycle`, including
+`api.runtime.server_lifecycle_manager()` requires `servers:lifecycle`, including
 when called with positional options. A composite API's documented capability
 covers its internal lifecycle work, such as stopping a server during restore.
 
@@ -180,30 +198,21 @@ plugin identifier, not its display name.
 
 #### APIs without a required capability declaration
 
-These methods retain their existing availability. The bridge still injects
-identity and enforces its lifetime. Owner-scoped settings operations retain their
-namespace checks; global path settings additionally check the relevant `path:*`
-capability. The compatibility custom-value/player update APIs listed below
-remain available without an additional capability.
+These methods retain their availability without a scope declaration. The bridge
+still injects identity and enforces its lifetime. Owner-scoped settings operations
+retain their namespace checks; global path settings additionally check the relevant
+`path:*` capability. Shared custom-value setters (`settings.set_custom_global_setting`
+and `server.set_custom_value`) remain unscoped so groups of plugins can share
+`custom.*` settings when needed.
 
 | Domain | Methods |
 |---|---|
-| addon | `addon.list_available_addons`, `addon.list_installed_addons` |
-| allowlist | `allowlist.get_allowlist` |
-| application | `application.get_all_servers_data`, `application.get_system_and_app_info`, `application.list_available_worlds` |
-| backup_restore | `backup_restore.can_reuse_server_backup`, `backup_restore.download_backup_recovery_report`, `backup_restore.get_backup_health`, `backup_restore.get_restore_recovery`, `backup_restore.inspect_server_backup`, `backup_restore.list_backup_files`, `backup_restore.list_server_snapshots`, `backup_restore.plan_server_restore` |
-| ban | `ban.get_server_bans` |
-| diagnostics | `diagnostics.compare_diagnostic_snapshots`, `diagnostics.get_application_diagnostics`, `diagnostics.get_diagnostic_activity`, `diagnostics.get_diagnostic_history`, `diagnostics.get_diagnostic_report`, `diagnostics.get_diagnostic_runs`, `diagnostics.get_diagnostic_trace` |
-| permissions | `permissions.get_permissions` |
-| player | `player.add_players_manually`, `player.get_all_known_players`, `player.scan_and_update_player_db` |
-| plugins | `plugins.get_plugin_setting`, `plugins.get_plugin_statuses`, `plugins.set_plugin_setting` |
-| properties | `properties.get_properties`, `properties.get_raw_properties`, `properties.validate_property_value` |
-| scheduler | `scheduler.list_schedules` |
-| server | `server.get_all_settings`, `server.get_setting`, `server.get_summary`, `server.get_valid_names`, `server.set_custom_value` |
+| application | `application.get_system_and_app_info` |
+| plugins | `plugins.get_plugin_setting`, `plugins.set_plugin_setting` |
+| properties | `properties.validate_property_value` |
+| server | `server.set_custom_value` |
 | settings | `settings.get_all_global_settings`, `settings.get_global_setting`, `settings.set_custom_global_setting` |
-| system | `system.get_application_health`, `system.get_application_metrics`, `system.get_bedrock_process_info`, `system.get_server_running_status` |
 | websocket | `websocket.websocket_unregister_data_provider` |
-| world | `world.get_world_name` |
 
 Reading and writing the caller's private plugin files or the shared public plugin
 directory uses the file scope (`private` or `public`) and requires no `path:*`

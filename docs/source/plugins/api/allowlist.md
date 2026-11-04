@@ -14,7 +14,7 @@ await self.api.allowlist.add_to_allowlist(request: bedrock_server_manager.api.mo
 
 - **Description:** Adds a list of players to the server's allowlist.
 
-- **Required Permission:** `server:allowlist`
+- **Required Permission:** `allowlist:manage`
 
 - **Returns:** `AddToAllowlistResponse`
 
@@ -47,6 +47,8 @@ await self.api.allowlist.get_allowlist(request: bedrock_server_manager.api.model
 
 - **Description:** Return the current allowlist for a given server.
 
+- **Required Permission:** `allowlist:read`
+
 - **Returns:** `GetAllowlistResponse`
 
 Runtime context and plugin identity are injected by the bridge. Failures raise application exceptions; plugin cancellation raises `APICancelledError`.
@@ -78,7 +80,7 @@ await self.api.allowlist.remove_from_allowlist(request: bedrock_server_manager.a
 
 - **Description:** Remove a list of players from the server's allowlist.
 
-- **Required Permission:** `server:allowlist`
+- **Required Permission:** `allowlist:manage`
 
 - **Returns:** `RemoveFromAllowlistResponse`
 

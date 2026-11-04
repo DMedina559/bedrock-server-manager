@@ -11,6 +11,7 @@ from ..logging import log_operation_error
 
 if TYPE_CHECKING:
     from ..context import AppContext
+    from .files import PluginFileFormat, PluginFileScope
 
 logger = logging.getLogger(__name__)
 
@@ -119,8 +120,8 @@ async def report_task_stage(
 async def read_plugin_file(
     filename: str,
     *,
-    scope: str = "private",
-    format: str = "json",
+    scope: PluginFileScope = "private",
+    format: PluginFileFormat = "json",
     app_context: AppContext,
     plugin_name: str,
 ):
@@ -133,8 +134,8 @@ async def read_plugin_file(
         app_context.config_dir,
         plugin_name,
         filename,
-        scope=scope,  # type: ignore[arg-type]
-        format=format,  # type: ignore[arg-type]
+        scope=scope,
+        format=format,
     )
 
 
@@ -142,8 +143,8 @@ async def write_plugin_file(
     filename: str,
     value: Any,
     *,
-    scope: str = "private",
-    format: str = "json",
+    scope: PluginFileScope = "private",
+    format: PluginFileFormat = "json",
     app_context: AppContext,
     plugin_name: str,
 ) -> None:
@@ -157,15 +158,15 @@ async def write_plugin_file(
         plugin_name,
         filename,
         value,
-        scope=scope,  # type: ignore[arg-type]
-        format=format,  # type: ignore[arg-type]
+        scope=scope,
+        format=format,
     )
 
 
 async def get_plugin_data_path(
     filename: str = "",
     *,
-    scope: str = "private",
+    scope: PluginFileScope = "private",
     app_context: AppContext,
     plugin_name: str,
 ):
@@ -178,12 +179,12 @@ async def get_plugin_data_path(
             app_context.config_dir,
             plugin_name,
             filename,
-            scope=scope,  # type: ignore[arg-type]
+            scope=scope,
         )
         base = plugin_path(
             app_context.config_dir,
             plugin_name,
-            scope=scope,  # type: ignore[arg-type]
+            scope=scope,
         )
         base.mkdir(parents=True, exist_ok=True)
         return target
@@ -287,6 +288,7 @@ def register_http_permission(
     description: str,
     roles: list[str],
     *,
+    server_scoped: bool = False,
     app_context: AppContext,
     plugin_name: str,
 ) -> None:
@@ -298,5 +300,5 @@ def register_http_permission(
     if not permission.startswith("plugin:"):
         permission = f"plugin:{plugin_name}:{permission}"
     app_context.plugin_manager.access_policy.register(
-        plugin_name, permission, description, roles
+        plugin_name, permission, description, roles, server_scoped=server_scoped
     )

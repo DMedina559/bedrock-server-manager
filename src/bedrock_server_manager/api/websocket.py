@@ -11,6 +11,7 @@ from ..contracts import DeliveryResult
 from ..error import IncompleteOperationError
 from ..logging import log_operation_error
 from ..plugins.api_bridge import api_method
+from ..plugins.scopes import PluginScope
 from .models.websocket import (
     BroadcastRequest,
     BroadcastResponse,
@@ -37,7 +38,7 @@ def _delivery_status(
     return "partial" if result.failed or result.unavailable else "success"
 
 
-@api_method("websocket_broadcast", required_scope="websocket:send")
+@api_method("websocket_broadcast", required_scope=PluginScope.WEBSOCKET_SEND)
 async def broadcast(
     request: BroadcastRequest, *, app_context: AppContext
 ) -> BroadcastResponse:
@@ -68,7 +69,7 @@ async def broadcast(
         raise
 
 
-@api_method("websocket_send_to_user", required_scope="websocket:send")
+@api_method("websocket_send_to_user", required_scope=PluginScope.WEBSOCKET_SEND)
 async def send_to_user(
     request: SendToUserRequest, *, app_context: AppContext
 ) -> SendToUserResponse:
@@ -89,7 +90,7 @@ async def send_to_user(
         raise
 
 
-@api_method("websocket_send_to_client", required_scope="websocket:send")
+@api_method("websocket_send_to_client", required_scope=PluginScope.WEBSOCKET_SEND)
 async def send_to_client(
     request: SendToClientRequest, *, app_context: AppContext
 ) -> SendToClientResponse:
@@ -139,7 +140,7 @@ async def unregister_data_provider(
         raise
 
 
-@api_method("websocket_publish_ws_event", required_scope="websocket:send")
+@api_method("websocket_publish_ws_event", required_scope=PluginScope.WEBSOCKET_SEND)
 async def publish_ws_event(
     request: PublishWsEventRequest, *, app_context: AppContext
 ) -> PublishWsEventResponse:

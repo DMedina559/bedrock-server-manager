@@ -43,12 +43,12 @@ def spy_api(monkeypatch, name):
 @pytest.mark.parametrize(
     "value",
     [
-        "server:command",
-        {"server:command": True},
+        "servers:command",
+        {"servers:command": True},
         [None],
         [1],
         [""],
-        [" server:command"],
+        [" servers:command"],
     ],
 )
 def test_malformed_declarations_are_rejected(value):
@@ -61,7 +61,7 @@ def test_permission_catalog_mapping_is_consistent():
     assert dict(VALID_PERMISSION_SCOPES) == VALID_PERMISSION_SCOPES.copy()
     assert len(VALID_PERMISSION_SCOPES) == len(dict(VALID_PERMISSION_SCOPES))
     assert VALID_PERMISSION_SCOPES == dict(VALID_PERMISSION_SCOPES)
-    assert "maintenance:downloads" in VALID_PERMISSION_SCOPES
+    assert "downloads:prune" in VALID_PERMISSION_SCOPES
 
 
 async def test_permissions_are_snapshotted_and_status_preserves_empty_override(
@@ -73,19 +73,19 @@ async def test_permissions_are_snapshotted_and_status_preserves_empty_override(
 from bedrock_server_manager import PluginBase
 class Probe(PluginBase):
     version = "1.0"
-    permissions = ["server:command"]
+    permissions = ["servers:command"]
     def __init__(self, *args):
         super().__init__(*args)
         self.permissions = []
 """,
     )
-    plugin.permissions.append("server:command")
+    plugin.permissions.append("servers:command")
     assert plugin_permissions(plugin) == frozenset()
     status = await get_plugin_statuses(
         GetPluginStatusesRequest(), app_context=app_context
     )
     assert status.plugins["empty_override"].permissions == []
-    with pytest.raises(PermissionError, match="server:command"):
+    with pytest.raises(PermissionError, match="servers:command"):
         await plugin.api.server.send_command({"server_name": "test", "command": "list"})
 
 
@@ -124,10 +124,10 @@ async def test_schedules_enforce_plugin_permissions_at_execution(
     task = plugin.api.runtime.register_api_task(
         "command", spy if as_callable else "server.send_command"
     )
-    with pytest.raises(PermissionError, match="server:command"):
+    with pytest.raises(PermissionError, match="servers:command"):
         await task.handler(server_name="test", options={"command": "list"})
     assert not calls
-    granted = await make_plugin(plugin_factory, "granted_probe", ["server:command"])
+    granted = await make_plugin(plugin_factory, "granted_probe", ["servers:command"])
     task = granted.api.runtime.register_api_task(
         "command", spy if as_callable else "server.send_command"
     )
@@ -167,7 +167,7 @@ async def test_custom_plugin_schedule_cannot_request_app_context(plugin_factory)
 async def test_old_api_and_runtime_handles_stay_invalid_after_reload(
     app_context, plugin_factory
 ):
-    plugin = await make_plugin(plugin_factory, permissions=["server:lifecycle"])
+    plugin = await make_plugin(plugin_factory, permissions=["servers:lifecycle"])
     read = plugin.api.settings.get_all_global_settings
     path = plugin.api.runtime.get_plugin_data_path
     cm = plugin.api.runtime.server_lifecycle_manager("test", stop_before=True)
@@ -189,7 +189,7 @@ async def test_lifecycle_runtime_requires_scope_before_touching_server(
 
     get_server = Mock(side_effect=AssertionError("must not access server"))
     monkeypatch.setattr(app_context, "get_server", get_server)
-    with pytest.raises(PermissionError, match="server:lifecycle"):
+    with pytest.raises(PermissionError, match="servers:lifecycle"):
         async with plugin.api.runtime.server_lifecycle_manager(
             "test", stop_before=True
         ):
@@ -229,7 +229,7 @@ async def test_plugin_cleanup_is_confined_to_download_cache(
 
     from bedrock_server_manager.contracts import CleanupResult
 
-    plugin = await make_plugin(plugin_factory, permissions=["maintenance:downloads"])
+    plugin = await make_plugin(plugin_factory, permissions=["downloads:prune"])
     cleaner = AsyncMock(return_value=CleanupResult())
     from bedrock_server_manager.api import misc
 
@@ -255,7 +255,7 @@ async def test_invalid_declaration_does_not_abort_discovery(
     healthy = await make_plugin(plugin_factory, "healthy_probe", [])
     directory = app_context.plugin_manager.plugin_dirs[0]
     (directory / "malformed.py").write_text(
-        'from bedrock_server_manager import PluginBase\nclass Broken(PluginBase):\n    version="1.0"\n    permissions="server:command"\n'
+        'from bedrock_server_manager import PluginBase\nclass Broken(PluginBase):\n    version="1.0"\n    permissions="servers:command"\n'
     )
     await app_context.plugin_manager._synchronize_config_with_disk()
     assert app_context.plugin_manager.get_plugin_status("malformed") == "ERROR"
@@ -273,7 +273,7 @@ async def test_lifecycle_runtime_with_permission_stops_and_restarts(
 
     from bedrock_server_manager.api import server
 
-    plugin = await make_plugin(plugin_factory, permissions=["server:lifecycle"])
+    plugin = await make_plugin(plugin_factory, permissions=["servers:lifecycle"])
     monkeypatch.setattr(
         app_context,
         "get_server",
@@ -288,9 +288,9 @@ async def test_lifecycle_runtime_with_permission_stops_and_restarts(
 
 
 def test_pruning_uses_maintenance_scopes():
-    assert _api_registry["prune_download_cache"][5] == "maintenance:downloads"
-    assert _api_registry["prune_old_backups"][5] == "maintenance:backups"
-    assert _api_registry["manage_server_snapshot"][5] == "backup:manage"
+    assert _api_registry["prune_download_cache"][5] == "downloads:prune"
+    assert _api_registry["prune_old_backups"][5] == "backups:prune"
+    assert _api_registry["manage_server_snapshot"][5] == "backups:manage"
 
 
 async def test_download_cleanup_rejects_symlink_escape(
@@ -301,7 +301,7 @@ async def test_download_cleanup_rejects_symlink_escape(
 
     from bedrock_server_manager.api import misc
 
-    plugin = await make_plugin(plugin_factory, permissions=["maintenance:downloads"])
+    plugin = await make_plugin(plugin_factory, permissions=["downloads:prune"])
     root = Path(app_context.settings.get("paths.downloads"))
     root.mkdir(parents=True, exist_ok=True)
     outside = tmp_path / "elsewhere"
@@ -337,7 +337,7 @@ async def test_path_permission_checks_share_the_load_time_snapshot(plugin_factor
         ("omitted", True),
         (None, True),
         ([], False),
-        (["server:command", "server:lifecycle", "path:servers"], True),
+        (["servers:command", "servers:lifecycle", "path:servers"], True),
     ],
 )
 async def test_legacy_and_explicit_permission_modes_match_all_dispatch_paths(
@@ -386,7 +386,7 @@ async def test_legacy_and_explicit_permission_modes_match_all_dispatch_paths(
         ):
             pass
     else:
-        with pytest.raises(PermissionError, match="server:lifecycle"):
+        with pytest.raises(PermissionError, match="servers:lifecycle"):
             async with plugin.api.runtime.server_lifecycle_manager(
                 "test", stop_before=False
             ):
@@ -413,7 +413,7 @@ async def test_legacy_mode_is_snapshotted_until_reload(
 def test_absent_plugin_is_not_treated_as_legacy():
     from bedrock_server_manager.plugins.scopes import plugin_has_permission
 
-    assert not plugin_has_permission(None, "server:command")
+    assert not plugin_has_permission(None, "servers:command")
     assert normalize_permissions(None) is None
     assert normalize_permissions([]) == frozenset()
 

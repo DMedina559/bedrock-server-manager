@@ -12,6 +12,7 @@ from ..error import (
 )
 from ..logging import RepeatedFailureReporter, log_operation_error
 from ..plugins.api_bridge import api_method
+from ..plugins.scopes import PluginScope
 from ..state.revision import revision_clock
 from .models.system import (
     GetApplicationHealthRequest,
@@ -29,7 +30,7 @@ logger = logging.getLogger(__name__)
 _health_failures = RepeatedFailureReporter(logger)
 
 
-@api_method("get_server_running_status")
+@api_method("get_server_running_status", required_scope=PluginScope.SERVERS_READ)
 async def get_server_running_status(
     request: GetServerRunningStatusRequest, *, app_context: AppContext
 ) -> GetServerRunningStatusResponse:
@@ -66,7 +67,7 @@ async def get_server_running_status(
         raise
 
 
-@api_method("get_bedrock_process_info")
+@api_method("get_bedrock_process_info", required_scope=PluginScope.SERVERS_READ)
 async def get_bedrock_process_info(
     request: GetBedrockProcessInfoRequest, *, app_context: AppContext
 ) -> GetBedrockProcessInfoResponse:
@@ -106,7 +107,7 @@ async def get_bedrock_process_info(
         raise
 
 
-@api_method("get_application_metrics")
+@api_method("get_application_metrics", required_scope=PluginScope.RUNTIME_METRICS)
 async def get_application_metrics(
     request: GetApplicationMetricsRequest, *, app_context: AppContext
 ) -> GetApplicationMetricsResponse:
@@ -115,7 +116,7 @@ async def get_application_metrics(
     return GetApplicationMetricsResponse.model_validate(result.model_dump())
 
 
-@api_method("get_application_health")
+@api_method("get_application_health", required_scope=PluginScope.HEALTH_READ)
 async def get_application_health(
     request: GetApplicationHealthRequest, *, app_context: AppContext
 ) -> GetApplicationHealthResponse:

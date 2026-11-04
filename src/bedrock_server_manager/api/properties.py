@@ -9,6 +9,7 @@ from ..error import (
 from ..events import trigger_event
 from ..logging import log_operation_error
 from ..plugins.api_bridge import api_method
+from ..plugins.scopes import PluginScope
 from .models.properties import (
     GetPropertiesRequest,
     GetPropertiesResponse,
@@ -24,7 +25,7 @@ from .server import server_lifecycle_manager
 logger = logging.getLogger(__name__)
 
 
-@api_method("get_properties")
+@api_method("get_properties", required_scope=PluginScope.PROPERTIES_READ)
 async def get_properties(
     request: GetPropertiesRequest, *, app_context: AppContext
 ) -> GetPropertiesResponse:
@@ -61,7 +62,7 @@ async def get_properties(
         raise
 
 
-@api_method("get_raw_properties")
+@api_method("get_raw_properties", required_scope=PluginScope.PROPERTIES_READ)
 async def get_raw_properties(
     request: GetRawPropertiesRequest, *, app_context: AppContext
 ) -> GetRawPropertiesResponse:
@@ -88,7 +89,7 @@ def validate_property_value(
     return _core_validate_property_value(request)
 
 
-@api_method("set_properties", required_scope="server:properties")
+@api_method("set_properties", required_scope=PluginScope.PROPERTIES_MANAGE)
 @trigger_event(
     before="before_properties_change",
     after="after_properties_change",

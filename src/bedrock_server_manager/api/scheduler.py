@@ -2,6 +2,7 @@
 
 from ..context import AppContext
 from ..plugins.api_bridge import api_method
+from ..plugins.scopes import PluginScope
 from .models.common import SuccessResponse
 from .models.scheduler import (
     ControlScheduleRequest,
@@ -12,7 +13,7 @@ from .models.scheduler import (
 )
 
 
-@api_method("list_schedules")
+@api_method("list_schedules", required_scope=PluginScope.SCHEDULER_READ)
 async def list_schedules(
     request: ListSchedulesRequest, *, app_context: AppContext
 ) -> ListSchedulesResponse:

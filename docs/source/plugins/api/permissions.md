@@ -14,6 +14,8 @@ await self.api.permissions.get_permissions(request: bedrock_server_manager.api.m
 
 - **Description:** Return the permissions configuration for a server, formatted with player names.
 
+- **Required Permission:** `permissions:read`
+
 - **Returns:** `GetPermissionsResponse`
 
 Runtime context and plugin identity are injected by the bridge. Failures raise application exceptions; plugin cancellation raises `APICancelledError`.
@@ -45,7 +47,7 @@ await self.api.permissions.set_permissions(request: bedrock_server_manager.api.m
 
 - **Description:** Set a player's permission level for a given server.
 
-- **Required Permission:** `server:permissions`
+- **Required Permission:** `permissions:manage`
 
 - **Returns:** `SetPermissionsResponse`
 

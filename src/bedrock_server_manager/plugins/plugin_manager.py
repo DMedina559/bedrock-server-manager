@@ -1306,8 +1306,12 @@ class PluginManager:
                         full_perm,
                         perm_entry.get("description", ""),
                         perm_entry["roles"],
+                        server_scoped=bool(perm_entry.get("server_scoped", False)),
                     )
-                elif isinstance(perm_entry, (tuple, list)) and len(perm_entry) == 3:
+                elif isinstance(perm_entry, (tuple, list)) and len(perm_entry) in (
+                    3,
+                    4,
+                ):
                     raw_perm = perm_entry[0]
                     full_perm = (
                         raw_perm
@@ -1319,6 +1323,9 @@ class PluginManager:
                         full_perm,
                         perm_entry[1],
                         perm_entry[2],
+                        server_scoped=(
+                            bool(perm_entry[3]) if len(perm_entry) == 4 else False
+                        ),
                     )
 
         # 2. Declarative method decorators (@scheduled_task, @diagnostic_provider, @data_provider)

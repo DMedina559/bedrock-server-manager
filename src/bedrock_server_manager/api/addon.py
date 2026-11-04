@@ -16,6 +16,7 @@ from ..error import (
 from ..events import trigger_event
 from ..logging import log_operation_error
 from ..plugins.api_bridge import api_method
+from ..plugins.scopes import PluginScope
 from ..utils import list_content_files
 from .models.addon import (
     DisableAddonRequest,
@@ -40,7 +41,7 @@ from .server import server_lifecycle_manager
 logger = logging.getLogger(__name__)
 
 
-@api_method("list_available_addons")
+@api_method("list_available_addons", required_scope=PluginScope.CONTENT_READ)
 async def list_available_addons(
     request: ListAvailableAddonsRequest, *, app_context: AppContext
 ) -> ListAvailableAddonsResponse:
@@ -61,7 +62,7 @@ async def list_available_addons(
         raise
 
 
-@api_method("import_addon", required_scope="addon:manage")
+@api_method("import_addon", required_scope=PluginScope.ADDONS_MANAGE)
 @trigger_event(
     before="before_addon_import",
     after="after_addon_import",
@@ -158,7 +159,7 @@ async def import_addon(
         server.operation_lock.release()
 
 
-@api_method("list_installed_addons")
+@api_method("list_installed_addons", required_scope=PluginScope.ADDONS_READ)
 async def list_installed_addons(
     request: ListInstalledAddonsRequest, *, app_context: AppContext
 ) -> ListInstalledAddonsResponse:
@@ -170,7 +171,7 @@ async def list_installed_addons(
     )
 
 
-@api_method("enable_addon", required_scope="addon:manage")
+@api_method("enable_addon", required_scope=PluginScope.ADDONS_MANAGE)
 @trigger_event(
     before="before_addon_enable",
     after="after_addon_enable",
@@ -230,7 +231,7 @@ async def enable_addon(
         server.operation_lock.release()
 
 
-@api_method("disable_addon", required_scope="addon:manage")
+@api_method("disable_addon", required_scope=PluginScope.ADDONS_MANAGE)
 @trigger_event(
     before="before_addon_disable",
     after="after_addon_disable",
@@ -290,7 +291,7 @@ async def disable_addon(
         server.operation_lock.release()
 
 
-@api_method("update_subpack", required_scope="addon:manage")
+@api_method("update_subpack", required_scope=PluginScope.ADDONS_MANAGE)
 @trigger_event(
     before="before_addon_subpack_update",
     after="after_addon_subpack_update",
@@ -413,7 +414,7 @@ async def uninstall_addon(
         server.operation_lock.release()
 
 
-@api_method("reorder_addons", required_scope="addon:manage")
+@api_method("reorder_addons", required_scope=PluginScope.ADDONS_MANAGE)
 @trigger_event(
     before="before_addon_reorder",
     after="after_addon_reorder",

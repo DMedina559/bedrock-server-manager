@@ -458,7 +458,7 @@ class JobOptions(BaseModel):
 
 class ModernPlugin(PluginBase):
     version = "1.0.0"
-    permissions = ["server:command", "maintenance:backups"]
+    permissions = ["servers:command", "backups:prune"]
     http_permissions = [("manage", "Manage modern plugin", ["admin"])]
     scheduled_apis = [
         {"name": "cmd", "api_method": "server.send_command", "requires_server_lock": False}
@@ -581,7 +581,7 @@ from bedrock_server_manager import PluginBase
 
 class TypoPlugin(PluginBase):
     version = "1.0.0"
-    permissions = ["server:lifecycle", "sever:command"]
+    permissions = ["servers:lifecycle", "sever:command"]
 """,
         )
 

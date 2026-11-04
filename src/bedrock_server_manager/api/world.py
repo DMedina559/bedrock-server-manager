@@ -11,6 +11,7 @@ from ..error import (
 from ..events import trigger_event
 from ..logging import log_operation_error
 from ..plugins.api_bridge import api_method
+from ..plugins.scopes import PluginScope
 from ..utils import get_timestamp
 from .models.world import (
     ExportWorldRequest,
@@ -53,7 +54,7 @@ plugin system.
 logger = logging.getLogger(__name__)
 
 
-@api_method("get_world_name")
+@api_method("get_world_name", required_scope=PluginScope.WORLDS_READ)
 async def get_world_name(
     request: GetWorldNameRequest, *, app_context: AppContext
 ) -> GetWorldNameResponse:
@@ -83,7 +84,7 @@ async def get_world_name(
         raise
 
 
-@api_method("export_world", required_scope="world:manage")
+@api_method("export_world", required_scope=PluginScope.WORLDS_MANAGE)
 @trigger_event(
     before="before_world_export",
     after="after_world_export",
@@ -161,7 +162,7 @@ async def export_world(
         server.operation_lock.release()
 
 
-@api_method("import_world", required_scope="world:manage")
+@api_method("import_world", required_scope=PluginScope.WORLDS_MANAGE)
 @trigger_event(
     before="before_world_import",
     after="after_world_import",
@@ -242,7 +243,7 @@ async def import_world(
         server.operation_lock.release()
 
 
-@api_method("reset_world", required_scope="world:reset")
+@api_method("reset_world", required_scope=PluginScope.WORLDS_RESET)
 @trigger_event(
     before="before_world_reset",
     after="after_world_reset",

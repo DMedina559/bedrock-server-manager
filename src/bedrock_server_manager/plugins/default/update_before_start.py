@@ -17,7 +17,7 @@ class AutoupdatePlugin(PluginBase):
     """
 
     version = "1.4.0"
-    permissions = ["server:install"]
+    permissions = ["servers:install", "servers:read"]
     description = "Automatically updates a server to the latest version before it starts. This plugin checks for a server-specific `autoupdate: true` setting in its configuration."
     author = "dmedina559"
     name = "Auto Update on Start"

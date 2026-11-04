@@ -93,7 +93,7 @@ LEGACY_COMPONENTS: dict[str, ConfigComponent] = {
 )
 async def put_prune_backups(
     current_user: UserResponse = Security(
-        require_permissions, scopes=[Permission.BACKUPS_MANAGE]
+        require_permissions, scopes=[Permission.BACKUPS_PRUNE]
     ),
     server_name: str = Depends(validate_server_registered),
     app_context: AppContext = Depends(get_app_context),

@@ -14,7 +14,7 @@ await self.api.install.install_new_server(request: bedrock_server_manager.api.mo
 
 - **Description:** Installs a new server instance.
 
-- **Required Permission:** `server:install`
+- **Required Permission:** `servers:install`
 
 - **Returns:** `InstallNewServerResponse`
 
@@ -47,7 +47,7 @@ await self.api.install.update_server(request: bedrock_server_manager.api.models.
 
 - **Description:** Updates an existing server instance.
 
-- **Required Permission:** `server:install`
+- **Required Permission:** `servers:install`
 
 - **Returns:** `UpdateServerResponse`
 

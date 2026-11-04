@@ -16,61 +16,72 @@ Authentication endpoints and invitation registration have their own public/token
 
 Administrators can inspect accounts in **Users**, create invitations, and edit a user's role, active status, and server access policy. Confirm the intended account before saving access changes. Invitation expiry is reported when the invitation is created.
 
-For `user` and `moderator` accounts, administrators can leave server access unrestricted (`all`) or restrict the account to `assigned` servers (`/api/access/users/{user_id}/servers`) with specific per-server permissions (for example, `servers:read` for a `user`, or `servers:read`, `servers:control`, and `backups:create` for a `moderator`). Per-server assignments narrow access within the account's role ceiling—they never grant permissions that the account's global role does not already hold (for example, assigning `servers:configure` or `backups:restore` requires the `admin` role). Use the access preview tool (`/api/access/users/{user_id}/preview`) to inspect an account's effective capabilities before saving.
+For `user` and `moderator` accounts, administrators can leave server access unrestricted (`all`) or restrict the account to `assigned` servers (`/api/access/users/{user_id}/servers`) with specific per-server permissions (for example, `servers:read` for a `user`, or `servers:read`, `servers:lifecycle`, `servers:command`, and `backups:create` for a `moderator`). Per-server assignments narrow access within the account's role ceiling—they never grant permissions that the account's global role does not already hold (for example, assigning `servers:configure` or `servers:delete` requires the `admin` role). Use the access preview tool (`/api/access/users/{user_id}/servers/preview`) to inspect an account's effective capabilities before saving.
 
 ### Role and permission reference
 
-BSM defines 47 built-in permissions across 15 categories, plus dynamic plugin permissions (`plugin:<plugin_name>:<perm>`). `admin` accounts always hold every permission on every server.
+BSM defines 59 built-in permissions across 23 categories, plus dynamic plugin permissions (`plugin:<plugin_name>:<perm>`). `admin` accounts always hold every built-in permission on every server.
 
 | Permission | Category | `user` | `moderator` | `admin` | Server-scoped? | Delegatable to integration tokens? |
 |---|---|---|---|---|---|---|
 | `servers:read` | `servers` | Yes | Yes | Yes | Yes | Yes |
-| `servers:control` | `servers` | — | Yes | Yes | Yes | Yes |
+| `servers:inspect` | `servers` | — | Yes | Yes | Yes | Yes |
+| `servers:lifecycle` | `servers` | — | Yes | Yes | Yes | Yes |
 | `servers:command` | `servers` | — | Yes | Yes | Yes | Yes |
 | `servers:configure` | `servers` | — | — | Yes | Yes | Yes |
-| `servers:install` | `servers` | — | — | Yes | No | Yes |
-| `servers:update` | `servers` | — | Yes | Yes | Yes | Yes |
-| `servers:delete` | `servers` | — | — | Yes | Yes | **No** |
+| `servers:install` | `servers` | — | — | Yes | Yes | Yes |
+| `servers:delete` | `servers` | — | — | Yes | Yes | Yes |
+| `properties:read` | `properties` | — | Yes | Yes | Yes | Yes |
+| `properties:manage` | `properties` | — | Yes | Yes | Yes | Yes |
+| `allowlist:read` | `allowlist` | — | Yes | Yes | Yes | Yes |
+| `allowlist:manage` | `allowlist` | — | Yes | Yes | Yes | Yes |
+| `permissions:read` | `permissions` | — | Yes | Yes | Yes | Yes |
+| `permissions:manage` | `permissions` | — | Yes | Yes | Yes | Yes |
+| `bans:read` | `bans` | — | — | Yes | Yes | Yes |
+| `bans:manage` | `bans` | — | — | Yes | Yes | Yes |
+| `players:read` | `players` | — | Yes | Yes | No | Yes |
+| `players:manage` | `players` | — | Yes | Yes | No | Yes |
 | `worlds:read` | `worlds` | Yes | Yes | Yes | Yes | Yes |
-| `worlds:export` | `worlds` | — | Yes | Yes | Yes | Yes |
-| `worlds:import` | `worlds` | — | — | Yes | Yes | Yes |
-| `worlds:reset` | `worlds` | — | — | Yes | Yes | **No** |
-| `addons:read` | `addons` | Yes | Yes | Yes | Yes | Yes |
-| `addons:manage` | `addons` | — | Yes | Yes | Yes | Yes |
-| `backups:read` | `backups` | Yes | Yes | Yes | Yes | Yes |
+| `worlds:manage` | `worlds` | — | — | Yes | Yes | Yes |
+| `worlds:reset` | `worlds` | — | — | Yes | Yes | Yes |
+| `addons:read` | `addons` | — | Yes | Yes | Yes | Yes |
+| `addons:manage` | `addons` | — | — | Yes | Yes | Yes |
+| `content:read` | `content` | — | Yes | Yes | Yes | Yes |
+| `content:manage` | `content` | — | — | Yes | Yes | Yes |
+| `backups:read` | `backups` | — | Yes | Yes | Yes | Yes |
 | `backups:create` | `backups` | — | Yes | Yes | Yes | Yes |
-| `backups:verify` | `backups` | — | Yes | Yes | Yes | Yes |
-| `backups:restore` | `backups` | — | — | Yes | Yes | **No** |
-| `backups:manage` | `backups` | — | — | Yes | Yes | **No** |
-| `backups:encryption` | `backups` | — | — | Yes | No | **No** |
-| `players:read` | `players` | Yes | Yes | Yes | Yes | Yes |
-| `players:manage_Server` | `players` | — | Yes | Yes | Yes | Yes |
-| `players:manage_global` | `players` | — | Yes | Yes | No | Yes |
-| `scheduler:read` | `scheduler` | Yes | Yes | Yes | Yes | Yes |
-| `scheduler:manage` | `scheduler` | — | Yes | Yes | Yes | Yes |
-| `content:read` | `content` | Yes | Yes | Yes | No | Yes |
-| `content:upload` | `content` | — | Yes | Yes | No | Yes |
-| `content:download` | `content` | — | Yes | Yes | No | Yes |
-| `content:delete` | `content` | — | — | Yes | No | **No** |
-| `logs:read` | `logs` | Yes | Yes | Yes | Yes | Yes |
+| `backups:restore` | `backups` | — | Yes | Yes | Yes | Yes |
+| `backups:manage` | `backups` | — | Yes | Yes | Yes | Yes |
+| `backups:prune` | `backups` | — | Yes | Yes | Yes | Yes |
+| `backups:keys` | `backups` | — | — | Yes | No | Yes |
+| `backups:export` | `backups` | — | — | Yes | Yes | Yes |
+| `backups:destinations` | `backups` | — | — | Yes | Yes | Yes |
+| `downloads:read` | `downloads` | — | Yes | Yes | No | Yes |
+| `downloads:prune` | `downloads` | — | — | Yes | No | Yes |
+| `logs:read` | `logs` | — | Yes | Yes | Yes | Yes |
 | `logs:read_application` | `logs` | — | — | Yes | No | Yes |
+| `scheduler:read` | `scheduler` | — | — | Yes | No | Yes |
+| `scheduler:manage` | `scheduler` | — | — | Yes | No | Yes |
 | `settings:read` | `settings` | — | — | Yes | No | Yes |
-| `settings:manage` | `settings` | — | — | Yes | No | **No** |
-| `plugins:read` | `plugins` | — | — | Yes | No | Yes |
+| `settings:manage` | `settings` | — | — | Yes | No | Yes |
 | `plugins:pages` | `plugins` | Yes | Yes | Yes | No | Yes |
-| `plugins:manage` | `plugins` | — | — | Yes | No | **No** |
-| `users:read` | `users` | — | — | Yes | No | **No** |
-| `users:invite` | `users` | — | — | Yes | No | **No** |
+| `plugins:read` | `plugins` | — | — | Yes | No | Yes |
+| `plugins:manage` | `plugins` | — | — | Yes | No | Yes |
+| `users:read` | `users` | — | Yes | Yes | No | Yes |
 | `users:manage` | `users` | — | — | Yes | No | **No** |
-| `tokens:manage_own` | `tokens` | Yes | Yes | Yes | No | **No** |
-| `tokens:manage_all` | `tokens` | — | — | Yes | No | **No** |
-| `sessions:manage_own` | `sessions` | Yes | Yes | Yes | No | **No** |
-| `sessions:manage_all` | `sessions` | — | — | Yes | No | **No** |
-| `audit:read` | `audit` | — | — | Yes | No | **No** |
-| `system:info` | `system` | Yes | Yes | Yes | No | Yes |
-| `system:diagnostics` | `system` | — | — | Yes | No | Yes |
-| `system:service_manage` | `system` | — | — | Yes | No | **No** |
-| `system:shutdown` | `system` | — | — | Yes | No | **No** |
+| `access:manage` | `access` | — | — | Yes | No | **No** |
+| `account:read` | `account` | Yes | Yes | Yes | No | Yes |
+| `account:manage` | `account` | Yes | Yes | Yes | No | **No** |
+| `tokens:manage` | `tokens` | Yes | Yes | Yes | No | **No** |
+| `sessions:manage` | `sessions` | Yes | Yes | Yes | No | **No** |
+| `sessions:admin` | `sessions` | — | — | Yes | No | **No** |
+| `tasks:read` | `tasks` | Yes | Yes | Yes | No | Yes |
+| `health:read` | `health` | Yes | Yes | Yes | No | Yes |
+| `runtime:metrics` | `runtime` | Yes | Yes | Yes | No | Yes |
+| `runtime:read` | `runtime` | — | — | Yes | No | Yes |
+| `runtime:shutdown` | `runtime` | — | — | Yes | No | Yes |
+| `diagnostics:read` | `diagnostics` | — | — | Yes | No | Yes |
+| `audit:read` | `audit` | — | — | Yes | No | Yes |
 
 ```{figure} ../../images/web_users_page.png
 :alt: User Management listing BSM accounts, assigned roles and active status
@@ -108,8 +119,8 @@ Open **Account** to manage your profile, security credentials, and API integrati
 
 Integration tokens allow scripts, CI/CD pipelines, and `bsm-cli auth login --token` to authenticate without interactive cookies or MFA prompts:
 
-- Each user can maintain up to 100 active tokens (`tokens:manage_own`), and administrators can inspect or revoke any user's tokens (`tokens:manage_all`).
-- A token's requested scopes cannot include non-delegatable permissions (such as `servers:delete`, `backups:restore`, `users:*`, `settings:manage`, or `plugins:manage`).
+- Each user can maintain up to 100 active tokens (`tokens:manage`), and administrators can inspect or revoke any user's tokens (`access:manage`).
+- A token's requested scopes cannot include non-delegatable permissions (`tokens:manage`, `access:manage`, `account:manage`, `users:manage`, `sessions:manage`, and `sessions:admin`).
 - Effective token permissions are evaluated **live** on every request as the intersection of the token's granted scopes and the owning user's current role and server assignments. If the owning user's role is downgraded, server access is removed, or account is disabled, the token immediately loses that access without needing manual revocation.
 
 ### Invitations and password requirements

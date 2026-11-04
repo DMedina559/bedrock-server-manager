@@ -175,7 +175,7 @@ async def test_private_images_accept_bearer_credentials_and_prevent_caching(
 
     issued = await admin_auth_client.post(
         "/api/account/tokens",
-        json={"name": "Icons", "permissions": ["servers:read", "content:read"]},
+        json={"name": "Icons", "permissions": ["worlds:read", "addons:read"]},
     )
     assert issued.status_code == 201
     image = tmp_path / "icon.png"

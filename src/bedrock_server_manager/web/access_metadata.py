@@ -5,7 +5,7 @@ from fastapi.openapi.utils import get_openapi
 from fastapi.routing import APIRoute
 
 from .access_policy import ROLE_GRANTS, AccessPolicy
-from .authorization import NON_DELEGATABLE
+from .authorization import NON_DELEGATABLE, STEP_UP_PERMISSIONS
 from .deps.auth import (
     get_admin_user,
     get_current_user,
@@ -111,7 +111,7 @@ def access_for(route: APIRoute, policy: AccessPolicy) -> dict:
     metadata.update(getattr(route.endpoint, "__bsm_access__", {}))
     metadata["additional_checks"] = list(metadata["additional_checks"])
     if (
-        set(required) & {"users:manage", "access:manage", "sessions:admin"}
+        set(required) & STEP_UP_PERMISSIONS
         and (route.methods or set()) - {"GET", "HEAD", "OPTIONS"}
         and not getattr(route.endpoint, "__bsm_read_only_preview__", False)
     ):

@@ -363,7 +363,7 @@ async def test_content_read_inventory_is_safe_and_does_not_grant_mutations(
     )
     issued = await admin_auth_client.post(
         "/api/account/tokens",
-        json={"name": "Inventory", "permissions": ["content:read"]},
+        json={"name": "Inventory", "permissions": ["addons:read"]},
     )
     assert issued.status_code == 201, issued.text
     headers = {"Authorization": "Bearer " + issued.json()["token"]}

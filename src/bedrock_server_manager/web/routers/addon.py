@@ -73,7 +73,7 @@ async def get_addons(
 )
 async def get_server_addons(
     current_user: UserResponse = Security(
-        require_permissions, scopes=[Permission.CONTENT_READ]
+        require_permissions, scopes=[Permission.ADDONS_READ]
     ),
     server_name: str = Depends(validate_server_exists),
     app_context: AppContext = Depends(get_app_context),
@@ -90,7 +90,7 @@ async def get_server_addons(
     authorization = current_authorization.get()
     addons = result.addons
     if authorization is not None and not authorization.allows(
-        "content:manage", server_name
+        Permission.ADDONS_MANAGE, server_name
     ):
         # Read-only consumers need inventory and icon availability, not host paths.
         addons = addons.model_copy(
@@ -119,7 +119,7 @@ async def get_server_addons(
 async def post_enable_addon(
     payload: AddonActionPayload,
     current_user: UserResponse = Security(
-        require_permissions, scopes=[Permission.CONTENT_MANAGE]
+        require_permissions, scopes=[Permission.ADDONS_MANAGE]
     ),
     server_name: str = Depends(validate_server_exists),
     app_context: AppContext = Depends(get_app_context),
@@ -157,7 +157,7 @@ async def post_enable_addon(
 async def post_disable_addon(
     payload: AddonActionPayload,
     current_user: UserResponse = Security(
-        require_permissions, scopes=[Permission.CONTENT_MANAGE]
+        require_permissions, scopes=[Permission.ADDONS_MANAGE]
     ),
     server_name: str = Depends(validate_server_exists),
     app_context: AppContext = Depends(get_app_context),
@@ -195,7 +195,7 @@ async def post_disable_addon(
 async def post_update_subpack(
     payload: AddonSubpackPayload,
     current_user: UserResponse = Security(
-        require_permissions, scopes=[Permission.CONTENT_MANAGE]
+        require_permissions, scopes=[Permission.ADDONS_MANAGE]
     ),
     server_name: str = Depends(validate_server_exists),
     app_context: AppContext = Depends(get_app_context),
@@ -237,7 +237,7 @@ async def post_update_subpack(
 async def delete_uninstall_addon(
     payload: AddonActionPayload,
     current_user: UserResponse = Security(
-        require_permissions, scopes=[Permission.CONTENT_MANAGE]
+        require_permissions, scopes=[Permission.ADDONS_MANAGE]
     ),
     server_name: str = Depends(validate_server_exists),
     app_context: AppContext = Depends(get_app_context),
@@ -277,7 +277,7 @@ async def delete_uninstall_addon(
 async def post_reorder_addons(
     payload: AddonReorderPayload,
     current_user: UserResponse = Security(
-        require_permissions, scopes=[Permission.CONTENT_MANAGE]
+        require_permissions, scopes=[Permission.ADDONS_MANAGE]
     ),
     server_name: str = Depends(validate_server_exists),
     app_context: AppContext = Depends(get_app_context),
@@ -317,7 +317,7 @@ async def post_reorder_addons(
 async def post_install_addon(
     payload: FileNamePayload,
     current_user: UserResponse = Security(
-        require_permissions, scopes=[Permission.CONTENT_MANAGE]
+        require_permissions, scopes=[Permission.ADDONS_MANAGE]
     ),
     server_name: str = Depends(validate_server_exists),
     app_context: AppContext = Depends(get_app_context),
@@ -395,7 +395,7 @@ async def post_install_addon(
 )
 async def get_server_addon_icon(
     current_user: UserResponse = Security(
-        require_permissions, scopes=[Permission.CONTENT_READ]
+        require_permissions, scopes=[Permission.ADDONS_READ]
     ),
     server_name: str = Depends(validate_server_exists),
     pack_type: str = Query(...),

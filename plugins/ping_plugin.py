@@ -13,6 +13,7 @@ class PingPayload(BaseModel):
 
 class PingPlugin(PluginBase):
     version = "2.1.0"
+    permissions = []
     author = "dmedina559"
     name = "Ping Example"
     description = "Publish a typed ping after server startup."

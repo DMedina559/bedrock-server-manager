@@ -161,6 +161,7 @@ class ConfigEditorPlugin(PluginBase):
     ]
     permissions = [
         "path:servers",
+        "servers:read",
     ]
 
     @app_event("on_load")

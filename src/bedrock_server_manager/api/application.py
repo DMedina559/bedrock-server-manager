@@ -8,6 +8,7 @@ from ..context import AppContext
 from ..error import BSMError, FileError
 from ..logging import log_operation_error
 from ..plugins.api_bridge import api_method
+from ..plugins.scopes import PluginScope
 from ..state.revision import revision_clock
 from ..utils import list_content_files
 from .models.application import (
@@ -25,7 +26,7 @@ from .models.common import ServerSummary
 logger = logging.getLogger(__name__)
 
 
-@api_method("list_available_worlds")
+@api_method("list_available_worlds", required_scope=PluginScope.CONTENT_READ)
 async def list_available_worlds(
     request: ListAvailableWorldsRequest, *, app_context: AppContext
 ) -> ListAvailableWorldsResponse:
@@ -44,7 +45,7 @@ async def list_available_worlds(
         raise
 
 
-@api_method("get_all_servers_data")
+@api_method("get_all_servers_data", required_scope=PluginScope.SERVERS_READ)
 async def get_all_servers_data(
     request: GetAllServersDataRequest, *, app_context: AppContext
 ) -> GetAllServersDataResponse:

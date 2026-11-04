@@ -20,6 +20,7 @@ from ..error import (
 from ..events import trigger_event
 from ..logging import log_operation_error
 from ..plugins.api_bridge import api_method
+from ..plugins.scopes import PluginScope
 from ..utils.general import ReentrantAsyncLock
 from .models.misc import (
     PruneDownloadCacheRequest,
@@ -32,7 +33,7 @@ logger = logging.getLogger(__name__)
 _misc_lock = ReentrantAsyncLock()
 
 
-@api_method("prune_download_cache", required_scope="maintenance:downloads")
+@api_method("prune_download_cache", required_scope=PluginScope.DOWNLOADS_PRUNE)
 @trigger_event(
     before="before_prune_download_cache",
     after="after_prune_download_cache",

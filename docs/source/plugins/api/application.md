@@ -14,6 +14,8 @@ await self.api.application.get_all_servers_data(request: bedrock_server_manager.
 
 - **Description:** Return status and version for all detected servers.
 
+- **Required Permission:** `servers:read`
+
 - **Returns:** `GetAllServersDataResponse`
 
 Runtime context and plugin identity are injected by the bridge. Failures raise application exceptions; plugin cancellation raises `APICancelledError`.
@@ -75,6 +77,8 @@ await self.api.application.list_available_worlds(request: bedrock_server_manager
 - **Async (Requires await):** Yes
 
 - **Description:** Lists available .mcworld files from the content directory.
+
+- **Required Permission:** `content:read`
 
 - **Returns:** `ListAvailableWorldsResponse`
 

@@ -14,6 +14,8 @@ await self.api.player.add_players_manually(request: bedrock_server_manager.api.m
 
 - **Description:** Adds or updates player data in the database.
 
+- **Required Permission:** `players:manage`
+
 - **Returns:** `AddPlayersManuallyResponse`
 
 Runtime context and plugin identity are injected by the bridge. Failures raise application exceptions; plugin cancellation raises `APICancelledError`.
@@ -45,6 +47,8 @@ await self.api.player.get_all_known_players(request: bedrock_server_manager.api.
 
 - **Description:** Return all player data from the database.
 
+- **Required Permission:** `players:read`
+
 - **Returns:** `GetAllKnownPlayersResponse`
 
 Runtime context and plugin identity are injected by the bridge. Failures raise application exceptions; plugin cancellation raises `APICancelledError`.
@@ -75,6 +79,8 @@ await self.api.player.scan_and_update_player_db(request: bedrock_server_manager.
 - **Async (Requires await):** Yes
 
 - **Description:** Scans all server logs to discover and save player data.
+
+- **Required Permission:** `players:manage`
 
 - **Returns:** `ScanAndUpdatePlayerDbResponse`
 

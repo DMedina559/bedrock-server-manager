@@ -235,13 +235,16 @@ async def test_access_previews_explain_role_and_resource_ceilings(
     payload = {
         "mode": "assigned",
         "grants": [
-            {"server_id": identity, "permissions": ["servers:read", "servers:control"]}
+            {
+                "server_id": identity,
+                "permissions": ["servers:read", "servers:lifecycle"],
+            }
         ],
     }
     preview = await admin_auth_client.post(path + "/preview", json=payload)
     assert preview.status_code == 200, preview.text
     assert preview.json()["server_permissions"] == {identity: ["servers:read"]}
-    assert preview.json()["unavailable_permissions"] == ["servers:control"]
+    assert preview.json()["unavailable_permissions"] == ["servers:lifecycle"]
     assert (await admin_auth_client.get(path)).json()["mode"] == "all"
     assert (await auth_client.post(path + "/preview", json=payload)).status_code == 403
     response = await admin_auth_client.post(

@@ -10,7 +10,7 @@ from ..error import BSMError, UserInputError
 from ..events import trigger_event
 from ..logging import log_operation_error
 from ..plugins.api_bridge import api_method
-from ..plugins.scopes import normalize_permissions, plugin_permissions
+from ..plugins.scopes import PluginScope, normalize_permissions, plugin_permissions
 from .models.plugins import (
     EventDispatchSummary,
     GetPluginSettingRequest,
@@ -35,7 +35,7 @@ from .models.plugins import (
 logger = logging.getLogger(__name__)
 
 
-@api_method("get_plugin_statuses")
+@api_method("get_plugin_statuses", required_scope=PluginScope.PLUGINS_READ)
 async def get_plugin_statuses(
     request: GetPluginStatusesRequest, *, app_context: AppContext
 ) -> GetPluginStatusesResponse:

@@ -11,6 +11,7 @@ from ..events import trigger_event
 from ..events.operations import OperationName, track_operation
 from ..logging import log_operation_error
 from ..plugins.api_bridge import api_method
+from ..plugins.scopes import PluginScope
 from .models.install import (
     InstallNewServerRequest,
     InstallNewServerResponse,
@@ -22,7 +23,7 @@ from .server import server_lifecycle_manager
 logger = logging.getLogger(__name__)
 
 
-@api_method("install_new_server", required_scope="server:install")
+@api_method("install_new_server", required_scope=PluginScope.SERVERS_INSTALL)
 @trigger_event(
     before="before_server_install",
     after="after_server_install",
@@ -93,7 +94,7 @@ async def install_new_server(
         server.operation_lock.release()
 
 
-@api_method("update_server", required_scope="server:install")
+@api_method("update_server", required_scope=PluginScope.SERVERS_INSTALL)
 @track_operation(OperationName.SERVER_UPDATE)
 @trigger_event(
     before="before_server_update",

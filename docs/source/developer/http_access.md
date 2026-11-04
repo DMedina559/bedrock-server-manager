@@ -1,7 +1,7 @@
 # HTTP permissions and browser authentication
 
 BSM keeps the `user`, `moderator`, and `admin` roles. HTTP routes declare
-capabilities through `Security(require_permissions, scopes=[Permission.SERVERS_CONTROL])`.
+capabilities through `Security(require_permissions, scopes=[Permission.SERVERS_LIFECYCLE])`.
 Every declared capability is required. Grants come from `web/access_policy.py`;
 authentication still looks up the account and its current role. These endpoint
 scopes do **not** restrict an individual JWT. Selecting scopes in Swagger does
@@ -64,12 +64,15 @@ class ExamplePlugin(PluginBase):
     version = "1.0.0"
     http_permissions = [
         ("jobs:run", "Run example jobs", ["moderator", "admin"]),
+        ("server:inspect", "Inspect plugin server state", ["moderator", "admin"], True),
     ]
 ```
 
 Omitting `plugin:` automatically prefixes `plugin:<plugin_name>:` (for example
-`plugin:example:jobs:run`). Use it in a route with `Security(require_permissions,
-scopes=["plugin:example:jobs:run"])`. Names must use the plugin's own namespace.
+`plugin:example:jobs:run`). Pass `True` as the fourth tuple element (or
+`"server_scoped": True` in a dictionary entry) when the permission applies to
+per-server routes and should participate in per-server access assignments. Use it
+in a route with `Security(require_permissions, scopes=["plugin:example:jobs:run"])`. Names must use the plugin's own namespace.
 Descriptions and explicit role grants are required; collisions and invalid names
 are rejected. Registration is owned by the plugin, removed on unload or failed
 load, and invalidates OpenAPI. Admin has no implicit bypass for plugin grants.
@@ -435,7 +438,7 @@ Server-scoped routes authorize before checking server registration or installati
 files. Anonymous requests return 401; credentials without the capability or server
 grant return 403 for both existing and missing private server names. Authorized
 callers still receive normal resource-validation errors. World and addon icons
-also require authorization (`servers:read` and `content:read` respectively),
+also require authorization (`worlds:read` and `addons:read` respectively),
 including server-grant checks. Embedded cookies work normally; bearer clients
 must fetch these binary operations with their credentials and display the
 returned image, rather than putting a token in an image URL. The frontend owns

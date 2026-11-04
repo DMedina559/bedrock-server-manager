@@ -14,6 +14,7 @@ class DynamicPageTestPlugin(PluginBase):
     """
 
     version = "1.2.0"
+    permissions = []
     description = "A plugin to test all Dynamic Page UI components."
     author = "dmedina559"
     name = "Dynamic Page Test"

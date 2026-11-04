@@ -56,7 +56,7 @@ Enable the plugin to register its routes in the running web server. The example
 adds `GET /my_web_plugin/info`. It also appears in the application's OpenAPI
 schema and API documentation.
 
-Declare custom HTTP permissions with `http_permissions` on the plugin class or instance, using either 2/3-tuples `(permission, description[, default_roles])` or dictionaries `{"permission": ..., "description": ..., "default_roles": [...]}`. Omitting the `plugin:` prefix automatically prefixes `plugin:<plugin_name>:`. Permission names must match `^plugin:[a-z0-9_]+:[a-z0-9_]+$`, and `default_roles` may only include `"user"`, `"moderator"`, and `"admin"` (defaulting to `["admin"]`).
+Declare custom HTTP permissions with `http_permissions` on the plugin class or instance, using 2-, 3-, or 4-tuples `(permission, description[, default_roles[, server_scoped]])` or dictionaries `{"permission": ..., "description": ..., "default_roles": [...], "server_scoped": bool}`. Omitting the `plugin:` prefix automatically prefixes `plugin:<plugin_name>:`. Permission names must match `^plugin:[A-Za-z0-9_.-]+:[a-z][a-z0-9_-]*(?::[a-z][a-z0-9_-]*)*$`, `default_roles` may only include `"user"`, `"moderator"`, and `"admin"` (defaulting to `["admin"]`), and `server_scoped=True` marks the permission as eligible for per-server access grants.
 
 ## Static asset mounts (`static_mounts`)
 

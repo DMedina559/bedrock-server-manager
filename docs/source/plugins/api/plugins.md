@@ -45,6 +45,8 @@ await self.api.plugins.get_plugin_statuses(request: bedrock_server_manager.api.m
 
 - **Description:** Return the statuses and metadata of all discovered plugins.
 
+- **Required Permission:** `plugins:read`
+
 - **Returns:** `GetPluginStatusesResponse`
 
 Runtime context and plugin identity are injected by the bridge. Failures raise application exceptions; plugin cancellation raises `APICancelledError`.

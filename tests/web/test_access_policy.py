@@ -46,7 +46,7 @@ async def test_permissions_require_all_and_fail_closed():
     for role in ("user", "moderator", "admin"):
         for scopes in (
             [Permission.SERVERS_READ],
-            [Permission.SERVERS_CONTROL],
+            [Permission.SERVERS_LIFECYCLE],
             [Permission.SERVERS_READ, Permission.USERS_MANAGE],
             ["unknown:permission"],
         ):
@@ -78,7 +78,7 @@ def test_nested_dependencies_and_plugin_invalidation():
 
     @router.get("/nested")
     async def nested(
-        user=Security(require_permissions, scopes=[Permission.SERVERS_CONTROL])
+        user=Security(require_permissions, scopes=[Permission.SERVERS_LIFECYCLE])
     ):
         pass
 
@@ -91,7 +91,7 @@ def test_nested_dependencies_and_plugin_invalidation():
     schema = app.openapi()
     assert schema["paths"]["/nested"]["get"]["x-bsm-access"][
         "required_permissions"
-    ] == ["servers:control", "servers:read"]
+    ] == ["servers:lifecycle", "servers:read"]
     policy.register("example", "plugin:example:jobs:run", "Run jobs", ["user"])
     assert app.openapi_schema is None
     assert "plugin:example:jobs:run" in policy.resolve("user")

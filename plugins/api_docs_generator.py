@@ -15,6 +15,7 @@ class APIDocsGenerator(PluginBase):
     """Generate navigable plugin API, model, and event references."""
 
     version = "1.4.0"
+    permissions = []
     author = "dmedina559"
     description = "A utility plugin that automatically generates Markdown documentation for all registered plugin API functions and application events."
     name = "API Docs Generator"

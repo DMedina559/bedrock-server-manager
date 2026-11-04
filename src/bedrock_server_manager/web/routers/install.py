@@ -43,7 +43,7 @@ router = APIRouter()
 )
 async def get_custom_zips(
     current_user: UserResponse = Security(
-        require_permissions, scopes=[Permission.CONTENT_READ]
+        require_permissions, scopes=[Permission.DOWNLOADS_READ]
     ),
     app_context: AppContext = Depends(get_app_context),
 ) -> CustomZipsResponse:
@@ -67,7 +67,7 @@ async def get_custom_zips(
 async def put_prune_downloads(
     payload: PruneDownloadsPayload,
     current_user: UserResponse = Security(
-        require_permissions, scopes=[Permission.CONTENT_MANAGE]
+        require_permissions, scopes=[Permission.DOWNLOADS_PRUNE]
     ),
     app_context: AppContext = Depends(get_app_context),
 ) -> PruneDownloadsResponse:
@@ -132,7 +132,7 @@ async def put_prune_downloads(
 async def post_install_server(  # noqa: C901
     payload: InstallServerPayload,
     current_user: UserResponse = Security(
-        require_permissions, scopes=[Permission.SERVERS_MANAGE]
+        require_permissions, scopes=[Permission.SERVERS_INSTALL]
     ),
     app_context: AppContext = Depends(get_app_context),
 ) -> InstallServerResponse:

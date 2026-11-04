@@ -34,7 +34,7 @@ router = APIRouter(tags=["Server Properties"])
 async def post_properties_set(
     payload: PropertiesPayload,
     current_user: UserResponse = Security(
-        require_permissions, scopes=[Permission.SERVERS_PROPERTIES]
+        require_permissions, scopes=[Permission.PROPERTIES_MANAGE]
     ),
     server_name: str = Depends(validate_server_exists),
     app_context: AppContext = Depends(get_app_context),
@@ -60,7 +60,7 @@ async def post_properties_set(
 )
 async def get_properties(
     current_user: UserResponse = Security(
-        require_permissions, scopes=[Permission.SERVERS_PROPERTIES]
+        require_permissions, scopes=[Permission.PROPERTIES_READ]
     ),
     server_name: str = Depends(validate_server_exists),
     app_context: AppContext = Depends(get_app_context),
@@ -79,7 +79,7 @@ async def get_properties(
 )
 async def get_raw_properties(
     current_user: UserResponse = Security(
-        require_permissions, scopes=[Permission.SERVERS_PROPERTIES]
+        require_permissions, scopes=[Permission.PROPERTIES_READ]
     ),
     server_name: str = Depends(validate_server_exists),
     app_context: AppContext = Depends(get_app_context),

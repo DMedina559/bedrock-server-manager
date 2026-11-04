@@ -14,6 +14,8 @@ await self.api.system.get_application_health(request: bedrock_server_manager.api
 
 - **Description:** Read-only readiness checks; dependency errors never expose credentials.
 
+- **Required Permission:** `health:read`
+
 - **Returns:** `GetApplicationHealthResponse`
 
 Runtime context and plugin identity are injected by the bridge. Failures raise application exceptions; plugin cancellation raises `APICancelledError`.
@@ -44,6 +46,8 @@ await self.api.system.get_application_metrics(request: bedrock_server_manager.ap
 - **Async (Requires await):** Yes
 
 - **Description:** Return shared, bounded performance history without sampling per request.
+
+- **Required Permission:** `runtime:metrics`
 
 - **Returns:** `GetApplicationMetricsResponse`
 
@@ -76,6 +80,8 @@ await self.api.system.get_bedrock_process_info(request: bedrock_server_manager.a
 
 - **Description:** Return resource usage for a running Bedrock server process.
 
+- **Required Permission:** `servers:read`
+
 - **Returns:** `GetBedrockProcessInfoResponse`
 
 Runtime context and plugin identity are injected by the bridge. Failures raise application exceptions; plugin cancellation raises `APICancelledError`.
@@ -106,6 +112,8 @@ await self.api.system.get_server_running_status(request: bedrock_server_manager.
 - **Async (Requires await):** Yes
 
 - **Description:** Check if the server process is currently running.
+
+- **Required Permission:** `servers:read`
 
 - **Returns:** `GetServerRunningStatusResponse`
 

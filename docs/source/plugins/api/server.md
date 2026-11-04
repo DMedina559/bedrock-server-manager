@@ -14,6 +14,8 @@ await self.api.server.get_all_settings(request: bedrock_server_manager.api.model
 
 - **Description:** Reads the entire persisted configurationuration for a specific server from its
 
+- **Required Permission:** `servers:read`
+
 - **Returns:** `GetAllServerSettingsResponse`
 
 Runtime context and plugin identity are injected by the bridge. Failures raise application exceptions; plugin cancellation raises `APICancelledError`.
@@ -78,6 +80,8 @@ await self.api.server.get_setting(request: bedrock_server_manager.api.models.ser
 
 - **Description:** Reads any value from a server's specific persisted configuration
 
+- **Required Permission:** `servers:read`
+
 - **Returns:** `GetServerSettingResponse`
 
 Runtime context and plugin identity are injected by the bridge. Failures raise application exceptions; plugin cancellation raises `APICancelledError`.
@@ -108,6 +112,8 @@ await self.api.server.get_summary(request: bedrock_server_manager.api.models.ser
 - **Async (Requires await):** Yes
 
 - **Description:** Return the summary information for a specific server.
+
+- **Required Permission:** `servers:read`
 
 - **Returns:** `GetServerSummaryResponse`
 
@@ -140,6 +146,8 @@ await self.api.server.get_valid_names(request: bedrock_server_manager.api.models
 
 - **Description:** Return current registered server names without sampling processes.
 
+- **Required Permission:** `servers:read`
+
 - **Returns:** `GetValidServerNamesResponse`
 
 Runtime context and plugin identity are injected by the bridge. Failures raise application exceptions; plugin cancellation raises `APICancelledError`.
@@ -171,7 +179,7 @@ await self.api.server.restart(request: bedrock_server_manager.api.models.server.
 
 - **Description:** Orchestrate stop/start; abort on cancellation or either phase failing.
 
-- **Required Permission:** `server:lifecycle`
+- **Required Permission:** `servers:lifecycle`
 
 - **Returns:** `RestartServerResponse`
 
@@ -204,7 +212,7 @@ await self.api.server.send_command(request: bedrock_server_manager.api.models.se
 
 - **Description:** Sends a command to a running Bedrock server.
 
-- **Required Permission:** `server:command`
+- **Required Permission:** `servers:command`
 
 - **Returns:** `SendCommandResponse`
 
@@ -268,7 +276,7 @@ await self.api.server.start(request: bedrock_server_manager.api.models.server.St
 
 - **Description:** Start an offline server under its lock, dispatching hooks only when needed.
 
-- **Required Permission:** `server:lifecycle`
+- **Required Permission:** `servers:lifecycle`
 
 - **Returns:** `StartServerResponse`
 
@@ -301,7 +309,7 @@ await self.api.server.stop(request: bedrock_server_manager.api.models.server.Sto
 
 - **Description:** Stop a server, or report that it is already stopped; failures raise.
 
-- **Required Permission:** `server:lifecycle`
+- **Required Permission:** `servers:lifecycle`
 
 - **Returns:** `StopServerResponse`
 

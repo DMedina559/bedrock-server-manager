@@ -4,6 +4,7 @@ from ..context import AppContext
 from ..error import BSMError, UserInputError
 from ..events import trigger_event
 from ..plugins.api_bridge import api_method
+from ..plugins.scopes import PluginScope
 from .models.ban import (
     AddServerBanRequest,
     AddServerBanResponse,
@@ -16,7 +17,7 @@ from .models.ban import (
 logger = logging.getLogger(__name__)
 
 
-@api_method("add_server_ban", required_scope="server:ban")
+@api_method("add_server_ban", required_scope=PluginScope.BANS_MANAGE)
 @trigger_event(
     before="before_add_server_ban",
     after="after_add_server_ban",
@@ -48,7 +49,7 @@ async def add_server_ban(
     )
 
 
-@api_method("remove_server_ban", required_scope="server:ban")
+@api_method("remove_server_ban", required_scope=PluginScope.BANS_MANAGE)
 @trigger_event(
     before="before_remove_server_ban",
     after="after_remove_server_ban",
@@ -73,7 +74,7 @@ async def remove_server_ban(
     )
 
 
-@api_method("get_server_bans")
+@api_method("get_server_bans", required_scope=PluginScope.BANS_READ)
 async def get_server_bans(
     request: GetServerBansRequest, *, app_context: AppContext
 ) -> GetServerBansResponse:

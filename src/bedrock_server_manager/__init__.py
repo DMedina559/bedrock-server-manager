@@ -30,8 +30,10 @@ if TYPE_CHECKING:
     from .plugins.decorators import diagnostic_provider as diagnostic_provider
     from .plugins.decorators import scheduled_task as scheduled_task
     from .plugins.decorators import websocket_provider as websocket_provider
+    from .plugins.scopes import PluginScope as PluginScope
     from .plugins.settings import ExistingServerName as ExistingServerName
     from .plugins.task_loop import task_loop as task_loop
+    from .web.access_policy import Permission as Permission
     from .web.deps.auth import get_admin_user as get_admin_user
     from .web.deps.auth import get_current_user as get_current_user
     from .web.deps.auth import get_current_user_optional as get_current_user_optional
@@ -44,6 +46,8 @@ if TYPE_CHECKING:
 __version__ = get_installed_version()
 _EXPORTS = {
     "PluginBase": ("plugins", "PluginBase"),
+    "PluginScope": ("plugins.scopes", "PluginScope"),
+    "Permission": ("web.access_policy", "Permission"),
     "app_event": ("plugins", "app_event"),
     "scheduled_task": ("plugins", "scheduled_task"),
     "diagnostic_provider": ("plugins", "diagnostic_provider"),
@@ -98,6 +102,8 @@ __all__ = [
     "errors",
     "__version__",
     "PluginBase",
+    "PluginScope",
+    "Permission",
     "app_event",
     "scheduled_task",
     "diagnostic_provider",

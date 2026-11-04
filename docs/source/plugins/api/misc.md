@@ -14,7 +14,7 @@ await self.api.misc.prune_download_cache(request: bedrock_server_manager.api.mod
 
 - **Description:** Prunes old downloaded server archives (.zip) in a directory.
 
-- **Required Permission:** `maintenance:downloads`
+- **Required Permission:** `downloads:prune`
 
 - **Returns:** `PruneDownloadCacheResponse`
 

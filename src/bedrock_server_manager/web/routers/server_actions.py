@@ -110,7 +110,7 @@ async def get_server_process(
 )
 async def post_start_server(
     current_user: UserResponse = Security(
-        require_permissions, scopes=[Permission.SERVERS_CONTROL]
+        require_permissions, scopes=[Permission.SERVERS_LIFECYCLE]
     ),
     server_name: str = Depends(validate_server_exists),
     app_context: AppContext = Depends(get_app_context),
@@ -136,7 +136,7 @@ async def post_start_server(
 )
 async def post_stop_server(
     current_user: UserResponse = Security(
-        require_permissions, scopes=[Permission.SERVERS_CONTROL]
+        require_permissions, scopes=[Permission.SERVERS_LIFECYCLE]
     ),
     server_name: str = Depends(validate_server_registered),
     app_context: AppContext = Depends(get_app_context),
@@ -160,7 +160,7 @@ async def post_stop_server(
 )
 async def post_restart_server(
     current_user: UserResponse = Security(
-        require_permissions, scopes=[Permission.SERVERS_CONTROL]
+        require_permissions, scopes=[Permission.SERVERS_LIFECYCLE]
     ),
     server_name: str = Depends(validate_server_exists),
     app_context: AppContext = Depends(get_app_context),
@@ -186,7 +186,7 @@ async def post_restart_server(
 async def post_send_command(
     payload: CommandPayload,
     current_user: UserResponse = Security(
-        require_permissions, scopes=[Permission.SERVERS_CONTROL]
+        require_permissions, scopes=[Permission.SERVERS_COMMAND]
     ),
     server_name: str = Depends(validate_server_exists),
     app_context: AppContext = Depends(get_app_context),
@@ -225,7 +225,7 @@ async def post_send_command(
 )
 async def post_update_server(
     current_user: UserResponse = Security(
-        require_permissions, scopes=[Permission.SERVERS_MANAGE]
+        require_permissions, scopes=[Permission.SERVERS_INSTALL]
     ),
     server_name: str = Depends(validate_server_exists),
     app_context: AppContext = Depends(get_app_context),
@@ -266,7 +266,7 @@ async def post_update_server(
 async def delete_server(
     request: Request,
     current_user: UserResponse = Security(
-        require_permissions, scopes=[Permission.SERVERS_MANAGE]
+        require_permissions, scopes=[Permission.SERVERS_DELETE]
     ),
     server_name: str = Depends(validate_server_registered),
     app_context: AppContext = Depends(get_app_context),

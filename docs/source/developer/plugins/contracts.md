@@ -72,14 +72,14 @@ at HTTP, WebSocket, and background-task boundaries.
 
 ## Capability permissions
 
-Operations that modify server lifecycle, state, configurations, or storage require explicit capability permissions. Declare these permissions on your `PluginBase` subclass:
+Operations that read or modify server lifecycle, state, configurations, or storage require explicit capability permissions when a plugin opts into capability enforcement. Declare these permissions on your `PluginBase` subclass:
 
 ```python
 from bedrock_server_manager import PluginBase
 
 class MyPlugin(PluginBase):
     version = "1.0.0"
-    permissions = ["server:lifecycle", "server:command"]
+    permissions = ["servers:lifecycle", "servers:command"]
 ```
 
 If a plugin attempts to call a protected API method without declaring the required permission, BSM raises `PermissionError`:

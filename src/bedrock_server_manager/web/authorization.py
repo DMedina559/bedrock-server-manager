@@ -3,49 +3,67 @@
 from contextvars import ContextVar
 from dataclasses import dataclass
 
-SERVER_PERMISSIONS = frozenset(
+from .access_policy import Permission
+
+SERVER_PERMISSIONS: frozenset[str] = frozenset(
     {
-        "servers:read",
-        "servers:inspect",
-        "servers:control",
-        "servers:properties",
-        "servers:configure",
-        "servers:manage",
-        "allowlist:read",
-        "allowlist:manage",
-        "permissions:read",
-        "permissions:manage",
-        "bans:read",
-        "bans:manage",
-        "logs:read",
-        "backups:read",
-        "backups:create",
-        "backups:restore",
-        "backups:manage",
-        "backups:export",
-        "backups:destinations",
-        "content:read",
-        "content:manage",
+        Permission.SERVERS_READ,
+        Permission.SERVERS_INSPECT,
+        Permission.SERVERS_LIFECYCLE,
+        Permission.SERVERS_COMMAND,
+        Permission.PROPERTIES_READ,
+        Permission.PROPERTIES_MANAGE,
+        Permission.SERVERS_CONFIGURE,
+        Permission.SERVERS_INSTALL,
+        Permission.SERVERS_DELETE,
+        Permission.ALLOWLIST_READ,
+        Permission.ALLOWLIST_MANAGE,
+        Permission.PERMISSIONS_READ,
+        Permission.PERMISSIONS_MANAGE,
+        Permission.BANS_READ,
+        Permission.BANS_MANAGE,
+        Permission.LOGS_READ,
+        Permission.BACKUPS_READ,
+        Permission.BACKUPS_CREATE,
+        Permission.BACKUPS_RESTORE,
+        Permission.BACKUPS_MANAGE,
+        Permission.BACKUPS_PRUNE,
+        Permission.BACKUPS_EXPORT,
+        Permission.BACKUPS_DESTINATIONS,
+        Permission.CONTENT_READ,
+        Permission.CONTENT_MANAGE,
+        Permission.WORLDS_READ,
+        Permission.WORLDS_MANAGE,
+        Permission.WORLDS_RESET,
+        Permission.ADDONS_READ,
+        Permission.ADDONS_MANAGE,
     }
 )
-PERSONAL_PERMISSIONS = frozenset(
+PERSONAL_PERMISSIONS: frozenset[str] = frozenset(
     {
-        "account:read",
-        "account:manage",
-        "tokens:manage",
-        "tasks:read",
-        "health:read",
-        "sessions:manage",
+        Permission.ACCOUNT_READ,
+        Permission.ACCOUNT_MANAGE,
+        Permission.TOKENS_MANAGE,
+        Permission.TASKS_READ,
+        Permission.HEALTH_READ,
+        Permission.SESSIONS_MANAGE,
     }
 )
-NON_DELEGATABLE = frozenset(
+NON_DELEGATABLE: frozenset[str] = frozenset(
     {
-        "tokens:manage",
-        "access:manage",
-        "account:manage",
-        "users:manage",
-        "sessions:manage",
-        "sessions:admin",
+        Permission.TOKENS_MANAGE,
+        Permission.ACCESS_MANAGE,
+        Permission.ACCOUNT_MANAGE,
+        Permission.USERS_MANAGE,
+        Permission.SESSIONS_MANAGE,
+        Permission.SESSIONS_ADMIN,
+    }
+)
+STEP_UP_PERMISSIONS: frozenset[str] = frozenset(
+    {
+        Permission.USERS_MANAGE,
+        Permission.ACCESS_MANAGE,
+        Permission.SESSIONS_ADMIN,
     }
 )
 
