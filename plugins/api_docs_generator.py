@@ -190,10 +190,13 @@ class APIDocsGenerator(PluginBase):
                     for field in required
                     if properties.get(field, {}).get("examples")
                 }
-                payload_line = (
-                    f"payload = {examples!r}"
-                    if len(examples) == len(required)
-                    else "payload = {...}  # Supply required request fields below."
+                arguments = ", ".join(
+                    (
+                        f"{field}={examples[field]!r}"
+                        if field in examples
+                        else f"{field}=..."
+                    )
+                    for field in required
                 )
                 lines.append(f"- **Returns:** `{response_model}`\n")
                 lines.append(
@@ -203,10 +206,9 @@ class APIDocsGenerator(PluginBase):
                 )
                 lines.append(
                     f"```python\nfrom bedrock_server_manager.models import {request_model}\n"
-                    f"{payload_line}\n"
-                    f"request = {request_model}(**payload)\n"
+                    f"request = {request_model}({arguments})\n"
                     f"result = {signature_prefix}{full_name}(request)\n"
-                    'data = result.model_dump(mode="json")\n```'
+                    "```"
                 )
                 for label, schema_key in (
                     ("Request schema", "request_schema"),

@@ -22,10 +22,8 @@ Runtime context and plugin identity are injected by the bridge. Failures raise a
 
 ```python
 from bedrock_server_manager.models import InstallNewServerRequest
-payload = {'server_name': 'example'}
-request = InstallNewServerRequest(**payload)
+request = InstallNewServerRequest(server_name='example')
 result = await self.api.install.install_new_server(request)
-data = result.model_dump(mode="json")
 ```
 - **Request schema:** [InstallNewServerRequest](models.md#installnewserverrequest)
 - **Response schema:** [InstallNewServerResponse](models.md#installnewserverresponse)
@@ -55,10 +53,8 @@ Runtime context and plugin identity are injected by the bridge. Failures raise a
 
 ```python
 from bedrock_server_manager.models import UpdateServerRequest
-payload = {'server_name': 'example'}
-request = UpdateServerRequest(**payload)
+request = UpdateServerRequest(server_name='example')
 result = await self.api.install.update_server(request)
-data = result.model_dump(mode="json")
 ```
 - **Request schema:** [UpdateServerRequest](models.md#updateserverrequest)
 - **Response schema:** [UpdateServerResponse](models.md#updateserverresponse)

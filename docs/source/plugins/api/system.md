@@ -22,10 +22,8 @@ Runtime context and plugin identity are injected by the bridge. Failures raise a
 
 ```python
 from bedrock_server_manager.models import GetApplicationHealthRequest
-payload = {}
-request = GetApplicationHealthRequest(**payload)
+request = GetApplicationHealthRequest()
 result = await self.api.system.get_application_health(request)
-data = result.model_dump(mode="json")
 ```
 - **Request schema:** [GetApplicationHealthRequest](models.md#getapplicationhealthrequest)
 - **Response schema:** [GetApplicationHealthResponse](models.md#getapplicationhealthresponse)
@@ -55,10 +53,8 @@ Runtime context and plugin identity are injected by the bridge. Failures raise a
 
 ```python
 from bedrock_server_manager.models import GetApplicationMetricsRequest
-payload = {}
-request = GetApplicationMetricsRequest(**payload)
+request = GetApplicationMetricsRequest()
 result = await self.api.system.get_application_metrics(request)
-data = result.model_dump(mode="json")
 ```
 - **Request schema:** [GetApplicationMetricsRequest](models.md#getapplicationmetricsrequest)
 - **Response schema:** [GetApplicationMetricsResponse](models.md#getapplicationmetricsresponse)
@@ -88,10 +84,8 @@ Runtime context and plugin identity are injected by the bridge. Failures raise a
 
 ```python
 from bedrock_server_manager.models import GetBedrockProcessInfoRequest
-payload = {'server_name': 'example'}
-request = GetBedrockProcessInfoRequest(**payload)
+request = GetBedrockProcessInfoRequest(server_name='example')
 result = await self.api.system.get_bedrock_process_info(request)
-data = result.model_dump(mode="json")
 ```
 - **Request schema:** [GetBedrockProcessInfoRequest](models.md#getbedrockprocessinforequest)
 - **Response schema:** [GetBedrockProcessInfoResponse](models.md#getbedrockprocessinforesponse)
@@ -121,10 +115,8 @@ Runtime context and plugin identity are injected by the bridge. Failures raise a
 
 ```python
 from bedrock_server_manager.models import GetServerRunningStatusRequest
-payload = {'server_name': 'example'}
-request = GetServerRunningStatusRequest(**payload)
+request = GetServerRunningStatusRequest(server_name='example')
 result = await self.api.system.get_server_running_status(request)
-data = result.model_dump(mode="json")
 ```
 - **Request schema:** [GetServerRunningStatusRequest](models.md#getserverrunningstatusrequest)
 - **Response schema:** [GetServerRunningStatusResponse](models.md#getserverrunningstatusresponse)

@@ -9,6 +9,10 @@ from pydantic import BaseModel, ConfigDict, Field
 
 from bedrock_server_manager import PluginBase, app_event
 from bedrock_server_manager.logging import log_operation_error
+from bedrock_server_manager.models import (
+    GetServerSummaryRequest,
+    SendCommandRequest,
+)
 
 
 class PluginSettings(BaseModel):
@@ -56,7 +60,7 @@ class WorldOperationNotificationsPlugin(PluginBase):
                     command = message
 
                 await self.api.server.send_command(
-                    request={"server_name": server_name, "command": command}
+                    request=SendCommandRequest(server_name=server_name, command=command)
                 )
                 self.logger.debug(
                     "Sent %s warning to '%s': %s", context, server_name, message
@@ -88,7 +92,7 @@ class WorldOperationNotificationsPlugin(PluginBase):
             "Handling before_world_export for '%s' to '%s'.", server_name, export_dir
         )
         summary = await self.api.server.get_summary(
-            request={"server_name": server_name}
+            request=GetServerSummaryRequest(server_name=server_name)
         )
         player_count = (
             summary.summary.player_count if summary.status == "success" else 0
@@ -113,7 +117,7 @@ class WorldOperationNotificationsPlugin(PluginBase):
             "Handling before_world_import for '%s' from '%s'.", server_name, file_path
         )
         summary = await self.api.server.get_summary(
-            request={"server_name": server_name}
+            request=GetServerSummaryRequest(server_name=server_name)
         )
         player_count = (
             summary.summary.player_count if summary.status == "success" else 0
@@ -138,7 +142,7 @@ class WorldOperationNotificationsPlugin(PluginBase):
             "Critical operation: World reset initiated for server '%s'.", server_name
         )
         summary = await self.api.server.get_summary(
-            request={"server_name": server_name}
+            request=GetServerSummaryRequest(server_name=server_name)
         )
         player_count = (
             summary.summary.player_count if summary.status == "success" else 0

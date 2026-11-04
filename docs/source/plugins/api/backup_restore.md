@@ -22,10 +22,8 @@ Runtime context and plugin identity are injected by the bridge. Failures raise a
 
 ```python
 from bedrock_server_manager.models import BackupAllRequest
-payload = {'server_name': 'example'}
-request = BackupAllRequest(**payload)
+request = BackupAllRequest(server_name='example')
 result = await self.api.backup_restore.backup_all(request)
-data = result.model_dump(mode="json")
 ```
 - **Request schema:** [BackupAllRequest](models.md#backupallrequest)
 - **Response schema:** [BackupAllResponse](models.md#backupallresponse)
@@ -55,10 +53,8 @@ Runtime context and plugin identity are injected by the bridge. Failures raise a
 
 ```python
 from bedrock_server_manager.models import BackupConfigFileRequest
-payload = {...}  # Supply required request fields below.
-request = BackupConfigFileRequest(**payload)
+request = BackupConfigFileRequest(server_name='example', file_to_backup=...)
 result = await self.api.backup_restore.backup_config_file(request)
-data = result.model_dump(mode="json")
 ```
 - **Request schema:** [BackupConfigFileRequest](models.md#backupconfigfilerequest)
 - **Response schema:** [BackupConfigFileResponse](models.md#backupconfigfileresponse)
@@ -88,10 +84,8 @@ Runtime context and plugin identity are injected by the bridge. Failures raise a
 
 ```python
 from bedrock_server_manager.models import BackupWorldRequest
-payload = {'server_name': 'example'}
-request = BackupWorldRequest(**payload)
+request = BackupWorldRequest(server_name='example')
 result = await self.api.backup_restore.backup_world(request)
-data = result.model_dump(mode="json")
 ```
 - **Request schema:** [BackupWorldRequest](models.md#backupworldrequest)
 - **Response schema:** [BackupWorldResponse](models.md#backupworldresponse)
@@ -121,10 +115,8 @@ Runtime context and plugin identity are injected by the bridge. Failures raise a
 
 ```python
 from bedrock_server_manager.models import SnapshotReuseRequest
-payload = {'server_name': 'example'}
-request = SnapshotReuseRequest(**payload)
+request = SnapshotReuseRequest(server_name='example')
 result = await self.api.backup_restore.can_reuse_server_backup(request)
-data = result.model_dump(mode="json")
 ```
 - **Request schema:** [SnapshotReuseRequest](models.md#snapshotreuserequest)
 - **Response schema:** [SnapshotReuseResponse](models.md#snapshotreuseresponse)
@@ -154,10 +146,8 @@ Runtime context and plugin identity are injected by the bridge. Failures raise a
 
 ```python
 from bedrock_server_manager.models import CreateSnapshotRequest
-payload = {'server_name': 'example'}
-request = CreateSnapshotRequest(**payload)
+request = CreateSnapshotRequest(server_name='example')
 result = await self.api.backup_restore.create_server_backup(request)
-data = result.model_dump(mode="json")
 ```
 - **Request schema:** [CreateSnapshotRequest](models.md#createsnapshotrequest)
 - **Response schema:** [CreateSnapshotResponse](models.md#createsnapshotresponse)
@@ -187,10 +177,8 @@ Runtime context and plugin identity are injected by the bridge. Failures raise a
 
 ```python
 from bedrock_server_manager.models import ListSnapshotsRequest
-payload = {'server_name': 'example'}
-request = ListSnapshotsRequest(**payload)
+request = ListSnapshotsRequest(server_name='example')
 result = await self.api.backup_restore.download_backup_recovery_report(request)
-data = result.model_dump(mode="json")
 ```
 - **Request schema:** [ListSnapshotsRequest](models.md#listsnapshotsrequest)
 - **Response schema:** [RecoveryReportResponse](models.md#recoveryreportresponse)
@@ -220,10 +208,8 @@ Runtime context and plugin identity are injected by the bridge. Failures raise a
 
 ```python
 from bedrock_server_manager.models import PlanSnapshotRestoreRequest
-payload = {...}  # Supply required request fields below.
-request = PlanSnapshotRestoreRequest(**payload)
+request = PlanSnapshotRestoreRequest(server_name='example', backup_id=..., components=...)
 result = await self.api.backup_restore.dry_run_server_restore(request)
-data = result.model_dump(mode="json")
 ```
 - **Request schema:** [PlanSnapshotRestoreRequest](models.md#plansnapshotrestorerequest)
 - **Response schema:** [PlanSnapshotRestoreResponse](models.md#plansnapshotrestoreresponse)
@@ -253,10 +239,8 @@ Runtime context and plugin identity are injected by the bridge. Failures raise a
 
 ```python
 from bedrock_server_manager.models import ListSnapshotsRequest
-payload = {'server_name': 'example'}
-request = ListSnapshotsRequest(**payload)
+request = ListSnapshotsRequest(server_name='example')
 result = await self.api.backup_restore.get_backup_health(request)
-data = result.model_dump(mode="json")
 ```
 - **Request schema:** [ListSnapshotsRequest](models.md#listsnapshotsrequest)
 - **Response schema:** [BackupHealthResponse](models.md#backuphealthresponse)
@@ -286,10 +270,8 @@ Runtime context and plugin identity are injected by the bridge. Failures raise a
 
 ```python
 from bedrock_server_manager.models import ListSnapshotsRequest
-payload = {'server_name': 'example'}
-request = ListSnapshotsRequest(**payload)
+request = ListSnapshotsRequest(server_name='example')
 result = await self.api.backup_restore.get_restore_recovery(request)
-data = result.model_dump(mode="json")
 ```
 - **Request schema:** [ListSnapshotsRequest](models.md#listsnapshotsrequest)
 - **Response schema:** [RestoreRecoveryResponse](models.md#restorerecoveryresponse)
@@ -319,10 +301,8 @@ Runtime context and plugin identity are injected by the bridge. Failures raise a
 
 ```python
 from bedrock_server_manager.models import InspectSnapshotRequest
-payload = {...}  # Supply required request fields below.
-request = InspectSnapshotRequest(**payload)
+request = InspectSnapshotRequest(server_name='example', backup_id=...)
 result = await self.api.backup_restore.inspect_server_backup(request)
-data = result.model_dump(mode="json")
 ```
 - **Request schema:** [InspectSnapshotRequest](models.md#inspectsnapshotrequest)
 - **Response schema:** [InspectSnapshotResponse](models.md#inspectsnapshotresponse)
@@ -352,10 +332,8 @@ Runtime context and plugin identity are injected by the bridge. Failures raise a
 
 ```python
 from bedrock_server_manager.models import ListBackupFilesRequest
-payload = {...}  # Supply required request fields below.
-request = ListBackupFilesRequest(**payload)
+request = ListBackupFilesRequest(server_name='example', backup_type=...)
 result = await self.api.backup_restore.list_backup_files(request)
-data = result.model_dump(mode="json")
 ```
 - **Request schema:** [ListBackupFilesRequest](models.md#listbackupfilesrequest)
 - **Response schema:** [ListBackupFilesResponse](models.md#listbackupfilesresponse)
@@ -385,10 +363,8 @@ Runtime context and plugin identity are injected by the bridge. Failures raise a
 
 ```python
 from bedrock_server_manager.models import ListSnapshotsRequest
-payload = {'server_name': 'example'}
-request = ListSnapshotsRequest(**payload)
+request = ListSnapshotsRequest(server_name='example')
 result = await self.api.backup_restore.list_server_snapshots(request)
-data = result.model_dump(mode="json")
 ```
 - **Request schema:** [ListSnapshotsRequest](models.md#listsnapshotsrequest)
 - **Response schema:** [ListSnapshotsResponse](models.md#listsnapshotsresponse)
@@ -418,10 +394,8 @@ Runtime context and plugin identity are injected by the bridge. Failures raise a
 
 ```python
 from bedrock_server_manager.models import ManageSnapshotRequest
-payload = {...}  # Supply required request fields below.
-request = ManageSnapshotRequest(**payload)
+request = ManageSnapshotRequest(server_name='example', backup_id=..., action=...)
 result = await self.api.backup_restore.manage_server_snapshot(request)
-data = result.model_dump(mode="json")
 ```
 - **Request schema:** [ManageSnapshotRequest](models.md#managesnapshotrequest)
 - **Response schema:** [ManageSnapshotResponse](models.md#managesnapshotresponse)
@@ -451,10 +425,8 @@ Runtime context and plugin identity are injected by the bridge. Failures raise a
 
 ```python
 from bedrock_server_manager.models import PlanSnapshotRestoreRequest
-payload = {...}  # Supply required request fields below.
-request = PlanSnapshotRestoreRequest(**payload)
+request = PlanSnapshotRestoreRequest(server_name='example', backup_id=..., components=...)
 result = await self.api.backup_restore.plan_server_restore(request)
-data = result.model_dump(mode="json")
 ```
 - **Request schema:** [PlanSnapshotRestoreRequest](models.md#plansnapshotrestorerequest)
 - **Response schema:** [PlanSnapshotRestoreResponse](models.md#plansnapshotrestoreresponse)
@@ -484,10 +456,8 @@ Runtime context and plugin identity are injected by the bridge. Failures raise a
 
 ```python
 from bedrock_server_manager.models import PruneOldBackupsRequest
-payload = {'server_name': 'example'}
-request = PruneOldBackupsRequest(**payload)
+request = PruneOldBackupsRequest(server_name='example')
 result = await self.api.backup_restore.prune_old_backups(request)
-data = result.model_dump(mode="json")
 ```
 - **Request schema:** [PruneOldBackupsRequest](models.md#pruneoldbackupsrequest)
 - **Response schema:** [PruneOldBackupsResponse](models.md#pruneoldbackupsresponse)
@@ -517,10 +487,8 @@ Runtime context and plugin identity are injected by the bridge. Failures raise a
 
 ```python
 from bedrock_server_manager.models import ListSnapshotsRequest
-payload = {'server_name': 'example'}
-request = ListSnapshotsRequest(**payload)
+request = ListSnapshotsRequest(server_name='example')
 result = await self.api.backup_restore.recover_server_backup(request)
-data = result.model_dump(mode="json")
 ```
 - **Request schema:** [ListSnapshotsRequest](models.md#listsnapshotsrequest)
 - **Response schema:** [RestoreRecoveryResponse](models.md#restorerecoveryresponse)
@@ -550,10 +518,8 @@ Runtime context and plugin identity are injected by the bridge. Failures raise a
 
 ```python
 from bedrock_server_manager.models import RestoreAllRequest
-payload = {'server_name': 'example'}
-request = RestoreAllRequest(**payload)
+request = RestoreAllRequest(server_name='example')
 result = await self.api.backup_restore.restore_all(request)
-data = result.model_dump(mode="json")
 ```
 - **Request schema:** [RestoreAllRequest](models.md#restoreallrequest)
 - **Response schema:** [RestoreAllResponse](models.md#restoreallresponse)
@@ -583,10 +549,8 @@ Runtime context and plugin identity are injected by the bridge. Failures raise a
 
 ```python
 from bedrock_server_manager.models import RestoreConfigFileRequest
-payload = {...}  # Supply required request fields below.
-request = RestoreConfigFileRequest(**payload)
+request = RestoreConfigFileRequest(server_name='example', backup_file_path=...)
 result = await self.api.backup_restore.restore_config_file(request)
-data = result.model_dump(mode="json")
 ```
 - **Request schema:** [RestoreConfigFileRequest](models.md#restoreconfigfilerequest)
 - **Response schema:** [RestoreConfigFileResponse](models.md#restoreconfigfileresponse)
@@ -616,10 +580,8 @@ Runtime context and plugin identity are injected by the bridge. Failures raise a
 
 ```python
 from bedrock_server_manager.models import RestoreSnapshotRequest
-payload = {...}  # Supply required request fields below.
-request = RestoreSnapshotRequest(**payload)
+request = RestoreSnapshotRequest(server_name='example', backup_id=..., components=..., token=...)
 result = await self.api.backup_restore.restore_server_snapshot(request)
-data = result.model_dump(mode="json")
 ```
 - **Request schema:** [RestoreSnapshotRequest](models.md#restoresnapshotrequest)
 - **Response schema:** [RestoreSnapshotResponse](models.md#restoresnapshotresponse)
@@ -649,10 +611,8 @@ Runtime context and plugin identity are injected by the bridge. Failures raise a
 
 ```python
 from bedrock_server_manager.models import RestoreWorldRequest
-payload = {...}  # Supply required request fields below.
-request = RestoreWorldRequest(**payload)
+request = RestoreWorldRequest(server_name='example', backup_file_path=...)
 result = await self.api.backup_restore.restore_world(request)
-data = result.model_dump(mode="json")
 ```
 - **Request schema:** [RestoreWorldRequest](models.md#restoreworldrequest)
 - **Response schema:** [RestoreWorldResponse](models.md#restoreworldresponse)

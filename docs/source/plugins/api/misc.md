@@ -22,10 +22,8 @@ Runtime context and plugin identity are injected by the bridge. Failures raise a
 
 ```python
 from bedrock_server_manager.models import PruneDownloadCacheRequest
-payload = {...}  # Supply required request fields below.
-request = PruneDownloadCacheRequest(**payload)
+request = PruneDownloadCacheRequest(download_dir=...)
 result = await self.api.misc.prune_download_cache(request)
-data = result.model_dump(mode="json")
 ```
 - **Request schema:** [PruneDownloadCacheRequest](models.md#prunedownloadcacherequest)
 - **Response schema:** [PruneDownloadCacheResponse](models.md#prunedownloadcacheresponse)

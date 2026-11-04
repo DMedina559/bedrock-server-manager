@@ -22,10 +22,8 @@ Runtime context and plugin identity are injected by the bridge. Failures raise a
 
 ```python
 from bedrock_server_manager.models import GetAllServerSettingsRequest
-payload = {'server_name': 'example'}
-request = GetAllServerSettingsRequest(**payload)
+request = GetAllServerSettingsRequest(server_name='example')
 result = await self.api.server.get_all_settings(request)
-data = result.model_dump(mode="json")
 ```
 - **Request schema:** [GetAllServerSettingsRequest](models.md#getallserversettingsrequest)
 - **Response schema:** [GetAllServerSettingsResponse](models.md#getallserversettingsresponse)
@@ -55,10 +53,8 @@ Runtime context and plugin identity are injected by the bridge. Failures raise a
 
 ```python
 from bedrock_server_manager.models import GetServerProcessRequest
-payload = {'server_name': 'example'}
-request = GetServerProcessRequest(**payload)
+request = GetServerProcessRequest(server_name='example')
 result = await self.api.server.get_process(request)
-data = result.model_dump(mode="json")
 ```
 - **Request schema:** [GetServerProcessRequest](models.md#getserverprocessrequest)
 - **Response schema:** [GetServerProcessResponse](models.md#getserverprocessresponse)
@@ -88,10 +84,8 @@ Runtime context and plugin identity are injected by the bridge. Failures raise a
 
 ```python
 from bedrock_server_manager.models import GetServerSettingRequest
-payload = {...}  # Supply required request fields below.
-request = GetServerSettingRequest(**payload)
+request = GetServerSettingRequest(server_name='example', key=...)
 result = await self.api.server.get_setting(request)
-data = result.model_dump(mode="json")
 ```
 - **Request schema:** [GetServerSettingRequest](models.md#getserversettingrequest)
 - **Response schema:** [GetServerSettingResponse](models.md#getserversettingresponse)
@@ -121,10 +115,8 @@ Runtime context and plugin identity are injected by the bridge. Failures raise a
 
 ```python
 from bedrock_server_manager.models import GetServerSummaryRequest
-payload = {'server_name': 'example'}
-request = GetServerSummaryRequest(**payload)
+request = GetServerSummaryRequest(server_name='example')
 result = await self.api.server.get_summary(request)
-data = result.model_dump(mode="json")
 ```
 - **Request schema:** [GetServerSummaryRequest](models.md#getserversummaryrequest)
 - **Response schema:** [GetServerSummaryResponse](models.md#getserversummaryresponse)
@@ -154,10 +146,8 @@ Runtime context and plugin identity are injected by the bridge. Failures raise a
 
 ```python
 from bedrock_server_manager.models import GetValidServerNamesRequest
-payload = {}
-request = GetValidServerNamesRequest(**payload)
+request = GetValidServerNamesRequest()
 result = await self.api.server.get_valid_names(request)
-data = result.model_dump(mode="json")
 ```
 - **Request schema:** [GetValidServerNamesRequest](models.md#getvalidservernamesrequest)
 - **Response schema:** [GetValidServerNamesResponse](models.md#getvalidservernamesresponse)
@@ -187,10 +177,8 @@ Runtime context and plugin identity are injected by the bridge. Failures raise a
 
 ```python
 from bedrock_server_manager.models import RestartServerRequest
-payload = {'server_name': 'example'}
-request = RestartServerRequest(**payload)
+request = RestartServerRequest(server_name='example')
 result = await self.api.server.restart(request)
-data = result.model_dump(mode="json")
 ```
 - **Request schema:** [RestartServerRequest](models.md#restartserverrequest)
 - **Response schema:** [RestartServerResponse](models.md#restartserverresponse)
@@ -220,10 +208,8 @@ Runtime context and plugin identity are injected by the bridge. Failures raise a
 
 ```python
 from bedrock_server_manager.models import SendCommandRequest
-payload = {...}  # Supply required request fields below.
-request = SendCommandRequest(**payload)
+request = SendCommandRequest(command=..., server_name='example')
 result = await self.api.server.send_command(request)
-data = result.model_dump(mode="json")
 ```
 - **Request schema:** [SendCommandRequest](models.md#sendcommandrequest)
 - **Response schema:** [SendCommandResponse](models.md#sendcommandresponse)
@@ -251,10 +237,8 @@ Runtime context and plugin identity are injected by the bridge. Failures raise a
 
 ```python
 from bedrock_server_manager.models import SetServerCustomValueRequest
-payload = {...}  # Supply required request fields below.
-request = SetServerCustomValueRequest(**payload)
+request = SetServerCustomValueRequest(key=..., value=..., server_name='example')
 result = await self.api.server.set_custom_value(request)
-data = result.model_dump(mode="json")
 ```
 - **Request schema:** [SetServerCustomValueRequest](models.md#setservercustomvaluerequest)
 - **Response schema:** [SetServerCustomValueResponse](models.md#setservercustomvalueresponse)
@@ -284,10 +268,8 @@ Runtime context and plugin identity are injected by the bridge. Failures raise a
 
 ```python
 from bedrock_server_manager.models import StartServerRequest
-payload = {'server_name': 'example'}
-request = StartServerRequest(**payload)
+request = StartServerRequest(server_name='example')
 result = await self.api.server.start(request)
-data = result.model_dump(mode="json")
 ```
 - **Request schema:** [StartServerRequest](models.md#startserverrequest)
 - **Response schema:** [StartServerResponse](models.md#startserverresponse)
@@ -317,10 +299,8 @@ Runtime context and plugin identity are injected by the bridge. Failures raise a
 
 ```python
 from bedrock_server_manager.models import StopServerRequest
-payload = {'server_name': 'example'}
-request = StopServerRequest(**payload)
+request = StopServerRequest(server_name='example')
 result = await self.api.server.stop(request)
-data = result.model_dump(mode="json")
 ```
 - **Request schema:** [StopServerRequest](models.md#stopserverrequest)
 - **Response schema:** [StopServerResponse](models.md#stopserverresponse)
@@ -350,10 +330,8 @@ Runtime context and plugin identity are injected by the bridge. Failures raise a
 
 ```python
 from bedrock_server_manager.models import WaitForServerLogRequest
-payload = {...}  # Supply required request fields below.
-request = WaitForServerLogRequest(**payload)
+request = WaitForServerLogRequest(server_name='example', text=...)
 result = await self.api.server.wait_for_log(request)
-data = result.model_dump(mode="json")
 ```
 - **Request schema:** [WaitForServerLogRequest](models.md#waitforserverlogrequest)
 - **Response schema:** [WaitForServerLogResponse](models.md#waitforserverlogresponse)

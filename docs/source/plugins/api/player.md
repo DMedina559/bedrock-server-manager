@@ -22,10 +22,8 @@ Runtime context and plugin identity are injected by the bridge. Failures raise a
 
 ```python
 from bedrock_server_manager.models import AddPlayersManuallyRequest
-payload = {...}  # Supply required request fields below.
-request = AddPlayersManuallyRequest(**payload)
+request = AddPlayersManuallyRequest(player_strings=...)
 result = await self.api.player.add_players_manually(request)
-data = result.model_dump(mode="json")
 ```
 - **Request schema:** [AddPlayersManuallyRequest](models.md#addplayersmanuallyrequest)
 - **Response schema:** [AddPlayersManuallyResponse](models.md#addplayersmanuallyresponse)
@@ -55,10 +53,8 @@ Runtime context and plugin identity are injected by the bridge. Failures raise a
 
 ```python
 from bedrock_server_manager.models import GetAllKnownPlayersRequest
-payload = {}
-request = GetAllKnownPlayersRequest(**payload)
+request = GetAllKnownPlayersRequest()
 result = await self.api.player.get_all_known_players(request)
-data = result.model_dump(mode="json")
 ```
 - **Request schema:** [GetAllKnownPlayersRequest](models.md#getallknownplayersrequest)
 - **Response schema:** [GetAllKnownPlayersResponse](models.md#getallknownplayersresponse)
@@ -88,10 +84,8 @@ Runtime context and plugin identity are injected by the bridge. Failures raise a
 
 ```python
 from bedrock_server_manager.models import ScanAndUpdatePlayerDbRequest
-payload = {}
-request = ScanAndUpdatePlayerDbRequest(**payload)
+request = ScanAndUpdatePlayerDbRequest()
 result = await self.api.player.scan_and_update_player_db(request)
-data = result.model_dump(mode="json")
 ```
 - **Request schema:** [ScanAndUpdatePlayerDbRequest](models.md#scanandupdateplayerdbrequest)
 - **Response schema:** [ScanAndUpdatePlayerDbResponse](models.md#scanandupdateplayerdbresponse)

@@ -22,10 +22,8 @@ Runtime context and plugin identity are injected by the bridge. Failures raise a
 
 ```python
 from bedrock_server_manager.models import ExportWorldRequest
-payload = {'server_name': 'example'}
-request = ExportWorldRequest(**payload)
+request = ExportWorldRequest(server_name='example')
 result = await self.api.world.export_world(request)
-data = result.model_dump(mode="json")
 ```
 - **Request schema:** [ExportWorldRequest](models.md#exportworldrequest)
 - **Response schema:** [ExportWorldResponse](models.md#exportworldresponse)
@@ -55,10 +53,8 @@ Runtime context and plugin identity are injected by the bridge. Failures raise a
 
 ```python
 from bedrock_server_manager.models import GetWorldNameRequest
-payload = {'server_name': 'example'}
-request = GetWorldNameRequest(**payload)
+request = GetWorldNameRequest(server_name='example')
 result = await self.api.world.get_world_name(request)
-data = result.model_dump(mode="json")
 ```
 - **Request schema:** [GetWorldNameRequest](models.md#getworldnamerequest)
 - **Response schema:** [GetWorldNameResponse](models.md#getworldnameresponse)
@@ -88,10 +84,8 @@ Runtime context and plugin identity are injected by the bridge. Failures raise a
 
 ```python
 from bedrock_server_manager.models import ImportWorldRequest
-payload = {...}  # Supply required request fields below.
-request = ImportWorldRequest(**payload)
+request = ImportWorldRequest(server_name='example', selected_file_path=...)
 result = await self.api.world.import_world(request)
-data = result.model_dump(mode="json")
 ```
 - **Request schema:** [ImportWorldRequest](models.md#importworldrequest)
 - **Response schema:** [ImportWorldResponse](models.md#importworldresponse)
@@ -121,10 +115,8 @@ Runtime context and plugin identity are injected by the bridge. Failures raise a
 
 ```python
 from bedrock_server_manager.models import ResetWorldRequest
-payload = {'server_name': 'example'}
-request = ResetWorldRequest(**payload)
+request = ResetWorldRequest(server_name='example')
 result = await self.api.world.reset_world(request)
-data = result.model_dump(mode="json")
 ```
 - **Request schema:** [ResetWorldRequest](models.md#resetworldrequest)
 - **Response schema:** [ResetWorldResponse](models.md#resetworldresponse)

@@ -22,10 +22,8 @@ Runtime context and plugin identity are injected by the bridge. Failures raise a
 
 ```python
 from bedrock_server_manager.models import AddToAllowlistRequest
-payload = {...}  # Supply required request fields below.
-request = AddToAllowlistRequest(**payload)
+request = AddToAllowlistRequest(server_name='example', new_players_data=...)
 result = await self.api.allowlist.add_to_allowlist(request)
-data = result.model_dump(mode="json")
 ```
 - **Request schema:** [AddToAllowlistRequest](models.md#addtoallowlistrequest)
 - **Response schema:** [AddToAllowlistResponse](models.md#addtoallowlistresponse)
@@ -55,10 +53,8 @@ Runtime context and plugin identity are injected by the bridge. Failures raise a
 
 ```python
 from bedrock_server_manager.models import GetAllowlistRequest
-payload = {'server_name': 'example'}
-request = GetAllowlistRequest(**payload)
+request = GetAllowlistRequest(server_name='example')
 result = await self.api.allowlist.get_allowlist(request)
-data = result.model_dump(mode="json")
 ```
 - **Request schema:** [GetAllowlistRequest](models.md#getallowlistrequest)
 - **Response schema:** [GetAllowlistResponse](models.md#getallowlistresponse)
@@ -88,10 +84,8 @@ Runtime context and plugin identity are injected by the bridge. Failures raise a
 
 ```python
 from bedrock_server_manager.models import RemoveFromAllowlistRequest
-payload = {...}  # Supply required request fields below.
-request = RemoveFromAllowlistRequest(**payload)
+request = RemoveFromAllowlistRequest(server_name='example', player_names=...)
 result = await self.api.allowlist.remove_from_allowlist(request)
-data = result.model_dump(mode="json")
 ```
 - **Request schema:** [RemoveFromAllowlistRequest](models.md#removefromallowlistrequest)
 - **Response schema:** [RemoveFromAllowlistResponse](models.md#removefromallowlistresponse)

@@ -22,10 +22,8 @@ Runtime context and plugin identity are injected by the bridge. Failures raise a
 
 ```python
 from bedrock_server_manager.models import AddServerBanRequest
-payload = {...}  # Supply required request fields below.
-request = AddServerBanRequest(**payload)
+request = AddServerBanRequest(player_name=..., xuid=..., server_name='example')
 result = await self.api.ban.add_server_ban(request)
-data = result.model_dump(mode="json")
 ```
 - **Request schema:** [AddServerBanRequest](models.md#addserverbanrequest)
 - **Response schema:** [AddServerBanResponse](models.md#addserverbanresponse)
@@ -55,10 +53,8 @@ Runtime context and plugin identity are injected by the bridge. Failures raise a
 
 ```python
 from bedrock_server_manager.models import GetServerBansRequest
-payload = {'server_name': 'example'}
-request = GetServerBansRequest(**payload)
+request = GetServerBansRequest(server_name='example')
 result = await self.api.ban.get_server_bans(request)
-data = result.model_dump(mode="json")
 ```
 - **Request schema:** [GetServerBansRequest](models.md#getserverbansrequest)
 - **Response schema:** [GetServerBansResponse](models.md#getserverbansresponse)
@@ -88,10 +84,8 @@ Runtime context and plugin identity are injected by the bridge. Failures raise a
 
 ```python
 from bedrock_server_manager.models import RemoveServerBanRequest
-payload = {...}  # Supply required request fields below.
-request = RemoveServerBanRequest(**payload)
+request = RemoveServerBanRequest(xuid=..., server_name='example')
 result = await self.api.ban.remove_server_ban(request)
-data = result.model_dump(mode="json")
 ```
 - **Request schema:** [RemoveServerBanRequest](models.md#removeserverbanrequest)
 - **Response schema:** [RemoveServerBanResponse](models.md#removeserverbanresponse)

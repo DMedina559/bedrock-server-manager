@@ -22,10 +22,8 @@ Runtime context and plugin identity are injected by the bridge. Failures raise a
 
 ```python
 from bedrock_server_manager.models import GetAllServersDataRequest
-payload = {}
-request = GetAllServersDataRequest(**payload)
+request = GetAllServersDataRequest()
 result = await self.api.application.get_all_servers_data(request)
-data = result.model_dump(mode="json")
 ```
 - **Request schema:** [GetAllServersDataRequest](models.md#getallserversdatarequest)
 - **Response schema:** [GetAllServersDataResponse](models.md#getallserversdataresponse)
@@ -53,10 +51,8 @@ Runtime context and plugin identity are injected by the bridge. Failures raise a
 
 ```python
 from bedrock_server_manager.models import GetSystemAndAppInfoRequest
-payload = {}
-request = GetSystemAndAppInfoRequest(**payload)
+request = GetSystemAndAppInfoRequest()
 result = self.api.application.get_system_and_app_info(request)
-data = result.model_dump(mode="json")
 ```
 - **Request schema:** [GetSystemAndAppInfoRequest](models.md#getsystemandappinforequest)
 - **Response schema:** [GetSystemAndAppInfoResponse](models.md#getsystemandappinforesponse)
@@ -86,10 +82,8 @@ Runtime context and plugin identity are injected by the bridge. Failures raise a
 
 ```python
 from bedrock_server_manager.models import ListAvailableWorldsRequest
-payload = {}
-request = ListAvailableWorldsRequest(**payload)
+request = ListAvailableWorldsRequest()
 result = await self.api.application.list_available_worlds(request)
-data = result.model_dump(mode="json")
 ```
 - **Request schema:** [ListAvailableWorldsRequest](models.md#listavailableworldsrequest)
 - **Response schema:** [ListAvailableWorldsResponse](models.md#listavailableworldsresponse)

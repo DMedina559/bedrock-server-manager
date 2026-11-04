@@ -22,10 +22,8 @@ Runtime context and plugin identity are injected by the bridge. Failures raise a
 
 ```python
 from bedrock_server_manager.models import GetPropertiesRequest
-payload = {'server_name': 'example'}
-request = GetPropertiesRequest(**payload)
+request = GetPropertiesRequest(server_name='example')
 result = await self.api.properties.get_properties(request)
-data = result.model_dump(mode="json")
 ```
 - **Request schema:** [GetPropertiesRequest](models.md#getpropertiesrequest)
 - **Response schema:** [GetPropertiesResponse](models.md#getpropertiesresponse)
@@ -55,10 +53,8 @@ Runtime context and plugin identity are injected by the bridge. Failures raise a
 
 ```python
 from bedrock_server_manager.models import GetRawPropertiesRequest
-payload = {'server_name': 'example'}
-request = GetRawPropertiesRequest(**payload)
+request = GetRawPropertiesRequest(server_name='example')
 result = await self.api.properties.get_raw_properties(request)
-data = result.model_dump(mode="json")
 ```
 - **Request schema:** [GetRawPropertiesRequest](models.md#getrawpropertiesrequest)
 - **Response schema:** [GetRawPropertiesResponse](models.md#getrawpropertiesresponse)
@@ -88,10 +84,8 @@ Runtime context and plugin identity are injected by the bridge. Failures raise a
 
 ```python
 from bedrock_server_manager.models import SetPropertiesRequest
-payload = {...}  # Supply required request fields below.
-request = SetPropertiesRequest(**payload)
+request = SetPropertiesRequest(server_name='example', properties_to_update=...)
 result = await self.api.properties.set_properties(request)
-data = result.model_dump(mode="json")
 ```
 - **Request schema:** [SetPropertiesRequest](models.md#setpropertiesrequest)
 - **Response schema:** [SetPropertiesResponse](models.md#setpropertiesresponse)
@@ -119,10 +113,8 @@ Runtime context and plugin identity are injected by the bridge. Failures raise a
 
 ```python
 from bedrock_server_manager.models import ValidatePropertyValueRequest
-payload = {...}  # Supply required request fields below.
-request = ValidatePropertyValueRequest(**payload)
+request = ValidatePropertyValueRequest(property_name=..., value=...)
 result = self.api.properties.validate_property_value(request)
-data = result.model_dump(mode="json")
 ```
 - **Request schema:** [ValidatePropertyValueRequest](models.md#validatepropertyvaluerequest)
 - **Response schema:** [ValidatePropertyValueResponse](models.md#validatepropertyvalueresponse)

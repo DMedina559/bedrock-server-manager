@@ -9,7 +9,12 @@ from typing import Any, ClassVar, List, cast
 from pydantic import BaseModel
 
 from ..logging import log_operation_error
-from ..models.plugins import SetPluginSettingResponse
+from ..models import (
+    GetPluginSettingRequest,
+    GetServerRunningStatusRequest,
+    SetPluginSettingRequest,
+    SetPluginSettingResponse,
+)
 from .api_bridge import AppAPI
 
 
@@ -101,7 +106,9 @@ class PluginBase(ABC):
         :returns: The setting value or the default.
         """
         result = await self.api.plugins.get_plugin_setting(
-            request={"key": key, "scope": scope, "server_name": server_name}
+            request=GetPluginSettingRequest(
+                key=key, scope=scope, server_name=server_name
+            )
         )
         if result and result.status == "success":
             value = result.value
@@ -122,12 +129,9 @@ class PluginBase(ABC):
         return cast(
             SetPluginSettingResponse,
             await self.api.plugins.set_plugin_setting(
-                request={
-                    "key": key,
-                    "value": value,
-                    "scope": scope,
-                    "server_name": server_name,
-                }
+                request=SetPluginSettingRequest(
+                    key=key, value=value, scope=scope, server_name=server_name
+                )
             ),
         )
 
@@ -136,7 +140,7 @@ class PluginBase(ABC):
     ) -> dict:
         """Read the caller's effective settings for one scope, including defaults."""
         result = await self.api.plugins.get_plugin_setting(
-            request={"scope": scope, "server_name": server_name}
+            request=GetPluginSettingRequest(scope=scope, server_name=server_name)
         )
         return cast(dict, result.value)
 
@@ -147,7 +151,9 @@ class PluginBase(ABC):
         return cast(
             SetPluginSettingResponse,
             await self.api.plugins.set_plugin_setting(
-                request={"value": values, "scope": scope, "server_name": server_name}
+                request=SetPluginSettingRequest(
+                    value=values, scope=scope, server_name=server_name
+                )
             ),
         )
 
@@ -155,7 +161,7 @@ class PluginBase(ABC):
         """Check if a server is currently running via the API."""
         try:
             response = await self.api.system.get_server_running_status(
-                request={"server_name": server_name}
+                request=GetServerRunningStatusRequest(server_name=server_name)
             )
             if response and response.status == "success":
                 return bool(response.is_running)

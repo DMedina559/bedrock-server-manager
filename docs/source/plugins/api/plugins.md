@@ -20,10 +20,8 @@ Runtime context and plugin identity are injected by the bridge. Failures raise a
 
 ```python
 from bedrock_server_manager.models import GetPluginSettingRequest
-payload = {}
-request = GetPluginSettingRequest(**payload)
+request = GetPluginSettingRequest()
 result = await self.api.plugins.get_plugin_setting(request)
-data = result.model_dump(mode="json")
 ```
 - **Request schema:** [GetPluginSettingRequest](models.md#getpluginsettingrequest)
 - **Response schema:** [GetPluginSettingResponse](models.md#getpluginsettingresponse)
@@ -53,10 +51,8 @@ Runtime context and plugin identity are injected by the bridge. Failures raise a
 
 ```python
 from bedrock_server_manager.models import GetPluginStatusesRequest
-payload = {}
-request = GetPluginStatusesRequest(**payload)
+request = GetPluginStatusesRequest()
 result = await self.api.plugins.get_plugin_statuses(request)
-data = result.model_dump(mode="json")
 ```
 - **Request schema:** [GetPluginStatusesRequest](models.md#getpluginstatusesrequest)
 - **Response schema:** [GetPluginStatusesResponse](models.md#getpluginstatusesresponse)
@@ -84,10 +80,8 @@ Runtime context and plugin identity are injected by the bridge. Failures raise a
 
 ```python
 from bedrock_server_manager.models import SetPluginSettingRequest
-payload = {...}  # Supply required request fields below.
-request = SetPluginSettingRequest(**payload)
+request = SetPluginSettingRequest(value=...)
 result = await self.api.plugins.set_plugin_setting(request)
-data = result.model_dump(mode="json")
 ```
 - **Request schema:** [SetPluginSettingRequest](models.md#setpluginsettingrequest)
 - **Response schema:** [SetPluginSettingResponse](models.md#setpluginsettingresponse)

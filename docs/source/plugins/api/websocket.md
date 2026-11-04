@@ -22,10 +22,8 @@ Runtime context and plugin identity are injected by the bridge. Failures raise a
 
 ```python
 from bedrock_server_manager.models import BroadcastRequest
-payload = {...}  # Supply required request fields below.
-request = BroadcastRequest(**payload)
+request = BroadcastRequest(topic=..., data=...)
 result = await self.api.websocket.websocket_broadcast(request)
-data = result.model_dump(mode="json")
 ```
 - **Request schema:** [BroadcastRequest](models.md#broadcastrequest)
 - **Response schema:** [BroadcastResponse](models.md#broadcastresponse)
@@ -55,10 +53,8 @@ Runtime context and plugin identity are injected by the bridge. Failures raise a
 
 ```python
 from bedrock_server_manager.models import PublishWsEventRequest
-payload = {...}  # Supply required request fields below.
-request = PublishWsEventRequest(**payload)
+request = PublishWsEventRequest(event_name=..., data=...)
 result = await self.api.websocket.websocket_publish_ws_event(request)
-data = result.model_dump(mode="json")
 ```
 - **Request schema:** [PublishWsEventRequest](models.md#publishwseventrequest)
 - **Response schema:** [PublishWsEventResponse](models.md#publishwseventresponse)
@@ -88,10 +84,8 @@ Runtime context and plugin identity are injected by the bridge. Failures raise a
 
 ```python
 from bedrock_server_manager.models import SendToClientRequest
-payload = {...}  # Supply required request fields below.
-request = SendToClientRequest(**payload)
+request = SendToClientRequest(client_id=..., data=...)
 result = await self.api.websocket.websocket_send_to_client(request)
-data = result.model_dump(mode="json")
 ```
 - **Request schema:** [SendToClientRequest](models.md#sendtoclientrequest)
 - **Response schema:** [SendToClientResponse](models.md#sendtoclientresponse)
@@ -121,10 +115,8 @@ Runtime context and plugin identity are injected by the bridge. Failures raise a
 
 ```python
 from bedrock_server_manager.models import SendToUserRequest
-payload = {...}  # Supply required request fields below.
-request = SendToUserRequest(**payload)
+request = SendToUserRequest(username=..., data=...)
 result = await self.api.websocket.websocket_send_to_user(request)
-data = result.model_dump(mode="json")
 ```
 - **Request schema:** [SendToUserRequest](models.md#sendtouserrequest)
 - **Response schema:** [SendToUserResponse](models.md#sendtouserresponse)
@@ -152,10 +144,8 @@ Runtime context and plugin identity are injected by the bridge. Failures raise a
 
 ```python
 from bedrock_server_manager.models import UnregisterDataProviderRequest
-payload = {...}  # Supply required request fields below.
-request = UnregisterDataProviderRequest(**payload)
+request = UnregisterDataProviderRequest(topic=...)
 result = await self.api.websocket.websocket_unregister_data_provider(request)
-data = result.model_dump(mode="json")
 ```
 - **Request schema:** [UnregisterDataProviderRequest](models.md#unregisterdataproviderrequest)
 - **Response schema:** [UnregisterDataProviderResponse](models.md#unregisterdataproviderresponse)

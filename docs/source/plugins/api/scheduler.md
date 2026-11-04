@@ -22,10 +22,8 @@ Runtime context and plugin identity are injected by the bridge. Failures raise a
 
 ```python
 from bedrock_server_manager.models import ListSchedulesRequest
-payload = {}
-request = ListSchedulesRequest(**payload)
+request = ListSchedulesRequest()
 result = await self.api.scheduler.list_schedules(request)
-data = result.model_dump(mode="json")
 ```
 - **Request schema:** [ListSchedulesRequest](models.md#listschedulesrequest)
 - **Response schema:** [ListSchedulesResponse](models.md#listschedulesresponse)

@@ -20,10 +20,8 @@ Runtime context and plugin identity are injected by the bridge. Failures raise a
 
 ```python
 from bedrock_server_manager.models import GetAllGlobalSettingsRequest
-payload = {}
-request = GetAllGlobalSettingsRequest(**payload)
+request = GetAllGlobalSettingsRequest()
 result = await self.api.settings.get_all_global_settings(request)
-data = result.model_dump(mode="json")
 ```
 - **Request schema:** [GetAllGlobalSettingsRequest](models.md#getallglobalsettingsrequest)
 - **Response schema:** [GetAllGlobalSettingsResponse](models.md#getallglobalsettingsresponse)
@@ -51,10 +49,8 @@ Runtime context and plugin identity are injected by the bridge. Failures raise a
 
 ```python
 from bedrock_server_manager.models import GetGlobalSettingRequest
-payload = {...}  # Supply required request fields below.
-request = GetGlobalSettingRequest(**payload)
+request = GetGlobalSettingRequest(key=...)
 result = await self.api.settings.get_global_setting(request)
-data = result.model_dump(mode="json")
 ```
 - **Request schema:** [GetGlobalSettingRequest](models.md#getglobalsettingrequest)
 - **Response schema:** [GetGlobalSettingResponse](models.md#getglobalsettingresponse)
@@ -82,10 +78,8 @@ Runtime context and plugin identity are injected by the bridge. Failures raise a
 
 ```python
 from bedrock_server_manager.models import SetCustomGlobalSettingRequest
-payload = {...}  # Supply required request fields below.
-request = SetCustomGlobalSettingRequest(**payload)
+request = SetCustomGlobalSettingRequest(key=..., value=...)
 result = await self.api.settings.set_custom_global_setting(request)
-data = result.model_dump(mode="json")
 ```
 - **Request schema:** [SetCustomGlobalSettingRequest](models.md#setcustomglobalsettingrequest)
 - **Response schema:** [SetCustomGlobalSettingResponse](models.md#setcustomglobalsettingresponse)

@@ -22,10 +22,8 @@ Runtime context and plugin identity are injected by the bridge. Failures raise a
 
 ```python
 from bedrock_server_manager.models import DisableAddonRequest
-payload = {...}  # Supply required request fields below.
-request = DisableAddonRequest(**payload)
+request = DisableAddonRequest(pack_uuid=..., pack_type=..., server_name='example')
 result = await self.api.addon.disable_addon(request)
-data = result.model_dump(mode="json")
 ```
 - **Request schema:** [DisableAddonRequest](models.md#disableaddonrequest)
 - **Response schema:** [DisableAddonResponse](models.md#disableaddonresponse)
@@ -55,10 +53,8 @@ Runtime context and plugin identity are injected by the bridge. Failures raise a
 
 ```python
 from bedrock_server_manager.models import EnableAddonRequest
-payload = {...}  # Supply required request fields below.
-request = EnableAddonRequest(**payload)
+request = EnableAddonRequest(pack_uuid=..., pack_type=..., server_name='example')
 result = await self.api.addon.enable_addon(request)
-data = result.model_dump(mode="json")
 ```
 - **Request schema:** [EnableAddonRequest](models.md#enableaddonrequest)
 - **Response schema:** [EnableAddonResponse](models.md#enableaddonresponse)
@@ -88,10 +84,8 @@ Runtime context and plugin identity are injected by the bridge. Failures raise a
 
 ```python
 from bedrock_server_manager.models import ImportAddonRequest
-payload = {...}  # Supply required request fields below.
-request = ImportAddonRequest(**payload)
+request = ImportAddonRequest(server_name='example', addon_file_path=...)
 result = await self.api.addon.import_addon(request)
-data = result.model_dump(mode="json")
 ```
 - **Request schema:** [ImportAddonRequest](models.md#importaddonrequest)
 - **Response schema:** [ImportAddonResponse](models.md#importaddonresponse)
@@ -121,10 +115,8 @@ Runtime context and plugin identity are injected by the bridge. Failures raise a
 
 ```python
 from bedrock_server_manager.models import ListAvailableAddonsRequest
-payload = {}
-request = ListAvailableAddonsRequest(**payload)
+request = ListAvailableAddonsRequest()
 result = await self.api.addon.list_available_addons(request)
-data = result.model_dump(mode="json")
 ```
 - **Request schema:** [ListAvailableAddonsRequest](models.md#listavailableaddonsrequest)
 - **Response schema:** [ListAvailableAddonsResponse](models.md#listavailableaddonsresponse)
@@ -154,10 +146,8 @@ Runtime context and plugin identity are injected by the bridge. Failures raise a
 
 ```python
 from bedrock_server_manager.models import ListInstalledAddonsRequest
-payload = {'server_name': 'example'}
-request = ListInstalledAddonsRequest(**payload)
+request = ListInstalledAddonsRequest(server_name='example')
 result = await self.api.addon.list_installed_addons(request)
-data = result.model_dump(mode="json")
 ```
 - **Request schema:** [ListInstalledAddonsRequest](models.md#listinstalledaddonsrequest)
 - **Response schema:** [ListInstalledAddonsResponse](models.md#listinstalledaddonsresponse)
@@ -187,10 +177,8 @@ Runtime context and plugin identity are injected by the bridge. Failures raise a
 
 ```python
 from bedrock_server_manager.models import ReorderAddonsRequest
-payload = {...}  # Supply required request fields below.
-request = ReorderAddonsRequest(**payload)
+request = ReorderAddonsRequest(pack_type=..., uuids=..., server_name='example')
 result = await self.api.addon.reorder_addons(request)
-data = result.model_dump(mode="json")
 ```
 - **Request schema:** [ReorderAddonsRequest](models.md#reorderaddonsrequest)
 - **Response schema:** [ReorderAddonsResponse](models.md#reorderaddonsresponse)
@@ -220,10 +208,8 @@ Runtime context and plugin identity are injected by the bridge. Failures raise a
 
 ```python
 from bedrock_server_manager.models import UpdateSubpackRequest
-payload = {...}  # Supply required request fields below.
-request = UpdateSubpackRequest(**payload)
+request = UpdateSubpackRequest(pack_uuid=..., pack_type=..., subpack_name=..., server_name='example')
 result = await self.api.addon.update_subpack(request)
-data = result.model_dump(mode="json")
 ```
 - **Request schema:** [UpdateSubpackRequest](models.md#updatesubpackrequest)
 - **Response schema:** [UpdateSubpackResponse](models.md#updatesubpackresponse)

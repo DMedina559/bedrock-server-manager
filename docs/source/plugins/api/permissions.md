@@ -22,10 +22,8 @@ Runtime context and plugin identity are injected by the bridge. Failures raise a
 
 ```python
 from bedrock_server_manager.models import GetPermissionsRequest
-payload = {'server_name': 'example'}
-request = GetPermissionsRequest(**payload)
+request = GetPermissionsRequest(server_name='example')
 result = await self.api.permissions.get_permissions(request)
-data = result.model_dump(mode="json")
 ```
 - **Request schema:** [GetPermissionsRequest](models.md#getpermissionsrequest)
 - **Response schema:** [GetPermissionsResponse](models.md#getpermissionsresponse)
@@ -55,10 +53,8 @@ Runtime context and plugin identity are injected by the bridge. Failures raise a
 
 ```python
 from bedrock_server_manager.models import SetPermissionsRequest
-payload = {...}  # Supply required request fields below.
-request = SetPermissionsRequest(**payload)
+request = SetPermissionsRequest(server_name='example', xuid=..., player_name=..., permission=...)
 result = await self.api.permissions.set_permissions(request)
-data = result.model_dump(mode="json")
 ```
 - **Request schema:** [SetPermissionsRequest](models.md#setpermissionsrequest)
 - **Response schema:** [SetPermissionsResponse](models.md#setpermissionsresponse)

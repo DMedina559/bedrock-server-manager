@@ -18,7 +18,7 @@ def test_generated_docs_include_lifecycle_contract_and_usable_example():
     ]
     markdown = generator._format_api_markdown(contracts)
     assert "from bedrock_server_manager.models import StartServerRequest" in markdown
-    assert "payload = {'server_name': 'example'}" in markdown
+    assert "request = StartServerRequest(server_name='example')" in markdown
     assert "await self.api.server.start(request)" in markdown
     assert "StartServerResponse" in markdown
     assert '"additionalProperties": false' in markdown

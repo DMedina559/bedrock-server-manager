@@ -22,10 +22,8 @@ Runtime context and plugin identity are injected by the bridge. Failures raise a
 
 ```python
 from bedrock_server_manager.models import CompareDiagnosticSnapshotsRequest
-payload = {...}  # Supply required request fields below.
-request = CompareDiagnosticSnapshotsRequest(**payload)
+request = CompareDiagnosticSnapshotsRequest(before=..., after=...)
 result = await self.api.diagnostics.compare_diagnostic_snapshots(request)
-data = result.model_dump(mode="json")
 ```
 - **Request schema:** [CompareDiagnosticSnapshotsRequest](models.md#comparediagnosticsnapshotsrequest)
 - **Response schema:** [CompareDiagnosticSnapshotsResponse](models.md#comparediagnosticsnapshotsresponse)
@@ -55,10 +53,8 @@ Runtime context and plugin identity are injected by the bridge. Failures raise a
 
 ```python
 from bedrock_server_manager.models import GetApplicationDiagnosticsRequest
-payload = {}
-request = GetApplicationDiagnosticsRequest(**payload)
+request = GetApplicationDiagnosticsRequest()
 result = await self.api.diagnostics.get_application_diagnostics(request)
-data = result.model_dump(mode="json")
 ```
 - **Request schema:** [GetApplicationDiagnosticsRequest](models.md#getapplicationdiagnosticsrequest)
 - **Response schema:** [GetApplicationDiagnosticsResponse](models.md#getapplicationdiagnosticsresponse)
@@ -88,10 +84,8 @@ Runtime context and plugin identity are injected by the bridge. Failures raise a
 
 ```python
 from bedrock_server_manager.models import GetDiagnosticActivityRequest
-payload = {}
-request = GetDiagnosticActivityRequest(**payload)
+request = GetDiagnosticActivityRequest()
 result = await self.api.diagnostics.get_diagnostic_activity(request)
-data = result.model_dump(mode="json")
 ```
 - **Request schema:** [GetDiagnosticActivityRequest](models.md#getdiagnosticactivityrequest)
 - **Response schema:** [GetDiagnosticActivityResponse](models.md#getdiagnosticactivityresponse)
@@ -121,10 +115,8 @@ Runtime context and plugin identity are injected by the bridge. Failures raise a
 
 ```python
 from bedrock_server_manager.models import GetDiagnosticHistoryRequest
-payload = {}
-request = GetDiagnosticHistoryRequest(**payload)
+request = GetDiagnosticHistoryRequest()
 result = await self.api.diagnostics.get_diagnostic_history(request)
-data = result.model_dump(mode="json")
 ```
 - **Request schema:** [GetDiagnosticHistoryRequest](models.md#getdiagnostichistoryrequest)
 - **Response schema:** [GetDiagnosticHistoryResponse](models.md#getdiagnostichistoryresponse)
@@ -154,10 +146,8 @@ Runtime context and plugin identity are injected by the bridge. Failures raise a
 
 ```python
 from bedrock_server_manager.models import GetDiagnosticReportRequest
-payload = {}
-request = GetDiagnosticReportRequest(**payload)
+request = GetDiagnosticReportRequest()
 result = await self.api.diagnostics.get_diagnostic_report(request)
-data = result.model_dump(mode="json")
 ```
 - **Request schema:** [GetDiagnosticReportRequest](models.md#getdiagnosticreportrequest)
 - **Response schema:** [GetDiagnosticReportResponse](models.md#getdiagnosticreportresponse)
@@ -187,10 +177,8 @@ Runtime context and plugin identity are injected by the bridge. Failures raise a
 
 ```python
 from bedrock_server_manager.models import GetDiagnosticRunsRequest
-payload = {}
-request = GetDiagnosticRunsRequest(**payload)
+request = GetDiagnosticRunsRequest()
 result = await self.api.diagnostics.get_diagnostic_runs(request)
-data = result.model_dump(mode="json")
 ```
 - **Request schema:** [GetDiagnosticRunsRequest](models.md#getdiagnosticrunsrequest)
 - **Response schema:** [GetDiagnosticRunsResponse](models.md#getdiagnosticrunsresponse)
@@ -220,10 +208,8 @@ Runtime context and plugin identity are injected by the bridge. Failures raise a
 
 ```python
 from bedrock_server_manager.models import GetDiagnosticTraceRequest
-payload = {...}  # Supply required request fields below.
-request = GetDiagnosticTraceRequest(**payload)
+request = GetDiagnosticTraceRequest(correlation_id=...)
 result = await self.api.diagnostics.get_diagnostic_trace(request)
-data = result.model_dump(mode="json")
 ```
 - **Request schema:** [GetDiagnosticTraceRequest](models.md#getdiagnostictracerequest)
 - **Response schema:** [GetDiagnosticTraceResponse](models.md#getdiagnostictraceresponse)

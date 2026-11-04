@@ -8,6 +8,10 @@ from typing import Any
 from bedrock_server_manager import PluginBase, app_event
 from bedrock_server_manager.error import BSMError
 from bedrock_server_manager.logging import log_operation_error
+from bedrock_server_manager.models import (
+    GetServerSettingRequest,
+    UpdateServerRequest,
+)
 
 
 class AutoupdatePlugin(PluginBase):
@@ -66,7 +70,9 @@ class AutoupdatePlugin(PluginBase):
         try:
             # Check if the server has autoupdate enabled in its settings
             result = await self.api.server.get_setting(
-                request={"server_name": server_name, "key": "settings.autoupdate"}
+                request=GetServerSettingRequest(
+                    server_name=server_name, key="settings.autoupdate"
+                )
             )
             autoupdate_enabled = result.value if result.status == "success" else False
 
@@ -82,7 +88,7 @@ class AutoupdatePlugin(PluginBase):
 
             # Await the nested update in the same operation sequence.
             update_result = await self.api.install.update_server(
-                request={"server_name": server_name, "send_message": False}
+                request=UpdateServerRequest(server_name=server_name, send_message=False)
             )
 
             if update_result.status == "success":
