@@ -10,7 +10,6 @@ import platform
 import re
 from typing import TYPE_CHECKING, Any, Dict, List, Tuple
 
-from ..contracts import ResourceFailure
 from ..error import (
     AppFileNotFoundError,
     ConfigurationError,
@@ -21,6 +20,7 @@ from ..error import (
 )
 from ..failures import classify_failure
 from ..logging import log_operation_error
+from ..models.common import ResourceFailure
 from .threads import run_in_thread
 
 if TYPE_CHECKING:

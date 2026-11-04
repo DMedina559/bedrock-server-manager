@@ -8,7 +8,7 @@ For an updated list of available APIs, please download and run the [api_docs_gen
 
 ## `world.export_world`
 ```python
-await self.api.world.export_world(request: bedrock_server_manager.api.models.world.ExportWorldRequest)
+await self.api.world.export_world(request: bedrock_server_manager.models.world.ExportWorldRequest)
 ```
 - **Async (Requires await):** Yes
 
@@ -21,7 +21,7 @@ await self.api.world.export_world(request: bedrock_server_manager.api.models.wor
 Runtime context and plugin identity are injected by the bridge. Failures raise application exceptions; plugin cancellation raises `APICancelledError`.
 
 ```python
-from bedrock_server_manager.api.models import ExportWorldRequest
+from bedrock_server_manager.models import ExportWorldRequest
 payload = {'server_name': 'example'}
 request = ExportWorldRequest(**payload)
 result = await self.api.world.export_world(request)
@@ -34,14 +34,14 @@ data = result.model_dump(mode="json")
 
 | Name | Type | Default |
 |------|------|---------|
-| `request` | `bedrock_server_manager.api.models.world.ExportWorldRequest` | `REQUIRED` |
+| `request` | `bedrock_server_manager.models.world.ExportWorldRequest` | `REQUIRED` |
 
 ---
 
 
 ## `world.get_world_name`
 ```python
-await self.api.world.get_world_name(request: bedrock_server_manager.api.models.world.GetWorldNameRequest)
+await self.api.world.get_world_name(request: bedrock_server_manager.models.world.GetWorldNameRequest)
 ```
 - **Async (Requires await):** Yes
 
@@ -54,7 +54,7 @@ await self.api.world.get_world_name(request: bedrock_server_manager.api.models.w
 Runtime context and plugin identity are injected by the bridge. Failures raise application exceptions; plugin cancellation raises `APICancelledError`.
 
 ```python
-from bedrock_server_manager.api.models import GetWorldNameRequest
+from bedrock_server_manager.models import GetWorldNameRequest
 payload = {'server_name': 'example'}
 request = GetWorldNameRequest(**payload)
 result = await self.api.world.get_world_name(request)
@@ -67,14 +67,14 @@ data = result.model_dump(mode="json")
 
 | Name | Type | Default |
 |------|------|---------|
-| `request` | `bedrock_server_manager.api.models.world.GetWorldNameRequest` | `REQUIRED` |
+| `request` | `bedrock_server_manager.models.world.GetWorldNameRequest` | `REQUIRED` |
 
 ---
 
 
 ## `world.import_world`
 ```python
-await self.api.world.import_world(request: bedrock_server_manager.api.models.world.ImportWorldRequest)
+await self.api.world.import_world(request: bedrock_server_manager.models.world.ImportWorldRequest)
 ```
 - **Async (Requires await):** Yes
 
@@ -87,7 +87,7 @@ await self.api.world.import_world(request: bedrock_server_manager.api.models.wor
 Runtime context and plugin identity are injected by the bridge. Failures raise application exceptions; plugin cancellation raises `APICancelledError`.
 
 ```python
-from bedrock_server_manager.api.models import ImportWorldRequest
+from bedrock_server_manager.models import ImportWorldRequest
 payload = {...}  # Supply required request fields below.
 request = ImportWorldRequest(**payload)
 result = await self.api.world.import_world(request)
@@ -100,14 +100,14 @@ data = result.model_dump(mode="json")
 
 | Name | Type | Default |
 |------|------|---------|
-| `request` | `bedrock_server_manager.api.models.world.ImportWorldRequest` | `REQUIRED` |
+| `request` | `bedrock_server_manager.models.world.ImportWorldRequest` | `REQUIRED` |
 
 ---
 
 
 ## `world.reset_world`
 ```python
-await self.api.world.reset_world(request: bedrock_server_manager.api.models.world.ResetWorldRequest)
+await self.api.world.reset_world(request: bedrock_server_manager.models.world.ResetWorldRequest)
 ```
 - **Async (Requires await):** Yes
 
@@ -120,7 +120,7 @@ await self.api.world.reset_world(request: bedrock_server_manager.api.models.worl
 Runtime context and plugin identity are injected by the bridge. Failures raise application exceptions; plugin cancellation raises `APICancelledError`.
 
 ```python
-from bedrock_server_manager.api.models import ResetWorldRequest
+from bedrock_server_manager.models import ResetWorldRequest
 payload = {'server_name': 'example'}
 request = ResetWorldRequest(**payload)
 result = await self.api.world.reset_world(request)
@@ -133,4 +133,4 @@ data = result.model_dump(mode="json")
 
 | Name | Type | Default |
 |------|------|---------|
-| `request` | `bedrock_server_manager.api.models.world.ResetWorldRequest` | `REQUIRED` |
+| `request` | `bedrock_server_manager.models.world.ResetWorldRequest` | `REQUIRED` |

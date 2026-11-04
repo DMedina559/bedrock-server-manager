@@ -8,8 +8,8 @@ from typing import Any, ClassVar, List, cast
 
 from pydantic import BaseModel
 
-from ..api.models.plugins import SetPluginSettingResponse
 from ..logging import log_operation_error
+from ..models.plugins import SetPluginSettingResponse
 from .api_bridge import AppAPI
 
 

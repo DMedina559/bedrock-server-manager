@@ -2,9 +2,7 @@ from typing import Literal, Optional
 
 from pydantic import Field
 
-from ...api.models.common import APIRequest, APIResponse
-from ...contracts import NewPassword, Password
-from ...state.models import UserRole
+from ...models.common import APIRequest, APIResponse, NewPassword, Password, UserRole
 
 
 class UserResponse(APIResponse):

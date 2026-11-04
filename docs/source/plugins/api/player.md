@@ -8,7 +8,7 @@ For an updated list of available APIs, please download and run the [api_docs_gen
 
 ## `player.add_players_manually`
 ```python
-await self.api.player.add_players_manually(request: bedrock_server_manager.api.models.player.AddPlayersManuallyRequest)
+await self.api.player.add_players_manually(request: bedrock_server_manager.models.player.AddPlayersManuallyRequest)
 ```
 - **Async (Requires await):** Yes
 
@@ -21,7 +21,7 @@ await self.api.player.add_players_manually(request: bedrock_server_manager.api.m
 Runtime context and plugin identity are injected by the bridge. Failures raise application exceptions; plugin cancellation raises `APICancelledError`.
 
 ```python
-from bedrock_server_manager.api.models import AddPlayersManuallyRequest
+from bedrock_server_manager.models import AddPlayersManuallyRequest
 payload = {...}  # Supply required request fields below.
 request = AddPlayersManuallyRequest(**payload)
 result = await self.api.player.add_players_manually(request)
@@ -34,14 +34,14 @@ data = result.model_dump(mode="json")
 
 | Name | Type | Default |
 |------|------|---------|
-| `request` | `bedrock_server_manager.api.models.player.AddPlayersManuallyRequest` | `REQUIRED` |
+| `request` | `bedrock_server_manager.models.player.AddPlayersManuallyRequest` | `REQUIRED` |
 
 ---
 
 
 ## `player.get_all_known_players`
 ```python
-await self.api.player.get_all_known_players(request: bedrock_server_manager.api.models.player.GetAllKnownPlayersRequest)
+await self.api.player.get_all_known_players(request: bedrock_server_manager.models.player.GetAllKnownPlayersRequest)
 ```
 - **Async (Requires await):** Yes
 
@@ -54,7 +54,7 @@ await self.api.player.get_all_known_players(request: bedrock_server_manager.api.
 Runtime context and plugin identity are injected by the bridge. Failures raise application exceptions; plugin cancellation raises `APICancelledError`.
 
 ```python
-from bedrock_server_manager.api.models import GetAllKnownPlayersRequest
+from bedrock_server_manager.models import GetAllKnownPlayersRequest
 payload = {}
 request = GetAllKnownPlayersRequest(**payload)
 result = await self.api.player.get_all_known_players(request)
@@ -67,14 +67,14 @@ data = result.model_dump(mode="json")
 
 | Name | Type | Default |
 |------|------|---------|
-| `request` | `bedrock_server_manager.api.models.player.GetAllKnownPlayersRequest` | `REQUIRED` |
+| `request` | `bedrock_server_manager.models.player.GetAllKnownPlayersRequest` | `REQUIRED` |
 
 ---
 
 
 ## `player.scan_and_update_player_db`
 ```python
-await self.api.player.scan_and_update_player_db(request: bedrock_server_manager.api.models.player.ScanAndUpdatePlayerDbRequest)
+await self.api.player.scan_and_update_player_db(request: bedrock_server_manager.models.player.ScanAndUpdatePlayerDbRequest)
 ```
 - **Async (Requires await):** Yes
 
@@ -87,7 +87,7 @@ await self.api.player.scan_and_update_player_db(request: bedrock_server_manager.
 Runtime context and plugin identity are injected by the bridge. Failures raise application exceptions; plugin cancellation raises `APICancelledError`.
 
 ```python
-from bedrock_server_manager.api.models import ScanAndUpdatePlayerDbRequest
+from bedrock_server_manager.models import ScanAndUpdatePlayerDbRequest
 payload = {}
 request = ScanAndUpdatePlayerDbRequest(**payload)
 result = await self.api.player.scan_and_update_player_db(request)
@@ -100,4 +100,4 @@ data = result.model_dump(mode="json")
 
 | Name | Type | Default |
 |------|------|---------|
-| `request` | `bedrock_server_manager.api.models.player.ScanAndUpdatePlayerDbRequest` | `REQUIRED` |
+| `request` | `bedrock_server_manager.models.player.ScanAndUpdatePlayerDbRequest` | `REQUIRED` |

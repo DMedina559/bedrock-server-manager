@@ -19,13 +19,13 @@ from ..error import (
 )
 from ..events import trigger_event
 from ..logging import log_operation_error
-from ..plugins.api_bridge import api_method
-from ..plugins.scopes import PluginScope
-from ..utils.general import ReentrantAsyncLock
-from .models.misc import (
+from ..models.misc import (
     PruneDownloadCacheRequest,
     PruneDownloadCacheResponse,
 )
+from ..plugins.api_bridge import api_method
+from ..plugins.scopes import PluginScope
+from ..utils.general import ReentrantAsyncLock
 
 logger = logging.getLogger(__name__)
 

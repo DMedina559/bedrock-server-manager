@@ -202,7 +202,7 @@ class APIDocsGenerator(PluginBase):
                     "`APICancelledError`.\n"
                 )
                 lines.append(
-                    f"```python\nfrom bedrock_server_manager.api.models import {request_model}\n"
+                    f"```python\nfrom bedrock_server_manager.models import {request_model}\n"
                     f"{payload_line}\n"
                     f"request = {request_model}(**payload)\n"
                     f"result = {signature_prefix}{full_name}(request)\n"

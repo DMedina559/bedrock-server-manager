@@ -2,25 +2,22 @@ import logging
 
 from fastapi import APIRouter, Depends, Security, status
 
-from bedrock_server_manager.api.models import (
+from ...api import allowlist as allowlist_api
+from ...context import AppContext
+from ...models import (
     AddToAllowlistRequest,
     AddToAllowlistResponse,
+    AllowlistAddPayload,
+    AllowlistRemovePayload,
     GetAllowlistRequest,
     GetAllowlistResponse,
     RemoveFromAllowlistRequest,
     RemoveFromAllowlistResponse,
 )
-
-from ...api import allowlist as allowlist_api
-from ...context import AppContext
 from ..access_policy import Permission
 from ..deps import get_app_context, validate_server_exists
 from ..deps.auth import require_permissions
-from ..schemas import (
-    AllowlistAddPayload,
-    AllowlistRemovePayload,
-    UserResponse,
-)
+from ..schemas import UserResponse
 
 logger = logging.getLogger(__name__)
 router = APIRouter(tags=["Server Access"])

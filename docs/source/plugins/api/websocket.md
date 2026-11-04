@@ -8,7 +8,7 @@ For an updated list of available APIs, please download and run the [api_docs_gen
 
 ## `websocket.websocket_broadcast`
 ```python
-await self.api.websocket.websocket_broadcast(request: bedrock_server_manager.api.models.websocket.BroadcastRequest)
+await self.api.websocket.websocket_broadcast(request: bedrock_server_manager.models.websocket.BroadcastRequest)
 ```
 - **Async (Requires await):** Yes
 
@@ -21,7 +21,7 @@ await self.api.websocket.websocket_broadcast(request: bedrock_server_manager.api
 Runtime context and plugin identity are injected by the bridge. Failures raise application exceptions; plugin cancellation raises `APICancelledError`.
 
 ```python
-from bedrock_server_manager.api.models import BroadcastRequest
+from bedrock_server_manager.models import BroadcastRequest
 payload = {...}  # Supply required request fields below.
 request = BroadcastRequest(**payload)
 result = await self.api.websocket.websocket_broadcast(request)
@@ -34,14 +34,14 @@ data = result.model_dump(mode="json")
 
 | Name | Type | Default |
 |------|------|---------|
-| `request` | `bedrock_server_manager.api.models.websocket.BroadcastRequest` | `REQUIRED` |
+| `request` | `bedrock_server_manager.models.websocket.BroadcastRequest` | `REQUIRED` |
 
 ---
 
 
 ## `websocket.websocket_publish_ws_event`
 ```python
-await self.api.websocket.websocket_publish_ws_event(request: bedrock_server_manager.api.models.websocket.PublishWsEventRequest)
+await self.api.websocket.websocket_publish_ws_event(request: bedrock_server_manager.models.websocket.PublishWsEventRequest)
 ```
 - **Async (Requires await):** Yes
 
@@ -54,7 +54,7 @@ await self.api.websocket.websocket_publish_ws_event(request: bedrock_server_mana
 Runtime context and plugin identity are injected by the bridge. Failures raise application exceptions; plugin cancellation raises `APICancelledError`.
 
 ```python
-from bedrock_server_manager.api.models import PublishWsEventRequest
+from bedrock_server_manager.models import PublishWsEventRequest
 payload = {...}  # Supply required request fields below.
 request = PublishWsEventRequest(**payload)
 result = await self.api.websocket.websocket_publish_ws_event(request)
@@ -67,14 +67,14 @@ data = result.model_dump(mode="json")
 
 | Name | Type | Default |
 |------|------|---------|
-| `request` | `bedrock_server_manager.api.models.websocket.PublishWsEventRequest` | `REQUIRED` |
+| `request` | `bedrock_server_manager.models.websocket.PublishWsEventRequest` | `REQUIRED` |
 
 ---
 
 
 ## `websocket.websocket_send_to_client`
 ```python
-await self.api.websocket.websocket_send_to_client(request: bedrock_server_manager.api.models.websocket.SendToClientRequest)
+await self.api.websocket.websocket_send_to_client(request: bedrock_server_manager.models.websocket.SendToClientRequest)
 ```
 - **Async (Requires await):** Yes
 
@@ -87,7 +87,7 @@ await self.api.websocket.websocket_send_to_client(request: bedrock_server_manage
 Runtime context and plugin identity are injected by the bridge. Failures raise application exceptions; plugin cancellation raises `APICancelledError`.
 
 ```python
-from bedrock_server_manager.api.models import SendToClientRequest
+from bedrock_server_manager.models import SendToClientRequest
 payload = {...}  # Supply required request fields below.
 request = SendToClientRequest(**payload)
 result = await self.api.websocket.websocket_send_to_client(request)
@@ -100,14 +100,14 @@ data = result.model_dump(mode="json")
 
 | Name | Type | Default |
 |------|------|---------|
-| `request` | `bedrock_server_manager.api.models.websocket.SendToClientRequest` | `REQUIRED` |
+| `request` | `bedrock_server_manager.models.websocket.SendToClientRequest` | `REQUIRED` |
 
 ---
 
 
 ## `websocket.websocket_send_to_user`
 ```python
-await self.api.websocket.websocket_send_to_user(request: bedrock_server_manager.api.models.websocket.SendToUserRequest)
+await self.api.websocket.websocket_send_to_user(request: bedrock_server_manager.models.websocket.SendToUserRequest)
 ```
 - **Async (Requires await):** Yes
 
@@ -120,7 +120,7 @@ await self.api.websocket.websocket_send_to_user(request: bedrock_server_manager.
 Runtime context and plugin identity are injected by the bridge. Failures raise application exceptions; plugin cancellation raises `APICancelledError`.
 
 ```python
-from bedrock_server_manager.api.models import SendToUserRequest
+from bedrock_server_manager.models import SendToUserRequest
 payload = {...}  # Supply required request fields below.
 request = SendToUserRequest(**payload)
 result = await self.api.websocket.websocket_send_to_user(request)
@@ -133,14 +133,14 @@ data = result.model_dump(mode="json")
 
 | Name | Type | Default |
 |------|------|---------|
-| `request` | `bedrock_server_manager.api.models.websocket.SendToUserRequest` | `REQUIRED` |
+| `request` | `bedrock_server_manager.models.websocket.SendToUserRequest` | `REQUIRED` |
 
 ---
 
 
 ## `websocket.websocket_unregister_data_provider`
 ```python
-await self.api.websocket.websocket_unregister_data_provider(request: bedrock_server_manager.api.models.websocket.UnregisterDataProviderRequest)
+await self.api.websocket.websocket_unregister_data_provider(request: bedrock_server_manager.models.websocket.UnregisterDataProviderRequest)
 ```
 - **Async (Requires await):** Yes
 
@@ -151,7 +151,7 @@ await self.api.websocket.websocket_unregister_data_provider(request: bedrock_ser
 Runtime context and plugin identity are injected by the bridge. Failures raise application exceptions; plugin cancellation raises `APICancelledError`.
 
 ```python
-from bedrock_server_manager.api.models import UnregisterDataProviderRequest
+from bedrock_server_manager.models import UnregisterDataProviderRequest
 payload = {...}  # Supply required request fields below.
 request = UnregisterDataProviderRequest(**payload)
 result = await self.api.websocket.websocket_unregister_data_provider(request)
@@ -164,4 +164,4 @@ data = result.model_dump(mode="json")
 
 | Name | Type | Default |
 |------|------|---------|
-| `request` | `bedrock_server_manager.api.models.websocket.UnregisterDataProviderRequest` | `REQUIRED` |
+| `request` | `bedrock_server_manager.models.websocket.UnregisterDataProviderRequest` | `REQUIRED` |

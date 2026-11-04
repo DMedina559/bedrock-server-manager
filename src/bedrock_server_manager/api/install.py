@@ -10,14 +10,14 @@ from ..error import (
 from ..events import trigger_event
 from ..events.operations import OperationName, track_operation
 from ..logging import log_operation_error
-from ..plugins.api_bridge import api_method
-from ..plugins.scopes import PluginScope
-from .models.install import (
+from ..models.install import (
     InstallNewServerRequest,
     InstallNewServerResponse,
     UpdateServerRequest,
     UpdateServerResponse,
 )
+from ..plugins.api_bridge import api_method
+from ..plugins.scopes import PluginScope
 from .server import server_lifecycle_manager
 
 logger = logging.getLogger(__name__)
@@ -153,8 +153,8 @@ async def update_server(
             app_context=app_context,
         ):
             logger.debug("Backing up '%s' before update...", server_name)
+            from ..models.backup_restore import BackupAllRequest
             from .backup_restore import backup_all
-            from .models.backup_restore import BackupAllRequest
 
             backup = await backup_all(
                 BackupAllRequest(server_name=server_name), app_context=app_context

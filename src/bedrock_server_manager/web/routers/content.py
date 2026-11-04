@@ -10,24 +10,23 @@ from zipfile import BadZipFile, ZipFile
 from fastapi import APIRouter, Depends, File, HTTPException, Security, UploadFile
 from fastapi.responses import FileResponse
 
-from bedrock_server_manager.api.models import (
-    ListAvailableAddonsRequest,
-    ListAvailableWorldsRequest,
-)
-
 from ...api import addon as addon_api
 from ...api import application as app_api
 from ...context import AppContext
 from ...core.files import atomic_stream_file, validate_archive
 from ...error import DependencyUnavailableError, UserInputError
 from ...logging import log_operation_error
+from ...models import (
+    ContentCategory,
+    ListAvailableAddonsRequest,
+    ListAvailableWorldsRequest,
+)
 from ...utils.threads import run_in_thread
 from ..access_policy import Permission
 from ..deps import get_app_context
 from ..deps.auth import require_permissions
 from ..schemas import (
     BaseApiResponse,
-    ContentCategory,
     ContentUploadResponse,
     UserResponse,
 )

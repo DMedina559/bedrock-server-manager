@@ -2,24 +2,21 @@ import logging
 
 from fastapi import APIRouter, Depends, HTTPException, Security, status
 
-from bedrock_server_manager.api.models import (
+from ...api import properties as properties_api
+from ...context import AppContext
+from ...models import (
     GetPropertiesRequest,
     GetPropertiesResponse,
     GetRawPropertiesRequest,
     GetRawPropertiesResponse,
+    PropertiesPayload,
     SetPropertiesRequest,
     SetPropertiesResponse,
 )
-
-from ...api import properties as properties_api
-from ...context import AppContext
 from ..access_policy import Permission
 from ..deps import get_app_context, validate_server_exists
 from ..deps.auth import require_permissions
-from ..schemas import (
-    PropertiesPayload,
-    UserResponse,
-)
+from ..schemas import UserResponse
 
 logger = logging.getLogger(__name__)
 router = APIRouter(tags=["Server Properties"])

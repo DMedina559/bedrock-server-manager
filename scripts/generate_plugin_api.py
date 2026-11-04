@@ -52,7 +52,7 @@ def generate():
         "from pathlib import Path\n"
         "from typing import Any, AsyncContextManager, Callable, Literal, Mapping, Protocol\n"
         "from bedrock_server_manager.plugins.operation_api import PluginOperationAPI as PluginOperationAPI  # noqa: F401\n"
-        "from bedrock_server_manager.api.models import (\n"
+        "from bedrock_server_manager.models import (\n"
         + "".join(f"    {name},\n" for name in sorted(imports))
         + ")\n\n"
         + "\n".join(classes)

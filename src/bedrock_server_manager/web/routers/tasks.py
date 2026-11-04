@@ -1,8 +1,8 @@
 # bedrock_server_manager/web/routers/tasks.py
 from fastapi import APIRouter, Depends, HTTPException, Security
 
-from ...api.models.tasks import TaskSnapshot
 from ...context import AppContext
+from ...models.tasks import TaskSnapshot
 from ..access_metadata import describe_access
 from ..access_policy import Permission
 from ..authorization import current_authorization

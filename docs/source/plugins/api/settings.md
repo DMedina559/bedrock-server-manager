@@ -8,7 +8,7 @@ For an updated list of available APIs, please download and run the [api_docs_gen
 
 ## `settings.get_all_global_settings`
 ```python
-await self.api.settings.get_all_global_settings(request: bedrock_server_manager.api.models.settings.GetAllGlobalSettingsRequest)
+await self.api.settings.get_all_global_settings(request: bedrock_server_manager.models.settings.GetAllGlobalSettingsRequest)
 ```
 - **Async (Requires await):** Yes
 
@@ -19,7 +19,7 @@ await self.api.settings.get_all_global_settings(request: bedrock_server_manager.
 Runtime context and plugin identity are injected by the bridge. Failures raise application exceptions; plugin cancellation raises `APICancelledError`.
 
 ```python
-from bedrock_server_manager.api.models import GetAllGlobalSettingsRequest
+from bedrock_server_manager.models import GetAllGlobalSettingsRequest
 payload = {}
 request = GetAllGlobalSettingsRequest(**payload)
 result = await self.api.settings.get_all_global_settings(request)
@@ -32,14 +32,14 @@ data = result.model_dump(mode="json")
 
 | Name | Type | Default |
 |------|------|---------|
-| `request` | `bedrock_server_manager.api.models.settings.GetAllGlobalSettingsRequest` | `REQUIRED` |
+| `request` | `bedrock_server_manager.models.settings.GetAllGlobalSettingsRequest` | `REQUIRED` |
 
 ---
 
 
 ## `settings.get_global_setting`
 ```python
-await self.api.settings.get_global_setting(request: bedrock_server_manager.api.models.settings.GetGlobalSettingRequest)
+await self.api.settings.get_global_setting(request: bedrock_server_manager.models.settings.GetGlobalSettingRequest)
 ```
 - **Async (Requires await):** Yes
 
@@ -50,7 +50,7 @@ await self.api.settings.get_global_setting(request: bedrock_server_manager.api.m
 Runtime context and plugin identity are injected by the bridge. Failures raise application exceptions; plugin cancellation raises `APICancelledError`.
 
 ```python
-from bedrock_server_manager.api.models import GetGlobalSettingRequest
+from bedrock_server_manager.models import GetGlobalSettingRequest
 payload = {...}  # Supply required request fields below.
 request = GetGlobalSettingRequest(**payload)
 result = await self.api.settings.get_global_setting(request)
@@ -63,14 +63,14 @@ data = result.model_dump(mode="json")
 
 | Name | Type | Default |
 |------|------|---------|
-| `request` | `bedrock_server_manager.api.models.settings.GetGlobalSettingRequest` | `REQUIRED` |
+| `request` | `bedrock_server_manager.models.settings.GetGlobalSettingRequest` | `REQUIRED` |
 
 ---
 
 
 ## `settings.set_custom_global_setting`
 ```python
-await self.api.settings.set_custom_global_setting(request: bedrock_server_manager.api.models.settings.SetCustomGlobalSettingRequest)
+await self.api.settings.set_custom_global_setting(request: bedrock_server_manager.models.settings.SetCustomGlobalSettingRequest)
 ```
 - **Async (Requires await):** Yes
 
@@ -81,7 +81,7 @@ await self.api.settings.set_custom_global_setting(request: bedrock_server_manage
 Runtime context and plugin identity are injected by the bridge. Failures raise application exceptions; plugin cancellation raises `APICancelledError`.
 
 ```python
-from bedrock_server_manager.api.models import SetCustomGlobalSettingRequest
+from bedrock_server_manager.models import SetCustomGlobalSettingRequest
 payload = {...}  # Supply required request fields below.
 request = SetCustomGlobalSettingRequest(**payload)
 result = await self.api.settings.set_custom_global_setting(request)
@@ -94,4 +94,4 @@ data = result.model_dump(mode="json")
 
 | Name | Type | Default |
 |------|------|---------|
-| `request` | `bedrock_server_manager.api.models.settings.SetCustomGlobalSettingRequest` | `REQUIRED` |
+| `request` | `bedrock_server_manager.models.settings.SetCustomGlobalSettingRequest` | `REQUIRED` |

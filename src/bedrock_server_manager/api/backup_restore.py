@@ -18,10 +18,7 @@ from ..error import (
 from ..events import trigger_event
 from ..events.operations import OperationName, track_operation
 from ..logging import log_operation_error
-from ..plugins.api_bridge import api_method
-from ..plugins.scopes import PluginScope
-from ..utils.threads import run_in_thread
-from .models.backup_restore import (
+from ..models.backup_restore import (
     BackupAllRequest,
     BackupAllResponse,
     BackupConfigFileRequest,
@@ -61,6 +58,9 @@ from .models.backup_restore import (
     SnapshotReuseRequest,
     SnapshotReuseResponse,
 )
+from ..plugins.api_bridge import api_method
+from ..plugins.scopes import PluginScope
+from ..utils.threads import run_in_thread
 from .server import server_lifecycle_manager
 
 logger = logging.getLogger(__name__)
@@ -625,8 +625,8 @@ async def restore_server_snapshot(
     request: RestoreSnapshotRequest, *, app_context: AppContext
 ) -> RestoreSnapshotResponse:
     """Apply a reviewed restore and keep restart failures separate from data recovery."""
-    from ..api.models import StartServerRequest, StopServerRequest
     from ..api.server import start_server, stop_server
+    from ..models import StartServerRequest, StopServerRequest
 
     server = app_context.get_server(request.server_name, require_installation=False)
 

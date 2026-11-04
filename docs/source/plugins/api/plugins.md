@@ -8,7 +8,7 @@ For an updated list of available APIs, please download and run the [api_docs_gen
 
 ## `plugins.get_plugin_setting`
 ```python
-await self.api.plugins.get_plugin_setting(request: bedrock_server_manager.api.models.plugins.GetPluginSettingRequest)
+await self.api.plugins.get_plugin_setting(request: bedrock_server_manager.models.plugins.GetPluginSettingRequest)
 ```
 - **Async (Requires await):** Yes
 
@@ -19,7 +19,7 @@ await self.api.plugins.get_plugin_setting(request: bedrock_server_manager.api.mo
 Runtime context and plugin identity are injected by the bridge. Failures raise application exceptions; plugin cancellation raises `APICancelledError`.
 
 ```python
-from bedrock_server_manager.api.models import GetPluginSettingRequest
+from bedrock_server_manager.models import GetPluginSettingRequest
 payload = {}
 request = GetPluginSettingRequest(**payload)
 result = await self.api.plugins.get_plugin_setting(request)
@@ -32,14 +32,14 @@ data = result.model_dump(mode="json")
 
 | Name | Type | Default |
 |------|------|---------|
-| `request` | `bedrock_server_manager.api.models.plugins.GetPluginSettingRequest` | `REQUIRED` |
+| `request` | `bedrock_server_manager.models.plugins.GetPluginSettingRequest` | `REQUIRED` |
 
 ---
 
 
 ## `plugins.get_plugin_statuses`
 ```python
-await self.api.plugins.get_plugin_statuses(request: bedrock_server_manager.api.models.plugins.GetPluginStatusesRequest)
+await self.api.plugins.get_plugin_statuses(request: bedrock_server_manager.models.plugins.GetPluginStatusesRequest)
 ```
 - **Async (Requires await):** Yes
 
@@ -52,7 +52,7 @@ await self.api.plugins.get_plugin_statuses(request: bedrock_server_manager.api.m
 Runtime context and plugin identity are injected by the bridge. Failures raise application exceptions; plugin cancellation raises `APICancelledError`.
 
 ```python
-from bedrock_server_manager.api.models import GetPluginStatusesRequest
+from bedrock_server_manager.models import GetPluginStatusesRequest
 payload = {}
 request = GetPluginStatusesRequest(**payload)
 result = await self.api.plugins.get_plugin_statuses(request)
@@ -65,14 +65,14 @@ data = result.model_dump(mode="json")
 
 | Name | Type | Default |
 |------|------|---------|
-| `request` | `bedrock_server_manager.api.models.plugins.GetPluginStatusesRequest` | `REQUIRED` |
+| `request` | `bedrock_server_manager.models.plugins.GetPluginStatusesRequest` | `REQUIRED` |
 
 ---
 
 
 ## `plugins.set_plugin_setting`
 ```python
-await self.api.plugins.set_plugin_setting(request: bedrock_server_manager.api.models.plugins.SetPluginSettingRequest)
+await self.api.plugins.set_plugin_setting(request: bedrock_server_manager.models.plugins.SetPluginSettingRequest)
 ```
 - **Async (Requires await):** Yes
 
@@ -83,7 +83,7 @@ await self.api.plugins.set_plugin_setting(request: bedrock_server_manager.api.mo
 Runtime context and plugin identity are injected by the bridge. Failures raise application exceptions; plugin cancellation raises `APICancelledError`.
 
 ```python
-from bedrock_server_manager.api.models import SetPluginSettingRequest
+from bedrock_server_manager.models import SetPluginSettingRequest
 payload = {...}  # Supply required request fields below.
 request = SetPluginSettingRequest(**payload)
 result = await self.api.plugins.set_plugin_setting(request)
@@ -96,4 +96,4 @@ data = result.model_dump(mode="json")
 
 | Name | Type | Default |
 |------|------|---------|
-| `request` | `bedrock_server_manager.api.models.plugins.SetPluginSettingRequest` | `REQUIRED` |
+| `request` | `bedrock_server_manager.models.plugins.SetPluginSettingRequest` | `REQUIRED` |

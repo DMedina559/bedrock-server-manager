@@ -12,9 +12,9 @@ from typing import Optional, Set
 import click
 
 from ..context import AppContext
-from ..contracts import CleanupResult, FailureInfo
 from ..error import FileOperationError
 from ..failures import classify_failure
+from ..models.common import CleanupResult, FailureInfo
 from ..plugins.files import RESERVED_PLUGIN_NAMES
 from .logs import (
     _discover_all_server_names,

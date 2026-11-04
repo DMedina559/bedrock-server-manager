@@ -4,7 +4,7 @@ from typing import Literal, Self
 
 from pydantic import BaseModel, ConfigDict, Field, JsonValue, model_validator
 
-from ..contracts import DeliveryResult
+from ..models.common import DeliveryResult
 
 
 class EventModel(BaseModel):

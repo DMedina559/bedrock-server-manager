@@ -6,14 +6,14 @@ async def test_server_status_and_listing_follow_real_process(
 ):
     base = f"/api/server/{real_bedrock_server.server_name}"
     assert (await auth_client.get(base + "/validate")).status_code == 200
-    assert (await auth_client.get(base + "/status")).json()["running"] is False
+    assert (await auth_client.get(base + "/status")).json()["is_running"] is False
     await real_bedrock_server.start()
-    assert (await auth_client.get(base + "/status")).json()["running"] is True
+    assert (await auth_client.get(base + "/status")).json()["is_running"] is True
     response = await auth_client.get("/api/servers")
     assert response.status_code == 200
     assert response.json()["servers"][0]["name"] == real_bedrock_server.server_name
     await real_bedrock_server.stop()
-    assert (await auth_client.get(base + "/status")).json()["running"] is False
+    assert (await auth_client.get(base + "/status")).json()["is_running"] is False
 
 
 async def test_player_endpoints_use_persistent_database(
@@ -40,9 +40,9 @@ async def test_player_endpoints_use_persistent_database(
 async def test_system_info_and_real_custom_themes(unauth_client, app_context, tmp_path):
     await app_context.settings.set("general.timezone", "America/Los_Angeles")
     response = await unauth_client.get("/api/info")
-    assert response.json()["info"]["timezone"] == "America/Los_Angeles"
+    assert response.json()["timezone"] == "America/Los_Angeles"
     assert response.status_code == 200
-    assert response.json()["info"]["app_version"]
+    assert response.json()["app_version"]
     themes = tmp_path / "themes"
     themes.mkdir()
     (themes / "integration.css").write_text("body {}")

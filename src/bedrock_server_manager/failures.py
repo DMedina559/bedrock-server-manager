@@ -3,14 +3,9 @@
 from __future__ import annotations
 
 import sys
-from typing import TYPE_CHECKING
 
 from pydantic import ValidationError
 
-from .contracts import ClassifiedFailure, FailureInfo
-
-if TYPE_CHECKING:
-    from .api.models.common import APIErrorResponse
 from .error import (
     APICancelledError,
     AppFileNotFoundError,
@@ -33,6 +28,7 @@ from .error import (
     SystemError,
     UserInputError,
 )
+from .models.common import APIErrorResponse, ClassifiedFailure, FailureInfo
 
 
 def classify_failure(error: Exception) -> ClassifiedFailure:
@@ -177,6 +173,4 @@ def error_status_code(error: Exception) -> int:
 
 
 def error_response(error: Exception) -> APIErrorResponse:
-    from .api.models.common import APIErrorResponse
-
     return APIErrorResponse.model_validate(classify_failure(error).error.model_dump())

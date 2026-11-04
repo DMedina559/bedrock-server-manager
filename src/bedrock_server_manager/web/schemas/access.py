@@ -1,12 +1,10 @@
 """Administrative access contracts; token secrets appear only on creation."""
 
-from typing import Annotated, Literal
+from typing import Literal
 
-from pydantic import Field, StringConstraints
+from pydantic import Field
 
-from ...api.models.common import APIRequest, APIResponse
-
-ResourceID = Annotated[str, StringConstraints(pattern=r"^[a-f0-9]{32}$")]
+from ...models.common import APIRequest, APIResponse, ResourceID
 
 
 class CreateIntegrationToken(APIRequest):

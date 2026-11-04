@@ -19,58 +19,54 @@ from fastapi import (
 )
 from fastapi.responses import Response, StreamingResponse
 
-from bedrock_server_manager.api.models import (
+from ...api import backup_restore as backup_restore_api
+from ...backups import transfer as backup_transfer
+from ...backups.models import ConfigComponent
+from ...context import AppContext
+from ...models import (
     APIRequest,
+    BackupActionPayload,
     BackupAllRequest,
     BackupConfigFileRequest,
-    BackupWorldRequest,
-    ListBackupFilesRequest,
-    ListBackupFilesResponse,
-    PruneOldBackupsRequest,
-    RestoreAllRequest,
-    RestoreConfigFileRequest,
-    RestoreWorldRequest,
-)
-
-from ...api import backup_restore as backup_restore_api
-from ...api.models.backup_restore import (
     BackupHealthResponse,
+    BackupKeyInfo,
+    BackupKeysInfo,
+    BackupWorldRequest,
     CleanupBackupDestinationRequest,
     CreateSnapshotRequest,
     DeleteSnapshotRequest,
+    DestinationCleanupPayload,
     InspectSnapshotRequest,
+    ListBackupFilesRequest,
+    ListBackupFilesResponse,
     ListSnapshotsRequest,
     ListSnapshotsResponse,
     ManageSnapshotRequest,
     ManageSnapshotResponse,
     PlanSnapshotRestoreRequest,
     PrepareBackupCopyRequest,
+    PruneOldBackupsRequest,
     RecoveryReportResponse,
+    RestoreActionPayload,
+    RestoreAllRequest,
+    RestoreConfigFileRequest,
     RestoreRecoveryResponse,
     RestoreSnapshotRequest,
-)
-from ...backups import transfer as backup_transfer
-from ...backups.models import ConfigComponent
-from ...context import AppContext
-from ..access_metadata import describe_access
-from ..access_policy import Permission
-from ..deps import get_app_context, validate_server_exists
-from ..deps.auth import require_permissions, require_recent_interactive
-from ..deps.server import validate_server_registered
-from ..schemas import (
-    BackupActionPayload,
-    DestinationCleanupPayload,
-    RestoreActionPayload,
+    RestoreWorldRequest,
     SnapshotCopyPayload,
     SnapshotCreatePayload,
     SnapshotInspectPayload,
     SnapshotManagePayload,
     SnapshotPlanPayload,
     SnapshotRestorePayload,
-    UserResponse,
+    TaskAcceptedResponse,
 )
-from ..schemas.backup import BackupKeyInfo, BackupKeysInfo
-from ..schemas.base import TaskAcceptedResponse
+from ..access_metadata import describe_access
+from ..access_policy import Permission
+from ..deps import get_app_context, validate_server_exists
+from ..deps.auth import require_permissions, require_recent_interactive
+from ..deps.server import validate_server_registered
+from ..schemas import UserResponse
 
 # bedrock_server_manager/web/routers/backup_restore.py
 
@@ -638,7 +634,7 @@ async def list_keys(
         require_permissions, scopes=[Permission.BACKUPS_KEYS]
     ),
     app_context: AppContext = Depends(get_app_context),
-) -> dict[str, Any]:
+) -> BackupKeysInfo:
     """List key identifiers without exposing recovery credentials."""
     return await backup_transfer.list_backup_keys(app_context)
 
@@ -656,7 +652,7 @@ async def rotate_key(
         require_permissions, scopes=[Permission.BACKUPS_KEYS]
     ),
     app_context: AppContext = Depends(get_app_context),
-) -> dict[str, str]:
+) -> BackupKeyInfo:
     """Generate a new active key and retain all previous keys."""
     await require_recent_interactive(request, current_user, app_context)
     return await backup_transfer.rotate_backup_key(app_context)

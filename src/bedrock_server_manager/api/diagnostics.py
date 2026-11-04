@@ -3,9 +3,7 @@
 from ..context import AppContext
 from ..diagnostics.comparison import compare_snapshots
 from ..error import ResourceNotFoundError
-from ..plugins.api_bridge import api_method
-from ..plugins.scopes import PluginScope
-from .models.diagnostics import (
+from ..models.diagnostics import (
     CompareDiagnosticSnapshotsRequest,
     CompareDiagnosticSnapshotsResponse,
     GetApplicationDiagnosticsRequest,
@@ -21,6 +19,8 @@ from .models.diagnostics import (
     GetDiagnosticTraceRequest,
     GetDiagnosticTraceResponse,
 )
+from ..plugins.api_bridge import api_method
+from ..plugins.scopes import PluginScope
 
 
 @api_method("get_application_diagnostics", required_scope=PluginScope.DIAGNOSTICS_READ)

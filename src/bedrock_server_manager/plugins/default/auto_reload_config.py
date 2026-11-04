@@ -6,7 +6,7 @@ Plugin that automatically reloads server configurations after changes.
 from typing import Any
 
 from bedrock_server_manager import PluginBase, app_event
-from bedrock_server_manager.api.models.allowlist import (
+from bedrock_server_manager.models import (
     AddToAllowlistResponse,
     RemoveFromAllowlistResponse,
 )

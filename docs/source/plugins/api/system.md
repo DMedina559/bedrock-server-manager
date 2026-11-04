@@ -8,7 +8,7 @@ For an updated list of available APIs, please download and run the [api_docs_gen
 
 ## `system.get_application_health`
 ```python
-await self.api.system.get_application_health(request: bedrock_server_manager.api.models.system.GetApplicationHealthRequest)
+await self.api.system.get_application_health(request: bedrock_server_manager.models.system.GetApplicationHealthRequest)
 ```
 - **Async (Requires await):** Yes
 
@@ -21,7 +21,7 @@ await self.api.system.get_application_health(request: bedrock_server_manager.api
 Runtime context and plugin identity are injected by the bridge. Failures raise application exceptions; plugin cancellation raises `APICancelledError`.
 
 ```python
-from bedrock_server_manager.api.models import GetApplicationHealthRequest
+from bedrock_server_manager.models import GetApplicationHealthRequest
 payload = {}
 request = GetApplicationHealthRequest(**payload)
 result = await self.api.system.get_application_health(request)
@@ -34,14 +34,14 @@ data = result.model_dump(mode="json")
 
 | Name | Type | Default |
 |------|------|---------|
-| `request` | `bedrock_server_manager.api.models.system.GetApplicationHealthRequest` | `REQUIRED` |
+| `request` | `bedrock_server_manager.models.system.GetApplicationHealthRequest` | `REQUIRED` |
 
 ---
 
 
 ## `system.get_application_metrics`
 ```python
-await self.api.system.get_application_metrics(request: bedrock_server_manager.api.models.system.GetApplicationMetricsRequest)
+await self.api.system.get_application_metrics(request: bedrock_server_manager.models.system.GetApplicationMetricsRequest)
 ```
 - **Async (Requires await):** Yes
 
@@ -54,7 +54,7 @@ await self.api.system.get_application_metrics(request: bedrock_server_manager.ap
 Runtime context and plugin identity are injected by the bridge. Failures raise application exceptions; plugin cancellation raises `APICancelledError`.
 
 ```python
-from bedrock_server_manager.api.models import GetApplicationMetricsRequest
+from bedrock_server_manager.models import GetApplicationMetricsRequest
 payload = {}
 request = GetApplicationMetricsRequest(**payload)
 result = await self.api.system.get_application_metrics(request)
@@ -67,14 +67,14 @@ data = result.model_dump(mode="json")
 
 | Name | Type | Default |
 |------|------|---------|
-| `request` | `bedrock_server_manager.api.models.system.GetApplicationMetricsRequest` | `REQUIRED` |
+| `request` | `bedrock_server_manager.models.system.GetApplicationMetricsRequest` | `REQUIRED` |
 
 ---
 
 
 ## `system.get_bedrock_process_info`
 ```python
-await self.api.system.get_bedrock_process_info(request: bedrock_server_manager.api.models.system.GetBedrockProcessInfoRequest)
+await self.api.system.get_bedrock_process_info(request: bedrock_server_manager.models.system.GetBedrockProcessInfoRequest)
 ```
 - **Async (Requires await):** Yes
 
@@ -87,7 +87,7 @@ await self.api.system.get_bedrock_process_info(request: bedrock_server_manager.a
 Runtime context and plugin identity are injected by the bridge. Failures raise application exceptions; plugin cancellation raises `APICancelledError`.
 
 ```python
-from bedrock_server_manager.api.models import GetBedrockProcessInfoRequest
+from bedrock_server_manager.models import GetBedrockProcessInfoRequest
 payload = {'server_name': 'example'}
 request = GetBedrockProcessInfoRequest(**payload)
 result = await self.api.system.get_bedrock_process_info(request)
@@ -100,14 +100,14 @@ data = result.model_dump(mode="json")
 
 | Name | Type | Default |
 |------|------|---------|
-| `request` | `bedrock_server_manager.api.models.system.GetBedrockProcessInfoRequest` | `REQUIRED` |
+| `request` | `bedrock_server_manager.models.system.GetBedrockProcessInfoRequest` | `REQUIRED` |
 
 ---
 
 
 ## `system.get_server_running_status`
 ```python
-await self.api.system.get_server_running_status(request: bedrock_server_manager.api.models.system.GetServerRunningStatusRequest)
+await self.api.system.get_server_running_status(request: bedrock_server_manager.models.system.GetServerRunningStatusRequest)
 ```
 - **Async (Requires await):** Yes
 
@@ -120,7 +120,7 @@ await self.api.system.get_server_running_status(request: bedrock_server_manager.
 Runtime context and plugin identity are injected by the bridge. Failures raise application exceptions; plugin cancellation raises `APICancelledError`.
 
 ```python
-from bedrock_server_manager.api.models import GetServerRunningStatusRequest
+from bedrock_server_manager.models import GetServerRunningStatusRequest
 payload = {'server_name': 'example'}
 request = GetServerRunningStatusRequest(**payload)
 result = await self.api.system.get_server_running_status(request)
@@ -133,4 +133,4 @@ data = result.model_dump(mode="json")
 
 | Name | Type | Default |
 |------|------|---------|
-| `request` | `bedrock_server_manager.api.models.system.GetServerRunningStatusRequest` | `REQUIRED` |
+| `request` | `bedrock_server_manager.models.system.GetServerRunningStatusRequest` | `REQUIRED` |

@@ -11,9 +11,7 @@ from ..core.player import (
 from ..error import BSMError, UserInputError
 from ..events import trigger_event
 from ..logging import log_operation_error
-from ..plugins.api_bridge import api_method
-from ..plugins.scopes import PluginScope
-from .models.player import (
+from ..models.player import (
     AddPlayersManuallyRequest,
     AddPlayersManuallyResponse,
     GetAllKnownPlayersRequest,
@@ -21,6 +19,8 @@ from .models.player import (
     ScanAndUpdatePlayerDbRequest,
     ScanAndUpdatePlayerDbResponse,
 )
+from ..plugins.api_bridge import api_method
+from ..plugins.scopes import PluginScope
 
 logger = logging.getLogger(__name__)
 

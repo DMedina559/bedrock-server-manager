@@ -10,9 +10,9 @@ from typing import Any, Awaitable, Callable, Dict, List, Optional
 
 from fastapi import WebSocket, WebSocketDisconnect
 
-from ..contracts import DeliveryResult
 from ..diagnostics.models import TransportDiagnostics
 from ..logging import log_operation_error
+from ..models.common import DeliveryResult
 from ..state.models import UserInfoState
 from .authorization import Authorization
 from .schemas import UserResponse

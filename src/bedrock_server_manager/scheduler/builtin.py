@@ -26,9 +26,9 @@ def register_builtin_tasks(scheduler: Scheduler) -> None:
     def _validate_backup_options(
         sched: Scheduler, server_name: str, options: dict[str, Any]
     ) -> None:
-        from ..api.models.backup_restore import CreateSnapshotRequest
         from ..backups.selection import selection
         from ..error import BackupRestoreError, UserInputError
+        from ..models.backup_restore import CreateSnapshotRequest
 
         allowed = {"encrypted", "mode", "components"}
         if set(options) - allowed:

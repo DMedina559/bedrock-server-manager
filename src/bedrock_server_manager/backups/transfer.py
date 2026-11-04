@@ -6,12 +6,13 @@ from pathlib import Path
 from typing import TYPE_CHECKING, Any, AsyncIterator
 from uuid import uuid4
 
-from ..api.models.backup_restore import ListSnapshotsResponse
+from ..models.backup_restore import ListSnapshotsResponse
 from ..utils.io import temporary_directory
 from ..utils.progress import report_stage
 from ..utils.threads import run_in_thread
 from .archive import MAX_BYTES, publish_archive, write_archive
 from .credentials import BackupCredentials, private_directory
+from .models import BackupKeyInfo, BackupKeysInfo
 from .recovery import sync_tree
 from .work import backup_worker
 
@@ -170,15 +171,16 @@ async def export_decrypted_snapshot(
     return chunks()
 
 
-async def list_backup_keys(app_context: "AppContext") -> dict[str, Any]:
+async def list_backup_keys(app_context: "AppContext") -> BackupKeysInfo:
     """List key identifiers without exposing recovery credentials."""
-    return await run_in_thread(BackupCredentials(app_context.config_dir).metadata)
+    meta = await run_in_thread(BackupCredentials(app_context.config_dir).metadata)
+    return BackupKeysInfo.model_validate(meta)
 
 
-async def rotate_backup_key(app_context: "AppContext") -> dict[str, str]:
+async def rotate_backup_key(app_context: "AppContext") -> BackupKeyInfo:
     """Generate a new active key and retain all previous keys."""
     key = await run_in_thread(BackupCredentials(app_context.config_dir).rotate)
-    return {"key_id": key.key_id, "created_at": key.created_at}
+    return BackupKeyInfo(key_id=key.key_id, created_at=key.created_at)
 
 
 async def get_backup_emergency_kit(app_context: "AppContext", key_id: str) -> str:

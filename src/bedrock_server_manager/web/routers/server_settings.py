@@ -7,12 +7,18 @@ import logging
 from fastapi import APIRouter, Depends, Security
 
 from ...api import server as server_api
-from ...api.models import GetAllServerSettingsRequest, SetServerSettingRequest
 from ...context import AppContext
+from ...models import (
+    GetAllServerSettingsRequest,
+    GetAllServerSettingsResponse,
+    ServerSettingItemPayload,
+    SetServerSettingRequest,
+    SetServerSettingResponse,
+)
 from ..access_policy import Permission
 from ..deps import get_app_context, validate_server_exists
 from ..deps.auth import require_permissions
-from ..schemas import ServerSettingItemPayload, ServerSettingsResponse, UserResponse
+from ..schemas import UserResponse
 
 # bedrock_server_manager/web/routers/server_settings.py
 
@@ -26,7 +32,7 @@ router = APIRouter(tags=["Server Settings"])
 @router.get(
     "/api/server/{server_name}/settings/get",
     operation_id="get_server_settings",
-    response_model=ServerSettingsResponse,
+    response_model=GetAllServerSettingsResponse,
 )
 async def get_server_settings(
     current_user: UserResponse = Security(
@@ -34,18 +40,13 @@ async def get_server_settings(
     ),
     server_name: str = Depends(validate_server_exists),
     app_context: AppContext = Depends(get_app_context),
-) -> ServerSettingsResponse:
+) -> GetAllServerSettingsResponse:
     """Return all settings for a specific server."""
     identity = current_user.username
     logger.debug("Get settings for server '%s' request by '%s'.", server_name, identity)
-    result = await server_api.get_all_server_settings(
+    return await server_api.get_all_server_settings(
         request=GetAllServerSettingsRequest(server_name=server_name),
         app_context=app_context,
-    )
-    return ServerSettingsResponse(
-        status="success",
-        settings=result.settings,
-        message=f"Successfully retrieved settings for server '{server_name}'.",
     )
 
 
@@ -53,7 +54,7 @@ async def get_server_settings(
 @router.post(
     "/api/server/{server_name}/settings/set",
     operation_id="set_server_setting",
-    response_model=ServerSettingsResponse,
+    response_model=SetServerSettingResponse,
 )
 async def post_set_server_setting(
     payload: ServerSettingItemPayload,
@@ -62,7 +63,7 @@ async def post_set_server_setting(
     ),
     server_name: str = Depends(validate_server_exists),
     app_context: AppContext = Depends(get_app_context),
-) -> ServerSettingsResponse:
+) -> SetServerSettingResponse:
     """Set a specific setting for a server."""
     identity = current_user.username
     logger.info(
@@ -71,14 +72,9 @@ async def post_set_server_setting(
         payload.key,
         identity,
     )
-    result = await server_api.set_server_setting(
+    return await server_api.set_server_setting(
         request=SetServerSettingRequest(
             server_name=server_name, key=payload.key, value=payload.value
         ),
         app_context=app_context,
-    )
-    return ServerSettingsResponse(
-        status=result.status,
-        message=f"Setting '{payload.key}' updated successfully for server '{server_name}'.",
-        setting=payload,
     )

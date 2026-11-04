@@ -17,9 +17,7 @@ def test_generated_docs_include_lifecycle_contract_and_usable_example():
         item for item in api.list_available_apis() if item["name"] == "start_server"
     ]
     markdown = generator._format_api_markdown(contracts)
-    assert (
-        "from bedrock_server_manager.api.models import StartServerRequest" in markdown
-    )
+    assert "from bedrock_server_manager.models import StartServerRequest" in markdown
     assert "payload = {'server_name': 'example'}" in markdown
     assert "await self.api.server.start(request)" in markdown
     assert "StartServerResponse" in markdown
@@ -59,7 +57,7 @@ def test_generated_docs_include_lifecycle_contract_and_usable_example():
 async def test_ping_pong_examples_use_typed_owned_events(plugin_factory, caplog):
     import logging
 
-    from bedrock_server_manager.api.models import StartServerResponse
+    from bedrock_server_manager.models import StartServerResponse
 
     root = Path(__file__).parents[2] / "plugins"
     ping = await plugin_factory("ping_plugin", (root / "ping_plugin.py").read_text())

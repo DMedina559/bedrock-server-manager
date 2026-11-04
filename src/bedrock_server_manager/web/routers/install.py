@@ -4,18 +4,20 @@ import os
 import aiofiles.ospath
 from fastapi import APIRouter, Depends, HTTPException, Request, Security, status
 
-from bedrock_server_manager.api.models import (
-    DeleteServerDataRequest,
-    InstallNewServerRequest,
-    PruneDownloadCacheRequest,
-)
-
 from ...api import install as install_api
 from ...api import misc as misc_api
 from ...api import server as server_api
 from ...context import AppContext
 from ...core.system import find_files
 from ...error import BSMError
+from ...models import (
+    DeleteServerDataRequest,
+    InstallNewServerRequest,
+    InstallServerPayload,
+    PruneDownloadCacheRequest,
+    PruneDownloadCacheResponse,
+    PruneDownloadsPayload,
+)
 from ..access_policy import Permission
 from ..deps import get_app_context
 from ..deps.auth import (
@@ -27,10 +29,7 @@ from ..schemas import (
     CustomZipsResponse,
     InstallationAcceptedResponse,
     InstallConfirmationResponse,
-    InstallServerPayload,
     InstallServerResponse,
-    PruneDownloadsPayload,
-    PruneDownloadsResponse,
     UserResponse,
 )
 
@@ -66,7 +65,7 @@ async def get_custom_zips(
     "/api/downloads/prune",
     operation_id="prune_downloads",
     tags=["Downloads"],
-    response_model=PruneDownloadsResponse,
+    response_model=PruneDownloadCacheResponse,
 )
 async def put_prune_downloads(
     payload: PruneDownloadsPayload,
@@ -74,7 +73,7 @@ async def put_prune_downloads(
         require_permissions, scopes=[Permission.DOWNLOADS_PRUNE]
     ),
     app_context: AppContext = Depends(get_app_context),
-) -> PruneDownloadsResponse:
+) -> PruneDownloadCacheResponse:
     """
     Prunes old downloaded server archives from a specified cache subdirectory.
     """
@@ -111,19 +110,11 @@ async def put_prune_downloads(
             detail="Target cache directory not found.",
         )
 
-    result = await misc_api.prune_download_cache(
+    return await misc_api.prune_download_cache(
         request=PruneDownloadCacheRequest(
             download_dir=full_download_dir_path, keep_count=payload.keep
         ),
         app_context=app_context,
-    )
-
-    return PruneDownloadsResponse(
-        status=result.status,
-        message=result.message,
-        files_deleted=len(result.result.deleted),
-        files_kept=len(result.result.retained),
-        failures=result.result.failures,
     )
 
 

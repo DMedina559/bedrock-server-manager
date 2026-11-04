@@ -2,22 +2,24 @@
 
 import logging
 
-from fastapi import APIRouter, Depends, HTTPException, Request, Security, status
-
-from bedrock_server_manager.api.models import (
-    GetAllGlobalSettingsRequest,
-    ReloadGlobalSettingsRequest,
-    ReloadGlobalSettingsResponse,
-    SetGlobalSettingRequest,
-)
+from fastapi import APIRouter, Depends, HTTPException, Request, Security
 
 from ...api import settings as settings_api
 from ...context import AppContext
+from ...models import (
+    GetAllGlobalSettingsRequest,
+    GetAllGlobalSettingsResponse,
+    ReloadGlobalSettingsRequest,
+    ReloadGlobalSettingsResponse,
+    SetGlobalSettingRequest,
+    SetGlobalSettingResponse,
+    SettingItemPayload,
+)
 from ..access_metadata import describe_access
 from ..access_policy import Permission
 from ..deps import get_app_context
 from ..deps.auth import require_permissions, require_recent_interactive
-from ..schemas import SettingItemPayload, SettingsResponse, UserResponse
+from ..schemas import UserResponse
 
 # bedrock_server_manager/web/routers/settings.py
 
@@ -31,14 +33,14 @@ router = APIRouter(tags=["Application Settings"])
 @router.get(
     "/api/settings/get",
     operation_id="get_settings",
-    response_model=SettingsResponse,
+    response_model=GetAllGlobalSettingsResponse,
 )
 async def get_all_settings(
     current_user: UserResponse = Security(
         require_permissions, scopes=[Permission.SETTINGS_READ]
     ),
     app_context: AppContext = Depends(get_app_context),
-) -> SettingsResponse:
+) -> GetAllGlobalSettingsResponse:
     """Return all global application settings."""
     identity = current_user.username
     logger.debug("Get global settings request by '%s'.", identity)
@@ -53,7 +55,7 @@ async def get_all_settings(
         for k, v in (web.items() if isinstance(web, dict) else [])
         if k not in {"jwt_secret_key", "jwt_key_initialized"}
     }
-    return SettingsResponse(
+    return GetAllGlobalSettingsResponse(
         status="success",
         settings=public,
         message=result.message,
@@ -64,7 +66,7 @@ async def get_all_settings(
 @router.post(
     "/api/settings/set",
     operation_id="set_setting",
-    response_model=SettingsResponse,
+    response_model=SetGlobalSettingResponse,
 )
 @describe_access(
     "permission",
@@ -77,18 +79,13 @@ async def post_set_setting(
         require_permissions, scopes=[Permission.SETTINGS_MANAGE]
     ),
     app_context: AppContext = Depends(get_app_context),
-) -> SettingsResponse:
+) -> SetGlobalSettingResponse:
     """Set a specific global application setting."""
     await require_recent_interactive(request, current_user, app_context)
     identity = current_user.username
     logger.info(
         "Set global setting request for key '%s' by '%s'.", payload.key, identity
     )
-    if not payload.key:  # Redundant due to Pydantic Field(...) validation
-        raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
-            detail="Setting 'key' cannot be empty.",
-        )
 
     root = payload.key.split(".")[0]
     state = app_context.state.settings
@@ -105,16 +102,9 @@ async def post_set_setting(
         raise HTTPException(
             403, "Use the plugin settings endpoint for plugin-owned settings."
         )
-    result = await settings_api.set_global_setting(
+    return await settings_api.set_global_setting(
         request=SetGlobalSettingRequest(key=payload.key, value=payload.value),
         app_context=app_context,
-    )
-    return SettingsResponse(
-        status=result.status,
-        message=result.message,
-        setting=SettingItemPayload(
-            key=payload.key, value=payload.value
-        ),  # Return the set item - No change needed here as it already matches BaseApiResponse for status/message
     )
 
 

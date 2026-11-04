@@ -17,7 +17,6 @@ import aiofiles.os
 import aiofiles.ospath
 import aiohttp
 
-from ..contracts import CleanupResult
 from ..error import (
     AppFileNotFoundError,
     ConfigurationError,
@@ -30,6 +29,7 @@ from ..error import (
     UserInputError,
 )
 from ..failures import classify_failure
+from ..models.common import CleanupResult
 from ..utils.io import temporary_directory
 from ..utils.progress import report_stage
 from ..utils.threads import run_in_thread

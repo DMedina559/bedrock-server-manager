@@ -13,13 +13,13 @@ import psutil
 
 from ..diagnostics.models import MetricsDiagnostics
 from ..logging import RepeatedFailureReporter
-from ..state.revision import revision_clock
-from ..utils.threads import run_in_thread
-from .metrics_models import (
+from ..models.system import (
     MetricsSample,
     MetricsSnapshot,
     ServerMetrics,
 )
+from ..state.revision import revision_clock
+from ..utils.threads import run_in_thread
 
 if TYPE_CHECKING:
     from ..context import AppContext

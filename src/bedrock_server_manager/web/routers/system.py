@@ -5,25 +5,25 @@ import logging
 import os
 
 import aiofiles.ospath
-from fastapi import APIRouter, Depends, HTTPException, Request, Security, status
-
-from bedrock_server_manager.api.models import GetSystemAndAppInfoRequest
+from fastapi import APIRouter, Depends, Request, Security
 
 from ...api import system as system_api
-from ...api.models.system import (
+from ...context import AppContext
+from ...models import (
     GetApplicationHealthRequest,
     GetApplicationHealthResponse,
     GetApplicationMetricsRequest,
     GetApplicationMetricsResponse,
+    GetSystemAndAppInfoRequest,
+    GetSystemAndAppInfoResponse,
 )
-from ...context import AppContext
 from ...services.lifecycle import LifecyclePhase
 from ..access_metadata import describe_access
 from ..access_policy import Permission
 from ..deps import get_app_context
 from ..deps.auth import require_permissions
 from ..runtime import WebRuntime
-from ..schemas import AppInfoResponse, ThemeListResponse, UserResponse
+from ..schemas import ThemeListResponse, UserResponse
 from .runtime import HEALTH_ACCESS, require_health_access
 
 logger = logging.getLogger(__name__)
@@ -35,32 +35,19 @@ router = APIRouter()
     "/api/info",
     operation_id="get_system_info",
     tags=["Application"],
-    response_model=AppInfoResponse,
+    response_model=GetSystemAndAppInfoResponse,
 )
 @describe_access("public", authentication="none", additional_checks=[])
 async def get_system_info(
     app_context: AppContext = Depends(get_app_context),
-) -> AppInfoResponse:
+) -> GetSystemAndAppInfoResponse:
     """Return general system and application information."""
     logger.debug("Request for system and app info.")
     from ...api.application import get_system_and_app_info
 
-    result = get_system_and_app_info(
+    return get_system_and_app_info(
         request=GetSystemAndAppInfoRequest(), app_context=app_context
-    ).model_dump(mode="python")
-    if result.get("status") == "success":
-        return AppInfoResponse(
-            status="success",
-            info={
-                **{k: v for k, v in result.items() if k != "status"},
-                "timezone": app_context.settings.get("general.timezone", "UTC"),
-            },
-        )
-    else:
-        raise HTTPException(
-            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail=result.get("message", "Failed to retrieve system info."),
-        )
+    )
 
 
 @router.get(

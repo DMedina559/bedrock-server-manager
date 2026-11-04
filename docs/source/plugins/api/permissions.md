@@ -8,7 +8,7 @@ For an updated list of available APIs, please download and run the [api_docs_gen
 
 ## `permissions.get_permissions`
 ```python
-await self.api.permissions.get_permissions(request: bedrock_server_manager.api.models.permissions.GetPermissionsRequest)
+await self.api.permissions.get_permissions(request: bedrock_server_manager.models.permissions.GetPermissionsRequest)
 ```
 - **Async (Requires await):** Yes
 
@@ -21,7 +21,7 @@ await self.api.permissions.get_permissions(request: bedrock_server_manager.api.m
 Runtime context and plugin identity are injected by the bridge. Failures raise application exceptions; plugin cancellation raises `APICancelledError`.
 
 ```python
-from bedrock_server_manager.api.models import GetPermissionsRequest
+from bedrock_server_manager.models import GetPermissionsRequest
 payload = {'server_name': 'example'}
 request = GetPermissionsRequest(**payload)
 result = await self.api.permissions.get_permissions(request)
@@ -34,14 +34,14 @@ data = result.model_dump(mode="json")
 
 | Name | Type | Default |
 |------|------|---------|
-| `request` | `bedrock_server_manager.api.models.permissions.GetPermissionsRequest` | `REQUIRED` |
+| `request` | `bedrock_server_manager.models.permissions.GetPermissionsRequest` | `REQUIRED` |
 
 ---
 
 
 ## `permissions.set_permissions`
 ```python
-await self.api.permissions.set_permissions(request: bedrock_server_manager.api.models.permissions.SetPermissionsRequest)
+await self.api.permissions.set_permissions(request: bedrock_server_manager.models.permissions.SetPermissionsRequest)
 ```
 - **Async (Requires await):** Yes
 
@@ -54,7 +54,7 @@ await self.api.permissions.set_permissions(request: bedrock_server_manager.api.m
 Runtime context and plugin identity are injected by the bridge. Failures raise application exceptions; plugin cancellation raises `APICancelledError`.
 
 ```python
-from bedrock_server_manager.api.models import SetPermissionsRequest
+from bedrock_server_manager.models import SetPermissionsRequest
 payload = {...}  # Supply required request fields below.
 request = SetPermissionsRequest(**payload)
 result = await self.api.permissions.set_permissions(request)
@@ -67,4 +67,4 @@ data = result.model_dump(mode="json")
 
 | Name | Type | Default |
 |------|------|---------|
-| `request` | `bedrock_server_manager.api.models.permissions.SetPermissionsRequest` | `REQUIRED` |
+| `request` | `bedrock_server_manager.models.permissions.SetPermissionsRequest` | `REQUIRED` |

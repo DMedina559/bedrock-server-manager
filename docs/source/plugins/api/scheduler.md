@@ -8,7 +8,7 @@ For an updated list of available APIs, please download and run the [api_docs_gen
 
 ## `scheduler.list_schedules`
 ```python
-await self.api.scheduler.list_schedules(request: bedrock_server_manager.api.models.scheduler.ListSchedulesRequest)
+await self.api.scheduler.list_schedules(request: bedrock_server_manager.models.scheduler.ListSchedulesRequest)
 ```
 - **Async (Requires await):** Yes
 
@@ -21,7 +21,7 @@ await self.api.scheduler.list_schedules(request: bedrock_server_manager.api.mode
 Runtime context and plugin identity are injected by the bridge. Failures raise application exceptions; plugin cancellation raises `APICancelledError`.
 
 ```python
-from bedrock_server_manager.api.models import ListSchedulesRequest
+from bedrock_server_manager.models import ListSchedulesRequest
 payload = {}
 request = ListSchedulesRequest(**payload)
 result = await self.api.scheduler.list_schedules(request)
@@ -34,4 +34,4 @@ data = result.model_dump(mode="json")
 
 | Name | Type | Default |
 |------|------|---------|
-| `request` | `bedrock_server_manager.api.models.scheduler.ListSchedulesRequest` | `REQUIRED` |
+| `request` | `bedrock_server_manager.models.scheduler.ListSchedulesRequest` | `REQUIRED` |

@@ -10,6 +10,8 @@ from .auth import (
 )
 from .backup import (
     BackupActionPayload,
+    BackupKeyInfo,
+    BackupKeysInfo,
     DestinationCleanupPayload,
     RestoreActionPayload,
     SnapshotCopyPayload,
@@ -31,12 +33,8 @@ from .plugin import (
 )
 from .server import (
     AddPlayersPayload,
-    AppInfoResponse,
     CommandPayload,
-    ServerRunningStatusResponse,
     ServerSettingItemPayload,
-    ServerSettingsResponse,
-    ServersListResponse,
 )
 from .server_config import (
     AllowlistAddPayload,
@@ -57,9 +55,7 @@ from .system import (
     ContentUploadResponse,
     FileNamePayload,
     PruneDownloadsPayload,
-    PruneDownloadsResponse,
     SettingItemPayload,
-    SettingsResponse,
     SetupStatusResponse,
     ThemeListResponse,
 )
@@ -86,10 +82,7 @@ __all__ = [
     "ChangePasswordPayload",
     "CommandPayload",
     "ServerSettingItemPayload",
-    "ServerSettingsResponse",
     "AddPlayersPayload",
-    "ServersListResponse",
-    "AppInfoResponse",
     "ThemeListResponse",
     "InstallServerPayload",
     "InstallServerResponse",
@@ -101,6 +94,8 @@ __all__ = [
     "PlayerPermissionPayload",
     "PermissionsSetPayload",
     "BackupActionPayload",
+    "BackupKeyInfo",
+    "BackupKeysInfo",
     "RestoreActionPayload",
     "SnapshotCreatePayload",
     "SnapshotInspectPayload",
@@ -113,14 +108,11 @@ __all__ = [
     "TriggerEventPayload",
     "FileNamePayload",
     "SettingItemPayload",
-    "SettingsResponse",
     "PruneDownloadsPayload",
     "AuditLogResponse",
-    "PruneDownloadsResponse",
     "ContentCategory",
     "ContentUploadResponse",
     "PluginPagesResponse",
-    "ServerRunningStatusResponse",
     "UserLoginPayload",
     "CustomZipsResponse",
     "PermissionsUpdateResponse",

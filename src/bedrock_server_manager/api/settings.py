@@ -9,14 +9,7 @@ from ..context import AppContext
 from ..error import BSMError, UserInputError
 from ..events import trigger_event
 from ..logging import log_operation_error
-from ..plugins.api_bridge import api_method
-from ..plugins.scopes import (
-    BLACKLISTED_PATH_SETTINGS,
-    GRANTABLE_PATH_SCOPES,
-    plugin_has_permission,
-    require_plugin_permission,
-)
-from .models.settings import (
+from ..models.settings import (
     GetAllGlobalSettingsRequest,
     GetAllGlobalSettingsResponse,
     GetGlobalSettingRequest,
@@ -27,6 +20,13 @@ from .models.settings import (
     SetCustomGlobalSettingResponse,
     SetGlobalSettingRequest,
     SetGlobalSettingResponse,
+)
+from ..plugins.api_bridge import api_method
+from ..plugins.scopes import (
+    BLACKLISTED_PATH_SETTINGS,
+    GRANTABLE_PATH_SCOPES,
+    plugin_has_permission,
+    require_plugin_permission,
 )
 
 logger = logging.getLogger(__name__)
