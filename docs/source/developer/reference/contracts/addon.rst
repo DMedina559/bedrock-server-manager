@@ -1,6 +1,6 @@
 addon
 =====
 
-.. automodule:: bedrock_server_manager.api.models.addon
+.. automodule:: bedrock_server_manager.models.addon
    :members:
    :member-order: bysource

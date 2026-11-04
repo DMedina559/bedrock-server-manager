@@ -1,6 +1,6 @@
 common
 ======
 
-.. automodule:: bedrock_server_manager.api.models.common
+.. automodule:: bedrock_server_manager.models.common
    :members:
    :member-order: bysource

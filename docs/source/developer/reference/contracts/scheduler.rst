@@ -1,6 +1,6 @@
 Scheduler contracts
 ===================
 
-.. automodule:: bedrock_server_manager.api.models.scheduler
+.. automodule:: bedrock_server_manager.models.scheduler
    :members:
    :member-order: bysource

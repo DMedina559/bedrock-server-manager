@@ -59,7 +59,7 @@ async def wait_for_http(port, process=None):
                         assert response.headers["content-type"].startswith(
                             "application/json"
                         )
-                        assert response.json()["info"]["app_version"]
+                        assert response.json()["app_version"]
                         return
                 except TransportError:
                     pass

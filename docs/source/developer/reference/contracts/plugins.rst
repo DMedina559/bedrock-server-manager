@@ -1,6 +1,6 @@
 plugins
 =======
 
-.. automodule:: bedrock_server_manager.api.models.plugins
+.. automodule:: bedrock_server_manager.models.plugins
    :members:
    :member-order: bysource

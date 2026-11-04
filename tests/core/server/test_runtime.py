@@ -212,8 +212,8 @@ async def test_delayed_metrics_cannot_resurrect_exited_run(
 async def test_plugin_log_wait_is_cancelled_when_owner_deactivates(
     real_bedrock_server, app_context
 ):
-    from bedrock_server_manager.api.models.server import WaitForServerLogRequest
     from bedrock_server_manager.api.server import wait_for_server_log
+    from bedrock_server_manager.models import WaitForServerLogRequest
 
     server = real_bedrock_server
     await server.start()

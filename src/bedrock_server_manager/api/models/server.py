@@ -30,6 +30,8 @@ from ...models.server import (
     StopServerResponse,
     UpdateServerPlayerStatsRequest,
     UpdateServerPlayerStatsResponse,
+    WaitForServerLogRequest,
+    WaitForServerLogResponse,
 )
 
 __all__ = [
@@ -62,4 +64,6 @@ __all__ = [
     "StopServerResponse",
     "UpdateServerPlayerStatsRequest",
     "UpdateServerPlayerStatsResponse",
+    "WaitForServerLogRequest",
+    "WaitForServerLogResponse",
 ]
