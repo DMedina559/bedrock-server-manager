@@ -607,7 +607,7 @@ class AppAPI:
             try:
                 sig = inspect.signature(func)
                 contract = get_contract(func)
-                from ..api.models import APIErrorResponse
+                from ..models.common import APIErrorResponse
 
                 params_info = [
                     {

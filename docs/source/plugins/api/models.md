@@ -178,9 +178,9 @@ Schemas are listed once. Local `$defs` references identify other models on this 
     }
   },
   "required": [
-    "server_name",
     "player_name",
-    "xuid"
+    "xuid",
+    "server_name"
   ],
   "title": "AddServerBanRequest",
   "type": "object"
@@ -3043,6 +3043,7 @@ Schemas are listed once. Local `$defs` references identify other models on this 
   "additionalProperties": false,
   "properties": {
     "pack_type": {
+      "description": "The type of the pack: 'behavior' or 'resource'.",
       "enum": [
         "behavior",
         "resource"
@@ -3051,6 +3052,7 @@ Schemas are listed once. Local `$defs` references identify other models on this 
       "type": "string"
     },
     "pack_uuid": {
+      "description": "The UUID of the pack.",
       "minLength": 1,
       "pattern": ".*\\S.*",
       "title": "Pack Uuid",
@@ -3067,9 +3069,9 @@ Schemas are listed once. Local `$defs` references identify other models on this 
     }
   },
   "required": [
-    "server_name",
     "pack_uuid",
-    "pack_type"
+    "pack_type",
+    "server_name"
   ],
   "title": "DisableAddonRequest",
   "type": "object"
@@ -3122,6 +3124,7 @@ Schemas are listed once. Local `$defs` references identify other models on this 
   "additionalProperties": false,
   "properties": {
     "pack_type": {
+      "description": "The type of the pack: 'behavior' or 'resource'.",
       "enum": [
         "behavior",
         "resource"
@@ -3130,6 +3133,7 @@ Schemas are listed once. Local `$defs` references identify other models on this 
       "type": "string"
     },
     "pack_uuid": {
+      "description": "The UUID of the pack.",
       "minLength": 1,
       "pattern": ".*\\S.*",
       "title": "Pack Uuid",
@@ -3146,9 +3150,9 @@ Schemas are listed once. Local `$defs` references identify other models on this 
     }
   },
   "required": [
-    "server_name",
     "pack_uuid",
-    "pack_type"
+    "pack_type",
+    "server_name"
   ],
   "title": "EnableAddonRequest",
   "type": "object"
@@ -6217,6 +6221,11 @@ Schemas are listed once. Local `$defs` references identify other models on this 
       "const": "success",
       "default": "success",
       "title": "Status",
+      "type": "string"
+    },
+    "timezone": {
+      "default": "UTC",
+      "title": "Timezone",
       "type": "string"
     }
   },
@@ -9954,8 +9963,8 @@ Schemas are listed once. Local `$defs` references identify other models on this 
     }
   },
   "required": [
-    "server_name",
-    "xuid"
+    "xuid",
+    "server_name"
   ],
   "title": "RemoveServerBanRequest",
   "type": "object"
@@ -10008,6 +10017,7 @@ Schemas are listed once. Local `$defs` references identify other models on this 
   "additionalProperties": false,
   "properties": {
     "pack_type": {
+      "description": "The type of the pack: 'behavior' or 'resource'.",
       "enum": [
         "behavior",
         "resource"
@@ -10025,6 +10035,7 @@ Schemas are listed once. Local `$defs` references identify other models on this 
       "type": "string"
     },
     "uuids": {
+      "description": "The exact list of currently active UUIDs in the new desired order.",
       "items": {
         "minLength": 1,
         "pattern": ".*\\S.*",
@@ -10035,9 +10046,9 @@ Schemas are listed once. Local `$defs` references identify other models on this 
     }
   },
   "required": [
-    "server_name",
+    "pack_type",
     "uuids",
-    "pack_type"
+    "server_name"
   ],
   "title": "ReorderAddonsRequest",
   "type": "object"
@@ -11481,6 +11492,7 @@ Schemas are listed once. Local `$defs` references identify other models on this 
   "additionalProperties": false,
   "properties": {
     "command": {
+      "description": "The command to send to the server.",
       "minLength": 1,
       "pattern": ".*\\S.*",
       "title": "Command",
@@ -11497,8 +11509,8 @@ Schemas are listed once. Local `$defs` references identify other models on this 
     }
   },
   "required": [
-    "server_name",
-    "command"
+    "command",
+    "server_name"
   ],
   "title": "SendCommandRequest",
   "type": "object"
@@ -11895,13 +11907,15 @@ Schemas are listed once. Local `$defs` references identify other models on this 
   "additionalProperties": false,
   "properties": {
     "key": {
+      "description": "The dot-notation key of the setting (e.g., 'web.port').",
       "minLength": 1,
       "pattern": ".*\\S.*",
       "title": "Key",
       "type": "string"
     },
     "value": {
-      "$ref": "#/$defs/JsonValue"
+      "$ref": "#/$defs/JsonValue",
+      "description": "The new value for the setting."
     }
   },
   "required": [
@@ -12207,6 +12221,7 @@ Schemas are listed once. Local `$defs` references identify other models on this 
   "additionalProperties": false,
   "properties": {
     "key": {
+      "description": "The dot-notation key of the setting (e.g., 'settings.autoupdate').",
       "minLength": 1,
       "pattern": ".*\\S.*",
       "title": "Key",
@@ -12222,13 +12237,14 @@ Schemas are listed once. Local `$defs` references identify other models on this 
       "type": "string"
     },
     "value": {
-      "$ref": "#/$defs/JsonValue"
+      "$ref": "#/$defs/JsonValue",
+      "description": "The new value for the setting."
     }
   },
   "required": [
-    "server_name",
     "key",
-    "value"
+    "value",
+    "server_name"
   ],
   "title": "SetServerCustomValueRequest",
   "type": "object"
@@ -13303,6 +13319,7 @@ Schemas are listed once. Local `$defs` references identify other models on this 
   "additionalProperties": false,
   "properties": {
     "pack_type": {
+      "description": "The type of the pack: 'behavior' or 'resource'.",
       "enum": [
         "behavior",
         "resource"
@@ -13311,6 +13328,7 @@ Schemas are listed once. Local `$defs` references identify other models on this 
       "type": "string"
     },
     "pack_uuid": {
+      "description": "The UUID of the pack.",
       "minLength": 1,
       "pattern": ".*\\S.*",
       "title": "Pack Uuid",
@@ -13326,6 +13344,7 @@ Schemas are listed once. Local `$defs` references identify other models on this 
       "type": "string"
     },
     "subpack_name": {
+      "description": "The folder name of the subpack to activate.",
       "minLength": 1,
       "pattern": ".*\\S.*",
       "title": "Subpack Name",
@@ -13333,10 +13352,10 @@ Schemas are listed once. Local `$defs` references identify other models on this 
     }
   },
   "required": [
-    "server_name",
     "pack_uuid",
     "pack_type",
-    "subpack_name"
+    "subpack_name",
+    "server_name"
   ],
   "title": "UpdateSubpackRequest",
   "type": "object"

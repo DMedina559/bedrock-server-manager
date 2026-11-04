@@ -2,9 +2,9 @@
 
 from fastapi import FastAPI
 
-from ..api.models.common import ErrorEnvelope
 from ..config import get_installed_version
 from ..context import AppContext
+from ..models.common import ErrorEnvelope
 from . import routers
 from .access_metadata import configure_access_schema, validate_core_access
 from .access_policy import AccessPolicy

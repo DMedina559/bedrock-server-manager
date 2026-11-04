@@ -4,8 +4,7 @@ from typing import Literal
 
 from pydantic import Field, SecretStr
 
-from ...api.models.common import APIRequest, APIResponse
-from .access import ResourceID
+from ...models.common import APIRequest, APIResponse, ResourceID
 
 
 class LoginSessionInfo(APIResponse):

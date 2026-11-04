@@ -8,6 +8,7 @@ from .config.const import get_installed_version
 
 if TYPE_CHECKING:
     from . import api as api
+    from . import models as models
     from .backups.contents import DEFAULT_COMPONENTS as DEFAULT_COMPONENTS
     from .backups.contents import BackupComponents as BackupComponents
     from .backups.contents import BackupContentSelection as BackupContentSelection
@@ -24,6 +25,7 @@ if TYPE_CHECKING:
     from .events import OperationSequence as OperationSequence
     from .events import OperationSnapshot as OperationSnapshot
     from .events import PluginEvent as PluginEvent
+    from .models import TaskAcceptedResponse as TaskAcceptedResponse
     from .plugins import PluginBase as PluginBase
     from .plugins.app_event import app_event as app_event
     from .plugins.decorators import data_provider as data_provider
@@ -40,7 +42,6 @@ if TYPE_CHECKING:
     from .web.deps.auth import get_moderator_user as get_moderator_user
     from .web.deps.auth import require_permissions as require_permissions
     from .web.schemas import BaseApiResponse as BaseApiResponse
-    from .web.schemas import TaskAcceptedResponse as TaskAcceptedResponse
     from .web.schemas import UserResponse as UserResponse
 
 __version__ = get_installed_version()
@@ -80,14 +81,14 @@ _EXPORTS = {
     "get_moderator_user": ("web.deps.auth", "get_moderator_user"),
     "require_permissions": ("web.deps.auth", "require_permissions"),
     "BaseApiResponse": ("web.schemas", "BaseApiResponse"),
-    "TaskAcceptedResponse": ("web.schemas", "TaskAcceptedResponse"),
+    "TaskAcceptedResponse": ("models", "TaskAcceptedResponse"),
     "UserResponse": ("web.schemas", "UserResponse"),
 }
 
 
 def __getattr__(name: str) -> Any:
-    if name == "api":
-        value = import_module(".api", __name__)
+    if name in ("api", "models"):
+        value = import_module(f".{name}", __name__)
     elif name in _EXPORTS:
         module, attribute = _EXPORTS[name]
         value = getattr(import_module("." + module, __name__), attribute)
@@ -99,6 +100,7 @@ def __getattr__(name: str) -> Any:
 
 __all__ = [
     "api",
+    "models",
     "errors",
     "__version__",
     "PluginBase",

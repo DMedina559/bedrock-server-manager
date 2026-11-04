@@ -23,9 +23,8 @@ from typing import (
 
 from pydantic import BaseModel, ConfigDict, Field, JsonValue, model_validator
 
+from ..models.common import UserRole
 from .maintenance import MaintenanceGuard
-
-UserRole = Literal["admin", "moderator", "user"]
 
 
 def json_equal(left: object, right: object) -> bool:

@@ -19,7 +19,6 @@ if TYPE_CHECKING:
 
 from pydantic import BaseModel, ValidationError
 
-from ..api.models.tasks import TaskSnapshot, TaskState
 from ..diagnostics.models import TaskDiagnostic, TasksDiagnostics
 from ..error import (
     APICancelledError,
@@ -29,6 +28,7 @@ from ..error import (
 )
 from ..events.bus import correlation_scope, current_correlation_id
 from ..logging import log_operation_error
+from ..models.tasks import TaskSnapshot, TaskState
 from ..state.revision import StateRevision, revision_clock
 from ..utils.progress import progress_scope
 from ..utils.threads import run_in_thread

@@ -7,12 +7,10 @@ import logging
 from typing import Literal
 
 from ..context import AppContext
-from ..contracts import DeliveryResult
 from ..error import IncompleteOperationError
 from ..logging import log_operation_error
-from ..plugins.api_bridge import api_method
-from ..plugins.scopes import PluginScope
-from .models.websocket import (
+from ..models.common import DeliveryResult
+from ..models.websocket import (
     BroadcastRequest,
     BroadcastResponse,
     PublishWsEventRequest,
@@ -24,6 +22,8 @@ from .models.websocket import (
     UnregisterDataProviderRequest,
     UnregisterDataProviderResponse,
 )
+from ..plugins.api_bridge import api_method
+from ..plugins.scopes import PluginScope
 
 logger = logging.getLogger(__name__)
 

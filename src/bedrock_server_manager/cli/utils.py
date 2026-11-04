@@ -9,7 +9,7 @@ from typing import TYPE_CHECKING, Any
 
 import click
 
-from ..api.models.common import ActionResponse, SuccessResponse
+from ..models.common import ActionResponse, SuccessResponse
 
 if TYPE_CHECKING:
     from ..context import AppContext

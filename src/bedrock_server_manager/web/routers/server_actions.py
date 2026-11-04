@@ -4,47 +4,42 @@ import logging
 
 from fastapi import APIRouter, Depends, HTTPException, Request, Security, status
 
-from bedrock_server_manager.api.models import (
-    DeleteServerDataRequest,
-    GetAllServersDataRequest,
-    GetBedrockProcessInfoRequest,
-    GetBedrockProcessInfoResponse,
-    GetServerRunningStatusRequest,
-    GetServerSummaryRequest,
-    SendCommandRequest,
-    SendCommandResponse,
-    ServerSummary,
-    UpdateServerRequest,
-)
-
 from ...api import application as app_api
 from ...api import install
 from ...api import server as server_api
 from ...api import system as system_api
-from ...api.models import (
+from ...context import AppContext
+from ...models import (
+    CommandPayload,
+    DeleteServerDataRequest,
+    GetAllServersDataRequest,
+    GetAllServersDataResponse,
+    GetBedrockProcessInfoRequest,
+    GetBedrockProcessInfoResponse,
+    GetServerProcessRequest,
+    GetServerProcessResponse,
+    GetServerRunningStatusRequest,
+    GetServerRunningStatusResponse,
+    GetServerSummaryRequest,
     RestartServerRequest,
     RestartServerResponse,
+    SendCommandRequest,
+    SendCommandResponse,
+    ServerSummary,
     StartServerRequest,
     StartServerResponse,
     StopServerRequest,
     StopServerResponse,
+    TaskAcceptedResponse,
+    UpdateServerRequest,
 )
-from ...api.models.process import GetServerProcessRequest, GetServerProcessResponse
-from ...context import AppContext
 from ..access_metadata import describe_access
 from ..access_policy import Permission
 from ..authorization import current_authorization, server_collection
 from ..deps import get_app_context, validate_server_exists
 from ..deps.auth import require_permissions, require_recent_interactive
 from ..deps.server import validate_server_registered
-from ..schemas import (
-    BaseApiResponse,
-    CommandPayload,
-    ServerRunningStatusResponse,
-    ServersListResponse,
-    UserResponse,
-)
-from ..schemas.base import TaskAcceptedResponse
+from ..schemas import BaseApiResponse, UserResponse
 
 # bedrock_server_manager/web/routers/server_actions.py
 
@@ -199,12 +194,6 @@ async def post_send_command(
         "Command requested for server '%s' by user '%s'.", server_name, identity
     )
 
-    if not payload.command or not payload.command.strip():
-        raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
-            detail="Request must contain a non-empty 'command'.",
-        )
-
     command_result = await server_api.send_command(
         request=SendCommandRequest(
             server_name=server_name, command=payload.command.strip()
@@ -300,7 +289,7 @@ async def delete_server(
     "/api/server/{server_name}/status",
     operation_id="get_server_status",
     tags=["Server Processes"],
-    response_model=ServerRunningStatusResponse,
+    response_model=GetServerRunningStatusResponse,
 )
 async def get_server_running_status(
     current_user: UserResponse = Security(
@@ -308,7 +297,7 @@ async def get_server_running_status(
     ),
     server_name: str = Depends(validate_server_exists),
     app_context: AppContext = Depends(get_app_context),
-) -> ServerRunningStatusResponse:
+) -> GetServerRunningStatusResponse:
     """Check if a specific server's process is currently running."""
     identity = current_user.username
     logger.debug(
@@ -316,16 +305,9 @@ async def get_server_running_status(
         server_name,
         identity,
     )
-    result = await system_api.get_server_running_status(
+    return await system_api.get_server_running_status(
         request=GetServerRunningStatusRequest(server_name=server_name),
         app_context=app_context,
-    )
-    return ServerRunningStatusResponse(
-        status="success",
-        running=bool(result.is_running),
-        epoch=result.epoch,
-        revision=result.revision,
-        message=result.message,
     )
 
 
@@ -386,7 +368,7 @@ async def get_server_process_info(
     "/api/servers",
     operation_id="list_servers",
     tags=["Server Management"],
-    response_model=ServersListResponse,
+    response_model=GetAllServersDataResponse,
 )
 @server_collection
 async def get_servers_list(
@@ -394,7 +376,7 @@ async def get_servers_list(
         require_permissions, scopes=[Permission.SERVERS_READ]
     ),
     app_context: AppContext = Depends(get_app_context),
-) -> ServersListResponse:
+) -> GetAllServersDataResponse:
     """Return a list of all detected server instances with their status and version."""
     identity = current_user.username
     logger.debug("Request for all servers list by user '%s'.", identity)
@@ -402,7 +384,7 @@ async def get_servers_list(
         request=GetAllServersDataRequest(), app_context=app_context
     )
     authorization = current_authorization.get()
-    return ServersListResponse(
+    return GetAllServersDataResponse(
         status=result.status,
         errors=[
             error

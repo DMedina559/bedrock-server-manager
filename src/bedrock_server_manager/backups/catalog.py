@@ -12,9 +12,9 @@ from typing import TYPE_CHECKING, Any, Protocol, cast
 if TYPE_CHECKING:
     from .credentials import BackupCredentials
 
-from ..contracts import CleanupResult
 from ..error import BackupRestoreError
 from ..events.backup import BackupActivity
+from ..models.common import CleanupResult
 from ..utils.io import temporary_directory
 from ..utils.progress import report_stage
 from ..utils.threads import check_cancellation, copy_stream, run_in_thread

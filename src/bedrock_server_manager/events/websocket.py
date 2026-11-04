@@ -2,7 +2,7 @@
 
 from typing import Any, Protocol
 
-from ..contracts import DeliveryResult
+from ..models.common import DeliveryResult
 from .bus import EventBus
 from .models import EventEnvelope
 

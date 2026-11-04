@@ -10,6 +10,10 @@ from pydantic import BaseModel, ConfigDict, Field
 
 from bedrock_server_manager import PluginBase, app_event
 from bedrock_server_manager.logging import log_operation_error
+from bedrock_server_manager.models import (
+    GetServerSummaryRequest,
+    SendCommandRequest,
+)
 
 
 class PluginSettings(BaseModel):
@@ -69,7 +73,7 @@ class ServerLifecycleNotificationsPlugin(PluginBase):
                     command = message
 
                 await self.api.server.send_command(
-                    request={"server_name": server_name, "command": command}
+                    request=SendCommandRequest(server_name=server_name, command=command)
                 )
                 self.logger.debug(
                     "Sent %s message to '%s': %s", context, server_name, message
@@ -96,7 +100,7 @@ class ServerLifecycleNotificationsPlugin(PluginBase):
         self.logger.debug("Handling before_server_stop for '%s'.", server_name)
 
         summary = await self.api.server.get_summary(
-            request={"server_name": server_name}
+            request=GetServerSummaryRequest(server_name=server_name)
         )
         player_count = (
             summary.summary.player_count if summary.status == "success" else 0
@@ -141,7 +145,7 @@ class ServerLifecycleNotificationsPlugin(PluginBase):
         self.logger.debug("Handling before_delete_server_data for '%s'.", server_name)
 
         summary = await self.api.server.get_summary(
-            request={"server_name": server_name}
+            request=GetServerSummaryRequest(server_name=server_name)
         )
         player_count = (
             summary.summary.player_count if summary.status == "success" else 0
@@ -166,7 +170,7 @@ class ServerLifecycleNotificationsPlugin(PluginBase):
         )
 
         summary = await self.api.server.get_summary(
-            request={"server_name": server_name}
+            request=GetServerSummaryRequest(server_name=server_name)
         )
         player_count = (
             summary.summary.player_count if summary.status == "success" else 0

@@ -9,9 +9,7 @@ from ..context import AppContext
 from ..error import BSMError, UserInputError
 from ..events import trigger_event
 from ..logging import log_operation_error
-from ..plugins.api_bridge import api_method
-from ..plugins.scopes import PluginScope, normalize_permissions, plugin_permissions
-from .models.plugins import (
+from ..models.plugins import (
     EventDispatchSummary,
     GetPluginSettingRequest,
     GetPluginSettingResponse,
@@ -31,6 +29,8 @@ from .models.plugins import (
     TriggerExternalAppEventResponse,
     UpdatePluginSettingsRequest,
 )
+from ..plugins.api_bridge import api_method
+from ..plugins.scopes import PluginScope, normalize_permissions, plugin_permissions
 
 logger = logging.getLogger(__name__)
 

@@ -8,7 +8,7 @@ For an updated list of available APIs, please download and run the [api_docs_gen
 
 ## `application.get_all_servers_data`
 ```python
-await self.api.application.get_all_servers_data(request: bedrock_server_manager.api.models.application.GetAllServersDataRequest)
+await self.api.application.get_all_servers_data(request: bedrock_server_manager.models.application.GetAllServersDataRequest)
 ```
 - **Async (Requires await):** Yes
 
@@ -21,11 +21,9 @@ await self.api.application.get_all_servers_data(request: bedrock_server_manager.
 Runtime context and plugin identity are injected by the bridge. Failures raise application exceptions; plugin cancellation raises `APICancelledError`.
 
 ```python
-from bedrock_server_manager.api.models import GetAllServersDataRequest
-payload = {}
-request = GetAllServersDataRequest(**payload)
+from bedrock_server_manager.models import GetAllServersDataRequest
+request = GetAllServersDataRequest()
 result = await self.api.application.get_all_servers_data(request)
-data = result.model_dump(mode="json")
 ```
 - **Request schema:** [GetAllServersDataRequest](models.md#getallserversdatarequest)
 - **Response schema:** [GetAllServersDataResponse](models.md#getallserversdataresponse)
@@ -34,14 +32,14 @@ data = result.model_dump(mode="json")
 
 | Name | Type | Default |
 |------|------|---------|
-| `request` | `bedrock_server_manager.api.models.application.GetAllServersDataRequest` | `REQUIRED` |
+| `request` | `bedrock_server_manager.models.application.GetAllServersDataRequest` | `REQUIRED` |
 
 ---
 
 
 ## `application.get_system_and_app_info`
 ```python
-self.api.application.get_system_and_app_info(request: bedrock_server_manager.api.models.application.GetSystemAndAppInfoRequest)
+self.api.application.get_system_and_app_info(request: bedrock_server_manager.models.application.GetSystemAndAppInfoRequest)
 ```
 - **Async (Requires await):** No
 
@@ -52,11 +50,9 @@ self.api.application.get_system_and_app_info(request: bedrock_server_manager.api
 Runtime context and plugin identity are injected by the bridge. Failures raise application exceptions; plugin cancellation raises `APICancelledError`.
 
 ```python
-from bedrock_server_manager.api.models import GetSystemAndAppInfoRequest
-payload = {}
-request = GetSystemAndAppInfoRequest(**payload)
+from bedrock_server_manager.models import GetSystemAndAppInfoRequest
+request = GetSystemAndAppInfoRequest()
 result = self.api.application.get_system_and_app_info(request)
-data = result.model_dump(mode="json")
 ```
 - **Request schema:** [GetSystemAndAppInfoRequest](models.md#getsystemandappinforequest)
 - **Response schema:** [GetSystemAndAppInfoResponse](models.md#getsystemandappinforesponse)
@@ -65,14 +61,14 @@ data = result.model_dump(mode="json")
 
 | Name | Type | Default |
 |------|------|---------|
-| `request` | `bedrock_server_manager.api.models.application.GetSystemAndAppInfoRequest` | `REQUIRED` |
+| `request` | `bedrock_server_manager.models.application.GetSystemAndAppInfoRequest` | `REQUIRED` |
 
 ---
 
 
 ## `application.list_available_worlds`
 ```python
-await self.api.application.list_available_worlds(request: bedrock_server_manager.api.models.application.ListAvailableWorldsRequest)
+await self.api.application.list_available_worlds(request: bedrock_server_manager.models.application.ListAvailableWorldsRequest)
 ```
 - **Async (Requires await):** Yes
 
@@ -85,11 +81,9 @@ await self.api.application.list_available_worlds(request: bedrock_server_manager
 Runtime context and plugin identity are injected by the bridge. Failures raise application exceptions; plugin cancellation raises `APICancelledError`.
 
 ```python
-from bedrock_server_manager.api.models import ListAvailableWorldsRequest
-payload = {}
-request = ListAvailableWorldsRequest(**payload)
+from bedrock_server_manager.models import ListAvailableWorldsRequest
+request = ListAvailableWorldsRequest()
 result = await self.api.application.list_available_worlds(request)
-data = result.model_dump(mode="json")
 ```
 - **Request schema:** [ListAvailableWorldsRequest](models.md#listavailableworldsrequest)
 - **Response schema:** [ListAvailableWorldsResponse](models.md#listavailableworldsresponse)
@@ -98,4 +92,4 @@ data = result.model_dump(mode="json")
 
 | Name | Type | Default |
 |------|------|---------|
-| `request` | `bedrock_server_manager.api.models.application.ListAvailableWorldsRequest` | `REQUIRED` |
+| `request` | `bedrock_server_manager.models.application.ListAvailableWorldsRequest` | `REQUIRED` |

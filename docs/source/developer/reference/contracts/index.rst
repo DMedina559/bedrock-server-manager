@@ -16,6 +16,7 @@ Internal contributor reference. Plugins should use supported capabilities.
    diagnostics
    failures
    install
+   logs
    misc
    permissions
    player

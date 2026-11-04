@@ -11,8 +11,7 @@ from ..core import service
 from ..core.system.base import can_manage_services
 from ..error import BSMError, DependencyUnavailableError
 from ..logging import log_operation_error
-from .contract import validate_contract
-from .models.web import (
+from ..models.web import (
     CreateWebUiServiceRequest,
     CreateWebUiServiceResponse,
     DisableWebUiServiceRequest,
@@ -24,6 +23,7 @@ from .models.web import (
     RemoveWebUiServiceRequest,
     RemoveWebUiServiceResponse,
 )
+from .contract import validate_contract
 
 logger = logging.getLogger(__name__)
 

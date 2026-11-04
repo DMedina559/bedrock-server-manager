@@ -9,10 +9,10 @@ from pydantic import ValidationError
 from starlette.exceptions import HTTPException as StarletteHTTPException
 
 from ..api.contract import APIResponseValidationError
-from ..api.models.common import APIErrorResponse, ErrorEnvelope
 from ..error import BSMError
 from ..failures import classify_failure
 from ..logging import log_operation_error
+from ..models.common import APIErrorResponse, ErrorEnvelope
 
 logger = logging.getLogger(__name__)
 

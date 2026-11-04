@@ -1,9 +1,9 @@
-"""HTTP-specific responses; operation data contracts live in api.models."""
+"""HTTP-specific responses; operation data contracts live in models."""
 
 from typing import Literal
 
-from ...api.models.common import ActionResponse, APIResponse, SuccessResponse
-from ...api.models.tasks import TaskAcceptedResponse
+from ...models.common import ActionResponse, APIResponse, SuccessResponse
+from ...models.tasks import TaskAcceptedResponse
 
 
 class RegistrationResponse(SuccessResponse):

@@ -15,17 +15,17 @@ If an event is **Cancellable**, you can access `kwargs['event']` (which is a `Ca
 ### Listener Signature:
 ```python
 @app_event("after_add_server_ban")
-async def some_function(self, request, server_name, player_name, xuid, reason, result, **kwargs):
+async def some_function(self, request, player_name, xuid, reason, server_name, result, **kwargs):
     pass
 ```
 ### Available `kwargs`:
 | Key Name | Type |
 |----------|------|
 | `request` | `AddServerBanRequest` |
-| `server_name` | `str` |
 | `player_name` | `str` |
 | `xuid` | `str` |
 | `reason` | `str | None` |
+| `server_name` | `str` |
 | `result` | `AddServerBanResponse` |
 | `_triggering_plugin` | `str` (core, or plugin name) |
 
@@ -40,16 +40,16 @@ async def some_function(self, request, server_name, player_name, xuid, reason, r
 ### Listener Signature:
 ```python
 @app_event("after_addon_disable")
-async def some_function(self, request, server_name, pack_uuid, pack_type, result, **kwargs):
+async def some_function(self, request, pack_uuid, pack_type, server_name, result, **kwargs):
     pass
 ```
 ### Available `kwargs`:
 | Key Name | Type |
 |----------|------|
 | `request` | `DisableAddonRequest` |
-| `server_name` | `str` |
 | `pack_uuid` | `str` |
 | `pack_type` | `Literal['behavior', 'resource']` |
+| `server_name` | `str` |
 | `result` | `DisableAddonResponse` |
 | `_triggering_plugin` | `str` (core, or plugin name) |
 
@@ -64,16 +64,16 @@ async def some_function(self, request, server_name, pack_uuid, pack_type, result
 ### Listener Signature:
 ```python
 @app_event("after_addon_enable")
-async def some_function(self, request, server_name, pack_uuid, pack_type, result, **kwargs):
+async def some_function(self, request, pack_uuid, pack_type, server_name, result, **kwargs):
     pass
 ```
 ### Available `kwargs`:
 | Key Name | Type |
 |----------|------|
 | `request` | `EnableAddonRequest` |
-| `server_name` | `str` |
 | `pack_uuid` | `str` |
 | `pack_type` | `Literal['behavior', 'resource']` |
+| `server_name` | `str` |
 | `result` | `EnableAddonResponse` |
 | `_triggering_plugin` | `str` (core, or plugin name) |
 
@@ -113,16 +113,16 @@ async def some_function(self, request, server_name, addon_file_path, stop_start_
 ### Listener Signature:
 ```python
 @app_event("after_addon_reorder")
-async def some_function(self, request, server_name, uuids, pack_type, result, **kwargs):
+async def some_function(self, request, pack_type, uuids, server_name, result, **kwargs):
     pass
 ```
 ### Available `kwargs`:
 | Key Name | Type |
 |----------|------|
 | `request` | `ReorderAddonsRequest` |
-| `server_name` | `str` |
-| `uuids` | `list[str]` |
 | `pack_type` | `Literal['behavior', 'resource']` |
+| `uuids` | `list[str]` |
+| `server_name` | `str` |
 | `result` | `ReorderAddonsResponse` |
 | `_triggering_plugin` | `str` (core, or plugin name) |
 
@@ -137,17 +137,17 @@ async def some_function(self, request, server_name, uuids, pack_type, result, **
 ### Listener Signature:
 ```python
 @app_event("after_addon_subpack_update")
-async def some_function(self, request, server_name, pack_uuid, pack_type, subpack_name, result, **kwargs):
+async def some_function(self, request, pack_uuid, pack_type, subpack_name, server_name, result, **kwargs):
     pass
 ```
 ### Available `kwargs`:
 | Key Name | Type |
 |----------|------|
 | `request` | `UpdateSubpackRequest` |
-| `server_name` | `str` |
 | `pack_uuid` | `str` |
 | `pack_type` | `Literal['behavior', 'resource']` |
 | `subpack_name` | `str` |
+| `server_name` | `str` |
 | `result` | `UpdateSubpackResponse` |
 | `_triggering_plugin` | `str` (core, or plugin name) |
 
@@ -162,16 +162,16 @@ async def some_function(self, request, server_name, pack_uuid, pack_type, subpac
 ### Listener Signature:
 ```python
 @app_event("after_addon_uninstall")
-async def some_function(self, request, server_name, pack_uuid, pack_type, result, **kwargs):
+async def some_function(self, request, pack_uuid, pack_type, server_name, result, **kwargs):
     pass
 ```
 ### Available `kwargs`:
 | Key Name | Type |
 |----------|------|
 | `request` | `UninstallAddonRequest` |
-| `server_name` | `str` |
 | `pack_uuid` | `str` |
 | `pack_type` | `Literal['behavior', 'resource']` |
+| `server_name` | `str` |
 | `result` | `UninstallAddonResponse` |
 | `_triggering_plugin` | `str` (core, or plugin name) |
 
@@ -194,7 +194,7 @@ async def some_function(self, *, request, server_name, new_players_data=None, re
 |----------|------|
 | `request` | `AddToAllowlistRequest | RemoveFromAllowlistRequest` |
 | `server_name` | `str` |
-| `new_players_data` | `list[bedrock_server_manager.api.models.allowlist.AllowlistPlayer]` |
+| `new_players_data` | `list[bedrock_server_manager.models.allowlist.AllowlistPlayer]` |
 | `result` | `AddToAllowlistResponse | RemoveFromAllowlistResponse` |
 | `player_names` | `list[str]` |
 | `_triggering_plugin` | `str` (core, or plugin name) |
@@ -236,15 +236,15 @@ async def some_function(self, *, request, server_name, result, file_to_backup=No
 ### Listener Signature:
 ```python
 @app_event("after_command_send")
-async def some_function(self, request, server_name, command, result, **kwargs):
+async def some_function(self, request, command, server_name, result, **kwargs):
     pass
 ```
 ### Available `kwargs`:
 | Key Name | Type |
 |----------|------|
 | `request` | `SendCommandRequest` |
-| `server_name` | `str` |
 | `command` | `str` |
+| `server_name` | `str` |
 | `result` | `SendCommandResponse` |
 | `_triggering_plugin` | `str` (core, or plugin name) |
 
@@ -441,15 +441,15 @@ async def some_function(self, request, download_dir, keep_count, result, **kwarg
 ### Listener Signature:
 ```python
 @app_event("after_remove_server_ban")
-async def some_function(self, request, server_name, xuid, result, **kwargs):
+async def some_function(self, request, xuid, server_name, result, **kwargs):
     pass
 ```
 ### Available `kwargs`:
 | Key Name | Type |
 |----------|------|
 | `request` | `RemoveServerBanRequest` |
-| `server_name` | `str` |
 | `xuid` | `str` |
+| `server_name` | `str` |
 | `result` | `RemoveServerBanResponse` |
 | `_triggering_plugin` | `str` (core, or plugin name) |
 
@@ -577,7 +577,7 @@ async def some_function(self, server_name, player_count, players, request, resul
 |----------|------|
 | `server_name` | `str` |
 | `player_count` | `int` |
-| `players` | `list[bedrock_server_manager.events.player.PlayerPresence] | list[bedrock_server_manager.api.models.common.PlayerInfo]` |
+| `players` | `list[bedrock_server_manager.events.player.PlayerPresence] | list[bedrock_server_manager.models.common.PlayerInfo]` |
 | `request` | `PlayerSnapshot | UpdateServerPlayerStatsRequest` |
 | `result` | `PlayerChangeResult | UpdateServerPlayerStatsResponse` |
 | `_triggering_plugin` | `str` (core, or plugin name) |
@@ -735,15 +735,15 @@ async def some_function(self, request, server_name, send_message, result, **kwar
 ### Listener Signature:
 ```python
 @app_event("after_set_plugin_status")
-async def some_function(self, request, plugin_name, enabled, result, **kwargs):
+async def some_function(self, request, enabled, plugin_name, result, **kwargs):
     pass
 ```
 ### Available `kwargs`:
 | Key Name | Type |
 |----------|------|
 | `request` | `SetPluginStatusRequest` |
-| `plugin_name` | `str` |
 | `enabled` | `bool` |
+| `plugin_name` | `str` |
 | `result` | `SetPluginStatusResponse` |
 | `_triggering_plugin` | `str` (core, or plugin name) |
 
@@ -758,16 +758,16 @@ async def some_function(self, request, plugin_name, enabled, result, **kwargs):
 ### Listener Signature:
 ```python
 @app_event("after_set_server_setting")
-async def some_function(self, request, server_name, key, value, result, **kwargs):
+async def some_function(self, request, key, value, server_name, result, **kwargs):
     pass
 ```
 ### Available `kwargs`:
 | Key Name | Type |
 |----------|------|
 | `request` | `SetServerSettingRequest` |
-| `server_name` | `str` |
 | `key` | `str` |
 | `value` | `JsonValue` |
+| `server_name` | `str` |
 | `result` | `SetServerSettingResponse` |
 | `_triggering_plugin` | `str` (core, or plugin name) |
 
@@ -920,17 +920,17 @@ async def some_function(self, server_name, alert_id, message, **kwargs):
 ### Listener Signature:
 ```python
 @app_event("before_add_server_ban")
-async def some_function(self, request, server_name, player_name, xuid, reason, event, **kwargs):
+async def some_function(self, request, player_name, xuid, reason, server_name, event, **kwargs):
     pass
 ```
 ### Available `kwargs`:
 | Key Name | Type |
 |----------|------|
 | `request` | `AddServerBanRequest` |
-| `server_name` | `str` |
 | `player_name` | `str` |
 | `xuid` | `str` |
 | `reason` | `str | None` |
+| `server_name` | `str` |
 | `event` | `CancellableEvent` |
 | `_triggering_plugin` | `str` (core, or plugin name) |
 
@@ -945,16 +945,16 @@ async def some_function(self, request, server_name, player_name, xuid, reason, e
 ### Listener Signature:
 ```python
 @app_event("before_addon_disable")
-async def some_function(self, request, server_name, pack_uuid, pack_type, event, **kwargs):
+async def some_function(self, request, pack_uuid, pack_type, server_name, event, **kwargs):
     pass
 ```
 ### Available `kwargs`:
 | Key Name | Type |
 |----------|------|
 | `request` | `DisableAddonRequest` |
-| `server_name` | `str` |
 | `pack_uuid` | `str` |
 | `pack_type` | `Literal['behavior', 'resource']` |
+| `server_name` | `str` |
 | `event` | `CancellableEvent` |
 | `_triggering_plugin` | `str` (core, or plugin name) |
 
@@ -969,16 +969,16 @@ async def some_function(self, request, server_name, pack_uuid, pack_type, event,
 ### Listener Signature:
 ```python
 @app_event("before_addon_enable")
-async def some_function(self, request, server_name, pack_uuid, pack_type, event, **kwargs):
+async def some_function(self, request, pack_uuid, pack_type, server_name, event, **kwargs):
     pass
 ```
 ### Available `kwargs`:
 | Key Name | Type |
 |----------|------|
 | `request` | `EnableAddonRequest` |
-| `server_name` | `str` |
 | `pack_uuid` | `str` |
 | `pack_type` | `Literal['behavior', 'resource']` |
+| `server_name` | `str` |
 | `event` | `CancellableEvent` |
 | `_triggering_plugin` | `str` (core, or plugin name) |
 
@@ -1018,16 +1018,16 @@ async def some_function(self, request, server_name, addon_file_path, stop_start_
 ### Listener Signature:
 ```python
 @app_event("before_addon_reorder")
-async def some_function(self, request, server_name, uuids, pack_type, event, **kwargs):
+async def some_function(self, request, pack_type, uuids, server_name, event, **kwargs):
     pass
 ```
 ### Available `kwargs`:
 | Key Name | Type |
 |----------|------|
 | `request` | `ReorderAddonsRequest` |
-| `server_name` | `str` |
-| `uuids` | `list[str]` |
 | `pack_type` | `Literal['behavior', 'resource']` |
+| `uuids` | `list[str]` |
+| `server_name` | `str` |
 | `event` | `CancellableEvent` |
 | `_triggering_plugin` | `str` (core, or plugin name) |
 
@@ -1042,17 +1042,17 @@ async def some_function(self, request, server_name, uuids, pack_type, event, **k
 ### Listener Signature:
 ```python
 @app_event("before_addon_subpack_update")
-async def some_function(self, request, server_name, pack_uuid, pack_type, subpack_name, event, **kwargs):
+async def some_function(self, request, pack_uuid, pack_type, subpack_name, server_name, event, **kwargs):
     pass
 ```
 ### Available `kwargs`:
 | Key Name | Type |
 |----------|------|
 | `request` | `UpdateSubpackRequest` |
-| `server_name` | `str` |
 | `pack_uuid` | `str` |
 | `pack_type` | `Literal['behavior', 'resource']` |
 | `subpack_name` | `str` |
+| `server_name` | `str` |
 | `event` | `CancellableEvent` |
 | `_triggering_plugin` | `str` (core, or plugin name) |
 
@@ -1067,16 +1067,16 @@ async def some_function(self, request, server_name, pack_uuid, pack_type, subpac
 ### Listener Signature:
 ```python
 @app_event("before_addon_uninstall")
-async def some_function(self, request, server_name, pack_uuid, pack_type, event, **kwargs):
+async def some_function(self, request, pack_uuid, pack_type, server_name, event, **kwargs):
     pass
 ```
 ### Available `kwargs`:
 | Key Name | Type |
 |----------|------|
 | `request` | `UninstallAddonRequest` |
-| `server_name` | `str` |
 | `pack_uuid` | `str` |
 | `pack_type` | `Literal['behavior', 'resource']` |
+| `server_name` | `str` |
 | `event` | `CancellableEvent` |
 | `_triggering_plugin` | `str` (core, or plugin name) |
 
@@ -1099,7 +1099,7 @@ async def some_function(self, *, request, server_name, new_players_data=None, pl
 |----------|------|
 | `request` | `AddToAllowlistRequest | RemoveFromAllowlistRequest` |
 | `server_name` | `str` |
-| `new_players_data` | `list[bedrock_server_manager.api.models.allowlist.AllowlistPlayer]` |
+| `new_players_data` | `list[bedrock_server_manager.models.allowlist.AllowlistPlayer]` |
 | `player_names` | `list[str]` |
 | `event` | `CancellableEvent` |
 | `_triggering_plugin` | `str` (core, or plugin name) |
@@ -1141,15 +1141,15 @@ async def some_function(self, *, request, server_name, file_to_backup=None, encr
 ### Listener Signature:
 ```python
 @app_event("before_command_send")
-async def some_function(self, request, server_name, command, event, **kwargs):
+async def some_function(self, request, command, server_name, event, **kwargs):
     pass
 ```
 ### Available `kwargs`:
 | Key Name | Type |
 |----------|------|
 | `request` | `SendCommandRequest` |
-| `server_name` | `str` |
 | `command` | `str` |
+| `server_name` | `str` |
 | `event` | `CancellableEvent` |
 | `_triggering_plugin` | `str` (core, or plugin name) |
 
@@ -1322,15 +1322,15 @@ async def some_function(self, request, download_dir, keep_count, event, **kwargs
 ### Listener Signature:
 ```python
 @app_event("before_remove_server_ban")
-async def some_function(self, request, server_name, xuid, event, **kwargs):
+async def some_function(self, request, xuid, server_name, event, **kwargs):
     pass
 ```
 ### Available `kwargs`:
 | Key Name | Type |
 |----------|------|
 | `request` | `RemoveServerBanRequest` |
-| `server_name` | `str` |
 | `xuid` | `str` |
+| `server_name` | `str` |
 | `event` | `CancellableEvent` |
 | `_triggering_plugin` | `str` (core, or plugin name) |
 
@@ -1406,7 +1406,7 @@ async def some_function(self, server_name, player_count, players, request, event
 |----------|------|
 | `server_name` | `str` |
 | `player_count` | `int` |
-| `players` | `list[bedrock_server_manager.events.player.PlayerPresence] | list[bedrock_server_manager.api.models.common.PlayerInfo]` |
+| `players` | `list[bedrock_server_manager.events.player.PlayerPresence] | list[bedrock_server_manager.models.common.PlayerInfo]` |
 | `request` | `PlayerSnapshot | UpdateServerPlayerStatsRequest` |
 | `event` | `CancellableEvent` |
 | `_triggering_plugin` | `str` (core, or plugin name) |
@@ -1512,15 +1512,15 @@ async def some_function(self, request, server_name, send_message, event, **kwarg
 ### Listener Signature:
 ```python
 @app_event("before_set_plugin_status")
-async def some_function(self, request, plugin_name, enabled, event, **kwargs):
+async def some_function(self, request, enabled, plugin_name, event, **kwargs):
     pass
 ```
 ### Available `kwargs`:
 | Key Name | Type |
 |----------|------|
 | `request` | `SetPluginStatusRequest` |
-| `plugin_name` | `str` |
 | `enabled` | `bool` |
+| `plugin_name` | `str` |
 | `event` | `CancellableEvent` |
 | `_triggering_plugin` | `str` (core, or plugin name) |
 
@@ -1535,16 +1535,16 @@ async def some_function(self, request, plugin_name, enabled, event, **kwargs):
 ### Listener Signature:
 ```python
 @app_event("before_set_server_setting")
-async def some_function(self, request, server_name, key, value, event, **kwargs):
+async def some_function(self, request, key, value, server_name, event, **kwargs):
     pass
 ```
 ### Available `kwargs`:
 | Key Name | Type |
 |----------|------|
 | `request` | `SetServerSettingRequest` |
-| `server_name` | `str` |
 | `key` | `str` |
 | `value` | `JsonValue` |
+| `server_name` | `str` |
 | `event` | `CancellableEvent` |
 | `_triggering_plugin` | `str` (core, or plugin name) |
 

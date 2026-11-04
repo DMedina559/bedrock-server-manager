@@ -10,33 +10,30 @@ import bsm_frontend
 from fastapi import APIRouter, Depends, HTTPException, Query, Security, status
 from fastapi.responses import FileResponse
 
-from bedrock_server_manager.api.models import (
+from ...api import addon as addon_api
+from ...context import AppContext
+from ...error import AppFileNotFoundError
+from ...models import (
+    AddonActionPayload,
+    AddonReorderPayload,
+    AddonSubpackPayload,
     DisableAddonRequest,
     EnableAddonRequest,
+    FileNamePayload,
     ImportAddonRequest,
     ListAvailableAddonsRequest,
     ListAvailableAddonsResponse,
     ListInstalledAddonsRequest,
     ListInstalledAddonsResponse,
     ReorderAddonsRequest,
+    TaskAcceptedResponse,
     UninstallAddonRequest,
     UpdateSubpackRequest,
 )
-
-from ...api import addon as addon_api
-from ...context import AppContext
-from ...error import AppFileNotFoundError
 from ..access_policy import Permission
 from ..authorization import current_authorization
 from ..deps import get_app_context, validate_server_exists
 from ..deps.auth import require_permissions
-from ..schemas.addon import (
-    AddonActionPayload,
-    AddonReorderPayload,
-    AddonSubpackPayload,
-)
-from ..schemas.base import TaskAcceptedResponse
-from ..schemas.system import FileNamePayload
 from ..schemas.users import UserResponse
 from .content import resolve_content_file
 

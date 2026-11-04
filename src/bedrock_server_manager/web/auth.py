@@ -16,7 +16,7 @@ from jose import JWTError, jwt
 from pydantic import TypeAdapter
 
 from ..config import Settings
-from ..contracts import Password
+from ..models.common import Password
 from ..utils.threads import run_in_thread
 from .authorization import Authorization
 from .schemas import UserResponse

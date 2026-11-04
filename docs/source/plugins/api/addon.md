@@ -8,7 +8,7 @@ For an updated list of available APIs, please download and run the [api_docs_gen
 
 ## `addon.disable_addon`
 ```python
-await self.api.addon.disable_addon(request: bedrock_server_manager.api.models.addon.DisableAddonRequest)
+await self.api.addon.disable_addon(request: bedrock_server_manager.models.addon.DisableAddonRequest)
 ```
 - **Async (Requires await):** Yes
 
@@ -21,11 +21,9 @@ await self.api.addon.disable_addon(request: bedrock_server_manager.api.models.ad
 Runtime context and plugin identity are injected by the bridge. Failures raise application exceptions; plugin cancellation raises `APICancelledError`.
 
 ```python
-from bedrock_server_manager.api.models import DisableAddonRequest
-payload = {...}  # Supply required request fields below.
-request = DisableAddonRequest(**payload)
+from bedrock_server_manager.models import DisableAddonRequest
+request = DisableAddonRequest(pack_uuid=..., pack_type=..., server_name='example')
 result = await self.api.addon.disable_addon(request)
-data = result.model_dump(mode="json")
 ```
 - **Request schema:** [DisableAddonRequest](models.md#disableaddonrequest)
 - **Response schema:** [DisableAddonResponse](models.md#disableaddonresponse)
@@ -34,14 +32,14 @@ data = result.model_dump(mode="json")
 
 | Name | Type | Default |
 |------|------|---------|
-| `request` | `bedrock_server_manager.api.models.addon.DisableAddonRequest` | `REQUIRED` |
+| `request` | `bedrock_server_manager.models.addon.DisableAddonRequest` | `REQUIRED` |
 
 ---
 
 
 ## `addon.enable_addon`
 ```python
-await self.api.addon.enable_addon(request: bedrock_server_manager.api.models.addon.EnableAddonRequest)
+await self.api.addon.enable_addon(request: bedrock_server_manager.models.addon.EnableAddonRequest)
 ```
 - **Async (Requires await):** Yes
 
@@ -54,11 +52,9 @@ await self.api.addon.enable_addon(request: bedrock_server_manager.api.models.add
 Runtime context and plugin identity are injected by the bridge. Failures raise application exceptions; plugin cancellation raises `APICancelledError`.
 
 ```python
-from bedrock_server_manager.api.models import EnableAddonRequest
-payload = {...}  # Supply required request fields below.
-request = EnableAddonRequest(**payload)
+from bedrock_server_manager.models import EnableAddonRequest
+request = EnableAddonRequest(pack_uuid=..., pack_type=..., server_name='example')
 result = await self.api.addon.enable_addon(request)
-data = result.model_dump(mode="json")
 ```
 - **Request schema:** [EnableAddonRequest](models.md#enableaddonrequest)
 - **Response schema:** [EnableAddonResponse](models.md#enableaddonresponse)
@@ -67,14 +63,14 @@ data = result.model_dump(mode="json")
 
 | Name | Type | Default |
 |------|------|---------|
-| `request` | `bedrock_server_manager.api.models.addon.EnableAddonRequest` | `REQUIRED` |
+| `request` | `bedrock_server_manager.models.addon.EnableAddonRequest` | `REQUIRED` |
 
 ---
 
 
 ## `addon.import_addon`
 ```python
-await self.api.addon.import_addon(request: bedrock_server_manager.api.models.addon.ImportAddonRequest)
+await self.api.addon.import_addon(request: bedrock_server_manager.models.addon.ImportAddonRequest)
 ```
 - **Async (Requires await):** Yes
 
@@ -87,11 +83,9 @@ await self.api.addon.import_addon(request: bedrock_server_manager.api.models.add
 Runtime context and plugin identity are injected by the bridge. Failures raise application exceptions; plugin cancellation raises `APICancelledError`.
 
 ```python
-from bedrock_server_manager.api.models import ImportAddonRequest
-payload = {...}  # Supply required request fields below.
-request = ImportAddonRequest(**payload)
+from bedrock_server_manager.models import ImportAddonRequest
+request = ImportAddonRequest(server_name='example', addon_file_path=...)
 result = await self.api.addon.import_addon(request)
-data = result.model_dump(mode="json")
 ```
 - **Request schema:** [ImportAddonRequest](models.md#importaddonrequest)
 - **Response schema:** [ImportAddonResponse](models.md#importaddonresponse)
@@ -100,14 +94,14 @@ data = result.model_dump(mode="json")
 
 | Name | Type | Default |
 |------|------|---------|
-| `request` | `bedrock_server_manager.api.models.addon.ImportAddonRequest` | `REQUIRED` |
+| `request` | `bedrock_server_manager.models.addon.ImportAddonRequest` | `REQUIRED` |
 
 ---
 
 
 ## `addon.list_available_addons`
 ```python
-await self.api.addon.list_available_addons(request: bedrock_server_manager.api.models.addon.ListAvailableAddonsRequest)
+await self.api.addon.list_available_addons(request: bedrock_server_manager.models.addon.ListAvailableAddonsRequest)
 ```
 - **Async (Requires await):** Yes
 
@@ -120,11 +114,9 @@ await self.api.addon.list_available_addons(request: bedrock_server_manager.api.m
 Runtime context and plugin identity are injected by the bridge. Failures raise application exceptions; plugin cancellation raises `APICancelledError`.
 
 ```python
-from bedrock_server_manager.api.models import ListAvailableAddonsRequest
-payload = {}
-request = ListAvailableAddonsRequest(**payload)
+from bedrock_server_manager.models import ListAvailableAddonsRequest
+request = ListAvailableAddonsRequest()
 result = await self.api.addon.list_available_addons(request)
-data = result.model_dump(mode="json")
 ```
 - **Request schema:** [ListAvailableAddonsRequest](models.md#listavailableaddonsrequest)
 - **Response schema:** [ListAvailableAddonsResponse](models.md#listavailableaddonsresponse)
@@ -133,14 +125,14 @@ data = result.model_dump(mode="json")
 
 | Name | Type | Default |
 |------|------|---------|
-| `request` | `bedrock_server_manager.api.models.addon.ListAvailableAddonsRequest` | `REQUIRED` |
+| `request` | `bedrock_server_manager.models.addon.ListAvailableAddonsRequest` | `REQUIRED` |
 
 ---
 
 
 ## `addon.list_installed_addons`
 ```python
-await self.api.addon.list_installed_addons(request: bedrock_server_manager.api.models.addon.ListInstalledAddonsRequest)
+await self.api.addon.list_installed_addons(request: bedrock_server_manager.models.addon.ListInstalledAddonsRequest)
 ```
 - **Async (Requires await):** Yes
 
@@ -153,11 +145,9 @@ await self.api.addon.list_installed_addons(request: bedrock_server_manager.api.m
 Runtime context and plugin identity are injected by the bridge. Failures raise application exceptions; plugin cancellation raises `APICancelledError`.
 
 ```python
-from bedrock_server_manager.api.models import ListInstalledAddonsRequest
-payload = {'server_name': 'example'}
-request = ListInstalledAddonsRequest(**payload)
+from bedrock_server_manager.models import ListInstalledAddonsRequest
+request = ListInstalledAddonsRequest(server_name='example')
 result = await self.api.addon.list_installed_addons(request)
-data = result.model_dump(mode="json")
 ```
 - **Request schema:** [ListInstalledAddonsRequest](models.md#listinstalledaddonsrequest)
 - **Response schema:** [ListInstalledAddonsResponse](models.md#listinstalledaddonsresponse)
@@ -166,14 +156,14 @@ data = result.model_dump(mode="json")
 
 | Name | Type | Default |
 |------|------|---------|
-| `request` | `bedrock_server_manager.api.models.addon.ListInstalledAddonsRequest` | `REQUIRED` |
+| `request` | `bedrock_server_manager.models.addon.ListInstalledAddonsRequest` | `REQUIRED` |
 
 ---
 
 
 ## `addon.reorder_addons`
 ```python
-await self.api.addon.reorder_addons(request: bedrock_server_manager.api.models.addon.ReorderAddonsRequest)
+await self.api.addon.reorder_addons(request: bedrock_server_manager.models.addon.ReorderAddonsRequest)
 ```
 - **Async (Requires await):** Yes
 
@@ -186,11 +176,9 @@ await self.api.addon.reorder_addons(request: bedrock_server_manager.api.models.a
 Runtime context and plugin identity are injected by the bridge. Failures raise application exceptions; plugin cancellation raises `APICancelledError`.
 
 ```python
-from bedrock_server_manager.api.models import ReorderAddonsRequest
-payload = {...}  # Supply required request fields below.
-request = ReorderAddonsRequest(**payload)
+from bedrock_server_manager.models import ReorderAddonsRequest
+request = ReorderAddonsRequest(pack_type=..., uuids=..., server_name='example')
 result = await self.api.addon.reorder_addons(request)
-data = result.model_dump(mode="json")
 ```
 - **Request schema:** [ReorderAddonsRequest](models.md#reorderaddonsrequest)
 - **Response schema:** [ReorderAddonsResponse](models.md#reorderaddonsresponse)
@@ -199,14 +187,14 @@ data = result.model_dump(mode="json")
 
 | Name | Type | Default |
 |------|------|---------|
-| `request` | `bedrock_server_manager.api.models.addon.ReorderAddonsRequest` | `REQUIRED` |
+| `request` | `bedrock_server_manager.models.addon.ReorderAddonsRequest` | `REQUIRED` |
 
 ---
 
 
 ## `addon.update_subpack`
 ```python
-await self.api.addon.update_subpack(request: bedrock_server_manager.api.models.addon.UpdateSubpackRequest)
+await self.api.addon.update_subpack(request: bedrock_server_manager.models.addon.UpdateSubpackRequest)
 ```
 - **Async (Requires await):** Yes
 
@@ -219,11 +207,9 @@ await self.api.addon.update_subpack(request: bedrock_server_manager.api.models.a
 Runtime context and plugin identity are injected by the bridge. Failures raise application exceptions; plugin cancellation raises `APICancelledError`.
 
 ```python
-from bedrock_server_manager.api.models import UpdateSubpackRequest
-payload = {...}  # Supply required request fields below.
-request = UpdateSubpackRequest(**payload)
+from bedrock_server_manager.models import UpdateSubpackRequest
+request = UpdateSubpackRequest(pack_uuid=..., pack_type=..., subpack_name=..., server_name='example')
 result = await self.api.addon.update_subpack(request)
-data = result.model_dump(mode="json")
 ```
 - **Request schema:** [UpdateSubpackRequest](models.md#updatesubpackrequest)
 - **Response schema:** [UpdateSubpackResponse](models.md#updatesubpackresponse)
@@ -232,4 +218,4 @@ data = result.model_dump(mode="json")
 
 | Name | Type | Default |
 |------|------|---------|
-| `request` | `bedrock_server_manager.api.models.addon.UpdateSubpackRequest` | `REQUIRED` |
+| `request` | `bedrock_server_manager.models.addon.UpdateSubpackRequest` | `REQUIRED` |

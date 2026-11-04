@@ -2,10 +2,7 @@ from typing import Literal, Optional
 
 from pydantic import Field
 
-from ...api.models.common import APIRequest, APIResponse
-from ...contracts import NewPassword
-from ...state.models import UserRole
-from .access import ResourceID
+from ...models.common import APIRequest, APIResponse, NewPassword, ResourceID, UserRole
 
 
 class GenerateTokenPayload(APIRequest):

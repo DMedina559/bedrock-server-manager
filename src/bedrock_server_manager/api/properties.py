@@ -8,9 +8,7 @@ from ..error import (
 )
 from ..events import trigger_event
 from ..logging import log_operation_error
-from ..plugins.api_bridge import api_method
-from ..plugins.scopes import PluginScope
-from .models.properties import (
+from ..models.properties import (
     GetPropertiesRequest,
     GetPropertiesResponse,
     GetRawPropertiesRequest,
@@ -20,6 +18,8 @@ from .models.properties import (
     ValidatePropertyValueRequest,
     ValidatePropertyValueResponse,
 )
+from ..plugins.api_bridge import api_method
+from ..plugins.scopes import PluginScope
 from .server import server_lifecycle_manager
 
 logger = logging.getLogger(__name__)

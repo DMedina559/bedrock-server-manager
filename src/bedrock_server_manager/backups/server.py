@@ -19,10 +19,10 @@ from uuid import uuid4
 from pydantic import SecretStr
 
 from ..config.const import get_installed_version
-from ..contracts import CleanupResult, CompletedItem, ComponentResults, SkippedItem
 from ..error import BackupRestoreError, ConfigurationError
 from ..events.operations import OperationName
 from ..logging import log_operation_error
+from ..models.common import CleanupResult, CompletedItem, ComponentResults, SkippedItem
 from ..utils.io import temporary_directory
 from ..utils.progress import report_stage
 from ..utils.threads import check_cancellation, run_in_thread

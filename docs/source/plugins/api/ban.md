@@ -8,7 +8,7 @@ For an updated list of available APIs, please download and run the [api_docs_gen
 
 ## `ban.add_server_ban`
 ```python
-await self.api.ban.add_server_ban(request: bedrock_server_manager.api.models.ban.AddServerBanRequest)
+await self.api.ban.add_server_ban(request: bedrock_server_manager.models.ban.AddServerBanRequest)
 ```
 - **Async (Requires await):** Yes
 
@@ -21,11 +21,9 @@ await self.api.ban.add_server_ban(request: bedrock_server_manager.api.models.ban
 Runtime context and plugin identity are injected by the bridge. Failures raise application exceptions; plugin cancellation raises `APICancelledError`.
 
 ```python
-from bedrock_server_manager.api.models import AddServerBanRequest
-payload = {...}  # Supply required request fields below.
-request = AddServerBanRequest(**payload)
+from bedrock_server_manager.models import AddServerBanRequest
+request = AddServerBanRequest(player_name=..., xuid=..., server_name='example')
 result = await self.api.ban.add_server_ban(request)
-data = result.model_dump(mode="json")
 ```
 - **Request schema:** [AddServerBanRequest](models.md#addserverbanrequest)
 - **Response schema:** [AddServerBanResponse](models.md#addserverbanresponse)
@@ -34,14 +32,14 @@ data = result.model_dump(mode="json")
 
 | Name | Type | Default |
 |------|------|---------|
-| `request` | `bedrock_server_manager.api.models.ban.AddServerBanRequest` | `REQUIRED` |
+| `request` | `bedrock_server_manager.models.ban.AddServerBanRequest` | `REQUIRED` |
 
 ---
 
 
 ## `ban.get_server_bans`
 ```python
-await self.api.ban.get_server_bans(request: bedrock_server_manager.api.models.ban.GetServerBansRequest)
+await self.api.ban.get_server_bans(request: bedrock_server_manager.models.ban.GetServerBansRequest)
 ```
 - **Async (Requires await):** Yes
 
@@ -54,11 +52,9 @@ await self.api.ban.get_server_bans(request: bedrock_server_manager.api.models.ba
 Runtime context and plugin identity are injected by the bridge. Failures raise application exceptions; plugin cancellation raises `APICancelledError`.
 
 ```python
-from bedrock_server_manager.api.models import GetServerBansRequest
-payload = {'server_name': 'example'}
-request = GetServerBansRequest(**payload)
+from bedrock_server_manager.models import GetServerBansRequest
+request = GetServerBansRequest(server_name='example')
 result = await self.api.ban.get_server_bans(request)
-data = result.model_dump(mode="json")
 ```
 - **Request schema:** [GetServerBansRequest](models.md#getserverbansrequest)
 - **Response schema:** [GetServerBansResponse](models.md#getserverbansresponse)
@@ -67,14 +63,14 @@ data = result.model_dump(mode="json")
 
 | Name | Type | Default |
 |------|------|---------|
-| `request` | `bedrock_server_manager.api.models.ban.GetServerBansRequest` | `REQUIRED` |
+| `request` | `bedrock_server_manager.models.ban.GetServerBansRequest` | `REQUIRED` |
 
 ---
 
 
 ## `ban.remove_server_ban`
 ```python
-await self.api.ban.remove_server_ban(request: bedrock_server_manager.api.models.ban.RemoveServerBanRequest)
+await self.api.ban.remove_server_ban(request: bedrock_server_manager.models.ban.RemoveServerBanRequest)
 ```
 - **Async (Requires await):** Yes
 
@@ -87,11 +83,9 @@ await self.api.ban.remove_server_ban(request: bedrock_server_manager.api.models.
 Runtime context and plugin identity are injected by the bridge. Failures raise application exceptions; plugin cancellation raises `APICancelledError`.
 
 ```python
-from bedrock_server_manager.api.models import RemoveServerBanRequest
-payload = {...}  # Supply required request fields below.
-request = RemoveServerBanRequest(**payload)
+from bedrock_server_manager.models import RemoveServerBanRequest
+request = RemoveServerBanRequest(xuid=..., server_name='example')
 result = await self.api.ban.remove_server_ban(request)
-data = result.model_dump(mode="json")
 ```
 - **Request schema:** [RemoveServerBanRequest](models.md#removeserverbanrequest)
 - **Response schema:** [RemoveServerBanResponse](models.md#removeserverbanresponse)
@@ -100,4 +94,4 @@ data = result.model_dump(mode="json")
 
 | Name | Type | Default |
 |------|------|---------|
-| `request` | `bedrock_server_manager.api.models.ban.RemoveServerBanRequest` | `REQUIRED` |
+| `request` | `bedrock_server_manager.models.ban.RemoveServerBanRequest` | `REQUIRED` |

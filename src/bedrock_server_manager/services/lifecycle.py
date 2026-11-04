@@ -4,22 +4,15 @@ import asyncio
 import inspect
 import logging
 import time
-from enum import StrEnum
 from typing import TYPE_CHECKING, Any, Callable
+
+from ..models.common import LifecyclePhase as LifecyclePhase
 
 if TYPE_CHECKING:
     from ..diagnostics.service import Diagnostics
 
 logger = logging.getLogger(__name__)
 _pending: set[asyncio.Task] = set()
-
-
-class LifecyclePhase(StrEnum):
-    STARTING = "starting"
-    READY = "ready"
-    STOPPING = "stopping"
-    STOPPED = "stopped"
-    FAILED = "failed"
 
 
 def is_application_ready(

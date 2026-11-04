@@ -4,23 +4,26 @@ from typing import Dict
 from fastapi import APIRouter, Depends, Security, status
 from fastapi.responses import JSONResponse
 
-from bedrock_server_manager.api.models import (
-    GetPermissionsRequest,
-    GetPermissionsResponse,
-    SetPermissionsRequest,
-)
-
 from ...api import permissions as permissions_api
-from ...api.models.common import APIErrorResponse, ErrorEnvelope
 from ...context import AppContext
-from ...contracts import CompletedItem, FailedItem, ItemResult, SkippedItem
 from ...failures import classify_failure
 from ...logging import log_operation_error
+from ...models import (
+    APIErrorResponse,
+    CompletedItem,
+    ErrorEnvelope,
+    FailedItem,
+    GetPermissionsRequest,
+    GetPermissionsResponse,
+    ItemResult,
+    PermissionsSetPayload,
+    SetPermissionsRequest,
+    SkippedItem,
+)
 from ..access_policy import Permission
 from ..deps import get_app_context, validate_server_exists
 from ..deps.auth import require_permissions
 from ..schemas import (
-    PermissionsSetPayload,
     PermissionsUpdateResponse,
     UserResponse,
 )

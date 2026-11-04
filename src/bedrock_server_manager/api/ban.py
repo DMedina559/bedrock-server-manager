@@ -3,9 +3,7 @@ import logging
 from ..context import AppContext
 from ..error import BSMError, UserInputError
 from ..events import trigger_event
-from ..plugins.api_bridge import api_method
-from ..plugins.scopes import PluginScope
-from .models.ban import (
+from ..models.ban import (
     AddServerBanRequest,
     AddServerBanResponse,
     GetServerBansRequest,
@@ -13,6 +11,8 @@ from .models.ban import (
     RemoveServerBanRequest,
     RemoveServerBanResponse,
 )
+from ..plugins.api_bridge import api_method
+from ..plugins.scopes import PluginScope
 
 logger = logging.getLogger(__name__)
 

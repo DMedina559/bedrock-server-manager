@@ -1,6 +1,6 @@
 properties
 ==========
 
-.. automodule:: bedrock_server_manager.api.models.properties
+.. automodule:: bedrock_server_manager.models.properties
    :members:
    :member-order: bysource

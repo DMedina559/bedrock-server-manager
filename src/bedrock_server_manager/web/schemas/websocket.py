@@ -5,7 +5,7 @@ from typing import Literal
 from pydantic import BaseModel, JsonValue, ValidationError
 
 from ...api.contract import APIResponseValidationError
-from ...api.models.common import APIErrorResponse, APIRequest, APIResponse, NonEmptyStr
+from ...models.common import APIErrorResponse, APIRequest, APIResponse, NonEmptyStr
 
 
 class AuthenticationFrame(APIRequest):

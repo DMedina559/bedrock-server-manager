@@ -12,20 +12,19 @@ from typing import Callable, Optional
 import click
 import questionary
 
-from bedrock_server_manager.api.models import (
+from ..api import web as web_api
+from ..config.const import WEB_SERVICE_WINDOWS_NAME_INTERNAL
+from ..context import AppContext
+from ..core.system.base import can_manage_services
+from ..error import BSMError, MissingArgumentError
+from ..models import (
+    ActionResponse,
     CreateWebUiServiceRequest,
     DisableWebUiServiceRequest,
     EnableWebUiServiceRequest,
     GetWebUiServiceStatusRequest,
     RemoveWebUiServiceRequest,
 )
-
-from ..api import web as web_api
-from ..api.models.common import ActionResponse
-from ..config.const import WEB_SERVICE_WINDOWS_NAME_INTERNAL
-from ..context import AppContext
-from ..core.system.base import can_manage_services
-from ..error import BSMError, MissingArgumentError
 from .utils import handle_api_response as _handle_api_response
 
 logger = logging.getLogger(__name__)

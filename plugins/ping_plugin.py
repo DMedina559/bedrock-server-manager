@@ -3,7 +3,7 @@
 from pydantic import BaseModel, ConfigDict
 
 from bedrock_server_manager import PluginBase, app_event
-from bedrock_server_manager.api.models import StartServerResponse
+from bedrock_server_manager.models import StartServerResponse
 
 
 class PingPayload(BaseModel):

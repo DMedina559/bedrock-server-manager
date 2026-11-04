@@ -7,11 +7,7 @@ from ..config import const as config_const
 from ..context import AppContext
 from ..error import BSMError, FileError
 from ..logging import log_operation_error
-from ..plugins.api_bridge import api_method
-from ..plugins.scopes import PluginScope
-from ..state.revision import revision_clock
-from ..utils import list_content_files
-from .models.application import (
+from ..models.application import (
     GetAllServersDataRequest,
     GetAllServersDataResponse,
     GetSystemAndAppInfoRequest,
@@ -21,7 +17,11 @@ from .models.application import (
     UpdateServerStatusesRequest,
     UpdateServerStatusesResponse,
 )
-from .models.common import ServerSummary
+from ..models.common import ServerSummary
+from ..plugins.api_bridge import api_method
+from ..plugins.scopes import PluginScope
+from ..state.revision import revision_clock
+from ..utils import list_content_files
 
 logger = logging.getLogger(__name__)
 
@@ -96,6 +96,7 @@ def get_system_and_app_info(
             "os_type": platform.system(),
             "app_version": config_const.get_installed_version(),
             "splash_text": splash_txt,
+            "timezone": str(app_context.settings.get("general.timezone", "UTC")),
         }
         logger.debug("System information retrieved.")
         return GetSystemAndAppInfoResponse.model_validate({"status": "success", **data})

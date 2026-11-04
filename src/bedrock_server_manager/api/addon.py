@@ -15,10 +15,7 @@ from ..error import (
 )
 from ..events import trigger_event
 from ..logging import log_operation_error
-from ..plugins.api_bridge import api_method
-from ..plugins.scopes import PluginScope
-from ..utils import list_content_files
-from .models.addon import (
+from ..models.addon import (
     DisableAddonRequest,
     DisableAddonResponse,
     EnableAddonRequest,
@@ -36,6 +33,9 @@ from .models.addon import (
     UpdateSubpackRequest,
     UpdateSubpackResponse,
 )
+from ..plugins.api_bridge import api_method
+from ..plugins.scopes import PluginScope
+from ..utils import list_content_files
 from .server import server_lifecycle_manager
 
 logger = logging.getLogger(__name__)

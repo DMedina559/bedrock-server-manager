@@ -10,9 +10,15 @@ from typing import Literal, cast
 
 from fastapi import APIRouter, Depends, HTTPException, Query, Security
 from fastapi.responses import JSONResponse
-from pydantic import BaseModel, ConfigDict, Field
+from pydantic import Field
 
 from bedrock_server_manager import PluginBase, app_event
+from bedrock_server_manager.models import (
+    APIRequest,
+    GetValidServerNamesRequest,
+    ServerName,
+    SuccessResponse,
+)
 from bedrock_server_manager.utils.io import save_json
 from bedrock_server_manager.web.deps.auth import get_admin_user, require_permissions
 
@@ -25,24 +31,18 @@ FILES = ("permissions.json", "variables.json", "secrets.json")
 MAX_BYTES = 1024 * 1024
 
 
-class SaveRequest(BaseModel):
+class SaveRequest(APIRequest):
     """An edited document and the revision originally loaded."""
 
-    model_config = ConfigDict(extra="forbid", strict=True)
-
-    server_name: str = Field(pattern=r"^[a-zA-Z0-9_-]+$")
+    server_name: ServerName
     filename: EditableFile
     content: str = Field(max_length=MAX_BYTES)
     revision: str = Field(min_length=1, max_length=64)
 
 
-class SaveResponse(BaseModel):
+class SaveResponse(SuccessResponse):
     """Acknowledgement returned after saving a document."""
 
-    model_config = ConfigDict(extra="forbid", strict=True)
-
-    status: Literal["success"] = "success"
-    message: str
     revision: str
 
 
@@ -180,7 +180,9 @@ class ConfigEditorPlugin(PluginBase):
 
     async def server_root(self, server_name: str) -> Path:
         """Resolve a currently valid, registered Bedrock server."""
-        servers = await self.api.server.get_valid_names(request={})
+        servers = await self.api.server.get_valid_names(
+            request=GetValidServerNamesRequest()
+        )
         if server_name not in servers.server_names:
             raise HTTPException(404, "Server not found or installation is invalid.")
 

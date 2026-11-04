@@ -5,22 +5,27 @@ from typing import Literal
 
 from fastapi import APIRouter, Depends, Request, Security
 
-from bedrock_server_manager.api.models import (
+from ...api import plugins as plugins_api
+from ...context import AppContext
+from ...models import (
+    GetPluginSettingsRequest,
+    GetPluginSettingsResponse,
     GetPluginStatusesRequest,
     GetPluginStatusesResponse,
+    PluginSettingsPayload,
+    PluginStatusSetPayload,
     ReloadPluginsRequest,
     ReloadPluginsResponse,
     ReloadSinglePluginRequest,
     ReloadSinglePluginResponse,
+    SetPluginSettingResponse,
     SetPluginStatusRequest,
     SetPluginStatusResponse,
+    TriggerEventPayload,
     TriggerExternalAppEventRequest,
     TriggerExternalAppEventResponse,
+    UpdatePluginSettingsRequest,
 )
-
-from ...api import plugins as plugins_api
-from ...api.models.plugins import PluginSettingsPayload
-from ...context import AppContext
 from ..access_metadata import describe_access
 from ..access_policy import Permission
 from ..authorization import server_collection
@@ -28,8 +33,6 @@ from ..deps import get_app_context
 from ..deps.auth import require_context_permission, require_permissions
 from ..schemas import (
     PluginPagesResponse,
-    PluginStatusSetPayload,
-    TriggerEventPayload,
     UserResponse,
 )
 
@@ -202,7 +205,7 @@ async def put_reload_plugins(
 @router.get(
     "/api/plugins/{plugin_name}/settings",
     operation_id="get_plugin_settings",
-    response_model=plugins_api.GetPluginSettingsResponse,
+    response_model=GetPluginSettingsResponse,
 )
 @describe_access(
     "custom",
@@ -223,7 +226,7 @@ async def get_plugin_settings(
         request, current_user, SETTINGS_PERMISSIONS[scope][0], server_name
     )
     return await plugins_api.get_plugin_settings(
-        plugins_api.GetPluginSettingsRequest(
+        GetPluginSettingsRequest(
             target_plugin_name=plugin_name, scope=scope, server_name=server_name
         ),
         app_context=app_context,
@@ -233,7 +236,7 @@ async def get_plugin_settings(
 @router.put(
     "/api/plugins/{plugin_name}/settings",
     operation_id="update_plugin_settings",
-    response_model=plugins_api.SetPluginSettingResponse,
+    response_model=SetPluginSettingResponse,
 )
 @describe_access(
     "custom",
@@ -256,7 +259,7 @@ async def update_plugin_settings(
         payload.server_name,
     )
     return await plugins_api.update_plugin_settings(
-        plugins_api.UpdatePluginSettingsRequest(
+        UpdatePluginSettingsRequest(
             target_plugin_name=plugin_name,
             settings=payload.settings,
             scope=payload.scope,

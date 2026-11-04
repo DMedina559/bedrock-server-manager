@@ -10,7 +10,7 @@ from datetime import datetime, timezone
 from typing import TYPE_CHECKING, Any
 
 if TYPE_CHECKING:
-    from ..api.models.scheduler import ListSchedulesResponse
+    from ..models.scheduler import ListSchedulesResponse
 
 from ..logging import RepeatedFailureReporter
 from ..utils.threads import run_in_thread
@@ -64,7 +64,7 @@ class Scheduler:
         }
 
     async def snapshot(self, server_name=None) -> "ListSchedulesResponse":
-        from ..api.models.scheduler import ListSchedulesResponse, ScheduleEntry
+        from ..models.scheduler import ListSchedulesResponse, ScheduleEntry
 
         entries = []
         definitions = await self.configurations(server_name)

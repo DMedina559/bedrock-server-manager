@@ -6,7 +6,6 @@ if TYPE_CHECKING:
     from ..db.storage import Storage
     from .bedrock_server import BedrockServer
 
-from ..contracts import PlayerScanDetails, PlayerScanError
 from ..error import (
     AppFileNotFoundError,
     FileOperationError,
@@ -14,6 +13,7 @@ from ..error import (
 )
 from ..failures import classify_failure
 from ..logging import log_operation_error
+from ..models.common import PlayerScanDetails, PlayerScanError
 
 logger = logging.getLogger(__name__)
 

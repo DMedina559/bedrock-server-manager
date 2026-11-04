@@ -4,7 +4,7 @@ from enum import Enum
 
 from pydantic import JsonValue
 
-from ..contracts import NonEmptyStr, ServerName
+from ..models.common import NonEmptyStr, ServerName
 from .models import PersistentRecord, UserRole
 
 

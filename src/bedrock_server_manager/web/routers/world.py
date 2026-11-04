@@ -6,14 +6,6 @@ import bsm_frontend
 from fastapi import APIRouter, Depends, HTTPException, Security, status
 from fastapi.responses import FileResponse
 
-from bedrock_server_manager.api.models import (
-    ExportWorldRequest,
-    ImportWorldRequest,
-    ListAvailableWorldsRequest,
-    ListAvailableWorldsResponse,
-    ResetWorldRequest,
-)
-
 from ...api import application as app_api
 from ...api import world as world_api
 from ...context import AppContext
@@ -21,11 +13,19 @@ from ...error import (
     AppFileNotFoundError,
 )
 from ...logging import log_operation_error
+from ...models import (
+    ExportWorldRequest,
+    FileNamePayload,
+    ImportWorldRequest,
+    ListAvailableWorldsRequest,
+    ListAvailableWorldsResponse,
+    ResetWorldRequest,
+    TaskAcceptedResponse,
+)
 from ..access_policy import Permission
 from ..deps import get_app_context, validate_server_exists
 from ..deps.auth import require_permissions
-from ..schemas import FileNamePayload, UserResponse
-from ..schemas.base import TaskAcceptedResponse
+from ..schemas import UserResponse
 from .content import resolve_content_file
 
 logger = logging.getLogger(__name__)

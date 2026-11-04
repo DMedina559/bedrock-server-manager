@@ -3,7 +3,7 @@
 from pathlib import Path
 from typing import Any, AsyncContextManager, Callable, Literal, Mapping, Protocol
 
-from bedrock_server_manager.api.models import (
+from bedrock_server_manager.models import (
     AddPlayersManuallyRequest,
     AddPlayersManuallyResponse,
     AddServerBanRequest,

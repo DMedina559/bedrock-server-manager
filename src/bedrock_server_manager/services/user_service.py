@@ -9,9 +9,9 @@ from typing import TYPE_CHECKING, Awaitable, Callable, Literal, Optional
 from pydantic import JsonValue, TypeAdapter, ValidationError
 from sqlalchemy.exc import IntegrityError
 
-from ..contracts import CommittedMutationResult, NewPassword
 from ..error import IncompleteOperationError, StorageError, UserInputError
 from ..failures import classify_failure
+from ..models.common import CommittedMutationResult, NewPassword
 from ..state.changeset import ChangeSet
 from ..state.models import UserInfoState
 from ..state.updates import UNSET, AccountPatch, Unset, UserUpdate

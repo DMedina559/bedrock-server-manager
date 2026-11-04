@@ -396,7 +396,7 @@ def configure_diagnostics(context: "AppContext") -> Diagnostics:
 
         if has_health:
             from ..api import system as system_api
-            from ..api.models.system import GetApplicationHealthRequest
+            from ..models.system import GetApplicationHealthRequest
 
             try:
                 health_data = await system_api.get_application_health(

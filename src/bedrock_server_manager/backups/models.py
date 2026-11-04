@@ -337,6 +337,16 @@ class RecoveryReport(Record):
     last_drill: RecoveryReportDrill | None = None
 
 
+class BackupKeyInfo(Record):
+    key_id: str
+    created_at: str
+
+
+class BackupKeysInfo(Record):
+    active: str | None
+    keys: list[BackupKeyInfo]
+
+
 def validate_selection_options(value):
     """Validate explicit content overrides before a background task is accepted."""
     mode = value.mode

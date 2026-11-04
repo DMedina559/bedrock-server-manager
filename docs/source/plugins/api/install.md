@@ -8,7 +8,7 @@ For an updated list of available APIs, please download and run the [api_docs_gen
 
 ## `install.install_new_server`
 ```python
-await self.api.install.install_new_server(request: bedrock_server_manager.api.models.install.InstallNewServerRequest)
+await self.api.install.install_new_server(request: bedrock_server_manager.models.install.InstallNewServerRequest)
 ```
 - **Async (Requires await):** Yes
 
@@ -21,11 +21,9 @@ await self.api.install.install_new_server(request: bedrock_server_manager.api.mo
 Runtime context and plugin identity are injected by the bridge. Failures raise application exceptions; plugin cancellation raises `APICancelledError`.
 
 ```python
-from bedrock_server_manager.api.models import InstallNewServerRequest
-payload = {'server_name': 'example'}
-request = InstallNewServerRequest(**payload)
+from bedrock_server_manager.models import InstallNewServerRequest
+request = InstallNewServerRequest(server_name='example')
 result = await self.api.install.install_new_server(request)
-data = result.model_dump(mode="json")
 ```
 - **Request schema:** [InstallNewServerRequest](models.md#installnewserverrequest)
 - **Response schema:** [InstallNewServerResponse](models.md#installnewserverresponse)
@@ -34,14 +32,14 @@ data = result.model_dump(mode="json")
 
 | Name | Type | Default |
 |------|------|---------|
-| `request` | `bedrock_server_manager.api.models.install.InstallNewServerRequest` | `REQUIRED` |
+| `request` | `bedrock_server_manager.models.install.InstallNewServerRequest` | `REQUIRED` |
 
 ---
 
 
 ## `install.update_server`
 ```python
-await self.api.install.update_server(request: bedrock_server_manager.api.models.install.UpdateServerRequest)
+await self.api.install.update_server(request: bedrock_server_manager.models.install.UpdateServerRequest)
 ```
 - **Async (Requires await):** Yes
 
@@ -54,11 +52,9 @@ await self.api.install.update_server(request: bedrock_server_manager.api.models.
 Runtime context and plugin identity are injected by the bridge. Failures raise application exceptions; plugin cancellation raises `APICancelledError`.
 
 ```python
-from bedrock_server_manager.api.models import UpdateServerRequest
-payload = {'server_name': 'example'}
-request = UpdateServerRequest(**payload)
+from bedrock_server_manager.models import UpdateServerRequest
+request = UpdateServerRequest(server_name='example')
 result = await self.api.install.update_server(request)
-data = result.model_dump(mode="json")
 ```
 - **Request schema:** [UpdateServerRequest](models.md#updateserverrequest)
 - **Response schema:** [UpdateServerResponse](models.md#updateserverresponse)
@@ -67,4 +63,4 @@ data = result.model_dump(mode="json")
 
 | Name | Type | Default |
 |------|------|---------|
-| `request` | `bedrock_server_manager.api.models.install.UpdateServerRequest` | `REQUIRED` |
+| `request` | `bedrock_server_manager.models.install.UpdateServerRequest` | `REQUIRED` |

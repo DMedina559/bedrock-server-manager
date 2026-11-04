@@ -6,9 +6,10 @@ Plugin that automatically reloads server configurations after changes.
 from typing import Any
 
 from bedrock_server_manager import PluginBase, app_event
-from bedrock_server_manager.api.models.allowlist import (
+from bedrock_server_manager.models import (
     AddToAllowlistResponse,
     RemoveFromAllowlistResponse,
+    SendCommandRequest,
 )
 
 
@@ -41,7 +42,7 @@ class AutoReloadPlugin(PluginBase):
                     server_name,
                 )
                 await self.api.server.send_command(
-                    request={"server_name": server_name, "command": command}
+                    request=SendCommandRequest(server_name=server_name, command=command)
                 )
                 self.logger.debug(
                     "Reload command delivered to server '%s'.", server_name

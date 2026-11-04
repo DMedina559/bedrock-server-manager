@@ -11,6 +11,7 @@ from pydantic import BaseModel, ConfigDict, Field
 from bedrock_server_manager import ExistingServerName, PluginBase, app_event
 from bedrock_server_manager.backups.contents import DEFAULT_COMPONENTS, BackupComponents
 from bedrock_server_manager.logging import log_operation_error
+from bedrock_server_manager.models import BackupAllRequest, SnapshotReuseRequest
 
 
 class PluginSettings(BaseModel):
@@ -90,14 +91,18 @@ class AutoBackupOnStart(PluginBase):
             return
 
         mode = await self.get_plugin_setting("backup_mode", default="world")
-        request = {
-            "server_name": server_name,
-            "mode": None if mode == "default" else mode,
-        }
-        if mode == "selected":
-            request["components"] = await self.get_plugin_setting(
+        components = (
+            await self.get_plugin_setting(
                 "components", default=list(DEFAULT_COMPONENTS)
             )
+            if mode == "selected"
+            else None
+        )
+        request = SnapshotReuseRequest(
+            server_name=server_name,
+            mode=None if mode == "default" else mode,
+            components=components,
+        )
         if await self.get_plugin_setting("reuse_sequence_backup", default=True):
             coverage = await self.api.backup_restore.can_reuse_server_backup(
                 request=request
@@ -119,12 +124,14 @@ class AutoBackupOnStart(PluginBase):
             self.logger.debug("Pre-start backup deadline: %.3f seconds", timeout)
             async with asyncio.timeout(timeout):
                 result = await self.api.backup_restore.backup_all(
-                    request={
-                        **request,
-                        "encrypted": (
+                    request=BackupAllRequest(
+                        server_name=request.server_name,
+                        mode=request.mode,
+                        components=request.components,
+                        encrypted=(
                             None if encryption == "default" else encryption == "on"
                         ),
-                    }
+                    )
                 )
 
             if result.status == "success":
