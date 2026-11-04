@@ -157,7 +157,9 @@ class AccessService:
                 mfa_required = admin_policy and not (has_totp or has_passkey)
             permission_set = self.policy.resolve(record.role)
             if mfa_required:
-                permission_set &= frozenset({"account:read", "sessions:manage"})
+                permission_set &= frozenset(
+                    {Permission.ACCOUNT_READ, Permission.SESSIONS_MANAGE}
+                )
             token_servers = None
             token = None
             if token_id is not None:
@@ -709,41 +711,42 @@ class AccessService:
             ):
                 return False
         if not authorization.resource_restricted:
-            return "tasks:read" in authorization.permissions
+            return Permission.TASKS_READ in authorization.permissions
         identity = record.access_server_id
         return (
             identity is not None
             and any(
-                value == identity and authorization.allows("servers:read", name)
+                value == identity
+                and authorization.allows(Permission.SERVERS_READ, name)
                 for name, value in authorization.servers.items()
             )
-            and "tasks:read" in authorization.permissions
+            and Permission.TASKS_READ in authorization.permissions
         )
 
     async def topic_allowed(self, authorization, topic):
         if topic in SERVER_EVENTS:
-            return "servers:read" in authorization.permissions
+            return Permission.SERVERS_READ in authorization.permissions
         if topic == "access-policy":
-            return "account:read" in authorization.permissions
+            return Permission.ACCOUNT_READ in authorization.permissions
         if topic.startswith("task:"):
             return await self.task_allowed(authorization, topic[5:])
         for prefix, capability in (
-            ("server_log:", "logs:read"),
-            ("resource-monitor:", "servers:read"),
+            ("server_log:", Permission.LOGS_READ),
+            ("resource-monitor:", Permission.SERVERS_READ),
         ):
             if topic.startswith(prefix):
                 return authorization.allows(capability, topic.removeprefix(prefix))
         if topic in {"app_log", "app_logs"}:
             return not authorization.resource_restricted and authorization.allows(
-                "logs:read_application"
+                Permission.LOGS_READ_APPLICATION
             )
         if topic == "application-metrics":
             return not authorization.resource_restricted and authorization.allows(
-                "runtime:metrics"
+                Permission.RUNTIME_METRICS
             )
         if topic in {"diagnostics", "diagnostics:summary"}:
             return not authorization.resource_restricted and authorization.allows(
-                "diagnostics:read"
+                Permission.DIAGNOSTICS_READ
             )
         if topic in {"health", "application-health"}:
             return authorization.allows(Permission.HEALTH_READ)
@@ -759,7 +762,7 @@ class AccessService:
                 data
                 if authorization.token_id is None
                 and data.get("owner_id") == authorization.owner_id
-                and authorization.allows("sessions:manage")
+                and authorization.allows(Permission.SESSIONS_MANAGE)
                 else None
             )
         if data.get("type") in {
@@ -800,6 +803,6 @@ class AccessService:
                 payload.get("result", payload) if isinstance(payload, dict) else {}
             )
             name = payload.get("server_name") if isinstance(payload, dict) else None
-            if not name or not authorization.allows("servers:read", name):
+            if not name or not authorization.allows(Permission.SERVERS_READ, name):
                 return None
         return data

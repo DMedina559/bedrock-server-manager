@@ -10,10 +10,6 @@ class RegistrationResponse(SuccessResponse):
     registration_url: str
 
 
-class BackupFilesResponse(SuccessResponse):
-    backups: list[str] | dict[str, list[str]]
-
-
 class BaseApiResponse(APIResponse):
     status: Literal["success", "skipped", "partial"]
     message: str | None = None
@@ -23,6 +19,5 @@ __all__ = [
     "ActionResponse",
     "TaskAcceptedResponse",
     "RegistrationResponse",
-    "BackupFilesResponse",
     "BaseApiResponse",
 ]

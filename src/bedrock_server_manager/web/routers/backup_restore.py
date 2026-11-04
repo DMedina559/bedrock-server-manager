@@ -25,6 +25,7 @@ from bedrock_server_manager.api.models import (
     BackupConfigFileRequest,
     BackupWorldRequest,
     ListBackupFilesRequest,
+    ListBackupFilesResponse,
     PruneOldBackupsRequest,
     RestoreAllRequest,
     RestoreConfigFileRequest,
@@ -54,7 +55,7 @@ from ...context import AppContext
 from ..access_metadata import describe_access
 from ..access_policy import Permission
 from ..deps import get_app_context, validate_server_exists
-from ..deps.auth import require_permissions
+from ..deps.auth import require_permissions, require_recent_interactive
 from ..deps.server import validate_server_registered
 from ..schemas import (
     BackupActionPayload,
@@ -69,7 +70,7 @@ from ..schemas import (
     UserResponse,
 )
 from ..schemas.backup import BackupKeyInfo, BackupKeysInfo
-from ..schemas.base import BackupFilesResponse, TaskAcceptedResponse
+from ..schemas.base import TaskAcceptedResponse
 
 # bedrock_server_manager/web/routers/backup_restore.py
 
@@ -124,7 +125,7 @@ async def put_prune_backups(
 @router.get(
     "/api/server/{server_name}/backup/list/{backup_type}",
     operation_id="list_server_backups",
-    response_model=BackupFilesResponse,
+    response_model=ListBackupFilesResponse,
 )
 async def get_list_server_backups(
     backup_type: str,
@@ -133,7 +134,7 @@ async def get_list_server_backups(
     ),
     server_name: str = Depends(validate_server_registered),
     app_context: AppContext = Depends(get_app_context),
-) -> BackupFilesResponse:
+) -> ListBackupFilesResponse:
     """
     Lists available backup files for a specific server and backup type.
     """
@@ -159,14 +160,14 @@ async def get_list_server_backups(
             key: [os.path.basename(p) for p in path_list]
             for key, path_list in backup_data.items()
         }
-        return BackupFilesResponse(
+        return ListBackupFilesResponse(
             status="success",
             message="All backup types listed successfully.",
             backups=processed_all_backups,
         )
     elif isinstance(backup_data, list):
         basenames = [os.path.basename(p) for p in backup_data]
-        return BackupFilesResponse(
+        return ListBackupFilesResponse(
             status="success",
             message="Backups listed successfully.",
             backups=basenames,
@@ -612,8 +613,6 @@ async def export_snapshot(
     app_context: AppContext = Depends(get_app_context),
 ) -> StreamingResponse:
     """Explicitly export an unencrypted archive; temporary files remain private."""
-    from ..deps.auth import require_recent_interactive
-
     await require_recent_interactive(request, current_user, app_context)
     stream = await backup_transfer.export_decrypted_snapshot(
         app_context,
@@ -659,8 +658,6 @@ async def rotate_key(
     app_context: AppContext = Depends(get_app_context),
 ) -> dict[str, str]:
     """Generate a new active key and retain all previous keys."""
-    from ..deps.auth import require_recent_interactive
-
     await require_recent_interactive(request, current_user, app_context)
     return await backup_transfer.rotate_backup_key(app_context)
 
@@ -686,11 +683,7 @@ async def emergency_kit(
     app_context: AppContext = Depends(get_app_context),
 ) -> Response:
     """Export one recovery credential through a dedicated administrative route."""
-    authorization = getattr(request.state, "authorization", None)
-    if authorization is None or authorization.token_id is None:
-        await app_context.session_service.require_recent(
-            current_user, getattr(request.state, "session_id", None)
-        )
+    await require_recent_interactive(request, current_user, app_context)
     kit = await backup_transfer.get_backup_emergency_kit(app_context, key_id)
     return Response(
         kit,

@@ -120,6 +120,10 @@ def access_for(route: APIRoute, policy: AccessPolicy) -> dict:
         "supported"
         if (require_permissions in calls and not (set(required) & NON_DELEGATABLE))
         or getattr(route.endpoint, "__bsm_token_policy__", False)
+        or any(
+            "IntegrationToken" in item.get("schemes", ())
+            for item in metadata.get("credential_alternatives", ())
+        )
         else "unsupported"
     )
     metadata["resource_scope"] = (

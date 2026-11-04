@@ -1,20 +1,8 @@
-from typing import List, Optional
+from typing import List
 
 from pydantic import Field
 
-from ...api.models.addon import InstalledAddon, InstalledAddons
 from ...api.models.common import APIRequest, NonEmptyStr, PackType
-from .base import BaseApiResponse
-
-# Keep public schema names while sharing the API data contracts.
-AddonSchemaResponse = InstalledAddon
-AddonTypeGroupSchemaResponse = InstalledAddons
-
-
-class AddonListResponse(BaseApiResponse):
-    """Response model for retrieving all addons on a server."""
-
-    addons: Optional[AddonTypeGroupSchemaResponse] = None
 
 
 class AddonActionPayload(APIRequest):

@@ -2,10 +2,7 @@ from typing import Dict, List, Literal, Optional
 
 from pydantic import Field
 
-from ...api.models.allowlist import GetAllowlistResponse
 from ...api.models.common import APIRequest, APIResponse, PermissionLevel, ServerName
-from ...api.models.permissions import GetPermissionsResponse
-from ...api.models.properties import GetPropertiesResponse
 from ...contracts import ItemResult
 from .base import BaseApiResponse, TaskAcceptedResponse
 
@@ -34,11 +31,6 @@ class CustomZipsResponse(BaseApiResponse):
     """Response model for custom zips list."""
 
     custom_zips: List[str]
-
-
-PropertiesGetResponse = GetPropertiesResponse
-AllowlistGetResponse = GetAllowlistResponse
-PermissionsGetResponse = GetPermissionsResponse
 
 
 class PermissionsUpdateResponse(BaseApiResponse):

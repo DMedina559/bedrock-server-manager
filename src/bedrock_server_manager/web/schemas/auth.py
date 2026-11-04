@@ -5,6 +5,7 @@ from pydantic import Field
 from ...api.models.common import APIRequest, APIResponse
 from ...contracts import NewPassword
 from ...state.models import UserRole
+from .access import ResourceID
 
 
 class GenerateTokenPayload(APIRequest):
@@ -19,6 +20,7 @@ class GenerateTokenPayload(APIRequest):
 class TokenResponse(APIResponse):
     """Response model for successful authentication, providing an access token."""
 
+    status: Literal["success"] = "success"
     access_token: str = Field(
         description="Bearer JWT; empty in explicitly negotiated cookie mode, where the credential is HttpOnly"
     )
@@ -39,13 +41,6 @@ class UserLoginPayload(APIRequest):
     remember_me: bool = Field(default=False)
 
 
-class SetupAccountResponse(TokenResponse):
-    """First account creation returns the same session credentials as login."""
-
-    status: Literal["success"] = "success"
-    message: str
-
-
 class PasskeyLoginOptionsRequest(APIRequest):
     """Optional username hint when requesting WebAuthn authentication options."""
 
@@ -55,6 +50,6 @@ class PasskeyLoginOptionsRequest(APIRequest):
 class PasskeyLoginVerifyRequest(APIRequest):
     """WebAuthn assertion payload for passwordless passkey login."""
 
-    challenge_id: str = Field(min_length=32, max_length=32, pattern=r"^[0-9a-f]{32}$")
+    challenge_id: ResourceID
     credential: dict
     remember_me: bool = Field(default=False)

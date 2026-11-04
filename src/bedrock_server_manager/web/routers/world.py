@@ -10,6 +10,7 @@ from bedrock_server_manager.api.models import (
     ExportWorldRequest,
     ImportWorldRequest,
     ListAvailableWorldsRequest,
+    ListAvailableWorldsResponse,
     ResetWorldRequest,
 )
 
@@ -23,8 +24,9 @@ from ...logging import log_operation_error
 from ..access_policy import Permission
 from ..deps import get_app_context, validate_server_exists
 from ..deps.auth import require_permissions
-from ..schemas import ContentListResponse, FileNamePayload, UserResponse
+from ..schemas import FileNamePayload, UserResponse
 from ..schemas.base import TaskAcceptedResponse
+from .content import resolve_content_file
 
 logger = logging.getLogger(__name__)
 
@@ -36,14 +38,14 @@ STATIC_DIR = bsm_frontend.get_static_dir()
 @router.get(
     "/api/content/worlds",
     operation_id="list_available_worlds",
-    response_model=ContentListResponse,
+    response_model=ListAvailableWorldsResponse,
 )
 async def get_worlds_list(
     current_user: UserResponse = Security(
         require_permissions, scopes=[Permission.CONTENT_READ]
     ),
     app_context: AppContext = Depends(get_app_context),
-) -> ContentListResponse:
+) -> ListAvailableWorldsResponse:
     """Return a list of available .mcworld template files."""
     identity = current_user.username
     logger.debug("List available worlds request by user '%s'.", identity)
@@ -52,7 +54,7 @@ async def get_worlds_list(
     )
     full_paths = api_result.files
     basenames = [os.path.basename(p) for p in full_paths]
-    return ContentListResponse(
+    return ListAvailableWorldsResponse(
         status="success", files=basenames, message=api_result.message
     )
 
@@ -83,35 +85,9 @@ async def post_world_install(
         identity,
     )
 
-    content_base_dir = os.path.join(app_context.settings.get("paths.content"), "worlds")
-    full_world_file_path = os.path.normpath(
-        os.path.join(content_base_dir, selected_filename)
+    full_world_file_path = str(
+        await resolve_content_file(app_context, "worlds", selected_filename)
     )
-
-    if not os.path.abspath(full_world_file_path).startswith(
-        os.path.abspath(content_base_dir) + os.sep
-    ):
-        logger.error(
-            "API Install World '%s': Security violation - Invalid path '%s'.",
-            server_name,
-            selected_filename,
-        )
-        raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
-            detail="Invalid file path (security check failed).",
-        )
-
-    if not await aiofiles.ospath.isfile(full_world_file_path):
-        logger.warning(
-            "API Install World '%s': World file '%s' not found at '%s'.",
-            server_name,
-            selected_filename,
-            full_world_file_path,
-        )
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND,
-            detail=f"World file '{selected_filename}' not found for import.",
-        )
 
     task_id = await app_context.task_manager.run_task(
         world_api.import_world,
@@ -217,7 +193,6 @@ async def get_world_icon(
 ):
     """Serves the ``world_icon.jpeg`` for a server, or a default icon if not found."""
     logger.debug("Request to serve world icon for server '%s'.", server_name)
-    import aiofiles.ospath
 
     try:
         server = app_context.get_server(server_name)

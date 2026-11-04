@@ -6,6 +6,7 @@ from fastapi.responses import JSONResponse
 
 from bedrock_server_manager.api.models import (
     GetPermissionsRequest,
+    GetPermissionsResponse,
     SetPermissionsRequest,
 )
 
@@ -19,7 +20,6 @@ from ..access_policy import Permission
 from ..deps import get_app_context, validate_server_exists
 from ..deps.auth import require_permissions
 from ..schemas import (
-    PermissionsGetResponse,
     PermissionsSetPayload,
     PermissionsUpdateResponse,
     UserResponse,
@@ -125,7 +125,7 @@ async def post_permissions_set(
 @router.get(
     "/api/server/{server_name}/permissions/get",
     operation_id="get_permissions",
-    response_model=PermissionsGetResponse,
+    response_model=GetPermissionsResponse,
 )
 async def get_permissions(
     current_user: UserResponse = Security(
@@ -133,9 +133,8 @@ async def get_permissions(
     ),
     server_name: str = Depends(validate_server_exists),
     app_context: AppContext = Depends(get_app_context),
-) -> PermissionsGetResponse:
-    result = await permissions_api.get_permissions(
+) -> GetPermissionsResponse:
+    return await permissions_api.get_permissions(
         request=GetPermissionsRequest.model_validate({"server_name": server_name}),
         app_context=app_context,
     )
-    return result

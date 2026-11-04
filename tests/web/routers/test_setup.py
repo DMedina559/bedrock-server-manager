@@ -51,9 +51,9 @@ def test_setup_operations_are_in_openapi(test_app):
     create = schema["paths"]["/api/setup/create-first-user"]["post"]
     assert create["operationId"] == "create_first_user"
     assert create["responses"]["200"]["content"]["application/json"]["schema"] == {
-        "$ref": "#/components/schemas/SetupAccountResponse"
+        "$ref": "#/components/schemas/TokenResponse"
     }
-    fields = schema["components"]["schemas"]["SetupAccountResponse"]["properties"]
+    fields = schema["components"]["schemas"]["TokenResponse"]["properties"]
     assert {"access_token", "token_type", "status", "message"} <= fields.keys()
 
 

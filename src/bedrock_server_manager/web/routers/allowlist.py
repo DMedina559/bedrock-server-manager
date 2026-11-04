@@ -6,6 +6,7 @@ from bedrock_server_manager.api.models import (
     AddToAllowlistRequest,
     AddToAllowlistResponse,
     GetAllowlistRequest,
+    GetAllowlistResponse,
     RemoveFromAllowlistRequest,
     RemoveFromAllowlistResponse,
 )
@@ -17,7 +18,6 @@ from ..deps import get_app_context, validate_server_exists
 from ..deps.auth import require_permissions
 from ..schemas import (
     AllowlistAddPayload,
-    AllowlistGetResponse,
     AllowlistRemovePayload,
     UserResponse,
 )
@@ -63,7 +63,7 @@ async def post_allowlist(
 @router.get(
     "/api/server/{server_name}/allowlist/get",
     operation_id="get_allowlist",
-    response_model=AllowlistGetResponse,
+    response_model=GetAllowlistResponse,
 )
 async def get_allowlist(
     current_user: UserResponse = Security(
@@ -71,12 +71,11 @@ async def get_allowlist(
     ),
     server_name: str = Depends(validate_server_exists),
     app_context: AppContext = Depends(get_app_context),
-) -> AllowlistGetResponse:
-    result = await allowlist_api.get_allowlist(
+) -> GetAllowlistResponse:
+    return await allowlist_api.get_allowlist(
         request=GetAllowlistRequest.model_validate({"server_name": server_name}),
         app_context=app_context,
     )
-    return result
 
 
 @router.delete(

@@ -542,6 +542,13 @@ class SessionService:
                 .values(**self.client_metadata(request))
             )
 
+    async def rename_session(self, owner_id: str, identifier: str, name: str) -> None:
+        async with self.context.storage.transaction() as session:
+            record = await session.get(LoginSession, identifier)
+            if record is None or record.owner_id != owner_id:
+                raise HTTPException(404, "Session not found")
+            record.name = name.strip()
+
     async def require_recent(self, user, identifier):
         record = await self.validate(identifier, touch=False)
         if record is None:

@@ -3,12 +3,12 @@
 from fastapi import APIRouter, Depends, HTTPException, Request, Response, Security
 
 from ...context import AppContext
-from ...db.models import LoginSession, User
+from ...db.models import User
 from ..access_metadata import describe_access
 from ..access_policy import Permission
 from ..authorization import current_authorization
 from ..deps import get_app_context
-from ..deps.auth import no_store, require_permissions
+from ..deps.auth import no_store, require_permissions, require_recent_session
 from ..schemas import BaseApiResponse, UserResponse
 from ..schemas.security import (
     CompletePasskeyRegistration,
@@ -50,12 +50,6 @@ async def owner(context, user_id):
         return user.access_id
 
 
-async def recent(request, user, context):
-    return await context.session_service.require_recent(
-        user, getattr(request.state, "session_id", None)
-    )
-
-
 @router.get(
     "/api/account/sessions",
     operation_id="list_login_sessions",
@@ -88,12 +82,9 @@ async def rename(
     ),
     context: AppContext = Depends(get_app_context),
 ):
-    identity = self_owner(user)
-    async with context.storage.transaction() as session:
-        record = await session.get(LoginSession, session_id)
-        if record is None or record.owner_id != identity:
-            raise HTTPException(404, "Session not found")
-        record.name = payload.name.strip()
+    await context.session_service.rename_session(
+        self_owner(user), session_id, payload.name
+    )
     return BaseApiResponse(status="success", message="Session renamed")
 
 
@@ -115,7 +106,7 @@ async def revoke(
     context: AppContext = Depends(get_app_context),
 ):
     if session_id != getattr(request.state, "session_id", None):
-        await recent(request, user, context)
+        await require_recent_session(request, user, context)
     await context.session_service.revoke(self_owner(user), identifier=session_id)
     return BaseApiResponse(status="success", message="Session signed out")
 
@@ -136,7 +127,7 @@ async def revoke_many(
     ),
     context: AppContext = Depends(get_app_context),
 ):
-    await recent(request, user, context)
+    await require_recent_session(request, user, context)
     await context.session_service.revoke(
         self_owner(user),
         except_id=request.state.session_id if payload.mode == "others" else None,
@@ -253,7 +244,7 @@ async def enroll(
     ),
     context: AppContext = Depends(get_app_context),
 ):
-    await recent(request, user, context)
+    await require_recent_session(request, user, context)
     return await context.session_service.enrollment(self_owner(user), user.username)
 
 
@@ -273,7 +264,7 @@ async def confirm(
     ),
     context: AppContext = Depends(get_app_context),
 ):
-    await recent(request, user, context)
+    await require_recent_session(request, user, context)
     await context.session_service.throttle(
         user.username, request.client.host if request.client else "", "mfa"
     )
@@ -299,7 +290,7 @@ async def recovery(
     ),
     context: AppContext = Depends(get_app_context),
 ):
-    await recent(request, user, context)
+    await require_recent_session(request, user, context)
     current_device = await context.trusted_device_service.validate(
         self_owner(user), device_token(request, self_owner(user))
     )
@@ -340,7 +331,7 @@ async def disable(
             403,
             "Administrator MFA is required; enroll a replacement factor or use local recovery",
         )
-    await recent(request, user, context)
+    await require_recent_session(request, user, context)
     await context.session_service.change_factor(
         identity, disable=True, keep_session_id=request.state.session_id
     )
@@ -370,7 +361,6 @@ async def admin_sessions(
 async def admin_revoke(
     user_id: int,
     session_id: str,
-    request: Request,
     user: UserResponse = Security(
         require_permissions, scopes=[Permission.SESSIONS_ADMIN]
     ),
@@ -395,7 +385,6 @@ async def admin_revoke(
 @describe_access("permission", additional_checks=["other-account-only"])
 async def admin_reset_mfa(
     user_id: int,
-    request: Request,
     user: UserResponse = Security(
         require_permissions, scopes=[Permission.SESSIONS_ADMIN]
     ),
@@ -425,7 +414,6 @@ async def admin_reset_mfa(
 )
 async def admin_revoke_all(
     user_id: int,
-    request: Request,
     user: UserResponse = Security(
         require_permissions, scopes=[Permission.SESSIONS_ADMIN]
     ),
@@ -545,7 +533,7 @@ async def begin_passkey_registration(
     ),
     context: AppContext = Depends(get_app_context),
 ):
-    await recent(request, user, context)
+    await require_recent_session(request, user, context)
     return await context.session_service.begin_passkey_registration(
         self_owner(user), user.username, request
     )
@@ -568,7 +556,7 @@ async def complete_passkey_registration(
     ),
     context: AppContext = Depends(get_app_context),
 ):
-    await recent(request, user, context)
+    await require_recent_session(request, user, context)
     return await context.session_service.complete_passkey_registration(
         self_owner(user), payload, request
     )
@@ -614,7 +602,7 @@ async def revoke_passkey(
     ),
     context: AppContext = Depends(get_app_context),
 ):
-    await recent(request, user, context)
+    await require_recent_session(request, user, context)
     await context.session_service.revoke_passkey(
         self_owner(user), passkey_id, is_admin_role=(user.role == "admin")
     )

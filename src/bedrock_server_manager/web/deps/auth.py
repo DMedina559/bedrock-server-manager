@@ -208,22 +208,37 @@ def no_store(response: Response) -> None:
     response.headers["Cache-Control"] = "no-store"
 
 
+async def require_recent_session(
+    request: Request, user: UserResponse, app_context=None
+):
+    """Require recent interactive verification on the current login session."""
+    context = app_context or request.app.state.app_context
+    return await context.session_service.require_recent(
+        user, getattr(request.state, "session_id", None)
+    )
+
+
 async def require_recent_interactive(
     request: Request, user: UserResponse, app_context=None
 ) -> None:
     """Require recent interactive authentication unless using an explicit integration token."""
-    authorization = getattr(request.state, "authorization", None)
+    from ..authorization import current_authorization
+
+    authorization = current_authorization.get() or getattr(
+        request.state, "authorization", None
+    )
     if authorization is None or authorization.token_id is None:
-        context = app_context or request.app.state.app_context
-        await context.session_service.require_recent(
-            user, getattr(request.state, "session_id", None)
-        )
+        await require_recent_session(request, user, app_context)
 
 
 async def require_context_permission(request, user, permission, server_name=None):
     """Authorize a capability selected from validated query/body context."""
+    from ..authorization import current_authorization
+
     await require_permissions(request, SecurityScopes(scopes=[permission]), user)
-    authorization = getattr(request.state, "authorization", None)
-    if authorization is None or not authorization.allows(permission, server_name):
+    authorization = current_authorization.get() or getattr(
+        request.state, "authorization", None
+    )
+    if authorization is not None and not authorization.allows(permission, server_name):
         raise HTTPException(403, "Permission denied for this credential or server")
     return user

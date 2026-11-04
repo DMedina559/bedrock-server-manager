@@ -7,8 +7,8 @@ authentication still looks up the account and its current role. These endpoint
 scopes do **not** restrict an individual JWT. Selecting scopes in Swagger does
 not mint a restricted token.
 
-`GET /api/account` adds a sorted `permissions` field. The same list is available
-at `GET /api/account/permissions`. User-list responses retain their existing
+`GET /api/account` includes a sorted `permissions` field alongside `server_access`
+and `server_permissions`. User-list responses retain their existing
 shape. Permissions describe static capabilities; task ownership, application-log
 restrictions, local readiness checks and shutdown credentials still apply.
 

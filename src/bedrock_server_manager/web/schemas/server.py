@@ -2,9 +2,7 @@ from typing import Dict, List, Optional
 
 from pydantic import Field, JsonValue
 
-from ...api.models.common import APIRequest, PlayerInfo, ServerSummary, StateRevision
-from ...api.models.player import PlayerScanDetails
-from ...api.models.system import ProcessInfo
+from ...api.models.common import APIRequest, ServerSummary, StateRevision
 from ...contracts import NonEmptyStr, ResourceFailure
 from .base import BaseApiResponse
 
@@ -30,8 +28,6 @@ class ServerSettingItemPayload(APIRequest):
 class ServerSettingsResponse(BaseApiResponse):
     """Response model for server settings operations."""
 
-    # status: str = Field(...) -> Inherited
-    # message: Optional[str] = None -> Inherited
     settings: Optional[Dict[str, JsonValue]] = None
     setting: Optional[ServerSettingItemPayload] = None
 
@@ -49,16 +45,10 @@ class AddPlayersPayload(APIRequest):
     )
 
 
-ServerSchemaResponse = ServerSummary
-
-
-# --- Specific Response Models replacing GeneralApiResponse ---
-
-
 class ServersListResponse(BaseApiResponse, StateRevision):
-    errors: list[ResourceFailure] = Field(default_factory=list)
     """Response model for lists of server data."""
 
+    errors: list[ResourceFailure] = Field(default_factory=list)
     servers: Optional[List[ServerSummary]] = None
 
 
@@ -68,29 +58,7 @@ class AppInfoResponse(BaseApiResponse):
     info: Optional[Dict[str, JsonValue]] = None
 
 
-class PlayerListResponse(BaseApiResponse):
-    """Response model for player lists."""
-
-    players: Optional[List[PlayerInfo]] = None
-
-
-class AddPlayersResponse(BaseApiResponse):
-    submitted_count: int | None = Field(default=None, ge=0)
-    parsed_count: int | None = Field(default=None, ge=0)
-    unique_count: int | None = Field(default=None, ge=0)
-    """Response model for adding players, typically returns just inherited fields or single item data."""
-
-    details: Optional[PlayerScanDetails] = None
-    count: Optional[int] = None
-
-
 class ServerRunningStatusResponse(BaseApiResponse, StateRevision):
     """Response model for server running status."""
 
     running: Optional[bool] = None
-
-
-class ServerProcessInfoResponse(BaseApiResponse, StateRevision):
-    """Response model for server process info."""
-
-    process_info: Optional[ProcessInfo] = None

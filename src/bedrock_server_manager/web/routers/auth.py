@@ -1,6 +1,5 @@
 """FastAPI router for user authentication and session management."""
 
-import datetime
 import logging
 from typing import Annotated, Optional
 
@@ -17,8 +16,8 @@ from ..auth import (
     create_access_token,
     token_lifetime,
 )
-from ..authorization import assigned_session
-from ..cookies import clear_session_cookie, set_session_cookie
+from ..authorization import assigned_session, current_authorization
+from ..cookies import clear_session_cookie, deliver_session, is_cookie_mode
 from ..deps import get_app_context, get_current_user
 from ..schemas import BaseApiResponse, TokenResponse, UserResponse
 from ..schemas.auth import PasskeyLoginOptionsRequest, PasskeyLoginVerifyRequest
@@ -72,7 +71,7 @@ async def api_login_for_access_token(
         app_context, form_data.username, form_data.password
     )
     proof = None
-    cookie_mode = request.headers.get("x-bsm-auth-mode") == "cookie"
+    cookie_mode = is_cookie_mode(request)
     if authenticated_username and owner is not None and owner.is_active:
         proof = await app_context.trusted_device_service.verify_factor(
             owner.access_id,
@@ -121,21 +120,9 @@ async def api_login_for_access_token(
     await app_context.session_service.authentication_succeeded(form_data.username)
     await app_context.session_service.publish(owner_id, "login")
     logger.info("User '%s' signed in.", form_data.username)
-    cookie_mode = request.headers.get("x-bsm-auth-mode") == "cookie"
-    if cookie_mode:
-        request.state.issued_session_id = jwt.get_unverified_claims(access_token)["sid"]
-        set_session_cookie(
-            response,
-            request,
-            access_token,
-            max_age=max(
-                0,
-                jwt.get_unverified_claims(access_token)["exp"]
-                - int(datetime.datetime.now(datetime.timezone.utc).timestamp()),
-            ),
-        )
+    token_value, cookie_mode = deliver_session(response, request, access_token)
     return TokenResponse(
-        access_token="" if cookie_mode else access_token,
+        access_token=token_value,
         token_type="bearer",
         message="Successfully authenticated.",
         **deliver_device(
@@ -196,21 +183,9 @@ async def passkey_login_verify(
     session_id = jwt.get_unverified_claims(access_token)["sid"]
     await app_context.session_service.annotate(session_id, request)
     logger.info("User '%s' signed in with passkey.", username)
-    cookie_mode = request.headers.get("x-bsm-auth-mode") == "cookie"
-    if cookie_mode:
-        request.state.issued_session_id = session_id
-        set_session_cookie(
-            response,
-            request,
-            access_token,
-            max_age=max(
-                0,
-                jwt.get_unverified_claims(access_token)["exp"]
-                - int(datetime.datetime.now(datetime.timezone.utc).timestamp()),
-            ),
-        )
+    token_value, _ = deliver_session(response, request, access_token)
     return TokenResponse(
-        access_token="" if cookie_mode else access_token,
+        access_token=token_value,
         token_type="bearer",
         message="Successfully authenticated.",
     )
@@ -269,24 +244,11 @@ async def reauth(
     )
 
     logger.debug("Token refreshed for '%s'.", current_user.username)
-    cookie_mode = request.headers.get("x-bsm-auth-mode") == "cookie" or (
-        request.headers.get("x-bsm-auth-mode") is None
-        and getattr(request.state, "credential_source", None) == "cookie"
+    token_value, _ = deliver_session(
+        response, request, access_token, allow_existing=True
     )
-    if cookie_mode:
-        request.state.issued_session_id = jwt.get_unverified_claims(access_token)["sid"]
-        set_session_cookie(
-            response,
-            request,
-            access_token,
-            max_age=max(
-                0,
-                jwt.get_unverified_claims(access_token)["exp"]
-                - int(datetime.datetime.now(datetime.timezone.utc).timestamp()),
-            ),
-        )
     return TokenResponse(
-        access_token="" if cookie_mode else access_token,
+        access_token=token_value,
         token_type="bearer",
         message="Successfully refreshed token.",
     )
@@ -308,7 +270,9 @@ async def logout(
     This endpoint serves as an explicit logout action for auditing purposes.
     """
     username = current_user.username
-    authorization = getattr(request.state, "authorization", None)
+    authorization = current_authorization.get() or getattr(
+        request.state, "authorization", None
+    )
     if authorization and authorization.session_id:
         await request.app.state.app_context.session_service.revoke(
             authorization.owner_id, identifier=authorization.session_id, reason="logout"

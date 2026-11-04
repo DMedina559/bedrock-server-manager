@@ -3,7 +3,6 @@ from typing import Dict, List, Optional
 from pydantic import Field, JsonValue
 
 from ...api.models.common import APIRequest
-from ...api.models.plugins import PluginInfo
 from .base import BaseApiResponse
 
 
@@ -32,15 +31,3 @@ class PluginPagesResponse(BaseApiResponse):
     """Response model for plugin native UI pages."""
 
     pages: Optional[List[Dict[str, JsonValue]]] = None
-
-
-class PluginStatusesResponse(BaseApiResponse):
-    """Response model for plugin statuses."""
-
-    plugins: Optional[Dict[str, PluginInfo]] = None
-
-
-class TriggerEventResponse(BaseApiResponse):
-    """Response model for triggering a custom plugin event."""
-
-    details: Optional[Dict[str, JsonValue]] = None

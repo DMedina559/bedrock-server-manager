@@ -1,11 +1,21 @@
 from datetime import datetime
-from typing import Dict, List, Optional
+from typing import Dict, List, Literal, Optional
 
 from pydantic import ConfigDict, Field, JsonValue
 
-from ...api.models.common import APIRequest, APIResponse
+from ...api.models.common import APIRequest, APIResponse, SuccessResponse
 from ...contracts import FailureInfo, NonEmptyStr
 from .base import BaseApiResponse
+
+ContentCategory = Literal["worlds", "addons"]
+
+
+class ContentUploadResponse(SuccessResponse):
+    """Response model for uploading a world or addon archive to the content library."""
+
+    filename: str
+    category: ContentCategory
+    destination: str
 
 
 class SetupStatusResponse(APIResponse):
@@ -35,8 +45,6 @@ class SettingItemPayload(APIRequest):
 class SettingsResponse(BaseApiResponse):
     """Response model for settings operations."""
 
-    # status: str = Field(...) -> Inherited
-    # message: Optional[str] = None -> Inherited
     settings: Optional[Dict[str, JsonValue]] = None
     setting: Optional[SettingItemPayload] = None
 
@@ -72,15 +80,6 @@ class PruneDownloadsResponse(BaseApiResponse):
     failures: dict[str, FailureInfo] = Field(default_factory=dict)
     files_deleted: Optional[int] = None
     files_kept: Optional[int] = None
-
-
-class ContentListResponse(BaseApiResponse):
-    """Response model for content listing endpoints.
-
-    :ivar files: A list of filenames found.
-    """
-
-    files: Optional[List[str]] = None
 
 
 class ThemeListResponse(BaseApiResponse):

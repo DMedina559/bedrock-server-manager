@@ -8,10 +8,12 @@ from bedrock_server_manager.api.models import (
     DeleteServerDataRequest,
     GetAllServersDataRequest,
     GetBedrockProcessInfoRequest,
+    GetBedrockProcessInfoResponse,
     GetServerRunningStatusRequest,
     GetServerSummaryRequest,
     SendCommandRequest,
     SendCommandResponse,
+    ServerSummary,
     UpdateServerRequest,
 )
 
@@ -38,9 +40,7 @@ from ..deps.server import validate_server_registered
 from ..schemas import (
     BaseApiResponse,
     CommandPayload,
-    ServerProcessInfoResponse,
     ServerRunningStatusResponse,
-    ServerSchemaResponse,
     ServersListResponse,
     UserResponse,
 )
@@ -58,7 +58,7 @@ router = APIRouter()
     "/api/server/{server_name}/summary",
     operation_id="get_server_summary",
     tags=["Server Management"],
-    response_model=ServerSchemaResponse,
+    response_model=ServerSummary,
 )
 async def get_server_summary(
     current_user: UserResponse = Security(
@@ -66,7 +66,7 @@ async def get_server_summary(
     ),
     server_name: str = Depends(validate_server_exists),
     app_context: AppContext = Depends(get_app_context),
-) -> ServerSchemaResponse:
+) -> ServerSummary:
     """Return the basic summary information for a specific server instance."""
     identity = current_user.username
     logger.debug(
@@ -78,7 +78,7 @@ async def get_server_summary(
         app_context=app_context,
     )
 
-    return ServerSchemaResponse.model_validate(result.summary)
+    return ServerSummary.model_validate(result.summary)
 
 
 @router.get(
@@ -364,7 +364,7 @@ async def get_validate_server(
     "/api/server/{server_name}/process_info",
     operation_id="get_server_process_info",
     tags=["Server Processes"],
-    response_model=ServerProcessInfoResponse,
+    response_model=GetBedrockProcessInfoResponse,
 )
 async def get_server_process_info(
     current_user: UserResponse = Security(
@@ -372,21 +372,13 @@ async def get_server_process_info(
     ),
     server_name: str = Depends(validate_server_exists),
     app_context: AppContext = Depends(get_app_context),
-) -> ServerProcessInfoResponse:
+) -> GetBedrockProcessInfoResponse:
     """Return resource usage information for a running server process."""
     identity = current_user.username
     logger.debug("Process info request for '%s' by user '%s'.", server_name, identity)
-    result = await system_api.get_bedrock_process_info(
+    return await system_api.get_bedrock_process_info(
         request=GetBedrockProcessInfoRequest(server_name=server_name),
         app_context=app_context,
-    )
-
-    return ServerProcessInfoResponse(
-        status="success",
-        process_info=result.process_info,
-        epoch=result.epoch,
-        revision=result.revision,
-        message=result.message,
     )
 
 
@@ -416,14 +408,14 @@ async def get_servers_list(
             error
             for error in result.errors
             if authorization is None
-            or authorization.allows("servers:read", error.resource)
+            or authorization.allows(Permission.SERVERS_READ, error.resource)
         ],
         message=result.message,
         servers=[
             server
             for server in result.servers
             if authorization is None
-            or authorization.allows("servers:read", server.name)
+            or authorization.allows(Permission.SERVERS_READ, server.name)
         ],
         epoch=result.epoch,
         revision=result.revision,

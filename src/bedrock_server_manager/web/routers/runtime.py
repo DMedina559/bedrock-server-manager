@@ -11,11 +11,11 @@ from fastapi import (
     Request,
     Security,
 )
-from fastapi.security import APIKeyHeader
+from fastapi.security import APIKeyHeader, SecurityScopes
 
 from ...error import DependencyUnavailableError
 from ..access_metadata import describe_access
-from ..access_policy import Permission, policy_for
+from ..access_policy import Permission
 from ..deps.auth import get_current_user_optional, require_permissions
 from ..runtime import RuntimeStatus, ShutdownRequest, ShutdownResponse, WebRuntime
 
@@ -78,12 +78,9 @@ async def shutdown_actor(
             detail="Not authenticated",
             headers={"WWW-Authenticate": "Bearer"},
         )
-    authorization = getattr(request.state, "authorization", None)
-    if authorization is not None and not authorization.allows(SHUTDOWN_PERMISSION):
-        raise HTTPException(403, "Shutdown access denied")
-    policy = policy_for(request)
-    if SHUTDOWN_PERMISSION not in policy.resolve(user.role):
-        raise HTTPException(status_code=403, detail="Administrator permission required")
+    await require_permissions(
+        request, SecurityScopes(scopes=[SHUTDOWN_PERMISSION]), user
+    )
     return "administrator"
 
 
@@ -136,12 +133,9 @@ async def require_health_access(
                 detail="Not authenticated",
                 headers={"WWW-Authenticate": "Bearer"},
             )
-        authorization = getattr(request.state, "authorization", None)
-        if authorization is not None and not authorization.allows(HEALTH_PERMISSION):
-            raise HTTPException(403, "Health access denied")
-        policy = policy_for(request)
-        if HEALTH_PERMISSION not in policy.resolve(user.role):
-            raise HTTPException(403, "Health access denied")
+        await require_permissions(
+            request, SecurityScopes(scopes=[HEALTH_PERMISSION]), user
+        )
         return
     runtime = getattr(request.app.state, "web_runtime", None)
     if not isinstance(runtime, WebRuntime):
@@ -160,6 +154,3 @@ async def require_health_access(
         raise HTTPException(status_code=403, detail="Local readiness access required")
     if not runtime.authenticate_readiness(token):
         raise HTTPException(status_code=401, detail="Invalid readiness credential")
-
-
-setattr(shutdown_runtime, "__bsm_token_policy__", True)

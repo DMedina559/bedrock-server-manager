@@ -4,6 +4,7 @@ from fastapi import APIRouter, Depends, HTTPException, Security, status
 
 from bedrock_server_manager.api.models import (
     GetPropertiesRequest,
+    GetPropertiesResponse,
     GetRawPropertiesRequest,
     GetRawPropertiesResponse,
     SetPropertiesRequest,
@@ -16,7 +17,6 @@ from ..access_policy import Permission
 from ..deps import get_app_context, validate_server_exists
 from ..deps.auth import require_permissions
 from ..schemas import (
-    PropertiesGetResponse,
     PropertiesPayload,
     UserResponse,
 )
@@ -56,7 +56,7 @@ async def post_properties_set(
 @router.get(
     "/api/server/{server_name}/properties/get",
     operation_id="get_properties",
-    response_model=PropertiesGetResponse,
+    response_model=GetPropertiesResponse,
 )
 async def get_properties(
     current_user: UserResponse = Security(
@@ -64,12 +64,11 @@ async def get_properties(
     ),
     server_name: str = Depends(validate_server_exists),
     app_context: AppContext = Depends(get_app_context),
-) -> PropertiesGetResponse:
-    result = await properties_api.get_properties(
+) -> GetPropertiesResponse:
+    return await properties_api.get_properties(
         request=GetPropertiesRequest(server_name=server_name),
         app_context=app_context,
     )
-    return result
 
 
 @router.get(

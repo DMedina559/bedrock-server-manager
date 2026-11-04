@@ -5,7 +5,6 @@ import logging
 import os
 import re
 from pathlib import Path
-from typing import Literal
 from zipfile import BadZipFile, ZipFile
 
 from fastapi import APIRouter, Depends, File, HTTPException, Security, UploadFile
@@ -19,7 +18,6 @@ from bedrock_server_manager.api.models import (
 from ...api import addon as addon_api
 from ...api import application as app_api
 from ...context import AppContext
-from ...contracts import DataContract
 from ...core.files import atomic_stream_file, validate_archive
 from ...error import DependencyUnavailableError, UserInputError
 from ...logging import log_operation_error
@@ -27,7 +25,12 @@ from ...utils.threads import run_in_thread
 from ..access_policy import Permission
 from ..deps import get_app_context
 from ..deps.auth import require_permissions
-from ..schemas import BaseApiResponse, UserResponse
+from ..schemas import (
+    BaseApiResponse,
+    ContentCategory,
+    ContentUploadResponse,
+    UserResponse,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -35,7 +38,6 @@ router = APIRouter(tags=["Content Management"])
 
 ALLOWED_EXTENSIONS = {".mcworld", ".mcpack", ".mcaddon"}
 SAFE_FILENAME_PATTERN = re.compile(r"^[A-Za-z0-9._\- ]+$")
-ContentCategory = Literal["worlds", "addons"]
 
 
 def validate_upload(path: Path) -> None:
@@ -49,15 +51,7 @@ def validate_upload(path: Path) -> None:
         ) from error
 
 
-class ContentUploadResponse(DataContract):
-    status: Literal["success"] = "success"
-    filename: str
-    category: ContentCategory
-    destination: str
-    message: str
-
-
-async def _resolve_content_file(
+async def resolve_content_file(
     app_context: AppContext,
     category: ContentCategory,
     filename: str,
@@ -188,7 +182,7 @@ async def download_content_file(
 ) -> FileResponse:
     """Download a world or addon archive from the content library."""
     try:
-        file_path = await _resolve_content_file(app_context, category, filename)
+        file_path = await resolve_content_file(app_context, category, filename)
         return FileResponse(
             path=file_path,
             filename=filename,
@@ -218,7 +212,7 @@ async def delete_content_file(
     app_context: AppContext = Depends(get_app_context),
 ) -> BaseApiResponse:
     """Delete a world or addon archive from the content library."""
-    file_path = await _resolve_content_file(app_context, category, filename)
+    file_path = await resolve_content_file(app_context, category, filename)
     try:
         await asyncio.to_thread(file_path.unlink)
     except OSError as error:

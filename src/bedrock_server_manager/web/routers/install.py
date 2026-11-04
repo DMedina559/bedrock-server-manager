@@ -2,7 +2,7 @@ import logging
 import os
 
 import aiofiles.ospath
-from fastapi import APIRouter, Depends, HTTPException, Security, status
+from fastapi import APIRouter, Depends, HTTPException, Request, Security, status
 
 from bedrock_server_manager.api.models import (
     DeleteServerDataRequest,
@@ -18,7 +18,11 @@ from ...core.system import find_files
 from ...error import BSMError
 from ..access_policy import Permission
 from ..deps import get_app_context
-from ..deps.auth import require_permissions
+from ..deps.auth import (
+    require_context_permission,
+    require_permissions,
+    require_recent_interactive,
+)
 from ..schemas import (
     CustomZipsResponse,
     InstallationAcceptedResponse,
@@ -130,6 +134,7 @@ async def put_prune_downloads(
     response_model=InstallServerResponse,
 )
 async def post_install_server(  # noqa: C901
+    request: Request,
     payload: InstallServerPayload,
     current_user: UserResponse = Security(
         require_permissions, scopes=[Permission.SERVERS_INSTALL]
@@ -189,6 +194,10 @@ async def post_install_server(  # noqa: C901
         )
 
     if payload.overwrite and server_exists:
+        await require_context_permission(
+            request, current_user, Permission.SERVERS_DELETE, payload.server_name
+        )
+        await require_recent_interactive(request, current_user, app_context)
         logger.info(
             "Overwrite flag set for existing server '%s'. Deleting first.",
             payload.server_name,

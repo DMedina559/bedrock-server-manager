@@ -16,13 +16,12 @@ from ..access_metadata import describe_access
 from ..access_policy import ROLE_GRANTS, Permission, policy_for
 from ..authorization import (
     NON_DELEGATABLE,
-    SERVER_PERMISSIONS,
     current_authorization,
     read_only_preview,
     server_collection,
 )
 from ..deps import get_app_context
-from ..deps.auth import no_store, require_permissions
+from ..deps.auth import no_store, require_permissions, require_recent_session
 from ..schemas import BaseApiResponse, UserResponse
 from ..schemas.access import (
     AccessPolicyInfo,
@@ -54,7 +53,7 @@ async def get_access_policy(
     return AccessPolicyInfo(
         revision=authorization.revision if authorization else policy.revision,
         permissions=policy.descriptions,
-        server_permissions=sorted(SERVER_PERMISSIONS),
+        server_permissions=sorted(policy.server_permissions),
         token_permissions=sorted(
             (authorization.permissions if authorization else policy.resolve(user.role))
             - NON_DELEGATABLE
@@ -70,6 +69,7 @@ async def get_access_policy(
 )
 @server_collection
 async def list_access_servers(
+    request: Request,
     user: UserResponse = Security(
         require_permissions, scopes=[Permission.SERVERS_READ]
     ),
@@ -78,6 +78,7 @@ async def list_access_servers(
     authorization = current_authorization.get()
     if authorization is None:
         raise HTTPException(401, "Not authenticated")
+    server_permissions = policy_for(request).server_permissions
     servers = (
         authorization.servers
         if authorization.resource_restricted
@@ -89,12 +90,12 @@ async def list_access_servers(
             name=name,
             permissions=sorted(
                 permission
-                for permission in SERVER_PERMISSIONS
+                for permission in server_permissions
                 if authorization.allows(permission, name)
             ),
         )
         for name, identity in sorted(servers.items())
-        if authorization.allows("servers:read", name)
+        if authorization.allows(Permission.SERVERS_READ, name)
     ]
 
 
@@ -136,9 +137,7 @@ async def create_token(
     ),
     context: AppContext = Depends(get_app_context),
 ):
-    await context.session_service.require_recent(
-        user, getattr(request.state, "session_id", None)
-    )
+    await require_recent_session(request, user, context)
     return await context.access_service.create_token(user, payload)
 
 
@@ -159,9 +158,7 @@ async def rotate_token(
     ),
     context: AppContext = Depends(get_app_context),
 ):
-    await context.session_service.require_recent(
-        user, getattr(request.state, "session_id", None)
-    )
+    await require_recent_session(request, user, context)
     return await context.access_service.rotate_token(user, token_id)
 
 
@@ -201,9 +198,7 @@ async def revoke_credentials(
     authorization = current_authorization.get()
     if authorization is None or authorization.user_id != user.id:
         raise HTTPException(401, "Account authorization unavailable")
-    await context.session_service.require_recent(
-        user, getattr(request.state, "session_id", None)
-    )
+    await require_recent_session(request, user, context)
     await context.session_service.revoke_credentials(authorization.owner_id)
     return BaseApiResponse(status="success", message="Integration credentials revoked")
 
@@ -229,7 +224,6 @@ async def get_server_access(
     response_model=AccountServerAccessInfo,
 )
 async def set_server_access(
-    request: Request,
     user_id: int,
     payload: SetServerAccess,
     user: UserResponse = Security(

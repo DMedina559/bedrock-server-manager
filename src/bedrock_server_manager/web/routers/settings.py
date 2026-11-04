@@ -7,6 +7,7 @@ from fastapi import APIRouter, Depends, HTTPException, Request, Security, status
 from bedrock_server_manager.api.models import (
     GetAllGlobalSettingsRequest,
     ReloadGlobalSettingsRequest,
+    ReloadGlobalSettingsResponse,
     SetGlobalSettingRequest,
 )
 
@@ -121,24 +122,19 @@ async def post_set_setting(
 @router.put(
     "/api/settings/reload",
     operation_id="reload_settings",
-    response_model=SettingsResponse,
+    response_model=ReloadGlobalSettingsResponse,
 )
 async def put_reload_settings(
     current_user: UserResponse = Security(
         require_permissions, scopes=[Permission.SETTINGS_MANAGE]
     ),
     app_context: AppContext = Depends(get_app_context),
-) -> SettingsResponse:
+) -> ReloadGlobalSettingsResponse:
     """
     Forces a reload of global application settings and logging configuration.
     """
     identity = current_user.username
     logger.info("Reload global settings request by '%s'.", identity)
-    result = await settings_api.reload_global_settings(
+    return await settings_api.reload_global_settings(
         request=ReloadGlobalSettingsRequest(), app_context=app_context
-    )
-    return SettingsResponse(
-        status=result.status,
-        message=result.message,
-        # No other specific fields like 'settings' or 'setting' for this response
     )

@@ -1,4 +1,4 @@
-from typing import Optional
+from typing import Literal, Optional
 
 from pydantic import Field
 
@@ -23,7 +23,7 @@ class CurrentAccountResponse(UserResponse):
 
     permissions: list[str] = Field(default_factory=list)
     policy_revision: str | None = None
-    server_access: str = "all"
+    server_access: Literal["all", "assigned"] = "all"
     credential_id: str | None = None
     credential_name: str | None = None
     credential_expires_at: int | None = None

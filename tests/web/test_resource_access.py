@@ -710,6 +710,21 @@ async def test_server_scoped_plugin_permissions_and_health_topic(
             "plugin:srv_plugin:inspect"
             in account["server_permissions"][access_servers["alpha"]]
         )
+        assert (
+            "account:read" not in account["server_permissions"][access_servers["alpha"]]
+        )
+        assert (
+            "health:read" not in account["server_permissions"][access_servers["alpha"]]
+        )
+
+        # Policy and server access catalog include server_scoped plugin permissions
+        policy_data = (await admin_auth_client.get("/api/access/policy")).json()
+        assert "plugin:srv_plugin:inspect" in policy_data["server_permissions"]
+        servers_data = (await admin_auth_client.get("/api/access/servers")).json()
+        alpha_entry = next(
+            s for s in servers_data if s["id"] == access_servers["alpha"]
+        )
+        assert "plugin:srv_plugin:inspect" in alpha_entry["permissions"]
 
         # User server assignment accepts server-scoped plugin permission
         path = f"/api/access/users/{test_user.id}/servers"

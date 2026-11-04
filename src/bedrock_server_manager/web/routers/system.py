@@ -169,6 +169,3 @@ async def get_application_health(
                 }
             )
     return health
-
-
-setattr(get_application_health, "__bsm_token_policy__", True)

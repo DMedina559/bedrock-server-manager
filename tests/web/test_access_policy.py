@@ -134,14 +134,9 @@ async def test_bearer_wins_over_cookie(
     )
     assert response.status_code == 200
     assert response.json()["username"] == test_admin_user.username
-    permissions = await auth_client.get("/api/account/permissions")
     account = await auth_client.get("/api/account")
     assert account.json()["username"] == test_user.username
-    assert (
-        account.json()["permissions"]
-        == permissions.json()
-        == sorted(AccessPolicy().resolve("user"))
-    )
+    assert account.json()["permissions"] == sorted(AccessPolicy().resolve("user"))
 
 
 async def test_swagger_transport_and_ingress(unauth_client):
@@ -277,7 +272,6 @@ ROLE_BASELINE = {
     "disable_account_mfa": ["user", "moderator", "admin"],
     "enroll_account_mfa": ["user", "moderator", "admin"],
     "get_access_policy": ["user", "moderator", "admin"],
-    "get_account_permissions": ["user", "moderator", "admin"],
     "get_account_security": ["user", "moderator", "admin"],
     "get_account_server_access": ["admin"],
     "get_application_health": ["user", "moderator", "admin"],

@@ -92,6 +92,7 @@ async def add_user_to_request(request: Request, call_next):
         and path
         not in {
             "/api/account",
+            "/api/access/policy",
             "/api/account/security",
             "/api/account/security/verify",
             "/api/account/security/mfa/enroll",
@@ -101,6 +102,9 @@ async def add_user_to_request(request: Request, call_next):
             "/api/account/security/passkeys/register/verify",
             "/api/account/security/passkeys/verify/options",
             "/api/account/security/passkeys/verify",
+            "/api/info",
+            "/api/info/themes",
+            "/api/panorama",
             "/auth/logout",
             "/auth/reauth",
             "/api/setup/status",

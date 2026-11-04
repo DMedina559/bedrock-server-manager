@@ -5,11 +5,9 @@ This module provides endpoints for:
 - Handling the creation of the first user (System Admin).
 """
 
-import datetime
 import logging
 
-from fastapi import APIRouter, Depends, HTTPException, Request, status
-from fastapi.responses import JSONResponse
+from fastapi import APIRouter, Depends, HTTPException, Request, Response, status
 from jose import jwt
 
 from ...context import AppContext
@@ -18,10 +16,9 @@ from ..auth import (
     create_access_token,
     get_password_hash_async,
 )
-from ..cookies import set_session_cookie
+from ..cookies import deliver_session
 from ..deps import get_app_context
-from ..schemas import SetupStatusResponse, UserLoginPayload
-from ..schemas.auth import SetupAccountResponse
+from ..schemas import SetupStatusResponse, TokenResponse, UserLoginPayload
 
 # bedrock_server_manager/web/routers/setup.py
 
@@ -47,16 +44,17 @@ async def get_setup_status(
 @router.post(
     "/create-first-user",
     operation_id="create_first_user",
-    response_model=SetupAccountResponse,
+    response_model=TokenResponse,
 )
 @describe_access(
     "custom", authentication="none", additional_checks=["first-account-only"]
 )
 async def create_first_user(
     request: Request,
+    response: Response,
     data: UserLoginPayload,
     app_context: AppContext = Depends(get_app_context),
-):
+) -> TokenResponse:
     """Create the first user (admin) in the database."""
     await app_context.session_service.throttle(
         username=data.username,
@@ -86,25 +84,9 @@ async def create_first_user(
     await app_context.session_service.annotate(
         jwt.get_unverified_claims(access_token)["sid"], request
     )
-    cookie_mode = request.headers.get("x-bsm-auth-mode") == "cookie"
-    response = JSONResponse(
-        content=SetupAccountResponse(
-            message="Admin account created and logged in successfully.",
-            access_token="" if cookie_mode else access_token,
-            token_type="bearer",
-        ).model_dump(mode="json")
+    token_value, _ = deliver_session(response, request, access_token)
+    return TokenResponse(
+        message="Admin account created and logged in successfully.",
+        access_token=token_value,
+        token_type="bearer",
     )
-    if cookie_mode:
-        claims = jwt.get_unverified_claims(access_token)
-        request.state.issued_session_id = claims["sid"]
-        set_session_cookie(
-            response,
-            request,
-            access_token,
-            max_age=max(
-                0,
-                claims["exp"]
-                - int(datetime.datetime.now(datetime.timezone.utc).timestamp()),
-            ),
-        )
-    return response

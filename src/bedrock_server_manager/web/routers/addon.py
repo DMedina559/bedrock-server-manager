@@ -17,6 +17,7 @@ from bedrock_server_manager.api.models import (
     ListAvailableAddonsRequest,
     ListAvailableAddonsResponse,
     ListInstalledAddonsRequest,
+    ListInstalledAddonsResponse,
     ReorderAddonsRequest,
     UninstallAddonRequest,
     UpdateSubpackRequest,
@@ -31,13 +32,13 @@ from ..deps import get_app_context, validate_server_exists
 from ..deps.auth import require_permissions
 from ..schemas.addon import (
     AddonActionPayload,
-    AddonListResponse,
     AddonReorderPayload,
     AddonSubpackPayload,
 )
 from ..schemas.base import TaskAcceptedResponse
 from ..schemas.system import FileNamePayload
 from ..schemas.users import UserResponse
+from .content import resolve_content_file
 
 logger = logging.getLogger(__name__)
 router = APIRouter(tags=["Addon Management"])
@@ -69,7 +70,7 @@ async def get_addons(
 @router.get(
     "/api/server/{server_name}/addons",
     operation_id="list_server_addons",
-    response_model=AddonListResponse,
+    response_model=ListInstalledAddonsResponse,
 )
 async def get_server_addons(
     current_user: UserResponse = Security(
@@ -77,7 +78,7 @@ async def get_server_addons(
     ),
     server_name: str = Depends(validate_server_exists),
     app_context: AppContext = Depends(get_app_context),
-) -> AddonListResponse:
+) -> ListInstalledAddonsResponse:
     """Return a list of addons installed on a server's active world."""
     identity = current_user.username
     logger.debug(
@@ -107,7 +108,7 @@ async def get_server_addons(
                 for group in ("behavior_packs", "resource_packs")
             }
         )
-    return AddonListResponse(status="success", addons=addons)
+    return ListInstalledAddonsResponse(status="success", addons=addons)
 
 
 @router.post(
@@ -334,35 +335,9 @@ async def post_install_addon(
         identity,
     )
 
-    content_base_dir = os.path.join(app_context.settings.get("paths.content"), "addons")
-    full_addon_file_path = os.path.normpath(
-        os.path.join(content_base_dir, selected_filename)
+    full_addon_file_path = str(
+        await resolve_content_file(app_context, "addons", selected_filename)
     )
-
-    if not os.path.abspath(full_addon_file_path).startswith(
-        os.path.abspath(content_base_dir) + os.sep
-    ):
-        logger.error(
-            "API Install Addon '%s': Security violation - Invalid path '%s'.",
-            server_name,
-            selected_filename,
-        )
-        raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
-            detail="Invalid file path (security check failed).",
-        )
-
-    if not await aiofiles.ospath.isfile(full_addon_file_path):
-        logger.warning(
-            "API Install Addon '%s': Addon file '%s' not found at '%s'.",
-            server_name,
-            selected_filename,
-            full_addon_file_path,
-        )
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND,
-            detail=f"Addon file '{selected_filename}' not found for import.",
-        )
 
     task_id = await app_context.task_manager.run_task(
         addon_api.import_addon,

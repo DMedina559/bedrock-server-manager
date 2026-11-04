@@ -15,8 +15,9 @@ from ...context import AppContext
 from ...state.updates import AccountPatch
 from ..access_metadata import describe_access
 from ..access_policy import Permission, policy_for
+from ..authorization import current_authorization
 from ..deps import get_app_context
-from ..deps.auth import no_store, require_permissions
+from ..deps.auth import no_store, require_permissions, require_recent_session
 from ..schemas import (
     BaseApiResponse,
     ChangePasswordPayload,
@@ -42,12 +43,16 @@ async def get_account_api(
     ),
 ) -> CurrentAccountResponse:
     """Return the current user's account details and role-derived permissions."""
-    authorization = getattr(request.state, "authorization", None)
+    policy = policy_for(request)
+    authorization = current_authorization.get() or getattr(
+        request.state, "authorization", None
+    )
     if authorization is None:
         return CurrentAccountResponse(
             **user.model_dump(),
-            permissions=sorted(policy_for(request).resolve(user.role)),
+            permissions=sorted(policy.resolve(user.role)),
         )
+    server_permissions = policy.server_permissions
     return CurrentAccountResponse(
         **user.model_dump(),
         permissions=sorted(authorization.permissions),
@@ -61,11 +66,11 @@ async def get_account_api(
         server_permissions={
             identity: sorted(
                 permission
-                for permission in authorization.permissions
+                for permission in authorization.permissions & server_permissions
                 if authorization.allows(permission, name)
             )
             for name, identity in authorization.servers.items()
-            if authorization.allows("servers:read", name)
+            if authorization.allows(Permission.SERVERS_READ, name)
         },
     )
 
@@ -149,9 +154,7 @@ async def post_change_password(
     """
     Changes the current user's password.
     """
-    await app_context.session_service.require_recent(
-        user, getattr(request.state, "session_id", None)
-    )
+    await require_recent_session(request, user, app_context)
     updated = await app_context.user_service.change_password(
         user.username,
         data.current_password.get_secret_value(),
@@ -165,23 +168,3 @@ async def post_change_password(
         )
 
     return BaseApiResponse(status="success", message="Password updated successfully")
-
-
-@router.get(
-    "/api/account/permissions",
-    operation_id="get_account_permissions",
-    response_model=list[str],
-)
-async def get_account_permissions(
-    request: Request,
-    user: UserResponse = Security(
-        require_permissions, scopes=[Permission.ACCOUNT_READ]
-    ),
-) -> list[str]:
-    """Return current role-derived capabilities, not resource-specific guarantees."""
-    authorization = getattr(request.state, "authorization", None)
-    return sorted(
-        authorization.permissions
-        if authorization is not None
-        else policy_for(request).resolve(user.role)
-    )
