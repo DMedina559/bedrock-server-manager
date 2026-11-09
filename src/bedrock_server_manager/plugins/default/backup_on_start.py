@@ -11,7 +11,7 @@ from pydantic import BaseModel, ConfigDict, Field
 from bedrock_server_manager import ExistingServerName, PluginBase, app_event
 from bedrock_server_manager.backups.contents import DEFAULT_COMPONENTS, BackupComponents
 from bedrock_server_manager.logging import log_operation_error
-from bedrock_server_manager.models import BackupAllRequest, SnapshotReuseRequest
+from bedrock_server_manager.models import CreateSnapshotRequest, SnapshotReuseRequest
 
 
 class PluginSettings(BaseModel):
@@ -123,9 +123,10 @@ class AutoBackupOnStart(PluginBase):
             timeout = await self.get_plugin_setting("timeout_seconds", default=300.0)
             self.logger.debug("Pre-start backup deadline: %.3f seconds", timeout)
             async with asyncio.timeout(timeout):
-                result = await self.api.backup_restore.backup_all(
-                    request=BackupAllRequest(
+                result = await self.api.backup_restore.create_server_backup(
+                    request=CreateSnapshotRequest(
                         server_name=request.server_name,
+                        purpose="pre_start",
                         mode=request.mode,
                         components=request.components,
                         encrypted=(

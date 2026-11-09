@@ -21,7 +21,7 @@ async def test_restore_rejects_unsafe_or_missing_files_and_enforces_roles(
             f"/api/server/{name}/backup/action",
             json={"backup_type": "all"},
         )
-    ).status_code == 403
+    ).status_code == 404
     assert (
         await auth_client.post(f"/api/server/{name}/backups", json={})
     ).status_code == 403
@@ -52,6 +52,9 @@ async def test_http_create_inspect_plan_restore(
     created = await task_result(
         client, app_context, await client.post(base, json={}), wait_for_task
     )
+    assert "manifest" not in created["backup"]
+    assert "stage_durations_ms" not in created["backup"]
+    assert created["backup"]["file_count"] > 0
     identifier = created["backup"]["backup_id"]
     assert identifier.endswith(".bsmbackup")
     inspected = await task_result(

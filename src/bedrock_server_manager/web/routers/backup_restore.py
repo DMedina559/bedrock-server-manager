@@ -7,7 +7,6 @@ from typing import Any, Callable
 import aiofiles.ospath
 from fastapi import (
     APIRouter,
-    Body,
     Depends,
     File,
     Form,
@@ -25,13 +24,9 @@ from ...backups.models import ConfigComponent
 from ...context import AppContext
 from ...models import (
     APIRequest,
-    BackupActionPayload,
-    BackupAllRequest,
-    BackupConfigFileRequest,
     BackupHealthResponse,
     BackupKeyInfo,
     BackupKeysInfo,
-    BackupWorldRequest,
     CleanupBackupDestinationRequest,
     CreateSnapshotRequest,
     DeleteSnapshotRequest,
@@ -177,76 +172,6 @@ async def get_list_server_backups(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail="Unexpected backup data format.",
         )
-
-
-@router.post(
-    "/api/server/{server_name}/backup/action",
-    operation_id="create_backup",
-    response_model=TaskAcceptedResponse,
-    status_code=status.HTTP_202_ACCEPTED,
-)
-async def post_backup_action(
-    payload: BackupActionPayload = Body(...),
-    current_user: UserResponse = Security(
-        require_permissions, scopes=[Permission.BACKUPS_CREATE]
-    ),
-    server_name: str = Depends(validate_server_exists),
-    app_context: AppContext = Depends(get_app_context),
-) -> TaskAcceptedResponse:
-    """Initiates a background task to perform a backup action for a specific server.
-
-    Valid backup types are "world", "config" (requires ``file_to_backup`` in payload),
-    and "all".
-    """
-    identity = current_user.username
-    logger.info(
-        "Backup action '%s' requested for server '%s' by user '%s'.",
-        payload.backup_type,
-        server_name,
-        identity,
-    )
-    valid_types = ["world", "config", "all"]
-    if payload.backup_type.lower() not in valid_types:
-        raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
-            detail=f"Invalid 'backup_type'. Must be one of: {valid_types}.",
-        )
-
-    if payload.backup_type.lower() == "config" and (
-        not payload.file_to_backup or not isinstance(payload.file_to_backup, str)
-    ):
-        raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
-            detail="Missing or invalid 'file_to_backup' for config backup type.",
-        )
-
-    target_func: Callable[..., Any]
-    request: APIRequest
-    if payload.backup_type.lower() == "world":
-        target_func = backup_restore_api.backup_world
-        request = BackupWorldRequest(server_name=server_name)
-    elif payload.backup_type.lower() == "config":
-        target_func = backup_restore_api.backup_config_file
-        assert payload.file_to_backup is not None
-        request = BackupConfigFileRequest(
-            server_name=server_name, file_to_backup=payload.file_to_backup.strip()
-        )
-    else:
-        target_func = backup_restore_api.backup_all
-        request = BackupAllRequest(server_name=server_name)
-
-    task_id = await app_context.task_manager.run_task(
-        target_func,
-        username=current_user.username,
-        request=request,
-        app_context=app_context,
-    )
-
-    return TaskAcceptedResponse(
-        status="accepted",
-        message=f"Backup action '{payload.backup_type}' for server '{server_name}' initiated in background.",
-        task_id=task_id,
-    )
 
 
 @router.post(

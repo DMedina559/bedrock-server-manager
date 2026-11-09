@@ -242,7 +242,6 @@ ROLE_BASELINE = {
     "get_raw_properties": ["moderator", "admin"],
     "prune_backups": ["moderator", "admin"],
     "list_server_backups": ["moderator", "admin"],
-    "create_backup": ["moderator", "admin"],
     "restore_backup": ["moderator", "admin"],
     "list_server_snapshots": ["moderator", "admin"],
     "create_server_snapshot": ["moderator", "admin"],

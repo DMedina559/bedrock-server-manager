@@ -141,22 +141,6 @@ class ServerBackups(UnifiedServerBackups):
                 failures=failures,
             )
 
-    async def backup_world(self) -> str:
-        """Compatibility alias: create the unified archive, including configuration."""
-        snapshot = await self.create_snapshot()
-        return os.path.join(self._directory(), snapshot.filename)
-
-    async def backup_config(self, filename: str) -> str | None:
-        """Compatibility alias: capture a unified archive instead of a loose file."""
-        if filename not in CONFIG_FILES:
-            raise UserInputError("Unsupported server configuration file.")
-        if not await aiofiles.ospath.isfile(
-            os.path.join(self.server.paths.server_dir, filename)
-        ):
-            return None
-        snapshot = await self.create_snapshot()
-        return os.path.join(self._directory(), snapshot.filename)
-
     @staticmethod
     def _config_filename(path: str) -> str:
         match = CONFIG_BACKUP_PATTERN.fullmatch(os.path.basename(path))

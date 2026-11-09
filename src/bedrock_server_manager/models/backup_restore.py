@@ -6,6 +6,7 @@ from pydantic import Field, SecretStr, model_validator
 
 from ..backups.contents import BackupComponents
 from ..backups.models import (
+    BackupCreated,
     BackupHealth,
     BackupKeyInfo,
     BackupKeysInfo,
@@ -29,18 +30,6 @@ from .common import (
     ServerName,
     SuccessResponse,
 )
-
-
-class BackupActionPayload(APIRequest):
-    """Request model for triggering a backup action."""
-
-    backup_type: str = Field(
-        ..., description="Type of backup: 'world', 'config', or 'all'."
-    )
-    file_to_backup: str | None = Field(
-        default=None,
-        description="Name of config file if backup_type is 'config' (e.g., 'server.properties').",
-    )
 
 
 class RestoreActionPayload(APIRequest):
@@ -105,39 +94,6 @@ class ListBackupFilesResponse(SuccessResponse):
     backups: list[str] | dict[str, list[str]]
 
 
-class BackupWorldRequest(APIRequest):
-    server_name: ServerName
-
-
-class BackupWorldResponse(ActionResponse):
-    server_name: ServerName
-
-
-class BackupConfigFileRequest(APIRequest):
-    server_name: ServerName
-    file_to_backup: NonEmptyStr
-
-
-class BackupConfigFileResponse(ActionResponse):
-    server_name: ServerName
-
-
-class BackupAllRequest(APIRequest):
-    server_name: ServerName
-    mode: Literal["world", "selected", "full"] | None = Field(
-        default=None, exclude=True
-    )
-    components: BackupComponents | None = Field(default=None, exclude=True)
-    encrypted: bool | None = Field(default=None, exclude=True)
-
-    _validate_selection = model_validator(mode="after")(validate_selection_options)
-
-
-class BackupAllResponse(ActionResponse):
-    server_name: ServerName
-    details: ComponentResults = Field(default_factory=ComponentResults)
-
-
 class RestoreAllRequest(APIRequest):
     server_name: ServerName
     stop_start_server: bool = True
@@ -188,7 +144,7 @@ class CreateSnapshotRequest(APIRequest):
         default=None, exclude=True
     )
     components: BackupComponents | None = Field(default=None, exclude=True)
-    purpose: Literal["manual", "scheduled"] = "manual"
+    purpose: Literal["manual", "scheduled", "pre_start", "pre_update"] = "manual"
     schedule_slot: str | None = Field(default=None, max_length=128)
 
     _validate_selection = model_validator(mode="after")(validate_selection_options)
@@ -196,7 +152,7 @@ class CreateSnapshotRequest(APIRequest):
 
 class CreateSnapshotResponse(ActionResponse):
     server_name: ServerName
-    backup: BackupSummary
+    backup: BackupCreated
 
 
 class ListSnapshotsRequest(APIRequest):
@@ -302,7 +258,6 @@ class RecoveryReportResponse(SuccessResponse):
 
 
 __all__ = [
-    "BackupActionPayload",
     "RestoreActionPayload",
     "SnapshotCreatePayload",
     "SnapshotInspectPayload",
@@ -315,12 +270,6 @@ __all__ = [
     "BackupKeysInfo",
     "ListBackupFilesRequest",
     "ListBackupFilesResponse",
-    "BackupWorldRequest",
-    "BackupWorldResponse",
-    "BackupConfigFileRequest",
-    "BackupConfigFileResponse",
-    "BackupAllRequest",
-    "BackupAllResponse",
     "RestoreAllRequest",
     "RestoreAllResponse",
     "RestoreWorldRequest",

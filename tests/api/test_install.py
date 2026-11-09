@@ -82,3 +82,22 @@ async def test_update_downloads_real_archive_and_preserves_world(
     assert response.new_version == "1.26.45.1"
     assert marker.read_text() == "keep world"
     assert list(Path(server.backups.server_backup_directory).glob("*.bsmbackup"))
+
+
+async def test_failed_pre_update_backup_prevents_install(
+    app_context, populated_server, download_api, monkeypatch
+):
+    server = populated_server
+    await server.set_version("1.20.1.1")
+
+    async def failed_capture(**kwargs):
+        assert kwargs["purpose"] == "pre_update"
+        raise OSError("Backup disk unavailable")
+
+    monkeypatch.setattr(server.backups, "create_snapshot", failed_capture)
+    with pytest.raises(OSError, match="Backup disk unavailable"):
+        await update_server(
+            UpdateServerRequest(server_name=server.server_name, send_message=False),
+            app_context=app_context,
+        )
+    assert await server.get_version() == "1.20.1.1"

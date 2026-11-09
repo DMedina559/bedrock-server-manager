@@ -6,7 +6,7 @@ from pathlib import Path
 import pytest
 from pydantic import ValidationError
 
-from bedrock_server_manager.api.backup_restore import backup_all
+from bedrock_server_manager.api.backup_restore import create_server_backup
 from bedrock_server_manager.api.install import update_server
 from bedrock_server_manager.api.server import start_server, stop_server
 from bedrock_server_manager.error import APICancelledError
@@ -123,6 +123,7 @@ async def test_explicit_update_restart_does_not_reenter_update(
     assert await server.is_running()
     assert len(updates) == len(observed) == len(backups(server)) == 1
     assert updates[0].sequence_id == observed[0].sequence_id
+    assert observed[0].purpose == "pre_update"
 
 
 async def test_cancelled_backup_prevents_update(
@@ -155,7 +156,9 @@ async def test_ineligible_backup_does_not_suppress_start_backup(
     plugin = await load_default(plugin_factory, "backup_on_start")
     await plugin.set_plugin_setting("backup_mode", "selected")
     if kind == "previous_sequence":
-        await backup_all({"server_name": server.server_name}, app_context=app_context)
+        await create_server_backup(
+            {"server_name": server.server_name}, app_context=app_context
+        )
     else:
 
         async def earlier_backup(**data):
@@ -164,7 +167,7 @@ async def test_ineligible_backup_does_not_suppress_start_backup(
                 contents = path.read_text()
                 path.unlink()
                 try:
-                    await server.backups.backup_all_data()
+                    await server.backups.create_snapshot()
                 finally:
                     path.write_text(contents)
             else:
@@ -177,7 +180,7 @@ async def test_ineligible_backup_does_not_suppress_start_backup(
                         "bedrock_server_manager.backups.server.copy_source", fail_copy
                     )
                     with pytest.raises(OSError):
-                        await server.backups.backup_all_data()
+                        await server.backups.create_snapshot()
 
         plugin.api.events.listen("before_server_start", earlier_backup, priority=50)
     await start_server({"server_name": server.server_name}, app_context=app_context)
@@ -200,16 +203,18 @@ async def test_failed_backup_and_listener_failure_have_distinct_outcomes(
                 "bedrock_server_manager.backups.server.copy_source", fail_world
             )
             with pytest.raises(OSError):
-                await server.backups.backup_all_data()
+                await server.backups.create_snapshot()
         assert service.results()[0].status == "failed"
         assert service.results()[0].outcome == "failed"
-        await server.backups.backup_all_data()
+        await server.backups.create_snapshot()
 
         async def fail_listener(**data):
             raise RuntimeError("Notification failure")
 
         plugin.api.events.listen("after_backup", fail_listener)
-        await backup_all({"server_name": server.server_name}, app_context=app_context)
+        await create_server_backup(
+            {"server_name": server.server_name}, app_context=app_context
+        )
         assert (
             service.results(OperationResultQuery(name="backup.create"))[-1].outcome
             == "completed"
@@ -303,7 +308,7 @@ async def test_other_server_backup_does_not_satisfy_start(
     )
     await load_default(plugin_factory, "backup_on_start")
     with app_context.operations.scope("batch"):
-        await other.backups.backup_all_data()
+        await other.backups.create_snapshot()
         await start_server(
             {"server_name": populated_server.server_name}, app_context=app_context
         )
@@ -403,7 +408,9 @@ async def test_complete_snapshot_with_absent_components_is_reused(
         (Path(server.paths.server_dir) / name).unlink(missing_ok=True)
     await load_default(plugin_factory, "backup_on_start")
     with app_context.operations.scope("batch"):
-        await backup_all({"server_name": server.server_name}, app_context=app_context)
+        await create_server_backup(
+            {"server_name": server.server_name}, app_context=app_context
+        )
         await start_server({"server_name": server.server_name}, app_context=app_context)
     assert len(backups(server)) == 1
 

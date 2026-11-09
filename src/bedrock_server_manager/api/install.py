@@ -153,17 +153,14 @@ async def update_server(
             app_context=app_context,
         ):
             logger.debug("Backing up '%s' before update...", server_name)
-            from ..models.backup_restore import BackupAllRequest
-            from .backup_restore import backup_all
+            from ..models.backup_restore import CreateSnapshotRequest
+            from .backup_restore import create_server_backup
 
-            backup = await backup_all(
-                BackupAllRequest(server_name=server_name), app_context=app_context
+            backup = await create_server_backup(
+                CreateSnapshotRequest(server_name=server_name, purpose="pre_update"),
+                app_context=app_context,
             )
-            if (
-                backup.status != "success"
-                or backup.details is None
-                or backup.details.outcome != "completed"
-            ):
+            if backup.status != "success":
                 from ..error import IncompleteOperationError
 
                 raise IncompleteOperationError(

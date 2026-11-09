@@ -1,5 +1,4 @@
 from ...models.backup_restore import (
-    BackupActionPayload,
     BackupKeyInfo,
     BackupKeysInfo,
     DestinationCleanupPayload,
@@ -13,7 +12,6 @@ from ...models.backup_restore import (
 )
 
 __all__ = [
-    "BackupActionPayload",
     "BackupKeyInfo",
     "BackupKeysInfo",
     "DestinationCleanupPayload",

@@ -210,19 +210,18 @@ async def some_function(self, *, request, server_name, new_players_data=None, re
 ### Listener Signature:
 ```python
 @app_event("after_backup")
-async def some_function(self, *, request, server_name, result, file_to_backup=None, encrypted=None, purpose=None, schedule_slot=None, **kwargs):
+async def some_function(self, request, server_name, encrypted, purpose, schedule_slot, result, **kwargs):
     pass
 ```
 ### Available `kwargs`:
 | Key Name | Type |
 |----------|------|
-| `request` | `BackupWorldRequest | BackupConfigFileRequest | BackupAllRequest | CreateSnapshotRequest` |
+| `request` | `CreateSnapshotRequest` |
 | `server_name` | `str` |
-| `result` | `BackupWorldResponse | BackupConfigFileResponse | BackupAllResponse | CreateSnapshotResponse` |
-| `file_to_backup` | `str` |
 | `encrypted` | `bool | None` |
-| `purpose` | `Literal['manual', 'scheduled']` |
+| `purpose` | `Literal['manual', 'scheduled', 'pre_start', 'pre_update']` |
 | `schedule_slot` | `str | None` |
+| `result` | `CreateSnapshotResponse` |
 | `_triggering_plugin` | `str` (core, or plugin name) |
 
 ---
@@ -1115,17 +1114,16 @@ async def some_function(self, *, request, server_name, new_players_data=None, pl
 ### Listener Signature:
 ```python
 @app_event("before_backup")
-async def some_function(self, *, request, server_name, file_to_backup=None, encrypted=None, purpose=None, schedule_slot=None, event, **kwargs):
+async def some_function(self, request, server_name, encrypted, purpose, schedule_slot, event, **kwargs):
     pass
 ```
 ### Available `kwargs`:
 | Key Name | Type |
 |----------|------|
-| `request` | `BackupWorldRequest | BackupConfigFileRequest | BackupAllRequest | CreateSnapshotRequest` |
+| `request` | `CreateSnapshotRequest` |
 | `server_name` | `str` |
-| `file_to_backup` | `str` |
 | `encrypted` | `bool | None` |
-| `purpose` | `Literal['manual', 'scheduled']` |
+| `purpose` | `Literal['manual', 'scheduled', 'pre_start', 'pre_update']` |
 | `schedule_slot` | `str | None` |
 | `event` | `CancellableEvent` |
 | `_triggering_plugin` | `str` (core, or plugin name) |
