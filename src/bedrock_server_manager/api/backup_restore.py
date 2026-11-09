@@ -4,10 +4,10 @@
 import asyncio
 import logging
 import os
-from typing import Literal
 
 import aiofiles.ospath
 
+from ..backups.models import BackupCreated
 from ..context import AppContext
 from ..error import (
     AppFileNotFoundError,
@@ -19,13 +19,7 @@ from ..events import trigger_event
 from ..events.operations import OperationName, track_operation
 from ..logging import log_operation_error
 from ..models.backup_restore import (
-    BackupAllRequest,
-    BackupAllResponse,
-    BackupConfigFileRequest,
-    BackupConfigFileResponse,
     BackupHealthResponse,
-    BackupWorldRequest,
-    BackupWorldResponse,
     CleanupBackupDestinationRequest,
     CleanupBackupDestinationResponse,
     CreateSnapshotRequest,
@@ -93,191 +87,6 @@ async def list_backup_files(
             error=e,
         )
         raise
-
-
-@api_method("backup_world", required_scope=PluginScope.BACKUPS_CREATE)
-@track_operation(OperationName.BACKUP_REQUEST)
-@trigger_event(
-    before="before_backup",
-    after="after_backup",
-    identity_keys=("server_name",),
-)
-async def backup_world(
-    request: BackupWorldRequest, *, app_context: AppContext
-) -> BackupWorldResponse:
-    """Create a backup of the server's world directory."""
-    server_name = request.server_name
-    server = app_context.get_server(server_name)
-    try:
-        await server.operation_lock.acquire(timeout=300)
-    except asyncio.TimeoutError:
-        logger.warning(
-            "An operation for '%s' is already in progress. Skipping concurrent world backup.",
-            server_name,
-        )
-        return BackupWorldResponse(
-            server_name=server_name,
-            status="skipped",
-            message="Backup/restore operation already in progress.",
-        )
-    try:
-        logger.debug("Initiating world backup for server '%s'.", server_name)
-        try:
-            backup_file = await server.backups.backup_world()
-            return BackupWorldResponse(
-                server_name=server_name,
-                status="success",
-                message=f"World backup '{os.path.basename(str(backup_file))}' created successfully for server '{server_name}'.",
-            )
-        except BSMError as e:
-            log_operation_error(
-                logger, "World backup failed for '%s': %s", server_name, e, error=e
-            )
-            raise
-        except Exception as e:
-            log_operation_error(
-                logger,
-                "Unexpected error during world backup for '%s': %s",
-                server_name,
-                e,
-                error=e,
-            )
-            raise
-    finally:
-        server.operation_lock.release()
-
-
-@api_method("backup_config_file", required_scope=PluginScope.BACKUPS_CREATE)
-@track_operation(OperationName.BACKUP_REQUEST)
-@trigger_event(
-    before="before_backup",
-    after="after_backup",
-    identity_keys=("server_name",),
-)
-async def backup_config_file(
-    request: BackupConfigFileRequest, *, app_context: AppContext
-) -> BackupConfigFileResponse:
-    """Create a backup of a specific server configuration file."""
-    server_name = request.server_name
-    file_to_backup = request.file_to_backup
-    server = app_context.get_server(server_name)
-    try:
-        await server.operation_lock.acquire(timeout=300)
-    except asyncio.TimeoutError:
-        logger.warning(
-            "An operation for '%s' is already in progress. Skipping concurrent config backup.",
-            server_name,
-        )
-        return BackupConfigFileResponse(
-            server_name=server_name,
-            status="skipped",
-            message="Backup/restore operation already in progress.",
-        )
-    try:
-        filename_base = os.path.basename(file_to_backup)
-        logger.debug(
-            "Initiating config file backup for '%s' on server '%s'.",
-            filename_base,
-            server_name,
-        )
-        try:
-            backup_file = await server.backups.backup_config(filename_base)
-            if backup_file is None:
-                raise AppFileNotFoundError(filename_base, "Server configuration file")
-            return BackupConfigFileResponse(
-                server_name=server_name,
-                status="success",
-                message=f"Config file '{filename_base}' backed up as '{os.path.basename(str(backup_file))}' successfully.",
-            )
-        except (BSMError, FileNotFoundError) as e:
-            log_operation_error(
-                logger,
-                "Config file backup failed for '%s' on '%s': %s",
-                filename_base,
-                server_name,
-                e,
-                error=e,
-            )
-            raise
-        except Exception as e:
-            log_operation_error(
-                logger,
-                "Unexpected error during config file backup for '%s': %s",
-                server_name,
-                e,
-                error=e,
-            )
-            raise
-    finally:
-        server.operation_lock.release()
-
-
-@api_method("backup_all", required_scope=PluginScope.BACKUPS_CREATE)
-@track_operation(OperationName.BACKUP_REQUEST)
-@trigger_event(
-    before="before_backup",
-    after="after_backup",
-    identity_keys=("server_name",),
-)
-async def backup_all(
-    request: BackupAllRequest, *, app_context: AppContext
-) -> BackupAllResponse:
-    """Performs a full backup of the server's world and configuration files."""
-    server_name = request.server_name
-    server = app_context.get_server(server_name)
-    try:
-        await server.operation_lock.acquire(timeout=300)
-    except asyncio.TimeoutError:
-        logger.warning(
-            "An operation for '%s' is already in progress. Skipping concurrent full backup.",
-            server_name,
-        )
-        return BackupAllResponse(
-            server_name=server_name,
-            status="skipped",
-            message="Backup/restore operation already in progress.",
-        )
-    try:
-        logger.debug(
-            "Initiating backup with requested content selection for server '%s'.",
-            server_name,
-        )
-        try:
-            sequence = app_context.operations.sequence()
-            names = {item.name for item in sequence.ancestry} if sequence else set()
-            purpose: Literal["manual", "pre_start", "pre_update"] = (
-                "pre_update"
-                if OperationName.SERVER_UPDATE in names
-                else "pre_start" if OperationName.SERVER_START in names else "manual"
-            )
-            backup_results = await server.backups.backup_all_data(
-                purpose=purpose,
-                mode=request.mode,
-                components=request.components,
-                encrypted=request.encrypted,
-            )
-            return BackupAllResponse(
-                server_name=server_name,
-                status="partial" if backup_results.outcome == "partial" else "success",
-                message=f"Backup for '{server_name}' {backup_results.outcome}.",
-                details=backup_results,
-            )
-        except BSMError as e:
-            log_operation_error(
-                logger, "Full backup failed for '%s': %s", server_name, e, error=e
-            )
-            raise
-        except Exception as e:
-            log_operation_error(
-                logger,
-                "Unexpected error during full backup for '%s': %s",
-                server_name,
-                e,
-                error=e,
-            )
-            raise
-    finally:
-        server.operation_lock.release()
 
 
 @api_method("restore_all", required_scope=PluginScope.BACKUPS_RESTORE)
@@ -563,18 +372,26 @@ async def create_server_backup(
 ) -> CreateSnapshotResponse:
     """Capture one coherent, optionally encrypted server archive."""
     server = app_context.get_server(request.server_name)
+    sequence = app_context.operations.sequence()
+    names = {item.name for item in sequence.ancestry} if sequence else set()
+    purpose = request.purpose
+    if purpose in {"manual", "pre_start"}:
+        if OperationName.SERVER_UPDATE in names:
+            purpose = "pre_update"
+        elif OperationName.SERVER_START in names:
+            purpose = "pre_start"
     snapshot = await server.backups.create_snapshot(
         encrypted=request.encrypted,
         mode=request.mode,
         components=request.components,
-        purpose=request.purpose,
+        purpose=purpose,
         _schedule_slot=request.schedule_slot,
         progress=app_context.task_manager.report_stage,
     )
     return CreateSnapshotResponse(
         server_name=request.server_name,
         message="Server backup created.",
-        backup=snapshot,
+        backup=BackupCreated.from_summary(snapshot),
     )
 
 

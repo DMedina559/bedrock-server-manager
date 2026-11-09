@@ -317,7 +317,7 @@ async def test_granular_capability_scopes(app_context, plugin_factory):
         AddPlayersManuallyRequest,
         AddServerBanRequest,
         AddToAllowlistRequest,
-        BackupWorldRequest,
+        CreateSnapshotRequest,
         EnableAddonRequest,
         ExportWorldRequest,
         GetAllKnownPlayersRequest,
@@ -474,8 +474,8 @@ class UnscopedPlugin(PluginBase):
         )
 
     with pytest.raises(PermissionError, match="backups:create"):
-        await unscoped_plugin.api.backup_restore.backup_world(
-            BackupWorldRequest(server_name="test")
+        await unscoped_plugin.api.backup_restore.create_server_backup(
+            CreateSnapshotRequest(server_name="test")
         )
 
     with pytest.raises(PermissionError, match="backups:restore"):

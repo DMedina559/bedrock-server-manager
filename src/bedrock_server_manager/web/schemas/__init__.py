@@ -9,7 +9,6 @@ from .auth import (
     UserLoginPayload,
 )
 from .backup import (
-    BackupActionPayload,
     BackupKeyInfo,
     BackupKeysInfo,
     DestinationCleanupPayload,
@@ -93,7 +92,6 @@ __all__ = [
     "AllowlistRemovePayload",
     "PlayerPermissionPayload",
     "PermissionsSetPayload",
-    "BackupActionPayload",
     "BackupKeyInfo",
     "BackupKeysInfo",
     "RestoreActionPayload",

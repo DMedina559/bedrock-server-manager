@@ -7,7 +7,7 @@ from unittest.mock import AsyncMock
 import pytest
 from pydantic import ValidationError
 
-from bedrock_server_manager.api.backup_restore import backup_all
+from bedrock_server_manager.api.backup_restore import create_server_backup
 from bedrock_server_manager.backups.models import BASE_COMPONENTS
 from bedrock_server_manager.backups.recovery import RestoreJournal
 from bedrock_server_manager.backups.selection import selection
@@ -16,7 +16,7 @@ from bedrock_server_manager.events.operations import OperationName
 from bedrock_server_manager.web.schemas.backup import SnapshotCreatePayload
 
 
-async def test_capture_boundaries_sequence_reuse_and_legacy_events(
+async def test_capture_boundaries_sequence_reuse_and_backup_events(
     populated_server, app_context
 ):
     server = populated_server
@@ -58,14 +58,14 @@ async def test_capture_boundaries_sequence_reuse_and_legacy_events(
             mode="selected", components=["server.properties"]
         )
 
-    # Legacy backup event kwargs preserve 4.0 shape
+    # Current backup API dispatches the typed request and identity
     seen = []
 
-    async def before(*, request, server_name, event):
+    async def before(*, request, server_name, event, **kwargs):
         seen.append((server_name, request.mode))
 
     app_context.events.subscribe("before_backup", before, owner="core:test")
-    await backup_all(
+    await create_server_backup(
         {"server_name": server.server_name, "mode": "world"},
         app_context=app_context,
     )

@@ -1,7 +1,6 @@
 from pathlib import Path
 
 from bedrock_server_manager.api.backup_restore import (
-    backup_all,
     create_server_backup,
     inspect_server_backup,
     list_server_snapshots,
@@ -9,7 +8,7 @@ from bedrock_server_manager.api.backup_restore import (
     prune_old_backups,
     restore_server_snapshot,
 )
-from bedrock_server_manager.api.models import BackupAllRequest, PruneOldBackupsRequest
+from bedrock_server_manager.api.models import PruneOldBackupsRequest
 from bedrock_server_manager.api.models.backup_restore import (
     CreateSnapshotRequest,
     InspectSnapshotRequest,
@@ -19,23 +18,21 @@ from bedrock_server_manager.api.models.backup_restore import (
 )
 
 
-async def test_unified_api_round_trip_alias_and_pruning(app_context, populated_server):
+async def test_unified_api_round_trip_and_pruning(app_context, populated_server):
     name = populated_server.server_name
 
-    # Prunes unified archives and legacy backup_all alias uses one archive
+    # Prune unified archives
     await populated_server.settings.set("retention.backups", 3)
     for _ in range(2):
         await populated_server.backups.create_snapshot()
-    alias_res = await backup_all(
-        BackupAllRequest(server_name=name),
+    created = await create_server_backup(
+        CreateSnapshotRequest(server_name=name),
         app_context=app_context,
     )
-    paths = {
-        item.path
-        for item in alias_res.details.components.values()
-        if item.outcome == "completed"
-    }
-    assert len(paths) == 1 and next(iter(paths)).endswith(".bsmbackup")
+    assert created.backup.filename.endswith(".bsmbackup")
+    assert created.backup.file_count > 0
+    assert "world" in created.backup.components
+    assert "manifest" not in created.backup.model_dump()
 
     await populated_server.settings.set("retention.backups", 1)
     prune_res = await prune_old_backups(

@@ -21,9 +21,9 @@ def test_production_api_callers_match_contracts():
 @pytest.mark.parametrize(
     "call",
     [
-        "await api.backup_world(server_name='example', app_context=context)",
-        "target = api.backup_world\nawait manager.run_task(target, server_name='example', app_context=context)",
-        "await manager.run_task(api.backup_world, **legacy_kwargs)",
+        "await api.create_server_backup(server_name='example', app_context=context)",
+        "target = api.create_server_backup\nawait manager.run_task(target, server_name='example', app_context=context)",
+        "await manager.run_task(api.create_server_backup, **legacy_kwargs)",
     ],
 )
 def test_checker_detects_legacy_and_unverifiable_dispatch(call):

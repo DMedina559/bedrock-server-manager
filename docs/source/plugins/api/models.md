@@ -364,220 +364,6 @@ Schemas are listed once. Local `$defs` references identify other models on this 
 }
 ```
 
-## BackupAllRequest
-
-```json
-{
-  "additionalProperties": false,
-  "properties": {
-    "components": {
-      "anyOf": [
-        {
-          "items": {
-            "enum": [
-              "world",
-              "server.properties",
-              "allowlist.json",
-              "permissions.json",
-              "script_config",
-              "bsm_settings",
-              "behavior_packs",
-              "resource_packs",
-              "development_behavior_packs",
-              "development_resource_packs"
-            ],
-            "type": "string"
-          },
-          "minItems": 1,
-          "type": "array",
-          "uniqueItems": true,
-          "x-bsm-choice-labels": {
-            "allowlist.json": "Allowlist",
-            "behavior_packs": "Server behavior packs",
-            "bsm_settings": "BSM server settings",
-            "development_behavior_packs": "Development behavior packs",
-            "development_resource_packs": "Development resource packs",
-            "permissions.json": "Player permissions",
-            "resource_packs": "Server resource packs",
-            "script_config": "Script configuration",
-            "server.properties": "Server properties",
-            "world": "Active world (includes world packs)"
-          },
-          "x-bsm-default-components": [
-            "world",
-            "server.properties",
-            "allowlist.json",
-            "permissions.json",
-            "script_config",
-            "bsm_settings"
-          ]
-        },
-        {
-          "type": "null"
-        }
-      ],
-      "default": null,
-      "title": "Components"
-    },
-    "encrypted": {
-      "anyOf": [
-        {
-          "type": "boolean"
-        },
-        {
-          "type": "null"
-        }
-      ],
-      "default": null,
-      "title": "Encrypted"
-    },
-    "mode": {
-      "anyOf": [
-        {
-          "enum": [
-            "world",
-            "selected",
-            "full"
-          ],
-          "type": "string"
-        },
-        {
-          "type": "null"
-        }
-      ],
-      "default": null,
-      "title": "Mode"
-    },
-    "server_name": {
-      "examples": [
-        "example"
-      ],
-      "minLength": 1,
-      "pattern": "^[a-zA-Z0-9_-]+$",
-      "title": "Server Name",
-      "type": "string"
-    }
-  },
-  "required": [
-    "server_name"
-  ],
-  "title": "BackupAllRequest",
-  "type": "object"
-}
-```
-
-## BackupAllResponse
-
-```json
-{
-  "additionalProperties": false,
-  "properties": {
-    "details": {
-      "$ref": "#/$defs/ComponentResults"
-    },
-    "message": {
-      "title": "Message",
-      "type": "string"
-    },
-    "server_name": {
-      "examples": [
-        "example"
-      ],
-      "minLength": 1,
-      "pattern": "^[a-zA-Z0-9_-]+$",
-      "title": "Server Name",
-      "type": "string"
-    },
-    "status": {
-      "default": "success",
-      "enum": [
-        "success",
-        "skipped",
-        "partial"
-      ],
-      "title": "Status",
-      "type": "string"
-    }
-  },
-  "required": [
-    "message",
-    "server_name"
-  ],
-  "title": "BackupAllResponse",
-  "type": "object"
-}
-```
-
-## BackupConfigFileRequest
-
-```json
-{
-  "additionalProperties": false,
-  "properties": {
-    "file_to_backup": {
-      "minLength": 1,
-      "pattern": ".*\\S.*",
-      "title": "File To Backup",
-      "type": "string"
-    },
-    "server_name": {
-      "examples": [
-        "example"
-      ],
-      "minLength": 1,
-      "pattern": "^[a-zA-Z0-9_-]+$",
-      "title": "Server Name",
-      "type": "string"
-    }
-  },
-  "required": [
-    "server_name",
-    "file_to_backup"
-  ],
-  "title": "BackupConfigFileRequest",
-  "type": "object"
-}
-```
-
-## BackupConfigFileResponse
-
-```json
-{
-  "additionalProperties": false,
-  "properties": {
-    "message": {
-      "title": "Message",
-      "type": "string"
-    },
-    "server_name": {
-      "examples": [
-        "example"
-      ],
-      "minLength": 1,
-      "pattern": "^[a-zA-Z0-9_-]+$",
-      "title": "Server Name",
-      "type": "string"
-    },
-    "status": {
-      "default": "success",
-      "enum": [
-        "success",
-        "skipped",
-        "partial"
-      ],
-      "title": "Status",
-      "type": "string"
-    }
-  },
-  "required": [
-    "message",
-    "server_name"
-  ],
-  "title": "BackupConfigFileResponse",
-  "type": "object"
-}
-```
-
 ## BackupCopy
 
 ```json
@@ -640,6 +426,86 @@ Schemas are listed once. Local `$defs` references identify other models on this 
     "status"
   ],
   "title": "BackupCopy",
+  "type": "object"
+}
+```
+
+## BackupCreated
+
+```json
+{
+  "additionalProperties": false,
+  "description": "Compact creation receipt; inspect the archive for the full inventory.",
+  "properties": {
+    "backup_id": {
+      "title": "Backup Id",
+      "type": "string"
+    },
+    "components": {
+      "items": {
+        "enum": [
+          "server_directory",
+          "world",
+          "server.properties",
+          "allowlist.json",
+          "permissions.json",
+          "script_config",
+          "bsm_settings",
+          "behavior_packs",
+          "resource_packs",
+          "development_behavior_packs",
+          "development_resource_packs"
+        ],
+        "type": "string"
+      },
+      "title": "Components",
+      "type": "array"
+    },
+    "created_at": {
+      "anyOf": [
+        {
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "title": "Created At"
+    },
+    "encrypted": {
+      "title": "Encrypted",
+      "type": "boolean"
+    },
+    "file_count": {
+      "title": "File Count",
+      "type": "integer"
+    },
+    "filename": {
+      "title": "Filename",
+      "type": "string"
+    },
+    "size": {
+      "title": "Size",
+      "type": "integer"
+    },
+    "warnings": {
+      "items": {
+        "type": "string"
+      },
+      "title": "Warnings",
+      "type": "array"
+    }
+  },
+  "required": [
+    "backup_id",
+    "filename",
+    "size",
+    "encrypted",
+    "components",
+    "file_count"
+  ],
+  "title": "BackupCreated",
   "type": "object"
 }
 ```
@@ -1332,69 +1198,6 @@ Schemas are listed once. Local `$defs` references identify other models on this 
 }
 ```
 
-## BackupWorldRequest
-
-```json
-{
-  "additionalProperties": false,
-  "properties": {
-    "server_name": {
-      "examples": [
-        "example"
-      ],
-      "minLength": 1,
-      "pattern": "^[a-zA-Z0-9_-]+$",
-      "title": "Server Name",
-      "type": "string"
-    }
-  },
-  "required": [
-    "server_name"
-  ],
-  "title": "BackupWorldRequest",
-  "type": "object"
-}
-```
-
-## BackupWorldResponse
-
-```json
-{
-  "additionalProperties": false,
-  "properties": {
-    "message": {
-      "title": "Message",
-      "type": "string"
-    },
-    "server_name": {
-      "examples": [
-        "example"
-      ],
-      "minLength": 1,
-      "pattern": "^[a-zA-Z0-9_-]+$",
-      "title": "Server Name",
-      "type": "string"
-    },
-    "status": {
-      "default": "success",
-      "enum": [
-        "success",
-        "skipped",
-        "partial"
-      ],
-      "title": "Status",
-      "type": "string"
-    }
-  },
-  "required": [
-    "message",
-    "server_name"
-  ],
-  "title": "BackupWorldResponse",
-  "type": "object"
-}
-```
-
 ## BackupsDiagnostics
 
 ```json
@@ -2028,7 +1831,9 @@ Schemas are listed once. Local `$defs` references identify other models on this 
       "default": "manual",
       "enum": [
         "manual",
-        "scheduled"
+        "scheduled",
+        "pre_start",
+        "pre_update"
       ],
       "title": "Purpose",
       "type": "string"
@@ -2071,7 +1876,7 @@ Schemas are listed once. Local `$defs` references identify other models on this 
   "additionalProperties": false,
   "properties": {
     "backup": {
-      "$ref": "#/$defs/BackupSummary"
+      "$ref": "#/$defs/BackupCreated"
     },
     "message": {
       "title": "Message",

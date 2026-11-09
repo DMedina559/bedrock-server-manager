@@ -197,6 +197,44 @@ class BackupSummary(Record):
     error: str | None = None
 
 
+class BackupCreated(Record):
+    """Compact creation receipt; inspect the archive for the full inventory."""
+
+    backup_id: str
+    filename: str
+    created_at: str | None = None
+    size: int
+    encrypted: bool
+    components: list[Component]
+    file_count: int
+    warnings: list[str] = Field(default_factory=list)
+
+    @classmethod
+    def from_summary(cls, summary: BackupSummary) -> "BackupCreated":
+        manifest = summary.manifest
+        return cls(
+            backup_id=summary.backup_id,
+            filename=summary.filename,
+            created_at=(
+                manifest.created_at.isoformat() if manifest else summary.created_at
+            ),
+            size=summary.size,
+            encrypted=summary.encrypted,
+            components=(
+                [
+                    name
+                    for name, state in manifest.components.items()
+                    if state == "included"
+                ]
+                if manifest
+                else []
+            ),
+            file_count=len(manifest.files) if manifest else 0,
+            warnings=(list(manifest.warnings) if manifest else [])
+            + ([summary.error] if summary.error else []),
+        )
+
+
 class RestoreFileChange(Record):
     component: Component
     path: str

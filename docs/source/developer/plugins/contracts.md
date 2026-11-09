@@ -47,20 +47,12 @@ from failed deletions. WebSocket delivery results count sent, unavailable, and
 failed recipients, so an absent connection does not imply delivery.
 
 ```python
-from bedrock_server_manager.api.models import BackupAllRequest
-from bedrock_server_manager.error import IncompleteOperationError
+from bedrock_server_manager.models import CreateSnapshotRequest
 
-try:
-    result = await self.api.backup_restore.backup_all(
-        BackupAllRequest(server_name="example")
-    )
-except IncompleteOperationError as error:
-    # Validated results may describe work completed before the failure.
-    self.logger.warning("Backup incomplete: %s", error.result.model_dump(mode="json"))
-    raise
-else:
-    for component, item in result.details.components.items():
-        self.logger.info("%s: %s", component, item.outcome)
+result = await self.api.backup_restore.create_server_backup(
+    CreateSnapshotRequest(server_name="example")
+)
+self.logger.info("Created %s (%d files)", result.backup.filename, result.backup.file_count)
 ```
 
 Do not convert infrastructure failures into missing resources or negative states.
@@ -204,7 +196,7 @@ for complete examples, visibility rules, and deadlines.
 
 ### Backups, snapshots, and component settings
 
-Prefer the unified `.bsmbackup` snapshot APIs on `self.api.backup_restore` (`create_server_backup`, `list_server_snapshots`, `plan_server_restore`, and `restore_server_snapshot`) when building new backup or restore integrations. The component-specific convenience methods (`backup_all`, `backup_world`, `backup_config_files`, `restore_world`, `restore_config_file`) remain supported and operate on legacy or component archives.
+Prefer the unified `.bsmbackup` snapshot APIs on `self.api.backup_restore` (`create_server_backup`, `list_server_snapshots`, `plan_server_restore`, and `restore_server_snapshot`) when building new backup or restore integrations. Legacy backup creation functions have been removed. Legacy listing and restore methods (`list_backup_files`, `restore_all`, `restore_world`, `restore_config_file`) remain available for existing backups. Creation returns a compact receipt with included components, file count, size, encryption status, and warnings. Use `inspect_server_backup` to retrieve the full manifest and file inventory.
 
 Use the shared validated `BackupComponents` type instead of copying component names into a plugin:
 

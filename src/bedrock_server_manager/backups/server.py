@@ -22,7 +22,7 @@ from ..config.const import get_installed_version
 from ..error import BackupRestoreError, ConfigurationError
 from ..events.operations import OperationName
 from ..logging import log_operation_error
-from ..models.common import CleanupResult, CompletedItem, ComponentResults, SkippedItem
+from ..models.common import CleanupResult
 from ..utils.io import temporary_directory
 from ..utils.progress import report_stage
 from ..utils.threads import check_cancellation, run_in_thread
@@ -1140,32 +1140,6 @@ class UnifiedServerBackups(ManagedBackups):
                     except (BackupRestoreError, OSError):
                         continue
             return False
-
-    async def backup_all_data(
-        self,
-        *,
-        purpose: Literal["manual", "pre_start", "pre_update"] = "manual",
-        mode=None,
-        components=None,
-        encrypted=None,
-    ) -> ComponentResults:
-        snapshot = await self.create_snapshot(
-            purpose=purpose, mode=mode, components=components, encrypted=encrypted
-        )
-        assert snapshot.manifest is not None
-        return ComponentResults(
-            components={
-                name: (
-                    CompletedItem(
-                        outcome="completed",
-                        path=str(Path(self._directory()) / snapshot.filename),
-                    )
-                    if state == "included"
-                    else SkippedItem(outcome="skipped", reason="Source is absent.")
-                )
-                for name, state in snapshot.manifest.components.items()
-            }
-        )
 
     async def inspect_snapshot(
         self, identifier: str, recovery_key: str | None = None
