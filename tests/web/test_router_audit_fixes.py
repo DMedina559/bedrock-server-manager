@@ -436,3 +436,39 @@ async def test_unknown_plugin_scope_is_rejected_before_mount(app_context, test_a
         await app_context.plugin_manager._register_routers("unknown-scope", [router])
     assert list(test_app.routes) == original
     assert "unknown-scope" not in app_context.plugin_manager._router_owners
+
+
+def test_legacy_role_forbidden_in_core_but_warns_for_plugin_routes(caplog):
+    import logging
+    from fastapi import Depends, FastAPI
+    from bedrock_server_manager.web.access_metadata import validate_core_access
+    from bedrock_server_manager.web.access_policy import AccessPolicy
+    from bedrock_server_manager.web.deps.auth import get_admin_user
+    from bedrock_server_manager.web.router_validation import validate_plugin_routes
+
+    app = FastAPI()
+    policy = AccessPolicy()
+
+    @app.get("/legacy-core", operation_id="legacy_core_route")
+    async def legacy_core(user=Depends(get_admin_user)):
+        return {}
+
+    with pytest.raises(ValueError, match="Legacy role dependency"):
+        validate_core_access(app, policy)
+
+    plugin_app = FastAPI()
+    router = APIRouter()
+
+    @router.get("/legacy-plugin", operation_id="legacy_plugin_route")
+    async def legacy_plugin(user=Depends(get_admin_user)):
+        return {}
+
+    caplog.clear()
+    with caplog.at_level(logging.WARNING):
+        validate_plugin_routes(plugin_app, [router], policy, owner="legacy_40_plugin")
+
+    assert any(
+        "uses deprecated legacy role dependency" in record.getMessage()
+        for record in caplog.records
+    )
+

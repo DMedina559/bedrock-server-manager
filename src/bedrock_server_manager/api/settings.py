@@ -25,6 +25,7 @@ from ..plugins.api_bridge import api_method
 from ..plugins.scopes import (
     BLACKLISTED_PATH_SETTINGS,
     GRANTABLE_PATH_SCOPES,
+    PluginScope,
     plugin_has_permission,
     require_plugin_permission,
 )
@@ -41,15 +42,22 @@ async def get_global_setting(
 ) -> GetGlobalSettingResponse:
     """Reads a single value from the global application settings."""
     key = request.key
-    if plugin_name is not None and (key == "paths" or key.startswith("paths.")):
-        if key in BLACKLISTED_PATH_SETTINGS:
-            raise PermissionError(f"Access to '{key}' is restricted for all plugins.")
-        scope = key.split(".", 1)[1] if "." in key else None
-        if scope not in GRANTABLE_PATH_SCOPES:
-            raise PermissionError(
-                f"Access to host filesystem path '{key}' is restricted for plugins."
+    if plugin_name is not None:
+        if key == "paths" or key.startswith("paths."):
+            if key in BLACKLISTED_PATH_SETTINGS:
+                raise PermissionError(
+                    f"Access to '{key}' is restricted for all plugins."
+                )
+            scope = key.split(".", 1)[1] if "." in key else None
+            if scope not in GRANTABLE_PATH_SCOPES:
+                raise PermissionError(
+                    f"Access to host filesystem path '{key}' is restricted for plugins."
+                )
+            require_plugin_permission(app_context, plugin_name, f"path:{scope}")
+        else:
+            require_plugin_permission(
+                app_context, plugin_name, PluginScope.SETTINGS_READ
             )
-        require_plugin_permission(app_context, plugin_name, f"path:{scope}")
     logger.debug("Reading global setting '%s'.", key)
     try:
         settings = app_context.settings
@@ -65,7 +73,7 @@ async def get_global_setting(
         raise
 
 
-@api_method("get_all_global_settings")
+@api_method("get_all_global_settings", required_scope=PluginScope.SETTINGS_READ)
 async def get_all_global_settings(
     request: GetAllGlobalSettingsRequest,
     *,
@@ -137,7 +145,7 @@ async def set_global_setting(
         raise
 
 
-@api_method("set_custom_global_setting")
+@api_method("set_custom_global_setting", required_scope=PluginScope.SETTINGS_MANAGE)
 async def set_custom_global_setting(
     request: SetCustomGlobalSettingRequest, *, app_context: AppContext
 ) -> SetCustomGlobalSettingResponse:

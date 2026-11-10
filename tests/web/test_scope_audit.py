@@ -53,8 +53,8 @@ def test_conditional_access_contract_has_actual_capabilities():
         assert {"OAuth2PasswordBearer": [permission]} in operation["security"]
         assert {local: []} in operation["security"]
     operation = document["paths"]["/api/logs/history"]["get"]
-    assert {"OAuth2PasswordBearer": ["logs:read_application"]} in operation["security"]
-    assert {"OAuth2PasswordBearer": ["logs:read"]} in operation["security"]
+    assert {"OAuth2PasswordBearer": ["application:logs"]} in operation["security"]
+    assert {"OAuth2PasswordBearer": ["servers:logs"]} in operation["security"]
 
 
 async def issue(client, permissions, **extra):
@@ -69,7 +69,7 @@ async def issue(client, permissions, **extra):
 async def test_application_log_http_and_socket_scopes_agree(
     admin_auth_client, app_context, monkeypatch
 ):
-    token = await issue(admin_auth_client, ["logs:read_application"])
+    token = await issue(admin_auth_client, ["application:logs"])
     headers = {"Authorization": f"Bearer {token['token']}"}
     read = AsyncMock(
         return_value=LogHistoryPage(

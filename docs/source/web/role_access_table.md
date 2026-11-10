@@ -58,8 +58,8 @@ BSM defines 59 built-in permissions across 23 categories, plus dynamic plugin pe
 | `backups:destinations` | `backups` | — | — | Yes | Yes | Yes |
 | `downloads:read` | `downloads` | — | Yes | Yes | No | Yes |
 | `downloads:prune` | `downloads` | — | — | Yes | No | Yes |
-| `logs:read` | `logs` | — | Yes | Yes | Yes | Yes |
-| `logs:read_application` | `logs` | — | — | Yes | No | Yes |
+| `servers:logs` | `servers` | — | Yes | Yes | Yes | Yes |
+| `application:logs` | `application` | — | — | Yes | No | Yes |
 | `scheduler:read` | `scheduler` | — | — | Yes | No | Yes |
 | `scheduler:manage` | `scheduler` | — | — | Yes | No | Yes |
 | `settings:read` | `settings` | — | — | Yes | No | Yes |

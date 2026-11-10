@@ -196,7 +196,7 @@ from bedrock_server_manager import PluginBase
 
 class GrantedPlugin(PluginBase):
     version = "1.0.0"
-    permissions = ["path:servers"]
+    permissions = ["path:servers", "settings:read"]
 """,
     )
     res = await granted_plugin.api.settings.get_global_setting(
@@ -239,7 +239,7 @@ from bedrock_server_manager import PluginBase
 
 class DeniedPlugin(PluginBase):
     version = "1.0.0"
-    permissions = []
+    permissions = ["settings:read"]
 """,
     )
     with pytest.raises(PermissionError):
@@ -250,6 +250,12 @@ class DeniedPlugin(PluginBase):
         await denied_plugin.api.runtime.get_system_path("servers")
     all_denied = await denied_plugin.api.settings.get_all_global_settings({})
     assert "paths" not in all_denied.settings
+
+    from bedrock_server_manager.error import UserInputError
+
+    with pytest.raises(UserInputError, match="Invalid plugin file scope"):
+        await granted_plugin.api.runtime.get_plugin_data_path(scope="shared")
+
 
 
 async def test_scoped_server_lifecycle_and_command_permissions(
@@ -342,7 +348,9 @@ async def test_granular_capability_scopes(app_context, plugin_factory):
         RestoreSnapshotRequest,
         SetPermissionsRequest,
         SetPropertiesRequest,
+        SetServerCustomValueRequest,
         UpdateServerRequest,
+        WaitForServerLogRequest,
     )
 
     unscoped_plugin = await plugin_factory(
@@ -364,6 +372,29 @@ class UnscopedPlugin(PluginBase):
     with pytest.raises(PermissionError, match="servers:read"):
         await unscoped_plugin.api.server.get_setting(
             GetServerSettingRequest(server_name="test", key="settings.autostart")
+        )
+
+    with pytest.raises(PermissionError, match="servers:configure"):
+        await unscoped_plugin.api.server.set_custom_value(
+            SetServerCustomValueRequest(server_name="test", key="k", value="v")
+        )
+
+    with pytest.raises(PermissionError, match="servers:logs"):
+        await unscoped_plugin.api.server.wait_for_log(
+            WaitForServerLogRequest(server_name="test", pattern="Ready")
+        )
+
+    with pytest.raises(PermissionError, match="settings:read"):
+        await unscoped_plugin.api.settings.get_global_setting(
+            GetGlobalSettingRequest(key="web.port")
+        )
+
+    with pytest.raises(PermissionError, match="settings:read"):
+        await unscoped_plugin.api.settings.get_all_global_settings({})
+
+    with pytest.raises(PermissionError, match="settings:manage"):
+        await unscoped_plugin.api.settings.set_custom_global_setting(
+            SetCustomGlobalSettingRequest(key="k", value="v")
         )
 
     with pytest.raises(PermissionError, match="health:read"):

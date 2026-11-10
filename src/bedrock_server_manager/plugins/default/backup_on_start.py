@@ -8,7 +8,12 @@ from typing import Any, Literal
 
 from pydantic import BaseModel, ConfigDict, Field
 
-from bedrock_server_manager import ExistingServerName, PluginBase, app_event
+from bedrock_server_manager import (
+    ExistingServerName,
+    PluginBase,
+    PluginScope,
+    app_event,
+)
 from bedrock_server_manager.backups.contents import DEFAULT_COMPONENTS, BackupComponents
 from bedrock_server_manager.logging import log_operation_error
 from bedrock_server_manager.models import CreateSnapshotRequest, SnapshotReuseRequest
@@ -56,7 +61,11 @@ class AutoBackupOnStart(PluginBase):
     settings_model = PluginSettings
 
     version = "1.5.0"
-    permissions = ["backups:create", "backups:read", "servers:read"]
+    permissions = [
+        PluginScope.BACKUPS_CREATE,
+        PluginScope.BACKUPS_READ,
+        PluginScope.SERVERS_READ,
+    ]
     description = "Backs up selected server contents before starting a server. This plugin hooks into the `before_server_start` event."
     author = "dmedina559"
     name = "Auto Backup On Start"

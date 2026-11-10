@@ -567,14 +567,14 @@ class LegacyPlugin(PluginBase):
     assert app_context.scheduler.tasks.available("legacy_plugin:old_task")
 
 
-async def test_plugin_declaring_unrecognized_permission_logs_warning(
+async def test_plugin_declaring_unrecognized_permission_is_rejected(
     app_context, plugin_factory, caplog
 ):
     import logging
 
     caplog.clear()
-    with caplog.at_level(logging.WARNING):
-        await plugin_factory(
+    with caplog.at_level(logging.ERROR):
+        plugin = await plugin_factory(
             "typo_plugin",
             """
 from bedrock_server_manager import PluginBase
@@ -585,8 +585,10 @@ class TypoPlugin(PluginBase):
 """,
         )
 
+    assert plugin is None
+    assert app_context.plugin_manager.get_plugin_status("typo_plugin") == "ERROR"
     messages = "\n".join(record.getMessage() for record in caplog.records)
-    assert "declared unrecognized permission scope 'sever:command'" in messages
+    assert "Unknown plugin permission scopes: sever:command" in messages
 
 
 async def test_plugin_settings_evolution_prunes_dropped_fields(

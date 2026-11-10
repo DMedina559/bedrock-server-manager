@@ -1,8 +1,11 @@
 """Validate the effective route contract before publishing plugin routes."""
 
+import logging
 import re
 
 from fastapi import FastAPI
+
+logger = logging.getLogger(__name__)
 
 
 def validate_route_contract(app):
@@ -37,3 +40,8 @@ def validate_plugin_routes(base_routes, routers, policy=None):
             policy.validate(metadata["required_permissions"])
             for alternative in metadata.get("credential_alternatives", []):
                 policy.validate(alternative["permissions"])
+            if metadata["classification"] == "legacy-role":
+                logger.warning(
+                    "Plugin route '%s' uses deprecated legacy role dependencies (get_admin_user / get_moderator_user); use 'Security(require_permissions, scopes=[...])' instead.",
+                    route.path,
+                )

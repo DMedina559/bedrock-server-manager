@@ -28,8 +28,8 @@ BSM exposes a single multiplexed WebSocket endpoint at `/ws` for live server tel
 | `event:<event_name>` / `ws_event:<event_name>` | Authenticated (server-scoped events filter by `servers:read` on `server_name`) | `event` | Real-time notifications for public application and server lifecycle events (see [Event catalog](../plugins/plugin_events.md)) |
 | `resource-monitor:<server_name>` | `servers:read` on `<server_name>` | `resource_update` | Per-server process CPU, memory, PID, and uptime samples |
 | `application-metrics` | `system:info` | `resource_update` | Host and BSM process CPU, memory, disk I/O, network rates, and event-loop delay (`MetricsSample`) |
-| `server_log:<server_name>` | `logs:read` on `<server_name>` | `server_log` | Live stdout/console log lines for `<server_name>` (initial snapshot + incremental lines) |
-| `app_log` (or `app_logs`) | `logs:read_application` | `app_log` | Live BSM application log lines (initial snapshot + incremental lines) |
+| `server_log:<server_name>` | `servers:logs` on `<server_name>` | `server_log` | Live stdout/console log lines for `<server_name>` (initial snapshot + incremental lines) |
+| `app_log` (or `app_logs`) | `application:logs` | `app_log` | Live BSM application log lines (initial snapshot + incremental lines) |
 | `task:<task_id>` | Automatic for task owner (or `admin`) | `task_update` | Background task status, stage, percentage, and completion updates |
 | `*` (wildcard) | Filtered per message by the connection's live permissions | Varies | Receives all broadcast topics that the authenticated user is authorized to read (deduplicated if also subscribed to a specific topic) |
 
@@ -37,7 +37,7 @@ BSM exposes a single multiplexed WebSocket endpoint at `/ws` for live server tel
 
 Before or alongside subscribing to `server_log:<server_name>` or `app_log`, clients can paginate historical log lines with `GET /api/logs/history`:
 
-- Query parameters: `source=server` (requires `server_name` and `logs:read`) or `source=application` (requires `logs:read_application`), `limit` (`1`–`1000`, default `400`), and optional `before` cursor for scrolling backward through rotated `.log` files.
+- Query parameters: `source=server` (requires `server_name` and `servers:logs`) or `source=application` (requires `application:logs`), `limit` (`1`–`1000`, default `400`), and optional `before` cursor for scrolling backward through rotated `.log` files.
 
 ### Control frames and connection lifecycle
 

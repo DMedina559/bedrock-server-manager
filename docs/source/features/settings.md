@@ -153,7 +153,7 @@ The `--config-dir` option (or `BSM_CONFIG_DIR`) identifies BSM's configuration r
 - `<config_dir>/runtime/` — Web runtime PID, lock, and shutdown control files (`web_server.pid`, `web_server.lock`, `web_server.control.json`), plus `<config_dir>/runtime/servers/<server_name>/` for server PID files.
 - `<config_dir>/credentials/` — Restricted private key directory (`backup.key` for backup encryption, `jwt.key` for session signing, and `mfa.key` for TOTP secret encryption). Protected by restrictive host permissions (`0700` directory / `0600` files on POSIX, restricted DACLs on Windows), excluded from server backups and settings exports, and unreachable from plugin file APIs.
 - `<config_dir>/plugins/<plugin-id>/` — Private per-plugin file storage (`scope="private"` in the plugin file API).
-- `<config_dir>/plugins/public/` — Shared plugin file storage (`scope="public"` or `scope="shared"` in the plugin file API).
+- `<config_dir>/plugins/public/` — Shared plugin file storage (`scope="public"` in the plugin file API).
 - `<config_dir>/panorama.{jpeg,jpg,png,webp}` — Optional custom background panorama image served by `GET /api/panorama`.
 
 On first access, BSM moves recognized legacy bootstrap, log, runtime, and private plugin data directories into their dedicated locations. Existing legacy SQLite databases remain in place, including their WAL/SHM files; explicit database URLs are always preserved. If both legacy and nested default databases exist without an explicit database URL, startup reports a conflict and preserves both files. Select the intended database with `db_url` or `BSM_DB_URL`. Relocate databases only while BSM is stopped, using a consistent SQLite backup.

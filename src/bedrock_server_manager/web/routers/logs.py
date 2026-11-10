@@ -18,12 +18,12 @@ LOG_ACCESS = [
     {
         "condition": "topic=server_log:<server>",
         "schemes": ["OAuth2PasswordBearer", "APIKeyCookie", "IntegrationToken"],
-        "permissions": [Permission.LOGS_READ],
+        "permissions": [Permission.SERVERS_LOGS],
     },
     {
         "condition": "topic=app_log or app_logs",
         "schemes": ["OAuth2PasswordBearer", "APIKeyCookie", "IntegrationToken"],
-        "permissions": [Permission.LOGS_READ_APPLICATION],
+        "permissions": [Permission.APPLICATION_LOGS],
     },
 ]
 
@@ -47,12 +47,12 @@ async def get_log_history(
 ) -> LogHistoryPage:
     if topic in ("app_log", "app_logs"):
         await require_context_permission(
-            request, current_user, Permission.LOGS_READ_APPLICATION
+            request, current_user, Permission.APPLICATION_LOGS
         )
     elif topic.startswith("server_log:"):
         server_name = topic.split(":", 1)[1]
         await require_context_permission(
-            request, current_user, Permission.LOGS_READ, server_name
+            request, current_user, Permission.SERVERS_LOGS, server_name
         )
         try:
             core_validate_server_name_format(server_name)

@@ -14,6 +14,8 @@ await self.api.settings.get_all_global_settings(request: bedrock_server_manager.
 
 - **Description:** Reads the entire global application settings configuration.
 
+- **Required Permission:** `settings:read`
+
 - **Returns:** `GetAllGlobalSettingsResponse`
 
 Runtime context and plugin identity are injected by the bridge. Failures raise application exceptions; plugin cancellation raises `APICancelledError`.
@@ -43,6 +45,8 @@ await self.api.settings.get_global_setting(request: bedrock_server_manager.model
 
 - **Description:** Reads a single value from the global application settings.
 
+- **Required Permission:** `settings:read` (or `path:<scope>` for `paths.<scope>` keys)
+
 - **Returns:** `GetGlobalSettingResponse`
 
 Runtime context and plugin identity are injected by the bridge. Failures raise application exceptions; plugin cancellation raises `APICancelledError`.
@@ -71,6 +75,8 @@ await self.api.settings.set_custom_global_setting(request: bedrock_server_manage
 - **Async (Requires await):** Yes
 
 - **Description:** Writes a custom value to the global application settings.
+
+- **Required Permission:** `settings:manage`
 
 - **Returns:** `SetCustomGlobalSettingResponse`
 

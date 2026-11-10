@@ -8,7 +8,7 @@ from typing import Any
 
 from pydantic import BaseModel, ConfigDict, Field
 
-from bedrock_server_manager import PluginBase, app_event
+from bedrock_server_manager import PluginBase, PluginScope, app_event
 from bedrock_server_manager.logging import log_operation_error
 from bedrock_server_manager.models import (
     GetServerSummaryRequest,
@@ -48,7 +48,7 @@ class ServerLifecycleNotificationsPlugin(PluginBase):
     settings_model = PluginSettings
 
     version = "1.4.0"
-    permissions = ["servers:command", "servers:read"]
+    permissions = [PluginScope.SERVERS_COMMAND, PluginScope.SERVERS_READ]
     description = "Enhances server management by sending in-game notifications and introducing delays at critical server lifecycle points."
     author = "dmedina559"
     name = "Server Lifecycle Notifications"

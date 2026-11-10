@@ -1,7 +1,7 @@
 # autostart_servers.py
 from typing import Any
 
-from bedrock_server_manager import PluginBase, app_event
+from bedrock_server_manager import PluginBase, PluginScope, app_event
 from bedrock_server_manager.models import (
     GetAllServersDataRequest,
     GetServerSettingRequest,
@@ -13,7 +13,7 @@ class AutostartServers(PluginBase):
     """Start all servers with the autostart setting set to true on manager startup."""
 
     version = "1.2.0"
-    permissions = ["servers:lifecycle", "servers:read"]
+    permissions = [PluginScope.SERVERS_LIFECYCLE, PluginScope.SERVERS_READ]
     description = (
         "Starts all servers with the autostart setting set to true on manager startup."
     )

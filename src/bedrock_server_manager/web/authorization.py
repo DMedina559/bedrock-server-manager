@@ -22,7 +22,7 @@ SERVER_PERMISSIONS: frozenset[str] = frozenset(
         Permission.PERMISSIONS_MANAGE,
         Permission.BANS_READ,
         Permission.BANS_MANAGE,
-        Permission.LOGS_READ,
+        Permission.SERVERS_LOGS,
         Permission.BACKUPS_READ,
         Permission.BACKUPS_CREATE,
         Permission.BACKUPS_RESTORE,

@@ -5,7 +5,7 @@ Plugin that automatically reloads server configurations after changes.
 
 from typing import Any
 
-from bedrock_server_manager import PluginBase, app_event
+from bedrock_server_manager import PluginBase, PluginScope, app_event
 from bedrock_server_manager.models import (
     AddToAllowlistResponse,
     RemoveFromAllowlistResponse,
@@ -20,7 +20,7 @@ class AutoReloadPlugin(PluginBase):
     """
 
     version = "1.4.0"
-    permissions = ["servers:command", "servers:read"]
+    permissions = [PluginScope.SERVERS_COMMAND, PluginScope.SERVERS_READ]
     description = "Automatically sends a `reload` command to a running server after its configuration files (e.g., allowlist.json, permissions.json) are modified."
     author = "dmedina559"
     name = "Auto Reload Config"

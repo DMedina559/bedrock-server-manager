@@ -117,9 +117,9 @@ APIs for older plugins. An explicit collection opts into capability enforcement:
 only its listed scopes. BSM validates explicit declarations and snapshots the
 legacy mode or immutable scope set when a plugin loads. Changing the declaration
 while the plugin is running does not change its authority; reload the plugin
-to apply declaration changes. Unknown scope names produce a warning and do not
-match another capability. Invalid declaration types prevent that plugin from
-loading without interrupting discovery of healthy plugins.
+to apply declaration changes. Unknown scope names or invalid declaration types
+are rejected and prevent that plugin from loading without interrupting discovery
+of healthy plugins.
 
 These declarations describe access through BSM's supported plugin APIs. Plugins
 execute as trusted, in-process Python code and can import Python modules; install
@@ -137,9 +137,10 @@ permission, and account permissions do not grant plugin capabilities.
 | `runtime:metrics` | Read application and host performance metrics |
 | `servers:read` | List servers and read their status, settings, and resource usage |
 | `servers:inspect` | Inspect server process ownership, readiness, and runtime capabilities |
-| `logs:read` | Wait for matching live Bedrock server output |
+| `servers:logs` | Read server console log history, live log streams, and wait for matching live output |
 | `servers:command` | Send interactive console commands to running servers |
 | `servers:lifecycle` | Start, stop, and restart game servers |
+| `servers:configure` | Update per-server settings, autostart, and custom server values |
 | `servers:install` | Install new servers and update server software binaries |
 | `properties:read` | Read server.properties configuration |
 | `properties:manage` | Modify server.properties configuration |
@@ -163,6 +164,8 @@ permission, and account permissions do not grant plugin capabilities.
 | `backups:manage` | Manage, verify, drill, and pin server snapshots |
 | `backups:prune` | Prune server backups using configured retention |
 | `downloads:prune` | Prune the configured server download cache |
+| `settings:read` | Read global application settings |
+| `settings:manage` | Update or reload global application settings |
 | `plugins:read` | Read plugin status and metadata |
 | `scheduler:read` | Read global schedules and run history |
 | `diagnostics:read` | Inspect runtime, event, and activity diagnostics |

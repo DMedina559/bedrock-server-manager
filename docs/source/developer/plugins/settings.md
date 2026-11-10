@@ -132,7 +132,7 @@ When your plugin needs to store larger JSON documents, plain-text templates, bin
 ### Storage scopes and directory roots
 
 - **`scope="private"` (default):** Resolves under `<config_dir>/plugins/<plugin_name>/`. Each plugin gets its own isolated directory. On first access, if a legacy directory exists at `<config_dir>/config/plugins/<plugin_name>` and the new directory does not yet exist, BSM automatically migrates the legacy directory.
-- **`scope="public"` or `scope="shared"`:** Both resolve under `<config_dir>/plugins/public/`. Any plugin can read and write files here to share artifacts, exports, or cross-plugin data, and directories inside `<config_dir>/plugins/public/` can also be mounted as static web assets via `static_mounts`.
+- **`scope="public"`:** Resolves under `<config_dir>/plugins/public/`. Any plugin can read and write files here to share artifacts, exports, or cross-plugin data, and directories inside `<config_dir>/plugins/public/` can also be mounted as static web assets via `static_mounts`.
 - **Reserved directory names (`public`, `shared`, `private`):** Because `<config_dir>/plugins/public/` is reserved for shared storage, BSM reserves the names `public`, `shared`, and `private`. A plugin file or package using any of those names cannot be loaded or access private storage.
 
 ### Supported file formats (`format`)

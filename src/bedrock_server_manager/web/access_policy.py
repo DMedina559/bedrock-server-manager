@@ -33,7 +33,7 @@ class Permission(StrEnum):
     PERMISSIONS_READ = "permissions:read"
     PERMISSIONS_MANAGE = "permissions:manage"
     USERS_READ = "users:read"
-    LOGS_READ = "logs:read"
+    SERVERS_LOGS = "servers:logs"
     BACKUPS_READ = "backups:read"
     BACKUPS_CREATE = "backups:create"
     BACKUPS_RESTORE = "backups:restore"
@@ -48,7 +48,7 @@ class Permission(StrEnum):
     USERS_MANAGE = "users:manage"
     SETTINGS_READ = "settings:read"
     SETTINGS_MANAGE = "settings:manage"
-    LOGS_READ_APPLICATION = "logs:read_application"
+    APPLICATION_LOGS = "application:logs"
     DIAGNOSTICS_READ = "diagnostics:read"
     AUDIT_READ = "audit:read"
     PLUGINS_READ = "plugins:read"
@@ -95,7 +95,7 @@ CORE_DESCRIPTIONS: MappingProxyType[str, str] = MappingProxyType(
         Permission.PERMISSIONS_READ: "Read Minecraft player permission levels",
         Permission.PERMISSIONS_MANAGE: "Change Minecraft player permission levels, including operator access",
         Permission.USERS_READ: "Read application user accounts",
-        Permission.LOGS_READ: "Read logs for authorized servers",
+        Permission.SERVERS_LOGS: "Read logs for authorized servers",
         Permission.BACKUPS_READ: "List, inspect and download stored backup archives",
         Permission.BACKUPS_CREATE: "Create backups of authorized servers",
         Permission.BACKUPS_RESTORE: "Plan and restore server data; restores may stop a running server",
@@ -110,7 +110,7 @@ CORE_DESCRIPTIONS: MappingProxyType[str, str] = MappingProxyType(
         Permission.USERS_MANAGE: "Create invitations and administer application accounts and roles",
         Permission.SETTINGS_READ: "Read installation-wide application settings",
         Permission.SETTINGS_MANAGE: "Change installation-wide application settings",
-        Permission.LOGS_READ_APPLICATION: "Read application logs across the installation",
+        Permission.APPLICATION_LOGS: "Read application logs across the installation",
         Permission.DIAGNOSTICS_READ: "Inspect runtime, event and activity diagnostics",
         Permission.AUDIT_READ: "Read installation-wide administrative audit history",
         Permission.PLUGINS_READ: "Read plugin status and metadata",
@@ -162,7 +162,7 @@ _MODERATOR_GRANTS: frozenset[str] = _USER_GRANTS | frozenset(
         Permission.PERMISSIONS_READ,
         Permission.PERMISSIONS_MANAGE,
         Permission.USERS_READ,
-        Permission.LOGS_READ,
+        Permission.SERVERS_LOGS,
         Permission.BACKUPS_READ,
         Permission.BACKUPS_CREATE,
         Permission.BACKUPS_RESTORE,
@@ -182,7 +182,7 @@ _ADMIN_GRANTS: frozenset[str] = _MODERATOR_GRANTS | frozenset(
         Permission.USERS_MANAGE,
         Permission.SETTINGS_READ,
         Permission.SETTINGS_MANAGE,
-        Permission.LOGS_READ_APPLICATION,
+        Permission.APPLICATION_LOGS,
         Permission.DIAGNOSTICS_READ,
         Permission.AUDIT_READ,
         Permission.PLUGINS_READ,

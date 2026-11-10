@@ -7,7 +7,7 @@ from typing import Any
 
 from pydantic import BaseModel, ConfigDict, Field
 
-from bedrock_server_manager import PluginBase, app_event
+from bedrock_server_manager import PluginBase, PluginScope, app_event
 from bedrock_server_manager.logging import log_operation_error
 from bedrock_server_manager.models import (
     GetServerSummaryRequest,
@@ -38,7 +38,7 @@ class WorldOperationNotificationsPlugin(PluginBase):
 
     name = "World Operation Notifications"
     version = "1.4.0"
-    permissions = ["servers:command", "servers:read"]
+    permissions = [PluginScope.SERVERS_COMMAND, PluginScope.SERVERS_READ]
     description = "Notifies in-game players before significant world operations (export, import, reset) are performed on a running server."
     author = "dmedina559"
 

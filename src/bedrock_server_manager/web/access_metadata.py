@@ -217,3 +217,7 @@ def validate_core_access(app: FastAPI, policy: AccessPolicy) -> None:
             raise ValueError(
                 f"Core operation lacks access policy: {route.operation_id}"
             )
+        if metadata["classification"] == "legacy-role":
+            raise ValueError(
+                f"Core operation uses deprecated legacy role dependency instead of permission scopes: {route.operation_id}"
+            )
