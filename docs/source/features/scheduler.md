@@ -4,6 +4,12 @@ BSM includes a persistent, timezone-aware scheduler for recurring server backups
 
 Configure schedules on the **Scheduler** page in the web interface or with `bsm-cli scheduler` commands. Administrator access (`scheduler:read` / `scheduler:manage`) is required to inspect, create, modify, or trigger schedules.
 
+Treat `scheduler:manage` as privileged automation authority. Application-owned jobs
+run with application authority, including console commands, updates, world resets
+and maintenance, rather than the creator's other token scopes. Revoking a token
+does not delete schedules it created; pause or remove unwanted schedules explicitly.
+Server-restricted principals cannot manage this installation-wide scheduler.
+
 ## Create and manage schedules
 
 1. Open **Scheduler** as an administrator and select **Add schedule**.

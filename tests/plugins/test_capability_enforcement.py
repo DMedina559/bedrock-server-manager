@@ -57,11 +57,33 @@ def test_malformed_declarations_are_rejected(value):
 
 
 def test_permission_catalog_mapping_is_consistent():
+    from bedrock_server_manager.plugins.scopes import PluginScope
+    from bedrock_server_manager.web.access_policy import CORE_DESCRIPTIONS, Permission
+
     create_app_api("catalog", None)
     assert dict(VALID_PERMISSION_SCOPES) == VALID_PERMISSION_SCOPES.copy()
     assert len(VALID_PERMISSION_SCOPES) == len(dict(VALID_PERMISSION_SCOPES))
     assert VALID_PERMISSION_SCOPES == dict(VALID_PERMISSION_SCOPES)
     assert "downloads:prune" in VALID_PERMISSION_SCOPES
+    assert "servers:logs" in VALID_PERMISSION_SCOPES
+    assert "servers:configure" in VALID_PERMISSION_SCOPES
+    assert "settings:read" in VALID_PERMISSION_SCOPES
+    assert "settings:manage" in VALID_PERMISSION_SCOPES
+
+    http_permissions = {p.value for p in Permission}
+    transport_specific = {
+        PluginScope.SETTINGS_MANAGE,
+        PluginScope.SERVERS_CONFIGURE,
+        PluginScope.SERVERS_LOGS,
+    }
+    for scope in PluginScope:
+        if scope.value in http_permissions and scope not in transport_specific:
+            assert (
+                VALID_PERMISSION_SCOPES[scope.value] == CORE_DESCRIPTIONS[scope.value]
+            )
+
+    with pytest.raises(ValueError, match="Unknown plugin permission scopes"):
+        normalize_permissions(["unknown:scope"], validate_known=True)
 
 
 async def test_permissions_are_snapshotted_and_status_preserves_empty_override(
@@ -167,7 +189,9 @@ async def test_custom_plugin_schedule_cannot_request_app_context(plugin_factory)
 async def test_old_api_and_runtime_handles_stay_invalid_after_reload(
     app_context, plugin_factory
 ):
-    plugin = await make_plugin(plugin_factory, permissions=["servers:lifecycle"])
+    plugin = await make_plugin(
+        plugin_factory, permissions=["servers:lifecycle", "settings:read"]
+    )
     read = plugin.api.settings.get_all_global_settings
     path = plugin.api.runtime.get_plugin_data_path
     cm = plugin.api.runtime.server_lifecycle_manager("test", stop_before=True)
@@ -319,7 +343,7 @@ async def test_download_cleanup_rejects_symlink_escape(
 
 
 async def test_path_permission_checks_share_the_load_time_snapshot(plugin_factory):
-    plugin = await make_plugin(plugin_factory, permissions=[])
+    plugin = await make_plugin(plugin_factory, permissions=["settings:read"])
     plugin.permissions.append("path:servers")
     for call in (
         lambda: plugin.api.runtime.get_system_path("servers"),
@@ -337,7 +361,15 @@ async def test_path_permission_checks_share_the_load_time_snapshot(plugin_factor
         ("omitted", True),
         (None, True),
         ([], False),
-        (["servers:command", "servers:lifecycle", "path:servers"], True),
+        (
+            [
+                "servers:command",
+                "servers:lifecycle",
+                "path:servers",
+                "settings:read",
+            ],
+            True,
+        ),
     ],
 )
 async def test_legacy_and_explicit_permission_modes_match_all_dispatch_paths(
@@ -368,8 +400,12 @@ async def test_legacy_and_explicit_permission_modes_match_all_dispatch_paths(
             with pytest.raises(PermissionError):
                 await operation()
     assert len(calls) == (2 if allowed else 0)
-    settings = await plugin.api.settings.get_all_global_settings({})
-    assert ("servers" in settings.settings.get("paths", {})) is allowed
+    if allowed:
+        settings = await plugin.api.settings.get_all_global_settings({})
+        assert "servers" in settings.settings.get("paths", {})
+    else:
+        with pytest.raises(PermissionError, match="settings:read"):
+            await plugin.api.settings.get_all_global_settings({})
     if allowed:
         assert (
             await plugin.api.runtime.get_system_path("servers")

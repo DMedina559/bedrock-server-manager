@@ -50,6 +50,14 @@ def dependency_tree(dependant):
         yield from dependency_tree(child)
 
 
+def uses_legacy_role(route) -> bool:
+    """Inspect dependencies independently of permission/custom classification."""
+    return any(
+        node.call in (get_admin_user, get_moderator_user)
+        for node in dependency_tree(route.dependant)
+    )
+
+
 def api_routes(app):
     # FastAPI 0.162 retains included routers as contexts; earlier releases
     # flatten them into APIRoutes. Use effective dependencies in both cases.
@@ -216,4 +224,8 @@ def validate_core_access(app: FastAPI, policy: AccessPolicy) -> None:
         if metadata["classification"] == "unknown":
             raise ValueError(
                 f"Core operation lacks access policy: {route.operation_id}"
+            )
+        if uses_legacy_role(route):
+            raise ValueError(
+                f"Core operation uses deprecated legacy role dependency instead of permission scopes: {route.operation_id}"
             )

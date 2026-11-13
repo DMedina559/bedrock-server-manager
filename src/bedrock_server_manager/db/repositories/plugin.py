@@ -2,9 +2,10 @@
 Repository for managing Plugin database entity persistence.
 """
 
-from typing import List
+from typing import Any, List, cast
 
 from sqlalchemy import delete
+from sqlalchemy.engine import CursorResult
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.future import select
 
@@ -57,10 +58,17 @@ class PluginRepository:
 
     async def delete_plugin(self, session: AsyncSession, plugin_name: str) -> bool:
         """Delete a plugin record and its associated plugin settings from the database."""
-        res_plugin = await session.execute(
-            delete(Plugin).filter(Plugin.plugin_name == plugin_name)
+        # Non-returning DELETE produces CursorResult; execute() is typed as Result.
+        res_plugin = cast(
+            CursorResult[Any],
+            await session.execute(
+                delete(Plugin).filter(Plugin.plugin_name == plugin_name)
+            ),
         )
-        res_setting = await session.execute(
-            delete(PluginSetting).filter(PluginSetting.plugin_name == plugin_name)
+        res_setting = cast(
+            CursorResult[Any],
+            await session.execute(
+                delete(PluginSetting).filter(PluginSetting.plugin_name == plugin_name)
+            ),
         )
         return bool((res_plugin.rowcount or 0) + (res_setting.rowcount or 0))

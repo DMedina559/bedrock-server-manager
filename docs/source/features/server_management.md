@@ -44,8 +44,8 @@ Confirm the intended player and optionally record a reason for the ban.
 
 Resource readings describe the running process. Logs help distinguish a process crash from a network problem or a rejected command:
 
-- **Server console logs (`logs:read`):** View live and recent output for a specific server on its dashboard or via `GET /api/logs/history?source=server&server_name=<name>` and the `server_log:<server_name>` WebSocket topic.
-- **Application logs (`logs:read_application`):** Administrators can inspect BSM's own application logs via `GET /api/logs/history?source=application`, the `app_log` WebSocket topic, or locally with `bedrock-server-manager logs --app`.
+- **Server console logs (`servers:logs`):** View live and recent output for a specific server on its dashboard or via `GET /api/logs/history?source=server&server_name=<name>` and the `server_log:<server_name>` WebSocket topic.
+- **Application logs (`application:logs`):** Administrators can inspect BSM's own application logs via `GET /api/logs/history?source=application`, the `app_log` WebSocket topic, or locally with `bedrock-server-manager logs --app`.
 - **Delete a server (`servers:delete`):** Administrators can permanently remove a server installation and its server-specific configuration (`DELETE /api/server/{server_name}/delete`). Because deletion is irreversible, it requires recent authentication step-up verification (`X-BSM-Recent-Auth: required`) and cannot be delegated to integration tokens.
 
 Review enabled autostart/update plugins before scheduling restarts, and create backups before maintenance that replaces data.
@@ -87,7 +87,7 @@ available through the existing `process_info` endpoint.
 
 Plugins can use `server.get_process` for the same inspection and
 `server.wait_for_log` to wait for one matching live output line. Log waits require
-`logs:read`. By default they match future output only. For replay, pass
+`servers:logs`. By default they match future output only. For replay, pass
 `after_sequence` together with the `generation` from the previous response. A
 mismatched generation or a cursor older than the retained window raises an error;
 the function does not silently skip missing history. Replay retains at most 256

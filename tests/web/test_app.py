@@ -6,7 +6,7 @@ from fastapi import Request
 from fastapi.routing import APIRoute
 from pydantic import BaseModel
 
-from bedrock_server_manager.web.app import create_web_app
+from bedrock_server_manager.web.app import _get_core_routes, create_web_app
 
 
 def test_create_web_app_initialization(app_context):
@@ -14,6 +14,15 @@ def test_create_web_app_initialization(app_context):
     assert app.title == "Bedrock Server Manager"
     assert app.state.app_context is app_context
     assert app.openapi_url == "/api/openapi.json"
+
+
+def test_core_route_cache_returns_independent_lists():
+    first = _get_core_routes()
+    second = _get_core_routes()
+    assert first == second
+    assert first is not second
+    first.clear()
+    assert _get_core_routes() == second
 
 
 @pytest.mark.parametrize(

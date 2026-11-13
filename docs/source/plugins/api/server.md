@@ -231,6 +231,8 @@ await self.api.server.set_custom_value(request: bedrock_server_manager.models.se
 
 - **Description:** Writes a key-value pair to the 'custom' section of a server's specific
 
+- **Required Permission:** `servers:configure`
+
 - **Returns:** `SetServerCustomValueResponse`
 
 Runtime context and plugin identity are injected by the bridge. Failures raise application exceptions; plugin cancellation raises `APICancelledError`.
@@ -322,7 +324,7 @@ await self.api.server.wait_for_log(request: bedrock_server_manager.models.logs.W
 
 - **Description:** Wait for owned live output, bounded and cancelled with its plugin owner.
 
-- **Required Permission:** `logs:read`
+- **Required Permission:** `servers:logs`
 
 - **Returns:** `WaitForServerLogResponse`
 

@@ -14,6 +14,12 @@ await self.api.plugins.get_plugin_setting(request: bedrock_server_manager.models
 
 - **Description:** Read settings scoped to the bridge-injected plugin identity.
 
+- **Permission (own plugin settings):** plugin ownership
+
+- **Permission (global settings namespace):** `settings:read`
+
+- **Permission (server settings namespace):** `servers:read`
+
 - **Returns:** `GetPluginSettingResponse`
 
 Runtime context and plugin identity are injected by the bridge. Failures raise application exceptions; plugin cancellation raises `APICancelledError`.
@@ -73,6 +79,12 @@ await self.api.plugins.set_plugin_setting(request: bedrock_server_manager.models
 - **Async (Requires await):** Yes
 
 - **Description:** Persist settings scoped to the bridge-injected plugin identity.
+
+- **Permission (own plugin settings):** plugin ownership
+
+- **Permission (global settings namespace):** `settings:manage`
+
+- **Permission (server settings namespace):** `servers:configure`
 
 - **Returns:** `SetPluginSettingResponse`
 

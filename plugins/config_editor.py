@@ -8,11 +8,11 @@ import os
 from pathlib import Path
 from typing import Literal, cast
 
-from fastapi import APIRouter, Depends, HTTPException, Query, Security
+from fastapi import APIRouter, HTTPException, Query, Security
 from fastapi.responses import JSONResponse
 from pydantic import Field
 
-from bedrock_server_manager import PluginBase, app_event
+from bedrock_server_manager import PluginBase, PluginScope, app_event
 from bedrock_server_manager.models import (
     APIRequest,
     GetValidServerNamesRequest,
@@ -20,7 +20,7 @@ from bedrock_server_manager.models import (
     SuccessResponse,
 )
 from bedrock_server_manager.utils.io import save_json
-from bedrock_server_manager.web.deps.auth import get_admin_user, require_permissions
+from bedrock_server_manager.web.deps.auth import require_permissions
 
 EditableFile = Literal[
     "permissions.json",
@@ -160,8 +160,8 @@ class ConfigEditorPlugin(PluginBase):
         ("manage", "Manage script permissions, variables, and secrets", ["admin"]),
     ]
     permissions = [
-        "path:servers",
-        "servers:read",
+        PluginScope.PATH_SERVERS,
+        PluginScope.SERVERS_READ,
     ]
 
     @app_event("on_load")
@@ -172,7 +172,6 @@ class ConfigEditorPlugin(PluginBase):
             prefix="/api/config-editor",
             tags=["Config Editor Plugin"],
             dependencies=[
-                Depends(get_admin_user),
                 Security(require_permissions, scopes=["plugin:config_editor:manage"]),
             ],
         )

@@ -1,6 +1,7 @@
 """Compose the web application, registered routers, and plugin extensions."""
 
 from fastapi import FastAPI
+from starlette.routing import BaseRoute
 
 from ..config import get_installed_version
 from ..context import AppContext
@@ -20,10 +21,10 @@ _CORE_ERROR_RESPONSES: dict[int | str, dict[str, object]] = {
     code: {"model": ErrorEnvelope}
     for code in (400, 401, 403, 404, 409, 422, 429, 500, 503)
 }
-_CORE_ROUTER_CACHE: tuple[tuple[object, ...], list[object]] | None = None
+_CORE_ROUTER_CACHE: tuple[tuple[object, ...], list[BaseRoute]] | None = None
 
 
-def _get_core_routes() -> list[object]:
+def _get_core_routes() -> list[BaseRoute]:
     global _CORE_ROUTER_CACHE
     signature = tuple(routers.all_routers)
     if _CORE_ROUTER_CACHE is None or _CORE_ROUTER_CACHE[0] != signature:

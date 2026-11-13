@@ -107,6 +107,8 @@ self.api.properties.validate_property_value(request: bedrock_server_manager.mode
 
 - **Description:** Validates a specific server property value before it gets applied.
 
+- **Authorization:** No additional capability required.
+
 - **Returns:** `ValidatePropertyValueResponse`
 
 Runtime context and plugin identity are injected by the bridge. Failures raise application exceptions; plugin cancellation raises `APICancelledError`.

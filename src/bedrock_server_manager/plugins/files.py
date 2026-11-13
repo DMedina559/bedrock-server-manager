@@ -11,12 +11,12 @@ from ..error import UserInputError
 
 RESERVED_PLUGIN_DIRS = frozenset({"public", "shared", "private"})
 RESERVED_PLUGIN_NAMES = RESERVED_PLUGIN_DIRS
-PluginFileScope = Literal["private", "public", "shared"]
+PluginFileScope = Literal["private", "public"]
 PluginFileFormat = Literal["json", "text", "bytes"]
 
 
 def _resolve_scope_subdir(plugin_name: str, scope: str) -> str:
-    if scope in ("public", "shared"):
+    if scope == "public":
         if plugin_name:
             safe_name(plugin_name)
             if (

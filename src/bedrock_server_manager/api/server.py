@@ -141,7 +141,7 @@ async def set_server_setting(
         raise
 
 
-@api_method("set_server_custom_value")
+@api_method("set_server_custom_value", required_scope=PluginScope.SERVERS_CONFIGURE)
 async def set_server_custom_value(
     request: SetServerCustomValueRequest, *, app_context: AppContext
 ) -> SetServerCustomValueResponse:
@@ -617,7 +617,7 @@ async def server_lifecycle_manager(
                         )
 
 
-@api_method("wait_for_server_log", required_scope=PluginScope.LOGS_READ)
+@api_method("wait_for_server_log", required_scope=PluginScope.SERVERS_LOGS)
 async def wait_for_server_log(
     request: WaitForServerLogRequest,
     *,

@@ -45,6 +45,8 @@ self.api.application.get_system_and_app_info(request: bedrock_server_manager.mod
 
 - **Description:** Return basic system and application information.
 
+- **Authorization:** No additional capability required.
+
 - **Returns:** `GetSystemAndAppInfoResponse`
 
 Runtime context and plugin identity are injected by the bridge. Failures raise application exceptions; plugin cancellation raises `APICancelledError`.

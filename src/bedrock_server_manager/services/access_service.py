@@ -731,14 +731,14 @@ class AccessService:
         if topic.startswith("task:"):
             return await self.task_allowed(authorization, topic[5:])
         for prefix, capability in (
-            ("server_log:", Permission.LOGS_READ),
+            ("server_log:", Permission.SERVERS_LOGS),
             ("resource-monitor:", Permission.SERVERS_READ),
         ):
             if topic.startswith(prefix):
                 return authorization.allows(capability, topic.removeprefix(prefix))
         if topic in {"app_log", "app_logs"}:
             return not authorization.resource_restricted and authorization.allows(
-                Permission.LOGS_READ_APPLICATION
+                Permission.APPLICATION_LOGS
             )
         if topic == "application-metrics":
             return not authorization.resource_restricted and authorization.allows(

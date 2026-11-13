@@ -20,6 +20,9 @@ def contracts():
         domain = path.stem
         module = importlib.import_module(f"bedrock_server_manager.api.{domain}")
         for name, operation in inspect.getmembers(module, inspect.isfunction):
+            # Imported permission resolvers and utilities are not domain API operations.
+            if operation.__module__ != module.__name__:
+                continue
             if "request" in inspect.signature(operation).parameters and get_contract(
                 operation
             ):

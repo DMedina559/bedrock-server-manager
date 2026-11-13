@@ -12,7 +12,11 @@ from .bus import EventBus, _callback_identity
 
 
 def create_event_capabilities(
-    plugin_name: str, bus: EventBus | None, *, is_core: bool = False
+    plugin_name: str,
+    bus: EventBus | None,
+    *,
+    is_core: bool = False,
+    require_diagnostics: Callable[[], None] | None = None,
 ) -> tuple[Callable[..., Any], Callable[..., Any], Callable[..., Any]]:
     event_owner = "application" if is_core else f"plugin:{plugin_name}"
     event_generation = bus.owner_generation(event_owner) if bus else 0
@@ -180,6 +184,10 @@ def create_event_capabilities(
         require_event_owner()
         if bus is None:
             raise RuntimeError("Event bus is unavailable")
+        if action in {"diagnostics", "operation_activity"} and not is_core:
+            if require_diagnostics is None:
+                raise PermissionError("Global activity requires diagnostics:read")
+            require_diagnostics()
         if action == "current":
             return bus.event_context()
         if action == "handler":

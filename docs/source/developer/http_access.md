@@ -55,7 +55,9 @@ URLs respect the trusted ingress root path. Tokens are not copied from the SPA.
 ## Plugins
 
 The helpers `get_current_user`, `get_moderator_user`, `get_admin_user`, and
-`require_permissions` are exported from `bedrock_server_manager`.
+`require_permissions` are exported from `bedrock_server_manager` (`get_moderator_user`
+and `get_admin_user` are deprecated legacy role helpers retained for 4.0 plugin
+compatibility; prefer `require_permissions` with explicit scopes).
 
 A plugin may declare custom HTTP permissions on `PluginBase`:
 
@@ -545,8 +547,8 @@ Server deletion and recreation under the same name cannot redirect an accepted
 task. Work already executing keeps the operation's existing safe cancellation and
 recovery behavior; an access change does not interrupt a restore midway.
 
-Application log history requires `logs:read_application`; server log history
-requires `logs:read` for the selected server. This matches socket topic access.
+Application log history requires `application:logs`; server log history
+requires `servers:logs` for the selected server. This matches socket topic access.
 The OpenAPI `x-bsm-access.credential_alternatives` field describes conditional
 capabilities and dedicated local credentials. Swagger displays these alternatives;
 OAuth security entries carry the capability required for each alternative.

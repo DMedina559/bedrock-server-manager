@@ -54,7 +54,6 @@ from .lifespan import RouterLifespan
 from .plugin_base import PluginBase
 from .runtime import PluginRuntime, PluginStatus
 from .scopes import (
-    get_known_permission_scopes,
     normalize_permissions,
     plugin_permissions,
 )
@@ -803,8 +802,10 @@ class PluginManager:
                     version = getattr(p_class, "version", None)
                     if version and version != "N/A":
                         try:
-                            permissions = sorted(plugin_permissions(p_class))
-                        except TypeError as error:
+                            permissions = sorted(
+                                plugin_permissions(p_class, validate_known=True)
+                            )
+                        except (TypeError, ValueError) as error:
                             logger.error(
                                 "Invalid permissions for plugin '%s': %s", p_name, error
                             )
@@ -936,17 +937,9 @@ class PluginManager:
     def _validate_plugin_permissions(
         self, plugin_name: str, instance: PluginBase, plugin_logger: logging.Logger
     ) -> None:
-        instance._capability_permissions = normalize_permissions(instance.permissions)
-        declared_perms = instance._capability_permissions
-        if declared_perms:
-            known_scopes = get_known_permission_scopes()
-            for perm in declared_perms:
-                if perm not in known_scopes:
-                    plugin_logger.warning(
-                        "Plugin '%s' declared unrecognized permission scope '%s'.",
-                        plugin_name,
-                        perm,
-                    )
+        instance._capability_permissions = normalize_permissions(
+            instance.permissions, validate_known=True
+        )
 
     def _validate_static_mounts(
         self, plugin_name: str, mounts: list[Any], *, warn_invalid: bool = False

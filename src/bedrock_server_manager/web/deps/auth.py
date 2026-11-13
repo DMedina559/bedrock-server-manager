@@ -120,6 +120,7 @@ async def get_current_user(
 async def get_admin_user(current_user: UserResponse = Security(get_current_user)):
     """
     FastAPI dependency that requires the current user to be an admin.
+    Deprecated: prefer Security(require_permissions, scopes=[...]).
     """
     if current_user.role != "admin":
         raise HTTPException(
@@ -132,6 +133,7 @@ async def get_admin_user(current_user: UserResponse = Security(get_current_user)
 async def get_moderator_user(current_user: UserResponse = Security(get_current_user)):
     """
     FastAPI dependency that requires the current user to be a moderator or an admin.
+    Deprecated: prefer Security(require_permissions, scopes=[...]).
     """
     if current_user.role not in ["admin", "moderator"]:
         raise HTTPException(

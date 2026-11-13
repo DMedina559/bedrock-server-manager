@@ -5,7 +5,7 @@ Plugin that automatically updates a Bedrock server to the latest version.
 
 from typing import Any
 
-from bedrock_server_manager import PluginBase, app_event
+from bedrock_server_manager import PluginBase, PluginScope, app_event
 from bedrock_server_manager.error import BSMError
 from bedrock_server_manager.logging import log_operation_error
 from bedrock_server_manager.models import (
@@ -21,7 +21,7 @@ class AutoupdatePlugin(PluginBase):
     """
 
     version = "1.4.0"
-    permissions = ["servers:install", "servers:read"]
+    permissions = [PluginScope.SERVERS_INSTALL, PluginScope.SERVERS_READ]
     description = "Automatically updates a server to the latest version before it starts. This plugin checks for a server-specific `autoupdate: true` setting in its configuration."
     author = "dmedina559"
     name = "Auto Update on Start"
