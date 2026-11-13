@@ -26,6 +26,7 @@ from ..plugins.scopes import (
     BLACKLISTED_PATH_SETTINGS,
     GRANTABLE_PATH_SCOPES,
     PluginScope,
+    global_setting_permission,
     plugin_has_permission,
     require_plugin_permission,
 )
@@ -33,7 +34,14 @@ from ..plugins.scopes import (
 logger = logging.getLogger(__name__)
 
 
-@api_method("get_global_setting")
+@api_method(
+    "get_global_setting",
+    permission_resolver=global_setting_permission,
+    permission_conditions=tuple(
+        (f"key=paths.{name}", f"path:{name}") for name in GRANTABLE_PATH_SCOPES
+    )
+    + (("non-path setting", PluginScope.SETTINGS_READ),),
+)
 async def get_global_setting(
     request: GetGlobalSettingRequest,
     *,

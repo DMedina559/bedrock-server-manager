@@ -45,7 +45,17 @@ await self.api.settings.get_global_setting(request: bedrock_server_manager.model
 
 - **Description:** Reads a single value from the global application settings.
 
-- **Required Permission:** `settings:read` (or `path:<scope>` for `paths.<scope>` keys)
+- **Permission (key=paths.servers):** `path:servers`
+
+- **Permission (key=paths.backups):** `path:backups`
+
+- **Permission (key=paths.content):** `path:content`
+
+- **Permission (key=paths.downloads):** `path:downloads`
+
+- **Permission (key=paths.themes):** `path:themes`
+
+- **Permission (non-path setting):** `settings:read`
 
 - **Returns:** `GetGlobalSettingResponse`
 

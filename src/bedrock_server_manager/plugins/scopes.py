@@ -4,7 +4,7 @@ from collections.abc import Iterator, Mapping
 from enum import StrEnum
 from typing import TYPE_CHECKING, Final
 
-from ..web.access_policy import CORE_DESCRIPTIONS, Permission
+from ..permissions import CORE_DESCRIPTIONS, Permission
 
 if TYPE_CHECKING:
     from ..context import AppContext
@@ -84,6 +84,17 @@ SCOPE_DESCRIPTIONS: Final[dict[str, str]] = {
     },
 }
 
+# The identifier is shared; the supported plugin API surface is narrower than HTTP.
+SCOPE_DESCRIPTIONS[PluginScope.SETTINGS_MANAGE] = (
+    "Write custom global settings and this plugin's global settings namespace"
+)
+SCOPE_DESCRIPTIONS[PluginScope.SERVERS_CONFIGURE] = (
+    "Write custom server values and this plugin's server settings namespace"
+)
+SCOPE_DESCRIPTIONS[PluginScope.SERVERS_LOGS] = (
+    "Wait for matching live Bedrock server output"
+)
+
 
 def get_known_permission_scopes() -> dict[str, str]:
     """Dynamically discover all grantable capability scopes from registered APIs and path settings."""
@@ -107,8 +118,36 @@ def get_known_permission_scopes() -> dict[str, str]:
                     f"Permission required to invoke {required_scope} APIs",
                 ),
             )
+        for condition in getattr(entry[0], "__bsm_plugin_access__", {}).get(
+            "conditions", ()
+        ):
+            conditional_scope = condition["required_scope"]
+            if conditional_scope:
+                scopes.setdefault(
+                    conditional_scope,
+                    SCOPE_DESCRIPTIONS.get(
+                        conditional_scope,
+                        CORE_DESCRIPTIONS.get(conditional_scope, conditional_scope),
+                    ),
+                )
 
     return scopes
+
+
+def global_setting_permission(request) -> str:
+    """A specific path grant substitutes for general settings read access."""
+    if request.key.startswith("paths."):
+        return f"path:{request.key.split('.', 1)[1]}"
+    return PluginScope.SETTINGS_READ
+
+
+def plugin_setting_permission(request, *, write: bool = False) -> str | None:
+    """Own plugin settings are intrinsic; global/server storage has explicit scopes."""
+    if request.scope == "global":
+        return PluginScope.SETTINGS_MANAGE if write else PluginScope.SETTINGS_READ
+    if request.scope == "server":
+        return PluginScope.SERVERS_CONFIGURE if write else PluginScope.SERVERS_READ
+    return None
 
 
 def normalize_permissions(

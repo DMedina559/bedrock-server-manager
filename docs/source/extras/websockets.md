@@ -27,7 +27,7 @@ BSM exposes a single multiplexed WebSocket endpoint at `/ws` for live server tel
 |---|---|---|---|
 | `event:<event_name>` / `ws_event:<event_name>` | Authenticated (server-scoped events filter by `servers:read` on `server_name`) | `event` | Real-time notifications for public application and server lifecycle events (see [Event catalog](../plugins/plugin_events.md)) |
 | `resource-monitor:<server_name>` | `servers:read` on `<server_name>` | `resource_update` | Per-server process CPU, memory, PID, and uptime samples |
-| `application-metrics` | `system:info` | `resource_update` | Host and BSM process CPU, memory, disk I/O, network rates, and event-loop delay (`MetricsSample`) |
+| `application-metrics` | `runtime:metrics` | `resource_update` | Host and BSM process CPU, memory, disk I/O, network rates, and event-loop delay (`MetricsSample`) |
 | `server_log:<server_name>` | `servers:logs` on `<server_name>` | `server_log` | Live stdout/console log lines for `<server_name>` (initial snapshot + incremental lines) |
 | `app_log` (or `app_logs`) | `application:logs` | `app_log` | Live BSM application log lines (initial snapshot + incremental lines) |
 | `task:<task_id>` | Automatic for task owner (or `admin`) | `task_update` | Background task status, stage, percentage, and completion updates |

@@ -438,37 +438,53 @@ async def test_unknown_plugin_scope_is_rejected_before_mount(app_context, test_a
     assert "unknown-scope" not in app_context.plugin_manager._router_owners
 
 
-def test_legacy_role_forbidden_in_core_but_warns_for_plugin_routes(caplog):
+@pytest.mark.parametrize("mixed", [False, True])
+def test_legacy_role_forbidden_in_core_but_warns_for_plugin_routes(caplog, mixed):
     import logging
-    from fastapi import Depends, FastAPI
+
+    from fastapi import Depends, FastAPI, Security
+
     from bedrock_server_manager.web.access_metadata import validate_core_access
     from bedrock_server_manager.web.access_policy import AccessPolicy
-    from bedrock_server_manager.web.deps.auth import get_admin_user
+    from bedrock_server_manager.web.deps.auth import get_admin_user, require_permissions
+    from bedrock_server_manager.web.openapi_tags import OPENAPI_TAGS
     from bedrock_server_manager.web.router_validation import validate_plugin_routes
 
     app = FastAPI()
     policy = AccessPolicy()
 
-    @app.get("/legacy-core", operation_id="legacy_core_route")
+    dependencies = (
+        [Security(require_permissions, scopes=["servers:read"])] if mixed else []
+    )
+
+    @app.get(
+        "/legacy-core",
+        operation_id="legacy_core_route",
+        tags=[OPENAPI_TAGS[0]["name"]],
+        dependencies=dependencies,
+    )
     async def legacy_core(user=Depends(get_admin_user)):
         return {}
 
-    with pytest.raises(ValueError, match="Legacy role dependency"):
+    with pytest.raises(ValueError, match="deprecated legacy role dependency"):
         validate_core_access(app, policy)
 
     plugin_app = FastAPI()
     router = APIRouter()
 
-    @router.get("/legacy-plugin", operation_id="legacy_plugin_route")
+    @router.get(
+        "/legacy-plugin",
+        operation_id="legacy_plugin_route",
+        dependencies=dependencies,
+    )
     async def legacy_plugin(user=Depends(get_admin_user)):
         return {}
 
     caplog.clear()
     with caplog.at_level(logging.WARNING):
-        validate_plugin_routes(plugin_app, [router], policy, owner="legacy_40_plugin")
+        validate_plugin_routes(plugin_app.routes, [router], policy)
 
     assert any(
-        "uses deprecated legacy role dependency" in record.getMessage()
+        "uses deprecated legacy role dependenc" in record.getMessage()
         for record in caplog.records
     )
-

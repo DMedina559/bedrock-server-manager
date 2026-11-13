@@ -7,6 +7,7 @@ from .operation_api import PluginOperationAPI
 import functools
 import inspect
 import logging
+from copy import deepcopy
 from typing import (
     TYPE_CHECKING,
     Any,
@@ -84,6 +85,8 @@ def api_method(
     expose_to_plugins: bool = True,
     *,
     required_scope: Optional[str] = None,
+    permission_resolver: Callable[[Any], str | None] | None = None,
+    permission_conditions: tuple[tuple[str, str | None], ...] = (),
 ) -> Callable[[F], F]:
     """Decorator to register a function with the AppAPI bridge.
 
@@ -125,6 +128,35 @@ def api_method(
         from ..api.contract import validate_contract
 
         func = cast(F, validate_contract(func))
+        if permission_resolver is not None and (
+            required_scope or not permission_conditions
+        ):
+            raise ValueError(
+                "Conditional APIs need documented conditions and no fixed scope"
+            )
+        setattr(func, "__bsm_scope_resolver__", permission_resolver)
+        if not expose_to_plugins:
+            access_mode = "internal"
+        elif permission_resolver is not None:
+            access_mode = "conditional"
+        elif required_scope is not None:
+            access_mode = "capability"
+        else:
+            access_mode = "owner" if requires_plugin_name else "public"
+        setattr(
+            func,
+            "__bsm_plugin_access__",
+            {
+                "mode": access_mode,
+                "required_scope": (
+                    str(required_scope) if required_scope is not None else None
+                ),
+                "conditions": [
+                    {"condition": condition, "required_scope": scope}
+                    for condition, scope in permission_conditions
+                ],
+            },
+        )
         _api_registry[name] = (
             func,
             expose_to_plugins,
@@ -277,7 +309,10 @@ def create_app_api(
                 f"API '{name}' requires app_context, but none was provided."
             )
 
-        def check_permission() -> None:
+        def check_permission(args: tuple[Any, ...], kwargs: dict[str, Any]) -> None:
+            bound = inspect.signature(api_function).bind_partial(*args, **kwargs)
+            if {"app_context", "plugin_name"} & bound.arguments.keys():
+                raise TypeError("API runtime dependencies are injected")
             if not is_core:
                 require_owner()
                 if required_scope is not None:
@@ -288,6 +323,22 @@ def create_app_api(
                             "Plugin permissions require application context"
                         )
                     require_plugin_permission(app_context, plugin_name, required_scope)
+                resolver = getattr(api_function, "__bsm_scope_resolver__", None)
+                if resolver is not None:
+                    from ..api.contract import get_contract
+                    from .scopes import require_plugin_permission
+
+                    contract = get_contract(api_function)
+                    if contract is None or app_context is None:
+                        raise RuntimeError(
+                            "Conditional permissions require a typed contract and context"
+                        )
+                    request = contract[0].model_validate(
+                        bound.arguments.get("request", {})
+                    )
+                    scope = resolver(request)
+                    if scope is not None:
+                        require_plugin_permission(app_context, plugin_name, scope)
 
         def inject_runtime(
             args: tuple[Any, ...], kwargs: dict[str, Any]
@@ -320,7 +371,7 @@ def create_app_api(
 
             @functools.wraps(api_function)
             async def async_wrapper(*args: Any, **kwargs: Any) -> Any:
-                check_permission()
+                check_permission(args, kwargs)
                 kwargs = inject_runtime(args, kwargs)
                 from ..events.operations import operation_source
 
@@ -335,7 +386,7 @@ def create_app_api(
 
             @functools.wraps(api_function)
             def sync_wrapper(*args: Any, **kwargs: Any) -> Any:
-                check_permission()
+                check_permission(args, kwargs)
                 kwargs = inject_runtime(args, kwargs)
                 return api_function(*args, **kwargs)
 
@@ -343,6 +394,15 @@ def create_app_api(
             return sync_wrapper
 
     from ..events.capabilities import create_event_capabilities
+
+    def require_diagnostics() -> None:
+        from .scopes import PluginScope, require_plugin_permission
+
+        if app_context is None:
+            raise PermissionError("Global activity requires diagnostics:read")
+        require_plugin_permission(
+            app_context, plugin_name, PluginScope.DIAGNOSTICS_READ
+        )
 
     event_listener, event_sender, event_dispatcher = create_event_capabilities(
         plugin_name,
@@ -352,6 +412,7 @@ def create_app_api(
             else app_context.events if app_context is not None else None
         ),
         is_core=is_core,
+        require_diagnostics=require_diagnostics,
     )
 
     return AppAPI(
@@ -644,6 +705,7 @@ class AppAPI:
                         "docstring": summary,
                         "expose_to_plugins": expose_to_plugins,
                         "required_scope": required_scope,
+                        "access": deepcopy(getattr(func, "__bsm_plugin_access__", {})),
                         "is_async": inspect.iscoroutinefunction(func),
                         "contract_version": 2 if contract else 1,
                         "request_model": contract[0].__name__ if contract else None,
@@ -684,6 +746,7 @@ class AppAPI:
                         "docstring": "Could not inspect signature.",
                         "expose_to_plugins": expose_to_plugins,
                         "required_scope": required_scope,
+                        "access": deepcopy(getattr(func, "__bsm_plugin_access__", {})),
                         "is_async": inspect.iscoroutinefunction(func),
                     }
                 )

@@ -19,7 +19,7 @@ class PluginOperationAPI:
     def activity(
         self, query: OperationActivityQuery | None = None
     ) -> OperationActivity:
-        """Read bounded metadata across all sequences; results() stays sequence-local."""
+        """Read global metadata with diagnostics:read; results() stays sequence-local."""
         return cast(OperationActivity, self._dispatch("operation_activity", query))
 
     def current(self) -> OperationSnapshot | None:

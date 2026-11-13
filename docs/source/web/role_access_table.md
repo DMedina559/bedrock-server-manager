@@ -20,68 +20,70 @@ For `user` and `moderator` accounts, administrators can leave server access unre
 
 ### Role and permission reference
 
-BSM defines 59 built-in permissions across 23 categories, plus dynamic plugin permissions (`plugin:<plugin_name>:<perm>`). `admin` accounts always hold every built-in permission on every server.
+<!-- BEGIN GENERATED PERMISSIONS -->
+BSM defines 58 built-in permissions across 25 categories, plus dynamic plugin permissions (`plugin:<plugin_name>:<perm>`). Default role grants remain an upper bound; credentials, server assignments and MFA policy can narrow effective access.
 
 | Permission | Category | `user` | `moderator` | `admin` | Server-scoped? | Delegatable to integration tokens? |
 |---|---|---|---|---|---|---|
-| `servers:read` | `servers` | Yes | Yes | Yes | Yes | Yes |
-| `servers:inspect` | `servers` | — | Yes | Yes | Yes | Yes |
-| `servers:lifecycle` | `servers` | — | Yes | Yes | Yes | Yes |
-| `servers:command` | `servers` | — | Yes | Yes | Yes | Yes |
-| `servers:configure` | `servers` | — | — | Yes | Yes | Yes |
-| `servers:install` | `servers` | — | — | Yes | Yes | Yes |
-| `servers:delete` | `servers` | — | — | Yes | Yes | Yes |
-| `properties:read` | `properties` | — | Yes | Yes | Yes | Yes |
-| `properties:manage` | `properties` | — | Yes | Yes | Yes | Yes |
-| `allowlist:read` | `allowlist` | — | Yes | Yes | Yes | Yes |
-| `allowlist:manage` | `allowlist` | — | Yes | Yes | Yes | Yes |
-| `permissions:read` | `permissions` | — | Yes | Yes | Yes | Yes |
-| `permissions:manage` | `permissions` | — | Yes | Yes | Yes | Yes |
-| `bans:read` | `bans` | — | — | Yes | Yes | Yes |
-| `bans:manage` | `bans` | — | — | Yes | Yes | Yes |
-| `players:read` | `players` | — | Yes | Yes | No | Yes |
-| `players:manage` | `players` | — | Yes | Yes | No | Yes |
-| `worlds:read` | `worlds` | Yes | Yes | Yes | Yes | Yes |
-| `worlds:manage` | `worlds` | — | — | Yes | Yes | Yes |
-| `worlds:reset` | `worlds` | — | — | Yes | Yes | Yes |
-| `addons:read` | `addons` | — | Yes | Yes | Yes | Yes |
-| `addons:manage` | `addons` | — | — | Yes | Yes | Yes |
-| `content:read` | `content` | — | Yes | Yes | Yes | Yes |
-| `content:manage` | `content` | — | — | Yes | Yes | Yes |
-| `backups:read` | `backups` | — | Yes | Yes | Yes | Yes |
-| `backups:create` | `backups` | — | Yes | Yes | Yes | Yes |
-| `backups:restore` | `backups` | — | Yes | Yes | Yes | Yes |
-| `backups:manage` | `backups` | — | Yes | Yes | Yes | Yes |
-| `backups:prune` | `backups` | — | Yes | Yes | Yes | Yes |
-| `backups:keys` | `backups` | — | — | Yes | No | Yes |
-| `backups:export` | `backups` | — | — | Yes | Yes | Yes |
-| `backups:destinations` | `backups` | — | — | Yes | Yes | Yes |
-| `downloads:read` | `downloads` | — | Yes | Yes | No | Yes |
-| `downloads:prune` | `downloads` | — | — | Yes | No | Yes |
-| `servers:logs` | `servers` | — | Yes | Yes | Yes | Yes |
-| `application:logs` | `application` | — | — | Yes | No | Yes |
-| `scheduler:read` | `scheduler` | — | — | Yes | No | Yes |
-| `scheduler:manage` | `scheduler` | — | — | Yes | No | Yes |
-| `settings:read` | `settings` | — | — | Yes | No | Yes |
-| `settings:manage` | `settings` | — | — | Yes | No | Yes |
-| `plugins:pages` | `plugins` | Yes | Yes | Yes | No | Yes |
-| `plugins:read` | `plugins` | — | — | Yes | No | Yes |
-| `plugins:manage` | `plugins` | — | — | Yes | No | Yes |
-| `users:read` | `users` | — | Yes | Yes | No | Yes |
-| `users:manage` | `users` | — | — | Yes | No | **No** |
-| `access:manage` | `access` | — | — | Yes | No | **No** |
-| `account:read` | `account` | Yes | Yes | Yes | No | Yes |
-| `account:manage` | `account` | Yes | Yes | Yes | No | **No** |
-| `tokens:manage` | `tokens` | Yes | Yes | Yes | No | **No** |
-| `sessions:manage` | `sessions` | Yes | Yes | Yes | No | **No** |
-| `sessions:admin` | `sessions` | — | — | Yes | No | **No** |
-| `tasks:read` | `tasks` | Yes | Yes | Yes | No | Yes |
-| `health:read` | `health` | Yes | Yes | Yes | No | Yes |
-| `runtime:metrics` | `runtime` | Yes | Yes | Yes | No | Yes |
-| `runtime:read` | `runtime` | — | — | Yes | No | Yes |
-| `runtime:shutdown` | `runtime` | — | — | Yes | No | Yes |
-| `diagnostics:read` | `diagnostics` | — | — | Yes | No | Yes |
-| `audit:read` | `audit` | — | — | Yes | No | Yes |
+| `access:manage` | access | — | — | Yes | No | **No** |
+| `account:manage` | account | Yes | Yes | Yes | No | **No** |
+| `account:read` | account | Yes | Yes | Yes | No | Yes |
+| `addons:manage` | addons | — | — | Yes | Yes | Yes |
+| `addons:read` | addons | — | Yes | Yes | Yes | Yes |
+| `allowlist:manage` | allowlist | — | Yes | Yes | Yes | Yes |
+| `allowlist:read` | allowlist | — | Yes | Yes | Yes | Yes |
+| `application:logs` | application | — | — | Yes | No | Yes |
+| `audit:read` | audit | — | — | Yes | No | Yes |
+| `backups:create` | backups | — | Yes | Yes | Yes | Yes |
+| `backups:destinations` | backups | — | — | Yes | Yes | Yes |
+| `backups:export` | backups | — | — | Yes | Yes | Yes |
+| `backups:keys` | backups | — | — | Yes | No | Yes |
+| `backups:manage` | backups | — | Yes | Yes | Yes | Yes |
+| `backups:prune` | backups | — | Yes | Yes | Yes | Yes |
+| `backups:read` | backups | — | Yes | Yes | Yes | Yes |
+| `backups:restore` | backups | — | Yes | Yes | Yes | Yes |
+| `bans:manage` | bans | — | — | Yes | Yes | Yes |
+| `bans:read` | bans | — | — | Yes | Yes | Yes |
+| `content:manage` | content | — | — | Yes | Yes | Yes |
+| `content:read` | content | — | Yes | Yes | Yes | Yes |
+| `diagnostics:read` | diagnostics | — | — | Yes | No | Yes |
+| `downloads:prune` | downloads | — | — | Yes | No | Yes |
+| `downloads:read` | downloads | — | Yes | Yes | No | Yes |
+| `health:read` | health | Yes | Yes | Yes | No | Yes |
+| `permissions:manage` | permissions | — | Yes | Yes | Yes | Yes |
+| `permissions:read` | permissions | — | Yes | Yes | Yes | Yes |
+| `players:manage` | players | — | Yes | Yes | No | Yes |
+| `players:read` | players | — | Yes | Yes | No | Yes |
+| `plugins:manage` | plugins | — | — | Yes | No | Yes |
+| `plugins:pages` | plugins | Yes | Yes | Yes | No | Yes |
+| `plugins:read` | plugins | — | — | Yes | No | Yes |
+| `properties:manage` | properties | — | Yes | Yes | Yes | Yes |
+| `properties:read` | properties | — | Yes | Yes | Yes | Yes |
+| `runtime:metrics` | runtime | Yes | Yes | Yes | No | Yes |
+| `runtime:read` | runtime | — | — | Yes | No | Yes |
+| `runtime:shutdown` | runtime | — | — | Yes | No | Yes |
+| `scheduler:manage` | scheduler | — | — | Yes | No | Yes |
+| `scheduler:read` | scheduler | — | — | Yes | No | Yes |
+| `servers:command` | servers | — | Yes | Yes | Yes | Yes |
+| `servers:configure` | servers | — | — | Yes | Yes | Yes |
+| `servers:delete` | servers | — | — | Yes | Yes | Yes |
+| `servers:inspect` | servers | — | Yes | Yes | Yes | Yes |
+| `servers:install` | servers | — | — | Yes | Yes | Yes |
+| `servers:lifecycle` | servers | — | Yes | Yes | Yes | Yes |
+| `servers:logs` | servers | — | Yes | Yes | Yes | Yes |
+| `servers:read` | servers | Yes | Yes | Yes | Yes | Yes |
+| `sessions:admin` | sessions | — | — | Yes | No | **No** |
+| `sessions:manage` | sessions | Yes | Yes | Yes | No | **No** |
+| `settings:manage` | settings | — | — | Yes | No | Yes |
+| `settings:read` | settings | — | — | Yes | No | Yes |
+| `tasks:read` | tasks | Yes | Yes | Yes | No | Yes |
+| `tokens:manage` | tokens | Yes | Yes | Yes | No | **No** |
+| `users:manage` | users | — | — | Yes | No | **No** |
+| `users:read` | users | — | Yes | Yes | No | Yes |
+| `worlds:manage` | worlds | — | — | Yes | Yes | Yes |
+| `worlds:read` | worlds | Yes | Yes | Yes | Yes | Yes |
+| `worlds:reset` | worlds | — | — | Yes | Yes | Yes |
+<!-- END GENERATED PERMISSIONS -->
 
 ```{figure} ../../images/web_users_page.png
 :alt: User Management listing BSM accounts, assigned roles and active status

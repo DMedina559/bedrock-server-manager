@@ -71,9 +71,16 @@ def test_permission_catalog_mapping_is_consistent():
     assert "settings:manage" in VALID_PERMISSION_SCOPES
 
     http_permissions = {p.value for p in Permission}
+    transport_specific = {
+        PluginScope.SETTINGS_MANAGE,
+        PluginScope.SERVERS_CONFIGURE,
+        PluginScope.SERVERS_LOGS,
+    }
     for scope in PluginScope:
-        if scope.value in http_permissions:
-            assert VALID_PERMISSION_SCOPES[scope.value] == CORE_DESCRIPTIONS[scope.value]
+        if scope.value in http_permissions and scope not in transport_specific:
+            assert (
+                VALID_PERMISSION_SCOPES[scope.value] == CORE_DESCRIPTIONS[scope.value]
+            )
 
     with pytest.raises(ValueError, match="Unknown plugin permission scopes"):
         normalize_permissions(["unknown:scope"], validate_known=True)

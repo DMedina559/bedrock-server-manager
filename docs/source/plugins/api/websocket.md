@@ -138,6 +138,8 @@ await self.api.websocket.websocket_unregister_data_provider(request: bedrock_ser
 
 - **Description:** Unregisters a data provider handler for a WebSocket topic.
 
+- **Authorization:** Calling plugin's own resources only.
+
 - **Returns:** `UnregisterDataProviderResponse`
 
 Runtime context and plugin identity are injected by the bridge. Failures raise application exceptions; plugin cancellation raises `APICancelledError`.

@@ -178,6 +178,23 @@ class APIDocsGenerator(PluginBase):
                 lines.append(
                     f"- **Required Permission:** `{api_func['required_scope']}`\n"
                 )
+            else:
+                access = api_func.get("access", {})
+                if access.get("mode") == "conditional":
+                    for condition in access.get("conditions", []):
+                        scope = condition["required_scope"]
+                        requirement = f"`{scope}`" if scope else "plugin ownership"
+                        lines.append(
+                            f"- **Permission ({condition['condition']}):** {requirement}\n"
+                        )
+                elif access.get("mode") == "owner":
+                    lines.append(
+                        "- **Authorization:** Calling plugin's own resources only.\n"
+                    )
+                elif access.get("mode") == "public":
+                    lines.append(
+                        "- **Authorization:** No additional capability required.\n"
+                    )
 
             if api_func.get("contract_version") == 2:
                 request_model = api_func["request_model"]

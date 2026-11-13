@@ -165,10 +165,10 @@ permission, and account permissions do not grant plugin capabilities.
 | `backups:prune` | Prune server backups using configured retention |
 | `downloads:prune` | Prune the configured server download cache |
 | `settings:read` | Read global application settings |
-| `settings:manage` | Update or reload global application settings |
+| `settings:manage` | Write custom global values and this plugin's global settings namespace; core settings mutation and reload remain internal |
 | `plugins:read` | Read plugin status and metadata |
 | `scheduler:read` | Read global schedules and run history |
-| `diagnostics:read` | Inspect runtime, event, and activity diagnostics |
+| `diagnostics:read` | Inspect runtime diagnostics, installation-wide event history, and global operation activity |
 | `websocket:send` | Broadcast and send messages to WebSocket clients |
 
 Pruning requires `backups:prune` or `downloads:prune` respectively.

@@ -9,8 +9,14 @@ from bedrock_server_manager.api.models.settings import (
 from bedrock_server_manager.plugins.api_bridge import create_app_api
 
 
-async def test_plugin_api_calls_real_settings_and_persistence(app_context):
-    api = create_app_api("test_plugin", app_context)
+async def test_plugin_api_calls_real_settings_and_persistence(
+    app_context, plugin_factory
+):
+    plugin = await plugin_factory(
+        "test_plugin",
+        "from bedrock_server_manager import PluginBase\nclass Probe(PluginBase):\n    version = '1.0'\n    permissions = ['settings:read', 'settings:manage']\n",
+    )
+    api = plugin.api
     response = await api.settings.set_custom_global_setting(
         SetCustomGlobalSettingRequest(key="bridge", value={"saved": True})
     )
@@ -165,11 +171,15 @@ async def test_plugin_task_bridge_runs_actual_server_api(
 
 
 async def test_unscoped_api_access_is_backward_compatible_and_logs_deprecation(
-    app_context, caplog
+    app_context, caplog, plugin_factory
 ):
     import logging
 
-    api = create_app_api("legacy_caller", app_context)
+    plugin = await plugin_factory(
+        "legacy_caller",
+        "from bedrock_server_manager import PluginBase\nclass Probe(PluginBase):\n    version = '1.0'\n",
+    )
+    api = plugin.api
     caplog.clear()
     with caplog.at_level(logging.WARNING):
         response = await api.set_custom_global_setting(
@@ -255,7 +265,6 @@ class DeniedPlugin(PluginBase):
 
     with pytest.raises(UserInputError, match="Invalid plugin file scope"):
         await granted_plugin.api.runtime.get_plugin_data_path(scope="shared")
-
 
 
 async def test_scoped_server_lifecycle_and_command_permissions(
@@ -381,7 +390,7 @@ class UnscopedPlugin(PluginBase):
 
     with pytest.raises(PermissionError, match="servers:logs"):
         await unscoped_plugin.api.server.wait_for_log(
-            WaitForServerLogRequest(server_name="test", pattern="Ready")
+            WaitForServerLogRequest(server_name="test", text="Ready")
         )
 
     with pytest.raises(PermissionError, match="settings:read"):

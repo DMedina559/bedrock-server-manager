@@ -568,24 +568,27 @@ class LegacyPlugin(PluginBase):
 
 
 async def test_plugin_declaring_unrecognized_permission_is_rejected(
-    app_context, plugin_factory, caplog
+    app_context, tmp_path, caplog
 ):
     import logging
 
     caplog.clear()
-    with caplog.at_level(logging.ERROR):
-        plugin = await plugin_factory(
-            "typo_plugin",
-            """
+    path = tmp_path / "plugins" / "typo_plugin.py"
+    path.write_text("""
 from bedrock_server_manager import PluginBase
 
 class TypoPlugin(PluginBase):
     version = "1.0.0"
     permissions = ["servers:lifecycle", "sever:command"]
-""",
-        )
+""")
+    await app_context.plugin_service.register_or_update_plugin(
+        "typo_plugin", enabled=True
+    )
+    with caplog.at_level(logging.ERROR):
+        await app_context.plugin_manager._synchronize_config_with_disk()
+        loaded = await app_context.plugin_manager.load_plugin_by_name("typo_plugin")
 
-    assert plugin is None
+    assert not loaded
     assert app_context.plugin_manager.get_plugin_status("typo_plugin") == "ERROR"
     messages = "\n".join(record.getMessage() for record in caplog.records)
     assert "Unknown plugin permission scopes: sever:command" in messages

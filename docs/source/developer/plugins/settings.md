@@ -238,6 +238,15 @@ await self.set_plugin_settings(
 
 Omitting scope continues to address plugin-local settings. Server scope requires an existing `server_name`; other scopes must omit it. A whole-namespace write is atomic, and field writes validate against the latest committed namespace so concurrent sibling changes are retained. Defaults are supplied on read without persisting them. Validators receive `server_names`, `server_name`, and `plugin_name` in their Pydantic context.
 
+For plugins with explicit capability declarations, the Python settings API enforces
+`settings:read` / `settings:manage` for reads/writes in the plugin's global namespace,
+and `servers:read` / `servers:configure` for reads/writes in its server namespace.
+Plugin-local settings require only the injected plugin identity. These grants never
+let a plugin choose another plugin's identity. Bulk global settings reads require
+`settings:read` and filter host paths separately. Reading one grantable `paths.<name>`
+setting requires its specific `path:<name>` grant instead of general settings access;
+restricted bootstrap, credentials and plugin roots remain inaccessible.
+
 Ordinary global/server setting writes and server-settings restores validate changed registered namespaces at the storage transaction boundary, before database commit and state publication. Stored values remain when a plugin is disabled or removed; discovery retains models for installed disabled plugins, and refreshes registrations when plugins reload.
 
 `GET /api/plugins/{plugin_name}/settings` and `PUT /api/plugins/{plugin_name}/settings` accept `scope` and optional `server_name` parameters and return the scope's model schema for the frontend editor.

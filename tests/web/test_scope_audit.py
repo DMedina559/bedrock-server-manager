@@ -95,6 +95,73 @@ async def test_application_log_http_and_socket_scopes_agree(
     read.assert_awaited_once()
 
 
+async def test_scheduler_management_explicitly_delegates_application_jobs(
+    admin_auth_client,
+    app_context,
+    populated_server,
+):
+    issued = await issue(admin_auth_client, ["scheduler:manage"])
+    headers = {"Authorization": f"Bearer {issued['token']}"}
+    name = populated_server.server_name
+    # The credential cannot directly reset worlds, but can configure a core reset job.
+    denied = await admin_auth_client.delete(
+        f"/api/server/{name}/world/reset", headers=headers
+    )
+    assert denied.status_code == 403
+    path = "/api/scheduler/schedules/delegated-reset"
+    response = await admin_auth_client.put(
+        path,
+        headers=headers,
+        json={"task": "world:reset", "server_name": name, "enabled": False},
+    )
+    assert response.status_code == 200, response.text
+    snapshot = await app_context.scheduler.snapshot()
+    assert any(
+        schedule.configuration.task == "world:reset" for schedule in snapshot.schedules
+    )
+    assert (await admin_auth_client.delete(path, headers=headers)).status_code == 200
+
+
+async def test_server_log_http_and_socket_scopes_respect_token_server_ids(
+    admin_auth_client,
+    app_context,
+    monkeypatch,
+):
+    for name in ("log_alpha", "log_beta"):
+        await app_context.server_service.register_or_update_server(name)
+    identities = await app_context.access_service.server_identities()
+    issued = await issue(
+        admin_auth_client,
+        ["servers:read", "servers:logs", "application:logs"],
+        server_ids=[identities["log_alpha"]],
+    )
+    read = AsyncMock(
+        return_value=LogHistoryPage(
+            data="safe", start=0, end=4, file_id="file", has_more=False
+        )
+    )
+    monkeypatch.setattr(app_context.log_streamer, "read_history", read)
+    headers = {"Authorization": f"Bearer {issued['token']}"}
+    for topic, expected in (
+        ("server_log:log_alpha", 200),
+        ("server_log:log_beta", 403),
+        ("app_log", 403),
+    ):
+        response = await admin_auth_client.get(
+            "/api/logs/history", params={"topic": topic}, headers=headers
+        )
+        assert response.status_code == expected, response.text
+    _, authorization = await app_context.access_service.authenticate(issued["token"])
+    assert await app_context.access_service.topic_allowed(
+        authorization, "server_log:log_alpha"
+    )
+    assert not await app_context.access_service.topic_allowed(
+        authorization, "server_log:log_beta"
+    )
+    assert not await app_context.access_service.topic_allowed(authorization, "app_log")
+    read.assert_awaited_once()
+
+
 async def test_mfa_key_protects_new_and_existing_paths(app_context, monkeypatch):
     from bedrock_server_manager.backups import credentials
 

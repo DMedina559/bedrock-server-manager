@@ -30,7 +30,12 @@ from ..models.plugins import (
     UpdatePluginSettingsRequest,
 )
 from ..plugins.api_bridge import api_method
-from ..plugins.scopes import PluginScope, normalize_permissions, plugin_permissions
+from ..plugins.scopes import (
+    PluginScope,
+    normalize_permissions,
+    plugin_permissions,
+    plugin_setting_permission,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -222,7 +227,15 @@ async def trigger_external_app_event(
         raise
 
 
-@api_method("get_plugin_setting")
+@api_method(
+    "get_plugin_setting",
+    permission_resolver=plugin_setting_permission,
+    permission_conditions=(
+        ("own plugin settings", None),
+        ("global settings namespace", PluginScope.SETTINGS_READ),
+        ("server settings namespace", PluginScope.SERVERS_READ),
+    ),
+)
 async def get_plugin_setting(
     request: GetPluginSettingRequest, *, app_context: AppContext, plugin_name: str
 ) -> GetPluginSettingResponse:
@@ -234,7 +247,15 @@ async def get_plugin_setting(
     )
 
 
-@api_method("set_plugin_setting")
+@api_method(
+    "set_plugin_setting",
+    permission_resolver=lambda request: plugin_setting_permission(request, write=True),
+    permission_conditions=(
+        ("own plugin settings", None),
+        ("global settings namespace", PluginScope.SETTINGS_MANAGE),
+        ("server settings namespace", PluginScope.SERVERS_CONFIGURE),
+    ),
+)
 @trigger_event(after="after_plugin_settings_update")
 async def set_plugin_setting(
     request: SetPluginSettingRequest, *, app_context: AppContext, plugin_name: str

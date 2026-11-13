@@ -101,7 +101,8 @@ For transport-only topic data and live dashboards, use
 
 ## Diagnostics and limits
 
-`events.diagnostics()` returns copied metadata for current and recent dispatches,
+`events.diagnostics()` requires `diagnostics:read` for explicitly scoped plugins and
+returns copied metadata for current and recent dispatches,
 including pending worker and wait counts, workers and timeouts by owner,
 rejections by reason, per-listener subscription IDs, callback names, durations, outcomes,
 listener failures, delivery counts, and correlation IDs.
