@@ -14,6 +14,7 @@ from bedrock_server_manager.core.server.runtime import (
     validate_command,
 )
 from bedrock_server_manager.error import SendCommandError, ServerProcessError
+from bedrock_server_manager.events.operations import OperationService
 from bedrock_server_manager.state.models import RuntimeState
 
 
@@ -29,6 +30,7 @@ def make_server():
         identity_writer=None,
         storage=None,
         events=None,
+        operations=OperationService(),
         set_status_in_config=set_status,
     )
 

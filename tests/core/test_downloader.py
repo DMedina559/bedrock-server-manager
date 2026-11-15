@@ -160,3 +160,45 @@ async def test_downloader_extract_server_files_fresh_and_update(
     assert "old-prop=false" in content
     assert "# Legacy or custom properties" in content
     assert "legacy-prop=123" in content
+
+
+async def test_cancel_install_rolls_back_files_before_returning(
+    app_context, tmp_path, dummy_server_zip, monkeypatch
+):
+    import asyncio
+    import threading
+
+    from bedrock_server_manager.core.files import FileTransaction
+
+    target = tmp_path / "cancel-install"
+    target.mkdir()
+    (target / "server.properties").write_text("old properties")
+    binary = (
+        "bedrock_server.exe" if platform.system() == "Windows" else "bedrock_server"
+    )
+    (target / binary).write_bytes(b"old executable")
+    original_files = {p.name: p.read_bytes() for p in target.iterdir()}
+    archive = dummy_server_zip(target_dir=tmp_path, version="1.26.45.1")
+    downloader = BedrockDownloader(app_context.settings, str(target), "LATEST")
+    downloader.zip_file_path = str(archive)
+    replace = FileTransaction.replace
+    replaced = asyncio.Event()
+    drain = threading.Event()
+    loop = asyncio.get_running_loop()
+
+    def pause_after_first_replace(self, source, destination):
+        replace(self, source, destination)
+        loop.call_soon_threadsafe(replaced.set)
+        assert drain.wait(5)
+
+    monkeypatch.setattr(FileTransaction, "replace", pause_after_first_replace)
+    task = asyncio.create_task(downloader.extract_server_files(is_update=False))
+    try:
+        await asyncio.wait_for(replaced.wait(), 5)
+        task.cancel()
+    finally:
+        drain.set()
+    with pytest.raises(asyncio.CancelledError):
+        await task
+    assert {p.name: p.read_bytes() for p in target.iterdir()} == original_files
+    assert not list(tmp_path.glob("bsm-rollback-*"))

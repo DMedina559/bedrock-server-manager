@@ -7828,6 +7828,18 @@ Schemas are listed once. Local `$defs` references identify other models on this 
       "title": "Source",
       "type": "string"
     },
+    "stage": {
+      "anyOf": [
+        {
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "title": "Stage"
+    },
     "started_at": {
       "title": "Started At",
       "type": "number"

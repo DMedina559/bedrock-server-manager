@@ -166,9 +166,15 @@ async def test_process_status_is_separate_from_summary(
     from bedrock_server_manager.api.server import get_server_process, get_server_summary
 
     name = real_bedrock_server.server_name
-    await real_bedrock_server.start()
+    await start_server({"server_name": name}, app_context=app_context)
     run = real_bedrock_server.process.run
     await asyncio.wait_for(run.ready_event.wait(), 5)
+    starts = [
+        item
+        for item in app_context.operations.activity().recent
+        if item.name == "server.start"
+    ]
+    assert starts[0].stage == "ready"
     result = await get_server_process(
         GetServerProcessRequest(server_name=name), app_context=app_context
     )

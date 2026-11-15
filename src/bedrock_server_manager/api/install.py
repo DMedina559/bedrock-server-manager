@@ -18,6 +18,7 @@ from ..models.install import (
 )
 from ..plugins.api_bridge import api_method
 from ..plugins.scopes import PluginScope
+from ..utils.preparation import preparation_stage
 from .server import server_lifecycle_manager
 
 logger = logging.getLogger(__name__)
@@ -156,10 +157,13 @@ async def update_server(
             from ..models.backup_restore import CreateSnapshotRequest
             from .backup_restore import create_server_backup
 
-            backup = await create_server_backup(
-                CreateSnapshotRequest(server_name=server_name, purpose="pre_update"),
-                app_context=app_context,
-            )
+            async with preparation_stage(server.settings, "backup"):
+                backup = await create_server_backup(
+                    CreateSnapshotRequest(
+                        server_name=server_name, purpose="pre_update"
+                    ),
+                    app_context=app_context,
+                )
             if backup.status != "success":
                 from ..error import IncompleteOperationError
 

@@ -101,3 +101,31 @@ async def test_failed_pre_update_backup_prevents_install(
             app_context=app_context,
         )
     assert await server.get_version() == "1.20.1.1"
+
+
+async def test_cancellation_after_file_commit_keeps_version_metadata_consistent(
+    app_context, populated_server, monkeypatch
+):
+    import asyncio
+
+    from bedrock_server_manager.core.server.software import install_or_update
+
+    async def needs_update(*args, **kwargs):
+        return True
+
+    async def committed_then_cancelled(self, is_update):
+        self.actual_version = "1.26.45.1"
+        self.installation_committed = True
+        raise asyncio.CancelledError
+
+    monkeypatch.setattr(
+        "bedrock_server_manager.core.server.software.is_update_needed", needs_update
+    )
+    monkeypatch.setattr(
+        "bedrock_server_manager.core.downloader.BedrockDownloader.full_server_setup",
+        committed_then_cancelled,
+    )
+    with pytest.raises(asyncio.CancelledError):
+        await install_or_update(populated_server, "LATEST")
+    assert await populated_server.get_version() == "1.26.45.1"
+    assert not await populated_server.is_running()

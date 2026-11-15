@@ -135,6 +135,17 @@ class OwnedBDSRun:
         on_exit: Callable[["OwnedBDSRun"], None],
     ) -> None:
         self.server = server
+        sequence = server.operations.sequence()
+        self.start_operation_ids = (
+            tuple(
+                item.operation_id
+                for item in sequence.ancestry
+                if item.server_name == server.server_name
+                and item.name in {"server.start", "server.restart"}
+            )
+            if sequence
+            else ()
+        )
         self.process = process
         self.generation = uuid4().hex
         self.log_path = log_path
@@ -391,6 +402,8 @@ class OwnedBDSRun:
             and self.current()
         ):
             self.ready = True
+            for operation_id in self.start_operation_ids:
+                self.server.operations.mark_ready(operation_id)
             self.phase = "RUNNING"
             self.ready_event.set()
             self.publish()

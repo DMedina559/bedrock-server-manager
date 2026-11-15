@@ -20,7 +20,7 @@ from pydantic import SecretStr
 
 from ..config.const import get_installed_version
 from ..error import BackupRestoreError, ConfigurationError
-from ..events.operations import OperationName
+from ..events.operations import OperationName, report_operation_stage
 from ..logging import log_operation_error
 from ..models.common import CleanupResult
 from ..utils.io import temporary_directory
@@ -620,6 +620,7 @@ class UnifiedServerBackups(ManagedBackups):
             server_name=self.server.server_name,
             purpose=purpose,
         ) as operation:
+            report_operation_stage("backing_up")
             async with self.server.operation_lock:
                 await run_in_thread(RestoreJournal(self.server).ensure_clear)
                 await self._stage(progress, "Preparing server backup")

@@ -179,6 +179,9 @@ class WebSettings(SettingsRecord):
 
 
 class LifecycleSettings(SettingsRecord):
+    preparation_backup_timeout_seconds: float = Field(default=600.0, gt=0, le=900)
+    preparation_download_timeout_seconds: float = Field(default=600.0, gt=0, le=900)
+    preparation_install_timeout_seconds: float = Field(default=600.0, gt=0, le=900)
     command_timeout_seconds: float = Field(default=5.0, gt=0, le=60)
     server_ready_timeout_seconds: float = Field(default=60.0, gt=0, le=600)
     output_drain_timeout_seconds: float = Field(default=2.0, gt=0, le=60)
