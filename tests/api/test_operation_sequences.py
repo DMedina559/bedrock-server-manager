@@ -514,27 +514,51 @@ async def test_preparation_conflicts_are_rejected_before_stop_hooks(
     assert not app_context.operations.activity().active
 
 
-async def test_preparation_deadlines_are_independent_and_stage_is_visible():
+async def test_preparation_deadlines_are_independent_and_stage_is_visible(monkeypatch):
     from types import SimpleNamespace
 
     from bedrock_server_manager.error import ServerStartError
     from bedrock_server_manager.utils.preparation import preparation_stage
 
     service = OperationService()
-    settings = SimpleNamespace(get=lambda key, default: 0.02)
+    budgets = {
+        "lifecycle.preparation_backup_timeout_seconds": 120.0,
+        "lifecycle.preparation_download_timeout_seconds": 240.0,
+        "lifecycle.preparation_install_timeout_seconds": 360.0,
+    }
+    settings = SimpleNamespace(get=budgets.get)
+    timeouts, requested_budgets = [], []
+    real_timeout = asyncio.timeout
+
+    def capture_timeout(seconds):
+        deadline = real_timeout(seconds)
+        timeouts.append(deadline)
+        requested_budgets.append(seconds)
+        return deadline
+
+    monkeypatch.setattr(asyncio, "timeout", capture_timeout)
     with service.scope("server.start", server_name="test"):
         with service.scope("server.update", server_name="test"):
             async with preparation_stage(settings, "backup"):
                 assert {item.stage for item in service.activity().active} == {
                     "backing_up"
                 }
-                await asyncio.sleep(0.001)
+                await asyncio.sleep(0)
+            assert not timeouts[-1].expired()
             async with preparation_stage(settings, "download"):
                 assert service.current().stage == "downloading"
+                await asyncio.sleep(0)
+            assert not timeouts[-1].expired()
             with pytest.raises(ServerStartError, match="during install"):
                 async with preparation_stage(settings, "install"):
+                    # Trigger the real timeout at the next loop turn, independent
+                    # of Windows timer resolution or the runner's scheduling load.
+                    timeouts[-1].reschedule(asyncio.get_running_loop().time())
                     await asyncio.Event().wait()
             assert service.current().stage == "installing"
+    assert requested_budgets == [120.0, 240.0, 360.0]
+    assert len({id(deadline) for deadline in timeouts}) == 3
+    assert timeouts[-1].expired()
 
 
 async def test_ready_updates_only_owning_start_generation():
