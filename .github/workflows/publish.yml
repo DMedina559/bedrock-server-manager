@@ -1,29 +1,44 @@
-# .github/workflows/publish.yml
-
 name: Publish Package
 
 on:
   release:
     types: [published]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: false
 
 jobs:
+  lint:
+    uses: ./.github/workflows/lint.yml
+
+  validate:
+    uses: ./.github/workflows/build-test.yml
+
   pypi:
+    needs: [lint, validate]
     runs-on: ubuntu-latest
+    timeout-minutes: 15
     environment:
       name: release
     permissions:
+      contents: read
       id-token: write
-
     steps:
       - name: Checkout repository
         uses: actions/checkout@v7
         with:
           fetch-depth: 0
+          persist-credentials: false
 
       - name: Set up Python
         uses: actions/setup-python@v7
         with:
-          python-version: '3.11'
+          python-version: '3.14'
 
       - name: Install build dependencies
         run: |
@@ -39,18 +54,20 @@ jobs:
         uses: pypa/gh-action-pypi-publish@release/v1
 
   docker:
+    needs: [lint, validate]
     runs-on: ubuntu-latest
+    timeout-minutes: 25
     environment:
       name: release
     permissions:
       contents: read
       packages: write
-
     steps:
       - name: Checkout repository
         uses: actions/checkout@v7
         with:
           fetch-depth: 0
+          persist-credentials: false
 
       - name: Log in to the GitHub Container Registry
         uses: docker/login-action@v4.8.0
@@ -74,7 +91,6 @@ jobs:
             dmedina559/bedrock-server-manager
           tags: |
             type=ref,event=tag
-            #type=raw,value=beta,enable=${{ github.event.release.prerelease }}
             type=raw,value=stable,enable=${{ !github.event.release.prerelease }}
 
       - name: Build and push Docker image
