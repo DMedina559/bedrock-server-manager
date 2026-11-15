@@ -1,0 +1,57 @@
+/* Cherry Grove — BSM custom theme. Supports light/dark mode and both densities. */
+:root[data-theme="cherry_grove"][data-mode="dark"][data-density] {
+  --bsm-page: #150d11;
+  --bsm-surface: #21141c;
+  --bsm-surface-raised: #2f1d28;
+  --bsm-input: #191015;
+  --bsm-text: #f5eff3;
+  --bsm-muted: #c4abba;
+  --bsm-border: #6c4b5f;
+  --bsm-accent: #ea8ab2;
+  --bsm-accent-strong: #7b1942;
+  --bsm-accent-hover: #611434;
+  --bsm-on-accent: #ffffff;
+  --bsm-success: #78e6ac;
+  --bsm-danger: #ffb0b7;
+  --bsm-danger-solid: #a51c36;
+  --bsm-warning: #f6d784;
+  --bsm-info: #a9ceff;
+  --bsm-console: #0b0709;
+  --bsm-console-text: #dfb9c9;
+  --bsm-overlay: #030810b8;
+  --bsm-focus: #ea8ab2;
+  --bsm-shadow: 0 12px 40px #00000030;
+  --bsm-chart-1: #df86ab;
+  --bsm-chart-2: #badf86;
+  --bsm-chart-3: #86c1df;
+  --sidebar-bg-custom: var(--bsm-surface);
+  --splash-text-color: var(--bsm-warning);
+}
+:root[data-theme="cherry_grove"][data-mode="light"][data-density] {
+  --bsm-page: #f6f1f4;
+  --bsm-surface: #fdfcfd;
+  --bsm-surface-raised: #ecdfe7;
+  --bsm-input: #faf7f9;
+  --bsm-text: #251820;
+  --bsm-muted: #664759;
+  --bsm-border: #a78197;
+  --bsm-accent: #6c1338;
+  --bsm-accent-strong: #7b1942;
+  --bsm-accent-hover: #611434;
+  --bsm-on-accent: #ffffff;
+  --bsm-success: #16643f;
+  --bsm-danger: #a51c36;
+  --bsm-danger-solid: #a51c36;
+  --bsm-warning: #795000;
+  --bsm-info: #24549a;
+  --bsm-console: #f0e7ed;
+  --bsm-console-text: #542639;
+  --bsm-overlay: #17213180;
+  --bsm-focus: #6c1338;
+  --bsm-shadow: 0 10px 30px #17213112;
+  --bsm-chart-1: #792045;
+  --bsm-chart-2: #547920;
+  --bsm-chart-3: #205b79;
+  --sidebar-bg-custom: var(--bsm-surface);
+  --splash-text-color: var(--bsm-warning);
+}

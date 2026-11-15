@@ -1,0 +1,57 @@
+/* Nether — BSM custom theme. Supports light/dark mode and both densities. */
+:root[data-theme="nether"][data-mode="dark"][data-density] {
+  --bsm-page: #160b0c;
+  --bsm-surface: #231214;
+  --bsm-surface-raised: #321a1c;
+  --bsm-input: #1b0e0f;
+  --bsm-text: #f5eff0;
+  --bsm-muted: #c4abad;
+  --bsm-border: #6c4b4e;
+  --bsm-accent: #eaad8a;
+  --bsm-accent-strong: #7b3d19;
+  --bsm-accent-hover: #613014;
+  --bsm-on-accent: #ffffff;
+  --bsm-success: #78e6ac;
+  --bsm-danger: #ffb0b7;
+  --bsm-danger-solid: #a51c36;
+  --bsm-warning: #f6d784;
+  --bsm-info: #a9ceff;
+  --bsm-console: #0c0607;
+  --bsm-console-text: #dfc7b9;
+  --bsm-overlay: #030810b8;
+  --bsm-focus: #eaad8a;
+  --bsm-shadow: 0 12px 40px #00000030;
+  --bsm-chart-1: #dfa786;
+  --bsm-chart-2: #86df98;
+  --bsm-chart-3: #9086df;
+  --sidebar-bg-custom: var(--bsm-surface);
+  --splash-text-color: var(--bsm-warning);
+}
+:root[data-theme="nether"][data-mode="light"][data-density] {
+  --bsm-page: #f7f0f0;
+  --bsm-surface: #fdfcfc;
+  --bsm-surface-raised: #eedddf;
+  --bsm-input: #fbf7f7;
+  --bsm-text: #251819;
+  --bsm-muted: #66474a;
+  --bsm-border: #a78184;
+  --bsm-accent: #6c3413;
+  --bsm-accent-strong: #7b3d19;
+  --bsm-accent-hover: #613014;
+  --bsm-on-accent: #ffffff;
+  --bsm-success: #16643f;
+  --bsm-danger: #a51c36;
+  --bsm-danger-solid: #a51c36;
+  --bsm-warning: #795000;
+  --bsm-info: #24549a;
+  --bsm-console: #f2e6e7;
+  --bsm-console-text: #543726;
+  --bsm-overlay: #17213180;
+  --bsm-focus: #6c3413;
+  --bsm-shadow: 0 10px 30px #17213112;
+  --bsm-chart-1: #794120;
+  --bsm-chart-2: #207932;
+  --bsm-chart-3: #2a2079;
+  --sidebar-bg-custom: var(--bsm-surface);
+  --splash-text-color: var(--bsm-warning);
+}

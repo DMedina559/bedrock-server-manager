@@ -1,0 +1,57 @@
+/* Desert Temple — BSM custom theme. Supports light/dark mode and both densities. */
+:root[data-theme="desert_temple"][data-mode="dark"][data-density] {
+  --bsm-page: #16120b;
+  --bsm-surface: #241d11;
+  --bsm-surface-raised: #342a19;
+  --bsm-input: #1c160d;
+  --bsm-text: #f5f3ef;
+  --bsm-muted: #c4bbab;
+  --bsm-border: #6c604b;
+  --bsm-accent: #eab28a;
+  --bsm-accent-strong: #7b4219;
+  --bsm-accent-hover: #613414;
+  --bsm-on-accent: #ffffff;
+  --bsm-success: #78e6ac;
+  --bsm-danger: #ffb0b7;
+  --bsm-danger-solid: #a51c36;
+  --bsm-warning: #f6d784;
+  --bsm-info: #a9ceff;
+  --bsm-console: #0c0a06;
+  --bsm-console-text: #dfc9b9;
+  --bsm-overlay: #030810b8;
+  --bsm-focus: #eab28a;
+  --bsm-shadow: 0 12px 40px #00000030;
+  --bsm-chart-1: #dfab86;
+  --bsm-chart-2: #86df9c;
+  --bsm-chart-3: #9586df;
+  --sidebar-bg-custom: var(--bsm-surface);
+  --splash-text-color: var(--bsm-warning);
+}
+:root[data-theme="desert_temple"][data-mode="light"][data-density] {
+  --bsm-page: #f8f5f0;
+  --bsm-surface: #fdfdfc;
+  --bsm-surface-raised: #eee8dd;
+  --bsm-input: #fbf9f6;
+  --bsm-text: #252018;
+  --bsm-muted: #665b47;
+  --bsm-border: #a79981;
+  --bsm-accent: #6c3813;
+  --bsm-accent-strong: #7b4219;
+  --bsm-accent-hover: #613414;
+  --bsm-on-accent: #ffffff;
+  --bsm-success: #16643f;
+  --bsm-danger: #a51c36;
+  --bsm-danger-solid: #a51c36;
+  --bsm-warning: #795000;
+  --bsm-info: #24549a;
+  --bsm-console: #f3eee5;
+  --bsm-console-text: #543926;
+  --bsm-overlay: #17213180;
+  --bsm-focus: #6c3813;
+  --bsm-shadow: 0 10px 30px #17213112;
+  --bsm-chart-1: #794520;
+  --bsm-chart-2: #207936;
+  --bsm-chart-3: #2f2079;
+  --sidebar-bg-custom: var(--bsm-surface);
+  --splash-text-color: var(--bsm-warning);
+}

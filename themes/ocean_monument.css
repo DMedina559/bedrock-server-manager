@@ -1,0 +1,57 @@
+/* Ocean Monument — BSM custom theme. Supports light/dark mode and both densities. */
+:root[data-theme="ocean_monument"][data-mode="dark"][data-density] {
+  --bsm-page: #0a1417;
+  --bsm-surface: #102025;
+  --bsm-surface-raised: #172e36;
+  --bsm-input: #0c181d;
+  --bsm-text: #eff4f5;
+  --bsm-muted: #abbec4;
+  --bsm-border: #4b646c;
+  --bsm-accent: #8aeada;
+  --bsm-accent-strong: #197b6a;
+  --bsm-accent-hover: #146154;
+  --bsm-on-accent: #ffffff;
+  --bsm-success: #78e6ac;
+  --bsm-danger: #ffb0b7;
+  --bsm-danger-solid: #a51c36;
+  --bsm-warning: #f6d784;
+  --bsm-info: #a9ceff;
+  --bsm-console: #050b0c;
+  --bsm-console-text: #b9dfd9;
+  --bsm-overlay: #030810b8;
+  --bsm-focus: #8aeada;
+  --bsm-shadow: 0 12px 40px #00000030;
+  --bsm-chart-1: #86dfd0;
+  --bsm-chart-2: #c186df;
+  --bsm-chart-3: #dfba86;
+  --sidebar-bg-custom: var(--bsm-surface);
+  --splash-text-color: var(--bsm-warning);
+}
+:root[data-theme="ocean_monument"][data-mode="light"][data-density] {
+  --bsm-page: #eff6f8;
+  --bsm-surface: #fbfdfd;
+  --bsm-surface-raised: #dbebf0;
+  --bsm-input: #f6fafb;
+  --bsm-text: #182225;
+  --bsm-muted: #475f66;
+  --bsm-border: #819ea7;
+  --bsm-accent: #136c5e;
+  --bsm-accent-strong: #197b6a;
+  --bsm-accent-hover: #146154;
+  --bsm-on-accent: #ffffff;
+  --bsm-success: #16643f;
+  --bsm-danger: #a51c36;
+  --bsm-danger-solid: #a51c36;
+  --bsm-warning: #795000;
+  --bsm-info: #24549a;
+  --bsm-console: #e4f0f4;
+  --bsm-console-text: #26544d;
+  --bsm-overlay: #17213180;
+  --bsm-focus: #136c5e;
+  --bsm-shadow: 0 10px 30px #17213112;
+  --bsm-chart-1: #20796a;
+  --bsm-chart-2: #5b2079;
+  --bsm-chart-3: #795420;
+  --sidebar-bg-custom: var(--bsm-surface);
+  --splash-text-color: var(--bsm-warning);
+}
