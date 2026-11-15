@@ -1,5 +1,6 @@
 """Bedrock software installation operations, independent of server inheritance."""
 
+import asyncio
 import logging
 from typing import TYPE_CHECKING, Optional
 
@@ -161,6 +162,10 @@ async def _install_or_update(
             "updated" if is_update_op_for_extraction else "installed",
             actual_version_downloaded,
         )
+    except asyncio.CancelledError:
+        # Downloader rollback drains before releasing the server's operation lock.
+        await server.set_status_in_config("ERROR")
+        raise
     except BSMError as e_bsm_install:
         log_operation_error(
             logger,
@@ -183,6 +188,14 @@ async def _install_or_update(
         raise FileOperationError(
             f"Unexpected failure during install/update for '{server.server_name}': {e_unexp_install}"
         ) from e_unexp_install
+    finally:
+        # Cancellation can arrive during post-commit journal cleanup. The files
+        # are already replaced in that case; keep version metadata truthful even
+        # though the operation failed and the server must remain stopped.
+        if downloader.installation_committed and actual_version_downloaded is None:
+            committed_version = downloader.get_actual_version()
+            if committed_version is not None:
+                await server.set_version(committed_version)
 
 
 async def install_or_update(

@@ -450,3 +450,139 @@ async def test_deleted_sequence_snapshot_is_not_reusable(app_context, populated_
         assert await populated_server.backups.can_reuse_sequence_snapshot()
         populated_server.backups.resolve_backup(snapshot.backup_id).unlink()
         assert not await populated_server.backups.can_reuse_sequence_snapshot()
+
+
+async def test_required_autoupdate_failure_aborts_start(
+    app_context, populated_server, plugin_factory, monkeypatch
+):
+    from bedrock_server_manager.error import DownloadError
+
+    server = populated_server
+    await server.set_autoupdate(True)
+    await load_default(plugin_factory, "update_before_start")
+
+    async def fail(*args, **kwargs):
+        raise DownloadError("Download unavailable")
+
+    monkeypatch.setattr("bedrock_server_manager.api.install.is_update_needed", fail)
+    with pytest.raises(APICancelledError, match="Download unavailable"):
+        await start_server({"server_name": server.server_name}, app_context=app_context)
+    assert not await server.is_running()
+    assert not app_context.operations.activity().active
+
+
+async def test_preparation_conflicts_are_rejected_before_stop_hooks(
+    app_context, populated_server, plugin_factory
+):
+    from bedrock_server_manager.error import OperationConflictError
+
+    server = populated_server
+    entered, release = asyncio.Event(), asyncio.Event()
+    plugin = await plugin_factory(
+        "slow_prepare",
+        "from bedrock_server_manager import PluginBase\nclass Slow(PluginBase):\n    version = '1.0'\n",
+    )
+    stops = []
+
+    async def prepare(**data):
+        entered.set()
+        await release.wait()
+        data["event"].cancel("Test complete")
+
+    async def stopping(**data):
+        stops.append(data)
+
+    plugin.api.events.listen("before_server_start", prepare)
+    plugin.api.events.listen("before_server_stop", stopping)
+    task = asyncio.create_task(
+        start_server({"server_name": server.server_name}, app_context=app_context)
+    )
+    try:
+        await asyncio.wait_for(entered.wait(), 5)
+        for operation in (start_server, stop_server, update_server):
+            with pytest.raises(
+                OperationConflictError, match="already has an active server.start"
+            ):
+                await operation(
+                    {"server_name": server.server_name}, app_context=app_context
+                )
+        assert stops == []
+    finally:
+        release.set()
+        with pytest.raises(APICancelledError, match="Test complete"):
+            await task
+    assert not app_context.operations.activity().active
+
+
+async def test_preparation_deadlines_are_independent_and_stage_is_visible():
+    from types import SimpleNamespace
+
+    from bedrock_server_manager.error import ServerStartError
+    from bedrock_server_manager.utils.preparation import preparation_stage
+
+    service = OperationService()
+    settings = SimpleNamespace(get=lambda key, default: 0.02)
+    with service.scope("server.start", server_name="test"):
+        with service.scope("server.update", server_name="test"):
+            async with preparation_stage(settings, "backup"):
+                assert {item.stage for item in service.activity().active} == {
+                    "backing_up"
+                }
+                await asyncio.sleep(0.001)
+            async with preparation_stage(settings, "download"):
+                assert service.current().stage == "downloading"
+            with pytest.raises(ServerStartError, match="during install"):
+                async with preparation_stage(settings, "install"):
+                    await asyncio.Event().wait()
+            assert service.current().stage == "installing"
+
+
+async def test_ready_updates_only_owning_start_generation():
+    from bedrock_server_manager.events.operations import report_operation_stage
+
+    service = OperationService()
+    with service.scope("server.start", server_name="test") as first:
+        report_operation_stage("starting")
+        first.finish("started")
+    with service.scope("server.start", server_name="test") as second:
+        report_operation_stage("starting")
+        second.finish("started")
+    service.mark_ready(first.snapshot.operation_id)
+    records = service.activity().recent
+    assert records[0].stage == "starting"
+    assert records[1].stage == "ready"
+
+
+async def test_pre_update_backup_timeout_aborts_start_with_phase(
+    app_context, populated_server, plugin_factory, monkeypatch
+):
+    server = populated_server
+    original_version = await server.get_version()
+    await server.set_autoupdate(True)
+    await app_context.settings.set("lifecycle.preparation_backup_timeout_seconds", 0.01)
+    await load_default(plugin_factory, "update_before_start")
+
+    async def needs_update(*args, **kwargs):
+        return True
+
+    async def slow_backup(*args, **kwargs):
+        await asyncio.Event().wait()
+
+    monkeypatch.setattr(
+        "bedrock_server_manager.api.install.is_update_needed", needs_update
+    )
+    monkeypatch.setattr(
+        "bedrock_server_manager.api.backup_restore.create_server_backup", slow_backup
+    )
+    with pytest.raises(APICancelledError, match="timed out during backup"):
+        await start_server({"server_name": server.server_name}, app_context=app_context)
+    assert not await server.is_running()
+    assert await server.get_version() == original_version
+    starts = [
+        item
+        for item in app_context.operations.activity().recent
+        if item.name == "server.start"
+    ]
+    assert starts[0].status == "cancelled"
+    assert starts[0].stage == "backing_up"
+    assert not app_context.operations.activity().active

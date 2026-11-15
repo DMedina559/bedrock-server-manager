@@ -74,6 +74,9 @@ can repair a missing compatibility PID file without a system-wide orphan scan.
 
 | Setting | Default | Constraints | Purpose |
 |---|---|---|---|
+| `lifecycle.preparation_backup_timeout_seconds` | `600` | `> 0`, at most `900` | Deadline for the safety backup before an update |
+| `lifecycle.preparation_download_timeout_seconds` | `600` | `> 0`, at most `900` | Independent deadline to resolve and download server software |
+| `lifecycle.preparation_install_timeout_seconds` | `600` | `> 0`, at most `900` | Independent deadline for staged extraction and file replacement; cancellation waits for rollback |
 | `lifecycle.command_timeout_seconds` | `5` | `> 0`, at most `60` | Command admission and stdin drain deadline; timeout means delivery may be uncertain |
 | `lifecycle.server_ready_timeout_seconds` | `60` | `> 0`, at most `600` | Maximum time for BDS to report readiness after process spawn |
 | `lifecycle.server_stop_timeout_seconds` | `10` | `> 0`, at most `600` | Graceful stop and terminate/kill escalation budget |

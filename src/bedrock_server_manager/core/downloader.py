@@ -31,8 +31,9 @@ from ..error import (
 from ..failures import classify_failure
 from ..models.common import CleanupResult
 from ..utils.io import temporary_directory
+from ..utils.preparation import preparation_stage
 from ..utils.progress import report_stage
-from ..utils.threads import run_in_thread
+from ..utils.threads import check_cancellation, run_in_thread
 from .files import (
     extract_archive,
     file_transaction,
@@ -121,6 +122,7 @@ class BedrockDownloader:
         self.settings: "Settings" = settings_obj
         self.server_dir: str = os.path.abspath(server_dir)
         self.input_target_version: str = target_version.strip()
+        self.installation_committed = False
         self.logger = logging.getLogger(__name__)
 
         # For "CUSTOM" version, the path to the ZIP file must be provided.
@@ -689,8 +691,11 @@ class BedrockDownloader:
                     Path(self.server_dir).parent
                 ) as transaction:
 
-                    def install() -> None:
+                    def install(
+                        cancellation_event: threading.Event | None = None,
+                    ) -> None:
                         for entry in sorted(staging.rglob("*")):
+                            check_cancellation(cancellation_event)
                             target = Path(self.server_dir) / entry.relative_to(staging)
                             if entry.is_dir():
                                 transaction.mkdir(target)
@@ -698,6 +703,8 @@ class BedrockDownloader:
                                 transaction.replace(entry, target)
 
                     await run_in_thread(install)
+                    # No awaits between completed replacement and the commit marker.
+                    self.installation_committed = True
         except zipfile.BadZipFile as error:
             raise ExtractError(
                 f"Invalid ZIP file: '{self.zip_file_path}'. {error}"
@@ -715,8 +722,10 @@ class BedrockDownloader:
             self.input_target_version,
             is_update,
         )
-        actual_version, _, _ = await self.prepare_download_assets()
-        await self.extract_server_files(is_update)
+        async with preparation_stage(self.settings, "download"):
+            actual_version, _, _ = await self.prepare_download_assets()
+        async with preparation_stage(self.settings, "install"):
+            await self.extract_server_files(is_update)
         self.logger.debug(
             "Server setup/update for version %s completed in '%s'.",
             actual_version,

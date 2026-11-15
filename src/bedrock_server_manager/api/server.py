@@ -22,7 +22,7 @@ from ..error import (
     UserInputError,
 )
 from ..events import trigger_event
-from ..events.operations import OperationName, track_operation
+from ..events.operations import OperationName, report_operation_stage, track_operation
 from ..logging import log_operation_error
 from ..models.logs import WaitForServerLogRequest, WaitForServerLogResponse
 from ..models.process import GetServerProcessRequest, GetServerProcessResponse
@@ -265,6 +265,7 @@ async def _start_server(
 ) -> StartServerResponse:
     """Start a server, or report that it is already running; failures raise."""
     server = app_context.get_server(request.server_name)
+    report_operation_stage("starting")
     await server.start()
     await app_context.bedrock_process_manager.add_server(server)
     return StartServerResponse(

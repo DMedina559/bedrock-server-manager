@@ -43,6 +43,7 @@ class OperationSnapshot(BaseModel):
     purpose: str | None = None
     status: Literal["running", "finished", "failed", "cancelled"] = "running"
     outcome: str | None = None
+    stage: str | None = None
     scope: tuple[str, ...] = ()
     started_at: float
     finished_at: float | None = None
@@ -204,6 +205,25 @@ class OperationService:
                 completed=self._completed,
             )
 
+    def mark_ready(self, operation_id: str) -> None:
+        """Record readiness only for the start that owns this process generation."""
+        with self._lock:
+            handle = self._running.get(operation_id)
+            if handle is not None:
+                handle.snapshot = handle.snapshot.model_copy(update={"stage": "ready"})
+            self._recent = deque(
+                (
+                    (
+                        record.model_copy(update={"stage": "ready"})
+                        if record.operation_id == operation_id
+                        and record.status == "finished"
+                        else record
+                    )
+                    for record in self._recent
+                ),
+                maxlen=self.history_limit,
+            )
+
     def _context(self) -> tuple[_Frame, ...]:
         task = _task()
         return tuple(
@@ -298,6 +318,36 @@ class OperationService:
                             "Operation sequence capacity reached"
                         )
                     self._active[sequence.sequence_id] = sequence
+                guarded = {
+                    OperationName.SERVER_START,
+                    OperationName.SERVER_STOP,
+                    OperationName.SERVER_RESTART,
+                    OperationName.SERVER_UPDATE,
+                    OperationName.BACKUP_RESTORE,
+                    OperationName.BACKUP_REQUEST,
+                    OperationName.BACKUP_CREATE,
+                }
+                conflict = next(
+                    (
+                        item.snapshot
+                        for item in self._running.values()
+                        if server_name is not None
+                        and item.snapshot.server_name == server_name
+                        and item.snapshot.name in guarded
+                        and name in guarded
+                        and item.snapshot.sequence_id != sequence.sequence_id
+                    ),
+                    None,
+                )
+                if conflict is not None:
+                    if not frames:
+                        self._active.pop(sequence.sequence_id, None)
+                    from ..error import OperationConflictError
+
+                    raise OperationConflictError(
+                        f"Server '{server_name}' already has an active {conflict.name} "
+                        f"operation ({conflict.operation_id}); retry when it finishes."
+                    )
                 self._running[identifier] = handle
             token = _frames.set(_frames.get() + (_Frame(self, sequence, handle),))
             status = "finished"
@@ -344,6 +394,24 @@ class OperationService:
                         "sequence_id": sequence.sequence_id,
                         "server_name": server_name,
                     },
+                )
+
+
+def report_operation_stage(stage: str) -> None:
+    """Update the current operation and its same-server parents without child-task leakage."""
+    frames = tuple(
+        frame
+        for frame in _frames.get()
+        if frame.sequence.active and frame.sequence.task is _task()
+    )
+    if not frames:
+        return
+    server_name = frames[-1].handle.snapshot.server_name
+    for frame in frames:
+        if frame.handle.snapshot.server_name == server_name:
+            with frame.service._lock:
+                frame.handle.snapshot = frame.handle.snapshot.model_copy(
+                    update={"stage": stage}
                 )
 
 

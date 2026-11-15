@@ -17,3 +17,30 @@ An embedded ASGI application needs an injected runtime exit callback for shutdow
 Test startup failure, duplicate shutdown, drain deadlines, cancellation and cleanup ownership. Platform-specific process/service tests should exercise their distinct behavior without broadening the Python CI matrix beyond supported minimum and maximum versions.
 
 See [runtime references](reference/runtime/index.rst) and [service lifecycle](reference/services/lifecycle.rst).
+
+## Server preparation and conflicting actions
+
+Start, stop, restart, update and restore reserve the server in operation activity
+before running their hooks. A conflicting request from another operation sequence
+fails immediately with an operation conflict instead of waiting and unexpectedly
+running later. Nested preparation, backups and restart steps in the same sequence
+remain supported. Different servers can operate concurrently.
+
+Automatic update on start must succeed before launch. Its callback has a one-hour
+outer safety deadline; backup, download and installation each have their own
+configurable deadline, so a slow backup does not consume the download budget.
+Other event callbacks retain their existing deadlines. The optional backup-on-start
+plugin retains its own timeout and required-backup setting.
+
+Operation activity includes `stage`: `backing_up`, `downloading`, `installing`,
+`starting`, then `ready`. Stages update the current operation and its same-server
+parents. A successful start response still means the process was spawned;
+`ready` is recorded only after that process generation reports readiness.
+A failed operation retains the stage where it stopped. These records use the
+existing bounded activity history and do not introduce background HTTP tasks.
+
+Installation cancellation keeps the server reserved while its worker drains and
+file replacement rolls back. Cancellation checks between replacements allow the
+worker to stop cooperatively. Deadlines therefore request cancellation; cleanup
+can extend the elapsed time beyond the deadline. Cancelled installations are
+marked `ERROR` and never proceed to launch automatically.

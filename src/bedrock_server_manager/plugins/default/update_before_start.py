@@ -6,8 +6,7 @@ Plugin that automatically updates a Bedrock server to the latest version.
 from typing import Any
 
 from bedrock_server_manager import PluginBase, PluginScope, app_event
-from bedrock_server_manager.error import BSMError
-from bedrock_server_manager.logging import log_operation_error
+from bedrock_server_manager.error import ServerStartError
 from bedrock_server_manager.models import (
     GetServerSettingRequest,
     UpdateServerRequest,
@@ -33,7 +32,7 @@ class AutoupdatePlugin(PluginBase):
             "Plugin loaded. Will check for updates before server starts if enabled."
         )
 
-    @app_event("before_server_start", priority=100)
+    @app_event("before_server_start", priority=100, timeout_seconds=3600)
     async def update_before_start(self, **kwargs: Any):
         """Check for the 'autoupdate' flag before a server starts and runs the update
         process if it's enabled.
@@ -105,29 +104,15 @@ class AutoupdatePlugin(PluginBase):
                         server_name,
                     )
             else:
-                # Log the failure but allow the server to attempt to start with its current version.
-                error_message = update_result.message
-                self.logger.error(
-                    "Autoupdate process failed for '%s': %s. Server will start with current version.",
-                    server_name,
-                    error_message,
+                raise ServerStartError(
+                    f"Required pre-start update for '{server_name}' did not complete: "
+                    f"{update_result.message}"
                 )
-
-        except BSMError as e:
-            # Error accessing server config (e.g., file not found).
-            log_operation_error(
-                self.logger,
-                "Error accessing server config for '%s': %s. Server start will continue.",
-                server_name,
-                e,
-                error=e,
-            )
-        except Exception as e:
-            # Catch any other unexpected errors to prevent them from stopping the server start process.
-            log_operation_error(
-                self.logger,
-                "An unexpected error occurred during autoupdate for '%s': %s. Server start will continue.",
-                server_name,
-                e,
-                error=e,
-            )
+        except Exception as error:
+            event = kwargs.get("event")
+            reason = f"Pre-start update failed for '{server_name}': {error}"
+            self.logger.error("%s", reason)
+            if event is not None:
+                event.cancel(reason)
+            else:
+                raise ServerStartError(reason) from error

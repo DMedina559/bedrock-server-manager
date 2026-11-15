@@ -86,7 +86,8 @@ async def test_failures_are_isolated_and_before_hooks_fail_closed():
     assert before.failures[0].code == "event_listener_timeout"
     control.seal()
     control.cancel("late change")
-    assert control.cancel_reason == "A before-operation listener did not complete"
+    assert "before_demo" in control.cancel_reason
+    assert "timed out after 0.01 seconds" in control.cancel_reason
     after = await bus.emit("after_demo")
     assert after.status == "partial"
     assert after.failures[0].error_type == "TimeoutError"

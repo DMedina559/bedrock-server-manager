@@ -984,7 +984,14 @@ class EventBus:
                 and definition.phase == "before"
                 and isinstance(control, CancellableEvent)
             ):
-                control.cancel("A before-operation listener did not complete")
+                control.cancel(
+                    f"Before-operation listener '{subscription.owner}' for '{envelope.name}' "
+                    + (
+                        f"timed out after {timeout:g} seconds"
+                        if isinstance(error, TimeoutError)
+                        else f"failed: {error}"
+                    )
+                )
             if strict and not subscription.observer:
                 raise
         finally:
