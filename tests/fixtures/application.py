@@ -139,6 +139,17 @@ async def app_context(db, isolated_bcm_config, tmp_path):
     await context.shutdown()
 
 
+@pytest.fixture
+def dummy_player_command():
+    def command(action: str, name: str, xuid: str) -> str:
+        if hasattr(bedrock_fixtures, "dummy_server_template"):
+            return f"__DUMMY__ {action} {name} xuid={xuid}"
+        # The published 1.0.0 dummy accepts only the name and uses a fixed XUID.
+        return f"__DUMMY__ {action} {name}"
+
+    return command
+
+
 @pytest.fixture(scope="session")
 def released_dummy_server_template(tmp_path_factory):
     target = tmp_path_factory.mktemp("released-dummy-template")

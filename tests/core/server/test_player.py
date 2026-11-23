@@ -1,8 +1,6 @@
 import asyncio
 import os
 
-from bsm_test_utils import fixtures as bedrock_fixtures
-
 
 async def test_player_log_parsing_and_scanning(real_bedrock_server):
     """Test parsing log events, malformed lines, missing file, and incremental scanning."""
@@ -68,23 +66,17 @@ async def test_player_log_parsing_and_scanning(real_bedrock_server):
     assert [p["name"] for p in all_players] == ["player1", "player2"]
 
 
-async def test_update_online_players(real_bedrock_server):
+async def test_update_online_players(real_bedrock_server, dummy_player_command):
     server = real_bedrock_server
     await server.start()
     xuid = "2535413537906883"
     player = "IntegrationPlayer"
-    # The published 1.0.0 dummy accepts the player name only.
-    player_args = (
-        f"{player} xuid={xuid}"
-        if hasattr(bedrock_fixtures, "dummy_server_template")
-        else player
-    )
-    await server.send_command(f"__DUMMY__ PLAYER_JOIN {player_args}")
+    await server.send_command(dummy_player_command("PLAYER_JOIN", player, xuid))
     async with asyncio.timeout(5):
         while not await server.player_tracker.update_online_players():
             await asyncio.sleep(0.01)
     assert server.players == [{"name": player, "xuid": xuid}]
-    await server.send_command(f"__DUMMY__ PLAYER_LEAVE {player_args}")
+    await server.send_command(dummy_player_command("PLAYER_LEAVE", player, xuid))
     async with asyncio.timeout(5):
         while await server.player_tracker.update_online_players():
             await asyncio.sleep(0.01)
