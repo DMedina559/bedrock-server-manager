@@ -473,7 +473,7 @@ async def test_survivor_stop_finishes_despite_repeated_caller_cancellation():
     assert not server.operation_lock.locked()
 
 
-async def test_status_projection_retry_does_not_repeat_runtime_event(tmp_path):
+async def test_status_projection_retry_does_not_repeat_events(tmp_path):
     run = make_run(tmp_path)
     run.server.set_status_in_config = AsyncMock(
         side_effect=[RuntimeError("storage"), None]
@@ -481,7 +481,7 @@ async def test_status_projection_retry_does_not_repeat_runtime_event(tmp_path):
     emit = AsyncMock(return_value=SimpleNamespace(rejection_reason=None))
     run.server.events = SimpleNamespace(accepting=True, emit=emit)
     run.publish()
-    run._effects.set()
+    run.feed(b"Player connected: TestPlayer, xuid: 1\n")
     task = asyncio.create_task(run._notify())
     try:
         await asyncio.wait_for(run._notifications_idle.wait(), 1)
@@ -493,6 +493,12 @@ async def test_status_projection_retry_does_not_repeat_runtime_event(tmp_path):
             )
             == 1
         )
+        snapshots = [
+            call.args[1]["player_count"]
+            for call in emit.await_args_list
+            if call.args[0] == "after_server_players_change"
+        ]
+        assert snapshots == [1]
     finally:
         task.cancel()
         await asyncio.gather(task, return_exceptions=True)

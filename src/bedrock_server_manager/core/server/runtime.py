@@ -502,6 +502,7 @@ class OwnedBDSRun:
 
     async def _notify(self) -> None:
         projected_phase = None
+        published_players: dict[str, str] = {}
         while True:
             await self._effects.wait()
             self._effects.clear()
@@ -573,21 +574,28 @@ class OwnedBDSRun:
                             self._effects.set()
                             break
                     self._deltas.popleft()
-                if events is not None and events.accepting:
+                if (
+                    events is not None
+                    and events.accepting
+                    and self.players != published_players
+                ):
+                    players = self.players.copy()
                     receipt = await publish_player_snapshot(
                         events,
                         PlayerSnapshot(
                             server_name=self.server.server_name,
-                            player_count=len(self.players),
+                            player_count=len(players),
                             players=[
                                 {"xuid": xuid, "name": name}
-                                for xuid, name in self.players.items()
+                                for xuid, name in players.items()
                             ],
                         ),
                     )
                     if receipt.rejection_reason in {"capacity", "depth_limit"}:
                         await asyncio.sleep(0.1)
                         self._effects.set()
+                    else:
+                        published_players = players
                 if not self._effects.is_set() and not self._deltas and not self._phases:
                     self._notifications_idle.set()
                 elif self._effects.is_set():
