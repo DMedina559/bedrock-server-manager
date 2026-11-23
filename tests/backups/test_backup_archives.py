@@ -495,9 +495,6 @@ async def test_live_world_backup_benchmark(populated_server, tmp_path, monkeypat
 
     import bsm_test_utils
 
-    if not hasattr(bsm_test_utils, "measure_async_backup_restore"):
-        pytest.skip("Requires the async benchmark and disk-backed dummy save query")
-
     server = populated_server
     world_name = await server.get_world_name()
     server_dir = Path(server.paths.server_dir)

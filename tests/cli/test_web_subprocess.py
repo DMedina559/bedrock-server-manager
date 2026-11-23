@@ -16,9 +16,9 @@ from httpx2 import AsyncClient, TransportError
 def web_process_config(tmp_path):
     config = tmp_path / "config"
     data = tmp_path / "data"
-    config.mkdir()
+    (config / "bootstrap").mkdir(parents=True)
     data.mkdir()
-    (config / "bedrock_server_manager.json").write_text(
+    (config / "bootstrap" / "bedrock_server_manager.json").write_text(
         json.dumps(
             {"data_dir": str(data), "db_url": f"sqlite:///{data / 'manager.db'}"}
         )

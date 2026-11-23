@@ -1,5 +1,6 @@
 import json
 import os
+from contextlib import closing
 from pathlib import Path
 from unittest.mock import MagicMock
 
@@ -252,8 +253,7 @@ def test_bootstrap_migration_rejects_conflicts(isolated_bcm_config):
     from bedrock_server_manager.error import ConfigurationError
 
     root = Path(isolated_bcm_config)
-    (root / "bootstrap").mkdir()
-    (root / "bootstrap" / "bedrock_server_manager.json").write_text("{}")
+    (root / "bedrock_server_manager.json").write_text("{}")
     with pytest.raises(ConfigurationError, match="Conflicting"):
         bcm_config.get_config_path()
     assert (root / "bedrock_server_manager.json").exists()
@@ -292,7 +292,7 @@ def test_legacy_default_preserves_live_database_and_wal(clean_env, tmp_path):
 
     bcm_config.set_custom_config_dir(str(tmp_path))
     legacy = tmp_path / "bedrock-server-manager.db"
-    with sqlite3.connect(legacy) as db:
+    with closing(sqlite3.connect(legacy)) as db:
         db.execute("PRAGMA journal_mode=WAL")
         db.execute("CREATE TABLE settings (value TEXT)")
         db.execute("INSERT INTO settings VALUES ('retained')")
@@ -319,9 +319,10 @@ def test_conflicting_default_databases_are_never_deleted(clean_env, tmp_path, in
         if invalid:
             path.write_bytes(b"unreadable database")
         else:
-            with sqlite3.connect(path) as db:
+            with closing(sqlite3.connect(path)) as db:
                 db.execute("CREATE TABLE settings (value TEXT)")
                 db.execute("INSERT INTO settings VALUES (?)", (path.name,))
+                db.commit()
     before = {p: p.read_bytes() for p in (legacy, nested)}
     with pytest.raises(ConfigurationError, match="Both legacy and nested"):
         bcm_config.load_config()

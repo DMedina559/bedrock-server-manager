@@ -1,3 +1,4 @@
+import asyncio
 import hashlib
 import hmac
 import json
@@ -5,18 +6,19 @@ import os
 import shutil
 import sqlite3
 import zipfile
-from contextlib import closing
+from contextlib import asynccontextmanager, closing
+from functools import partial
 from pathlib import Path
 
 import pytest
 import pytest_asyncio
-from bsm_test_utils import fixtures as bedrock_fixtures
-from bsm_test_utils import setup_dummy_server
+from bsm_test_utils import PackSpec, create_mcworld
 from httpx2 import ASGITransport, AsyncClient
 from jose import jwt
 
 from bedrock_server_manager.config import bcm_config
 from bedrock_server_manager.context import AppContext
+from bedrock_server_manager.core.system import base
 from bedrock_server_manager.db.database import Database
 from bedrock_server_manager.db.models import User as UserModel
 from bedrock_server_manager.db.storage import Storage
@@ -30,42 +32,42 @@ from bedrock_server_manager.web.auth import (
 )
 
 _SERVER_TEMPLATE_VERSION: str = "1.20.0.01"
-_WORLD_TEMPLATE_DIR: Path | None = None
 
 
 @pytest.fixture(autouse=True)
 def isolated_bcm_config(monkeypatch, tmp_path):
-    """
-    This fixture creates a temporary data and config directory and uses
-    bcm_config setter methods to ensure all configuration and data files
-    are isolated to the temporary location for the duration of the test.
-    """
-    test_data_dir = tmp_path / "test_data"
-    test_data_dir.mkdir()
+    """Isolate bootstrap configuration while preserving the caller's overrides."""
+    for setting in ("config_dir", "data_dir", "db_url", "log_level"):
+        monkeypatch.delenv(f"BSM_{setting.upper()}", raising=False)
+        monkeypatch.setattr(bcm_config, f"_custom_{setting}", None)
 
-    test_config_dir = tmp_path / "test_config"
-    test_config_dir.mkdir()
+    data_dir = tmp_path / "test_data"
+    data_dir.mkdir()
+    config_dir = tmp_path / "test_config"
+    bcm_config.set_custom_config_dir(str(config_dir))
+    bcm_config.set_custom_data_dir(str(data_dir))
 
-    bcm_config.set_custom_config_dir(str(test_config_dir))
-    bcm_config.set_custom_data_dir(str(test_data_dir))
+    config_path = Path(bcm_config.get_config_path())
+    config_path.parent.mkdir(parents=True)
+    config_path.write_text(
+        json.dumps(
+            {
+                "data_dir": str(data_dir),
+                "db_url": f"sqlite:///{data_dir / 'test.db'}",
+                "logging_level": "DEBUG",
+            }
+        ),
+        encoding="utf-8",
+    )
+    return config_dir
 
-    db_path = test_data_dir / "test.db"
-    config_file = test_config_dir / "bedrock_server_manager.json"
-    config_data = {
-        "data_dir": str(test_data_dir),
-        "db_url": f"sqlite:///{db_path}",
-        "log_level": "DEBUG",
-    }
 
-    with open(config_file, "w") as f:
-        json.dump(config_data, f)
-
-    yield test_config_dir
-
-    bcm_config.set_custom_config_dir(None)
-    bcm_config.set_custom_data_dir(None)
-    bcm_config.set_custom_db_url(None)
-    bcm_config.set_custom_log_level(None)
+@pytest.fixture
+def fast_dummy_startup(monkeypatch):
+    """Use immediate readiness unless the test requests a startup delay."""
+    monkeypatch.setenv(
+        "BSM_DUMMY_STARTUP_DELAY_MS", os.environ.get("BSM_DUMMY_STARTUP_DELAY_MS", "0")
+    )
 
 
 @pytest.fixture(scope="session")
@@ -103,8 +105,7 @@ async def db(isolated_bcm_config, tmp_path, migrated_database, schema_revision):
 @pytest_asyncio.fixture
 async def storage(db, isolated_bcm_config):
     """Provide a fresh Storage instance bound to the isolated data directory."""
-    test_data_dir = bcm_config.load_config().get("data_dir")
-    return Storage(db=db, data_dir=str(test_data_dir))
+    return Storage(db=db, data_dir=bcm_config.load_config()["data_dir"])
 
 
 @pytest_asyncio.fixture
@@ -120,57 +121,33 @@ async def app_context(db, isolated_bcm_config, tmp_path):
     """Provide a real AppContext instance natively configured with AppState and Storage."""
     context = AppContext()
     context._db = db
-    await context.load()
-    import asyncio
-
-    context.loop = asyncio.get_running_loop()
-
-    startup_checks(context)
-
-    # Create dummy plugin dir so plugin manager can load
-    plugins_dir = tmp_path / "plugins"
-    plugins_dir.mkdir(exist_ok=True)
-    await context.settings.set("paths.plugins", str(plugins_dir))
-
-    context.plugin_manager.plugin_dirs = [plugins_dir]
-
-    yield context
-
-    await context.shutdown()
+    try:
+        await context.load()
+        context.loop = asyncio.get_running_loop()
+        startup_checks(context)
+        plugins_dir = tmp_path / "plugins"
+        plugins_dir.mkdir(exist_ok=True)
+        await context.settings.set("paths.plugins", str(plugins_dir))
+        context.plugin_manager.plugin_dirs = [plugins_dir]
+        yield context
+    finally:
+        await context.shutdown()
 
 
 @pytest.fixture
 def dummy_player_command():
     def command(action: str, name: str, xuid: str) -> str:
-        if hasattr(bedrock_fixtures, "dummy_server_template"):
-            return f"__DUMMY__ {action} {name} xuid={xuid}"
-        # The published 1.0.0 dummy accepts only the name and uses a fixed XUID.
-        return f"__DUMMY__ {action} {name}"
+        return f"__DUMMY__ {action} {name} xuid={xuid}"
 
     return command
 
 
-@pytest.fixture(scope="session")
-def released_dummy_server_template(tmp_path_factory):
-    target = tmp_path_factory.mktemp("released-dummy-template")
-    setup_dummy_server(target)
-    return target
-
-
 @pytest_asyncio.fixture
-async def real_bedrock_server(app_context, request, monkeypatch):
+async def real_bedrock_server(app_context, dummy_server_template, fast_dummy_startup):
     """Install an isolated dummy server for process integration tests."""
     server_name = "test_server"
     server = app_context.prepare_server(server_name)
-    if hasattr(bedrock_fixtures, "dummy_server_template"):
-        source = request.getfixturevalue("dummy_server_template")
-        monkeypatch.setenv(
-            "BSM_DUMMY_STARTUP_DELAY_MS",
-            os.environ.get("BSM_DUMMY_STARTUP_DELAY_MS", "0"),
-        )
-    else:
-        source = request.getfixturevalue("released_dummy_server_template")
-    shutil.copytree(source, server.paths.server_dir, dirs_exist_ok=True)
+    shutil.copytree(dummy_server_template, server.paths.server_dir, dirs_exist_ok=True)
     os.makedirs(server.paths.server_config_dir, exist_ok=True)
     os.makedirs(server.paths.server_log_dir, exist_ok=True)
     await app_context.server_service.register_or_update_server(
@@ -258,9 +235,9 @@ def _csrf_for_token(token: str, secret: str) -> str:
     return hmac.new(secret.encode(), f"csrf:{sid}".encode(), hashlib.sha256).hexdigest()
 
 
-@pytest_asyncio.fixture
-async def auth_client(running_app, app_context, test_user):
-    token = await create_access_token(app_context, {"sub": test_user.username})
+@asynccontextmanager
+async def _build_auth_client(running_app, app_context, user):
+    token = await create_access_token(app_context, {"sub": user.username})
     secret = await get_jwt_secret_key(app_context.settings)
     async with AsyncClient(
         transport=ASGITransport(app=running_app),
@@ -273,16 +250,14 @@ async def auth_client(running_app, app_context, test_user):
 
 
 @pytest_asyncio.fixture
+async def auth_client(running_app, app_context, test_user):
+    async with _build_auth_client(running_app, app_context, test_user) as client:
+        yield client
+
+
+@pytest_asyncio.fixture
 async def admin_auth_client(running_app, app_context, test_admin_user):
-    token = await create_access_token(app_context, {"sub": test_admin_user.username})
-    secret = await get_jwt_secret_key(app_context.settings)
-    async with AsyncClient(
-        transport=ASGITransport(app=running_app),
-        base_url="http://testserver",
-        follow_redirects=True,
-        cookies={"access_token_cookie": token},
-        headers={"X-CSRF-Token": _csrf_for_token(token, secret)},
-    ) as client:
+    async with _build_auth_client(running_app, app_context, test_admin_user) as client:
         yield client
 
 
@@ -294,28 +269,38 @@ def password_hashes():
     }
 
 
+@pytest.fixture(scope="session")
+def world_template(tmp_path_factory):
+    root = tmp_path_factory.mktemp("world-template")
+    archive = create_mcworld(
+        root,
+        name="Valid World",
+        packs=[
+            PackSpec(name="World BP", pack_type="data"),
+            PackSpec(name="World RP", pack_type="resources"),
+        ],
+    )
+    destination = root / "world"
+    with zipfile.ZipFile(archive) as source:
+        source.extractall(destination)
+    return destination
+
+
 @pytest_asyncio.fixture
-async def populated_server(real_bedrock_server, tmp_path_factory, valid_mcworld_zip):
-    global _WORLD_TEMPLATE_DIR
-    if _WORLD_TEMPLATE_DIR is None or not _WORLD_TEMPLATE_DIR.exists():
-        world_template = tmp_path_factory.mktemp("world-template") / "world"
-        world_template.mkdir(parents=True, exist_ok=True)
-        with zipfile.ZipFile(valid_mcworld_zip, "r") as zf:
-            zf.extractall(world_template)
-        _WORLD_TEMPLATE_DIR = world_template
+async def populated_server(real_bedrock_server, world_template):
     world = await real_bedrock_server.get_world_name()
     target_world = Path(real_bedrock_server.paths.server_dir) / "worlds" / world
-    shutil.copytree(_WORLD_TEMPLATE_DIR, target_world, dirs_exist_ok=True)
+    shutil.copytree(world_template, target_world, dirs_exist_ok=True)
     return real_bedrock_server
 
 
-@pytest_asyncio.fixture
-async def plugin_factory(app_context, tmp_path):
+@pytest.fixture
+def plugin_factory(app_context):
     async def load(name, source):
-        path = tmp_path / "plugins" / f"{name}.py"
+        path = app_context.plugin_manager.plugin_dirs[0] / f"{name}.py"
         path.write_text(source)
         await app_context.plugin_service.register_or_update_plugin(name, enabled=True)
-        assert await app_context.plugin_manager.load_plugin_by_name(name)
+        assert await app_context.plugin_manager.load_plugin_by_name(name), name
         return next(
             plugin
             for plugin in app_context.plugin_manager.plugins
@@ -328,25 +313,26 @@ async def plugin_factory(app_context, tmp_path):
 @pytest.fixture
 def wait_for_task():
     async def wait(context, task_id):
-        import asyncio
-
-        async with asyncio.timeout(20):
-            while True:
-                snapshot = await context.task_manager.get_task(task_id)
-                if snapshot.status in {"completed", "failed", "cancelled"}:
-                    assert snapshot.status == "completed", snapshot.model_dump()
-                    return snapshot
-                await asyncio.sleep(0.01)
+        snapshot = None
+        try:
+            async with asyncio.timeout(20):
+                while True:
+                    snapshot = await context.task_manager.get_task(task_id)
+                    if snapshot.status in {"completed", "failed", "cancelled"}:
+                        assert snapshot.status == "completed", snapshot.model_dump()
+                        return snapshot
+                    await asyncio.sleep(0.01)
+        except TimeoutError as error:
+            last = snapshot.model_dump() if snapshot is not None else None
+            raise AssertionError(
+                f"Task {task_id} timed out. Last status: {last}"
+            ) from error
 
     return wait
 
 
 @pytest_asyncio.fixture
-async def download_api(app_context, mock_bedrock_api, monkeypatch):
-    from functools import partial
-
-    from bedrock_server_manager.core.system import base
-
+async def download_api(app_context, mock_bedrock_api, fast_dummy_startup, monkeypatch):
     await app_context.settings.set(
         "downloader.download_url", f"{mock_bedrock_api.url}/api/v1.0/download/links"
     )

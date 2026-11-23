@@ -186,8 +186,7 @@ async def test_auth_workloads(auth_client, app_context, websocket_client):
             ),
             401,
         )
-        # Obtain a new family after enrollment revoked earlier sessions.
-        token = await create_access_token(app_context, {"sub": "testuser"})
+        token = remembered.json()["access_token"]
         async with websocket_client() as socket:
             await socket.send(json.dumps({"action": "authenticate", "token": token}))
             assert json.loads(await socket.recv())["status"] == "success"

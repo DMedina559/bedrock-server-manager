@@ -9,9 +9,8 @@ async def test_settings_initialization_and_load_defaults(
     app_context, db, isolated_bcm_config
 ):
     """Settings binds to shared state and loading on an empty DB populates defaults."""
-    base_dir = isolated_bcm_config
-    test_config_dir = base_dir / "test_config"
-    test_data_dir = base_dir / "test_data"
+    test_config_dir = isolated_bcm_config
+    test_data_dir = test_config_dir.parent / "test_data"
     settings = Settings(
         data_dir=str(test_data_dir),
         config_dir=str(test_config_dir),
@@ -41,9 +40,8 @@ async def test_settings_initialization_and_load_defaults(
 
 async def test_settings_load_merges_existing_db(app_context, db, isolated_bcm_config):
     """Test loading merges DB user config over defaults."""
-    base_dir = isolated_bcm_config
-    test_config_dir = base_dir / "test_config"
-    test_data_dir = base_dir / "test_data"
+    test_config_dir = isolated_bcm_config
+    test_data_dir = test_config_dir.parent / "test_data"
     # Pre-populate DB with a custom setting that overrides a default
     async with db.session_manager() as session:
         session.add(
