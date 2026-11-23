@@ -85,7 +85,7 @@ async def test_plugin_management_requires_admin_and_rejects_unknown(
 
 
 async def test_typed_plugin_settings_are_validated_and_persisted(
-    admin_auth_client, unauth_client, app_context, tmp_path
+    admin_auth_client, unauth_client, app_context
 ):
     import pytest
     from sqlalchemy import select
@@ -93,7 +93,7 @@ async def test_typed_plugin_settings_are_validated_and_persisted(
     from bedrock_server_manager.db.models import PluginSetting
     from bedrock_server_manager.error import UserInputError
 
-    (tmp_path / "plugins" / "typed_settings.py").write_text(
+    (app_context.plugin_manager.plugin_dirs[0] / "typed_settings.py").write_text(
         """from pydantic import BaseModel, ConfigDict, Field, SecretStr
 from bedrock_server_manager import PluginBase
 class Settings(BaseModel):

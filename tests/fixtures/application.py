@@ -12,7 +12,7 @@ from pathlib import Path
 
 import pytest
 import pytest_asyncio
-from bsm_test_utils import PackSpec, create_mcworld
+from bsm_test_utils import PackSpec, create_mcworld, create_server_zip
 from httpx2 import ASGITransport, AsyncClient
 from jose import jwt
 
@@ -117,7 +117,7 @@ async def state(storage):
 
 
 @pytest_asyncio.fixture
-async def app_context(db, isolated_bcm_config, tmp_path):
+async def app_context(db, isolated_bcm_config):
     """Provide a real AppContext instance natively configured with AppState and Storage."""
     context = AppContext()
     context._db = db
@@ -125,10 +125,8 @@ async def app_context(db, isolated_bcm_config, tmp_path):
         await context.load()
         context.loop = asyncio.get_running_loop()
         startup_checks(context)
-        plugins_dir = tmp_path / "plugins"
-        plugins_dir.mkdir(exist_ok=True)
-        await context.settings.set("paths.plugins", str(plugins_dir))
-        context.plugin_manager.plugin_dirs = [plugins_dir]
+        # Restrict integration tests to their temporary user plugin directory.
+        del context.plugin_manager.plugin_dirs[1:]
         yield context
     finally:
         await context.shutdown()
@@ -214,14 +212,31 @@ async def running_app(test_app):
         yield test_app
 
 
-@pytest_asyncio.fixture
-async def unauth_client(running_app):
-    async with AsyncClient(
-        transport=ASGITransport(app=running_app),
+def _build_client(app, **options):
+    return AsyncClient(
+        transport=ASGITransport(app=app),
         base_url="http://testserver",
         follow_redirects=True,
-    ) as client:
+        **options,
+    )
+
+
+@pytest_asyncio.fixture
+async def unauth_client(running_app):
+    async with _build_client(running_app) as client:
         yield client
+
+
+@pytest.fixture
+def request_client(test_app, app_context):
+    """Open an ASGI client for requests that only need a loaded context."""
+
+    def client(user=None):
+        if user is None:
+            return _build_client(test_app)
+        return _build_auth_client(test_app, app_context, user)
+
+    return client
 
 
 @pytest_asyncio.fixture
@@ -236,13 +251,11 @@ def _csrf_for_token(token: str, secret: str) -> str:
 
 
 @asynccontextmanager
-async def _build_auth_client(running_app, app_context, user):
+async def _build_auth_client(app, app_context, user):
     token = await create_access_token(app_context, {"sub": user.username})
     secret = await get_jwt_secret_key(app_context.settings)
-    async with AsyncClient(
-        transport=ASGITransport(app=running_app),
-        base_url="http://testserver",
-        follow_redirects=True,
+    async with _build_client(
+        app,
         cookies={"access_token_cookie": token},
         headers={"X-CSRF-Token": _csrf_for_token(token, secret)},
     ) as client:
@@ -267,6 +280,14 @@ def password_hashes():
         name: get_password_hash(value)
         for name, value in (("admin", "adminpassword"), ("user", "testpassword"))
     }
+
+
+@pytest.fixture(scope="session")
+def custom_server_archive(tmp_path_factory):
+    """Build the immutable archive shared by the direct and HTTP custom-install tests."""
+    return create_server_zip(
+        tmp_path_factory.mktemp("custom-install"), version="1.26.45.1"
+    )
 
 
 @pytest.fixture(scope="session")

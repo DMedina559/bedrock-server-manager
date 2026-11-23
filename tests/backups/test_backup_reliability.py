@@ -13,9 +13,8 @@ from bsm_test_utils import assert_trees_equal, build_tree_inventory
 
 from bedrock_server_manager.backups.models import BASE_COMPONENTS, PACK_COMPONENTS
 from bedrock_server_manager.backups.recovery import RestoreJournal
-from bedrock_server_manager.scheduler.engine import occurrences
 from bedrock_server_manager.scheduler.runner import activation, run_schedule
-from bedrock_server_manager.state.settings import BackupSchedule, ScheduledTask
+from bedrock_server_manager.state.settings import ScheduledTask
 
 
 @pytest.mark.parametrize("stage", ["all_files", "commit"])
@@ -227,17 +226,6 @@ async def test_schedules_catch_up_once_and_survive_restart(
         moment=activated + timedelta(hours=5),
     )
     assert len(await backups.list_snapshots()) == 1
-
-
-@pytest.mark.parametrize("day", [(2026, 3, 8), (2026, 11, 1)])
-def test_schedule_dst_has_one_occurrence_per_local_day(day):
-    config = BackupSchedule(
-        time="02:30", timezone="America/Los_Angeles", stagger_minutes=0
-    ).model_dump()
-    moment = datetime(*day, 12, tzinfo=timezone.utc)
-    slots = occurrences(config, "test", moment)
-    assert len(slots) == len(set(slots))
-    assert all((b - a).total_seconds() > 0 for a, b in zip(slots, slots[1:]))
 
 
 async def test_metadata_edits_do_not_rewrite_archive(populated_server):

@@ -82,10 +82,8 @@ async def test_validation_errors_have_safe_envelopes(test_app, auth_client):
     assert "private-invalid-value" not in response.text
 
 
-async def test_failed_plugin_load_is_isolated_from_application_startup(
-    app_context, tmp_path
-):
-    plugin = tmp_path / "plugins" / "broken.py"
+async def test_failed_plugin_load_is_isolated_from_application_startup(app_context):
+    plugin = app_context.plugin_manager.plugin_dirs[0] / "broken.py"
     plugin.write_text("""from bedrock_server_manager import PluginBase
 class Broken(PluginBase):
     version = "1.0"

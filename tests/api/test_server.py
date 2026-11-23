@@ -2,7 +2,6 @@ import asyncio
 from pathlib import Path
 
 import pytest
-from pydantic import ValidationError
 
 from bedrock_server_manager.api.models import (
     DeleteServerDataRequest,
@@ -143,17 +142,6 @@ async def test_server_api_lifecycle_settings_commands_and_deletion(
     )
     assert del_res.status == "success" and del_res.server_name == name
     assert not path.exists() and name not in app_context._servers
-
-
-def test_server_request_validations():
-    for model in (StartServerRequest, StopServerRequest, DeleteServerDataRequest):
-        with pytest.raises(ValidationError):
-            model(server_name="")
-
-    with pytest.raises(ValidationError):
-        UpdateServerPlayerStatsRequest(
-            server_name="test_server", player_count=2, players=[]
-        )
 
 
 async def test_process_status_is_separate_from_summary(

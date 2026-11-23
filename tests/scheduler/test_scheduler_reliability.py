@@ -252,11 +252,9 @@ def test_dst_gap_and_fold_have_explicit_first_occurrence(day, time, hour):
         stagger_minutes=0,
     ).model_dump()
     moment = datetime.fromisoformat(day + "T12:00:00+00:00")
-    matches = [
-        slot
-        for slot in occurrences(config, "test", moment)
-        if slot.date() == moment.date()
-    ]
+    slots = occurrences(config, "test", moment)
+    assert all(a < b for a, b in zip(slots, slots[1:]))
+    matches = [slot for slot in slots if slot.date() == moment.date()]
     assert len(matches) == 1 and matches[0].hour == hour and matches[0].minute == 30
 
 

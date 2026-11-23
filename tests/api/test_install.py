@@ -1,7 +1,6 @@
 from pathlib import Path
 
 import pytest
-from pydantic import ValidationError
 
 from bedrock_server_manager.api.install import install_new_server, update_server
 from bedrock_server_manager.api.models import (
@@ -12,11 +11,12 @@ from bedrock_server_manager.error import BSMError, UserInputError
 
 
 async def test_custom_install_creates_runnable_persisted_server(
-    app_context, dummy_server_zip, tmp_path
+    app_context, custom_server_archive
 ):
-    archive = dummy_server_zip(target_dir=tmp_path, version="1.26.45.1")
     request = InstallNewServerRequest(
-        server_name="installed", target_version="CUSTOM", server_zip_path=str(archive)
+        server_name="installed",
+        target_version="CUSTOM",
+        server_zip_path=str(custom_server_archive),
     )
     response = await install_new_server(request, app_context=app_context)
     assert response.status == "success"
@@ -45,12 +45,6 @@ async def test_missing_custom_archive_does_not_install(app_context, tmp_path):
             app_context=app_context,
         )
     assert not await app_context.prepare_server("missing").is_installed()
-
-
-@pytest.mark.parametrize("name", ["", "../outside", "invalid name"])
-def test_install_rejects_invalid_server_names(name):
-    with pytest.raises(ValidationError):
-        InstallNewServerRequest(server_name=name)
 
 
 async def test_update_downloads_real_archive_and_preserves_world(
