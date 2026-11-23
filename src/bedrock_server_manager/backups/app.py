@@ -40,6 +40,7 @@ from .archive import (
 )
 from .credentials import (
     BackupCredentials,
+    key_id,
     private_directory,
     protect,
 )
@@ -247,7 +248,7 @@ def create_app_backup(
 
     if recovery_key:
         password = recovery_key
-        kid = hashlib.sha256(recovery_key.encode("utf-8")).hexdigest()[:16]
+        kid = key_id(recovery_key)
     elif encrypt:
         try:
             active_key = credentials.get()

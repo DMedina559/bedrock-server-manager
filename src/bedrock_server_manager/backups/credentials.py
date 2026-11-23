@@ -171,8 +171,19 @@ def locked_credential_file(
                 platform_lock.flock(fd, platform_lock.LOCK_UN)
 
 
+_KEY_ID_SALT = b"bsm-backup-key-id-v1"
+_KEY_ID_ITERATIONS = 600_000
+
+
 def key_id(secret: str) -> str:
-    return hashlib.sha256(secret.encode()).hexdigest()[:24]
+    """Derive a deterministic 24-character key identifier from a backup secret."""
+    return hashlib.pbkdf2_hmac(
+        "sha256",
+        secret.encode("utf-8"),
+        _KEY_ID_SALT,
+        _KEY_ID_ITERATIONS,
+        dklen=12,
+    ).hex()
 
 
 class KeyRecord(BaseModel):
