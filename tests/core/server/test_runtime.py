@@ -54,7 +54,9 @@ def make_run(tmp_path):
 
 
 @pytest.mark.parametrize(
-    "text", ["say hi\nstop", "stop\rlist", "say\x00test", "say\u2028stop", "x" * 65537]
+    "text",
+    ["say hi\nstop", "stop\rlist", "say\x00test", "say\u2028stop", "x" * 65537],
+    ids=["newline", "carriage-return", "nul", "line-separator", "oversized"],
 )
 def test_commands_reject_protocol_delimiters_and_oversize(text):
     with pytest.raises(SendCommandError):
@@ -242,7 +244,7 @@ async def test_plugin_log_wait_is_cancelled_when_owner_deactivates(
 
 
 async def test_stop_escalation_keeps_reader_alive_and_finishes_cleanup(
-    real_bedrock_server, monkeypatch, tmp_path
+    real_bedrock_server, dummy_server_args, tmp_path
 ):
     scenario = tmp_path / "stop-scenario.json"
     scenario.write_text(
@@ -258,8 +260,8 @@ async def test_stop_escalation_keeps_reader_alive_and_finishes_cleanup(
         ),
         encoding="utf-8",
     )
-    monkeypatch.setenv("BSM_DUMMY_SCENARIO", str(scenario))
     server = real_bedrock_server
+    dummy_server_args(server, "--startup-delay-ms=0", "--scenario", str(scenario))
     await server.settings.set("lifecycle.server_stop_timeout_seconds", 0.5)
     await server.start()
     run = server.process.run

@@ -133,6 +133,24 @@ async def app_context(db, isolated_bcm_config):
 
 
 @pytest.fixture
+def dummy_server_args(monkeypatch):
+    """Pass dummy-only flags to the manager's subprocess without changing other launches."""
+    spawn = asyncio.create_subprocess_exec
+
+    def configure(server, *args):
+        executable = server.paths.bedrock_executable_path
+
+        async def launch(program, *program_args, **kwargs):
+            if program == executable:
+                program_args += args
+            return await spawn(program, *program_args, **kwargs)
+
+        monkeypatch.setattr(asyncio, "create_subprocess_exec", launch)
+
+    return configure
+
+
+@pytest.fixture
 def dummy_player_command():
     def command(action: str, name: str, xuid: str) -> str:
         return f"__DUMMY__ {action} {name} xuid={xuid}"

@@ -490,7 +490,9 @@ async def test_compression_profiles_preserve_recovery(populated_server):
         assert "Recording archive integrity" in backup.stage_durations_ms
 
 
-async def test_live_world_backup_benchmark(populated_server, tmp_path, monkeypatch):
+async def test_live_world_backup_benchmark(
+    populated_server, tmp_path, dummy_server_args
+):
     import asyncio
 
     import bsm_test_utils
@@ -508,7 +510,7 @@ async def test_live_world_backup_benchmark(populated_server, tmp_path, monkeypat
         profile="seeded-random",
     )
     bsm_test_utils.create_server_dataset(server_dir, spec=spec)
-    monkeypatch.setenv("BSM_DUMMY_SAVE_FILES_FROM_DISK", "1")
+    dummy_server_args(server, "--startup-delay-ms=0", "--save-files-from-disk")
     await server.start()
 
     archives = {}
