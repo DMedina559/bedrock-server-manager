@@ -22,8 +22,11 @@ def main():
     args = parser.parse_args()
     if args.check:
         metadata = json.loads((DIRECTORY / "common-passwords-source.json").read_text())
-        data = (DIRECTORY / "common-passwords.txt").read_bytes()
-        assert hashlib.sha256(data).hexdigest() == metadata["sha256"]
+        blocklist_path = DIRECTORY / "common-passwords.txt"
+        data = blocklist_path.read_bytes()
+        with blocklist_path.open("rb") as handle:
+            digest = hashlib.file_digest(handle, "sha256").hexdigest()
+        assert digest == metadata["sha256"]
         assert len(data.splitlines()) == metadata["entries"] >= 1000
         assert "MIT License" in (DIRECTORY / "common-passwords.LICENSE").read_text()
         print("Offline password blocklist provenance verified.")
@@ -51,13 +54,15 @@ def main():
     DIRECTORY.mkdir(parents=True, exist_ok=True)
     for name, value in downloads.items():
         (DIRECTORY / name).write_bytes(value)
+    with (DIRECTORY / "common-passwords.txt").open("rb") as handle:
+        digest = hashlib.file_digest(handle, "sha256").hexdigest()
     (DIRECTORY / "common-passwords-source.json").write_text(
         json.dumps(
             {
                 "repository": "https://github.com/danielmiessler/SecLists",
                 "commit": args.revision,
                 "path": SOURCE,
-                "sha256": hashlib.sha256(data).hexdigest(),
+                "sha256": digest,
                 "license": "MIT",
                 "entries": len(data.splitlines()),
             },

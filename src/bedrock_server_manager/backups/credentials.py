@@ -2,6 +2,7 @@
 
 import hashlib
 import json
+import logging
 import os
 import secrets
 import tempfile
@@ -18,6 +19,7 @@ from pydantic import BaseModel, ConfigDict, Field, SecretStr
 from ..error import ConfigurationError
 
 _LOCK = threading.RLock()
+logger = logging.getLogger(__name__)
 CREDENTIALS_DIR_NAME = "credentials"
 BACKUP_KEYRING_HEADER = "# BSM-KEYRING-V1"
 
@@ -171,8 +173,19 @@ def locked_credential_file(
                 platform_lock.flock(fd, platform_lock.LOCK_UN)
 
 
+_KEY_ID_SALT = b"bsm-backup-key-id-v1"
+_KEY_ID_ITERATIONS = 600_000
+
+
 def key_id(secret: str) -> str:
-    return hashlib.sha256(secret.encode()).hexdigest()[:24]
+    """Derive a deterministic 24-character key identifier from a backup secret."""
+    return hashlib.pbkdf2_hmac(
+        "sha256",
+        secret.encode("utf-8"),
+        _KEY_ID_SALT,
+        _KEY_ID_ITERATIONS,
+        dklen=12,
+    ).hex()
 
 
 class KeyRecord(BaseModel):
@@ -236,18 +249,32 @@ class BackupCredentials:
         self.directory = self.config_dir / CREDENTIALS_DIR_NAME
         self.path = self.directory / "backup.key"
 
-    def _validate_store(self, store: KeyStore) -> KeyStore:
+    def _validate_structure(self, store: KeyStore) -> KeyStore:
         if (
             store.version != 1
             or len({item.key_id for item in store.keys}) != len(store.keys)
-            or any(
-                key_id(item.secret.get_secret_value()) != item.key_id
-                for item in store.keys
+            or (
+                store.active is not None
+                and store.active not in {item.key_id for item in store.keys}
             )
-            or store.active is not None
-            and store.active not in {item.key_id for item in store.keys}
         ):
             raise ValueError("Invalid backup credential store")
+        return store
+
+    def _rotate_incompatible_store(self) -> KeyStore:
+        secret = secrets.token_urlsafe(32)
+        record = KeyRecord(
+            key_id=key_id(secret),
+            secret=SecretStr(secret),
+            created_at=datetime.now(timezone.utc).isoformat(),
+        )
+        store = KeyStore(version=1, active=record.key_id, keys=[record])
+        self._save(store)
+        logger.warning(
+            "Backup keyring %s contained incompatible key identifiers; rotated to a new active backup key (%s). Older encrypted backups will require their original recovery key.",
+            self.path,
+            record.key_id,
+        )
         return store
 
     def _load(self) -> KeyStore:
@@ -256,9 +283,16 @@ class BackupCredentials:
             return KeyStore()
         protect(self.path)
         try:
-            return self._validate_store(_parse_keyring_bytes(self.path.read_bytes()))
+            store = self._validate_structure(
+                _parse_keyring_bytes(self.path.read_bytes())
+            )
         except Exception:
             raise ConfigurationError("Cannot read backup credentials.") from None
+        if any(
+            key_id(item.secret.get_secret_value()) != item.key_id for item in store.keys
+        ):
+            return self._rotate_incompatible_store()
+        return store
 
     def _save(self, store: KeyStore) -> None:
         atomic_bytes(self.path, _serialize_keyring(store))
