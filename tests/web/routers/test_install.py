@@ -1,14 +1,16 @@
+import shutil
 from pathlib import Path
 
 import pytest
 
 
 async def test_http_custom_install_completes_and_registers_server(
-    admin_auth_client, app_context, dummy_server_zip, wait_for_task
+    admin_auth_client, app_context, custom_server_archive, wait_for_task
 ):
     directory = Path(app_context.settings.get("paths.downloads")) / "custom"
     directory.mkdir(parents=True, exist_ok=True)
-    archive = dummy_server_zip(target_dir=directory, version="1.26.45.1")
+    archive = directory / custom_server_archive.name
+    shutil.copyfile(custom_server_archive, archive)
     response = await admin_auth_client.get("/api/downloads/list")
     assert response.status_code == 200
     assert archive.name in response.json()["custom_zips"]

@@ -9,12 +9,7 @@ from jose import jwt
 from sqlalchemy import select
 
 from bedrock_server_manager.db.models import AccountSecurity, LoginSession
-
-
-async def login(client, username="testuser", password="testpassword", **data):
-    return await client.post(
-        "/auth/token", data={"username": username, "password": password, **data}
-    )
+from tests.web.helpers import login
 
 
 def bearer(response):

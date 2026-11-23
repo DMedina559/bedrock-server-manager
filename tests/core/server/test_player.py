@@ -66,15 +66,17 @@ async def test_player_log_parsing_and_scanning(real_bedrock_server):
     assert [p["name"] for p in all_players] == ["player1", "player2"]
 
 
-async def test_update_online_players(real_bedrock_server):
+async def test_update_online_players(real_bedrock_server, dummy_player_command):
     server = real_bedrock_server
     await server.start()
-    await server.send_command("__DUMMY__ PLAYER_JOIN IntegrationPlayer")
+    xuid = "2535413537906883"
+    player = "IntegrationPlayer"
+    await server.send_command(dummy_player_command("PLAYER_JOIN", player, xuid))
     async with asyncio.timeout(5):
         while not await server.player_tracker.update_online_players():
             await asyncio.sleep(0.01)
-    assert server.players == [{"name": "IntegrationPlayer", "xuid": "2535413537906883"}]
-    await server.send_command("__DUMMY__ PLAYER_LEAVE IntegrationPlayer")
+    assert server.players == [{"name": player, "xuid": xuid}]
+    await server.send_command(dummy_player_command("PLAYER_LEAVE", player, xuid))
     async with asyncio.timeout(5):
         while await server.player_tracker.update_online_players():
             await asyncio.sleep(0.01)

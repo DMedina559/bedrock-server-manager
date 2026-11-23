@@ -68,6 +68,7 @@ async def test_dummy_player_events_and_delete_task(
     real_bedrock_server,
     subscribed_socket,
     wait_for_task,
+    dummy_player_command,
 ):
     server = real_bedrock_server
     name = server.server_name
@@ -78,12 +79,17 @@ async def test_dummy_player_events_and_delete_task(
     manager.monitoring_task.cancel()
     await asyncio.gather(manager.monitoring_task, return_exceptions=True)
     await manager.start()
+    player = {"name": "IntegrationPlayer", "xuid": "2535413537906883"}
     try:
         async with subscribed_socket("event:after_server_players_change") as socket:
             for command, expected_count in [("PLAYER_JOIN", 1), ("PLAYER_LEAVE", 0)]:
                 response = await admin_auth_client.post(
                     base + "/send_command",
-                    json={"command": f"__DUMMY__ {command} IntegrationPlayer"},
+                    json={
+                        "command": dummy_player_command(
+                            command, player["name"], player["xuid"]
+                        )
+                    },
                 )
                 assert response.status_code == 200
                 async with asyncio.timeout(10):
@@ -92,11 +98,7 @@ async def test_dummy_player_events_and_delete_task(
                 result = message["data"]["result"]
                 assert result["server_name"] == name
                 assert result["player_count"] == expected_count
-                expected_players = (
-                    [{"name": "IntegrationPlayer", "xuid": "2535413537906883"}]
-                    if expected_count
-                    else []
-                )
+                expected_players = [player] if expected_count else []
                 assert result["players"] == expected_players
                 assert server.players == expected_players
                 assert server.player_count == expected_count

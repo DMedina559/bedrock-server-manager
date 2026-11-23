@@ -37,28 +37,36 @@ async def test_player_endpoints_use_persistent_database(
     }
 
 
-async def test_system_info_and_real_custom_themes(unauth_client, app_context, tmp_path):
+async def test_system_info_and_real_custom_themes(
+    request_client, app_context, tmp_path
+):
     await app_context.settings.set("general.timezone", "America/Los_Angeles")
-    response = await unauth_client.get("/api/info")
-    assert response.json()["timezone"] == "America/Los_Angeles"
-    assert response.status_code == 200
-    assert response.json()["app_version"]
-    themes = tmp_path / "themes"
-    themes.mkdir()
-    (themes / "integration.css").write_text("body {}")
-    await app_context.settings.set("paths.themes", str(themes))
-    response = await unauth_client.get("/api/info/themes")
-    assert response.status_code == 200
-    assert response.json()["themes"][0] == "default"
-    assert "integration" in response.json()["themes"]
+    async with request_client() as unauth_client:
+        response = await unauth_client.get("/api/info")
+        assert response.json()["timezone"] == "America/Los_Angeles"
+        assert response.status_code == 200
+        assert response.json()["app_version"]
+        themes = tmp_path / "themes"
+        themes.mkdir()
+        (themes / "integration.css").write_text("body {}")
+        await app_context.settings.set("paths.themes", str(themes))
+        response = await unauth_client.get("/api/info/themes")
+        assert response.status_code == 200
+        assert response.json()["themes"][0] == "default"
+        assert "integration" in response.json()["themes"]
 
 
-async def test_information_endpoints_enforce_roles(unauth_client, auth_client):
-    assert (await unauth_client.get("/api/servers")).status_code == 401
-    assert (
-        await auth_client.post("/api/players/add", json={"players": ["Steve:1234"]})
-    ).status_code == 403
+async def test_information_endpoints_enforce_roles(request_client, test_user):
+    async with request_client() as unauthenticated:
+        assert (await unauthenticated.get("/api/servers")).status_code == 401
+    async with request_client(test_user) as authenticated:
+        assert (
+            await authenticated.post(
+                "/api/players/add", json={"players": ["Steve:1234"]}
+            )
+        ).status_code == 403
 
 
-async def test_unknown_server_validation(auth_client):
-    assert (await auth_client.get("/api/server/missing/validate")).status_code == 404
+async def test_unknown_server_validation(request_client, test_user):
+    async with request_client(test_user) as client:
+        assert (await client.get("/api/server/missing/validate")).status_code == 404

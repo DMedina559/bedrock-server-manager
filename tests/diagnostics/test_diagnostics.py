@@ -10,7 +10,6 @@ from bedrock_server_manager.diagnostics.models import DiagnosticOptions, PluginV
 from bedrock_server_manager.diagnostics.service import Diagnostics
 
 
-@pytest.mark.asyncio
 async def test_history_survives_restart_and_retains_only_bounded_metadata(db):
     options = DiagnosticOptions(history_limit=2)
     history = DiagnosticHistoryStore(db, options)
@@ -35,7 +34,6 @@ async def test_history_survives_restart_and_retains_only_bounded_metadata(db):
     await restarted.close()
 
 
-@pytest.mark.asyncio
 async def test_slow_and_broken_plugin_providers_do_not_hide_other_sections(db):
     options = DiagnosticOptions(provider_timeout_seconds=0.01)
     service = Diagnostics(DiagnosticHistoryStore(db, options), options)
@@ -86,7 +84,6 @@ async def test_slow_and_broken_plugin_providers_do_not_hide_other_sections(db):
         await service.close()
 
 
-@pytest.mark.asyncio
 async def test_database_failure_does_not_break_recording_or_collection(db, monkeypatch):
     options = DiagnosticOptions(queue_limit=1)
     store = DiagnosticHistoryStore(db, options)
@@ -109,7 +106,6 @@ async def test_database_failure_does_not_break_recording_or_collection(db, monke
     await service.close()
 
 
-@pytest.mark.asyncio
 async def test_diagnostics_routes_require_admin_and_publish_typed_sections(
     admin_auth_client,
     auth_client,
@@ -149,7 +145,6 @@ async def test_diagnostics_routes_require_admin_and_publish_typed_sections(
     assert not any("username" in section for section in sections)
 
 
-@pytest.mark.asyncio
 async def test_plugin_provider_and_typed_api_follow_real_load_unload(
     plugin_factory, app_context
 ):
@@ -191,7 +186,6 @@ class Probe(PluginBase):
     assert report.snapshot.instance_id == app_context.diagnostics.instance_id
 
 
-@pytest.mark.asyncio
 async def test_domain_transaction_failure_is_recorded_without_leaking_details(
     app_context,
 ):
@@ -212,7 +206,6 @@ async def test_domain_transaction_failure_is_recorded_without_leaking_details(
     assert snapshot.sections[0].data.active == 0
 
 
-@pytest.mark.asyncio
 async def test_event_failure_history_preserves_correlation_without_payload(app_context):
     service = app_context.diagnostics
     service.history.start()
@@ -233,7 +226,6 @@ async def test_event_failure_history_preserves_correlation_without_payload(app_c
     assert "secret" not in history.model_dump_json()
 
 
-@pytest.mark.asyncio
 async def test_transient_failure_has_finite_attempts_and_one_drop(db, monkeypatch):
     store = DiagnosticHistoryStore(db, DiagnosticOptions())
     service = Diagnostics(store, store.options)
@@ -271,7 +263,6 @@ def test_retry_classification_distinguishes_locks_from_invalid_sql():
     assert not module.retryable_write(RuntimeError("invalid record"))
 
 
-@pytest.mark.asyncio
 async def test_processes_diagnostics_metrics_and_unhealthy_tracking(app_context):
     await app_context.server_service.register_or_update_server(
         "proc_diag_test",
@@ -452,7 +443,6 @@ def test_backups_health_rule_evaluations():
     assert any(i.code == "backup_missing" for i in issues)
 
 
-@pytest.mark.asyncio
 async def test_diagnostic_notifier_broadcasts_only_when_subscribed(app_context):
     manager = app_context.connection_manager
     service = app_context.diagnostics

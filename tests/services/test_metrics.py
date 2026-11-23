@@ -34,6 +34,7 @@ async def test_metrics_endpoint_requires_login_and_returns_shared_snapshot(
 async def test_metrics_publish_typed_frames_and_stop_with_context(
     app_context, subscribed_socket
 ):
+    await app_context.settings.set("monitoring.app_metrics_interval_sec", 1)
     service = app_context.metrics_service
     service.start()
     task = service._task

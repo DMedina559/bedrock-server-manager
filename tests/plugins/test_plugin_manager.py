@@ -568,12 +568,12 @@ class LegacyPlugin(PluginBase):
 
 
 async def test_plugin_declaring_unrecognized_permission_is_rejected(
-    app_context, tmp_path, caplog
+    app_context, caplog
 ):
     import logging
 
     caplog.clear()
-    path = tmp_path / "plugins" / "typo_plugin.py"
+    path = app_context.plugin_manager.plugin_dirs[0] / "typo_plugin.py"
     path.write_text("""
 from bedrock_server_manager import PluginBase
 

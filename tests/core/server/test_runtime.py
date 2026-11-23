@@ -1,8 +1,10 @@
 """Fault and protocol regressions for owned BDS output, not file polling."""
 
 import asyncio
+import json
 import os
 import sys
+from pathlib import Path
 from types import SimpleNamespace
 from unittest.mock import AsyncMock, Mock
 
@@ -52,7 +54,9 @@ def make_run(tmp_path):
 
 
 @pytest.mark.parametrize(
-    "text", ["say hi\nstop", "stop\rlist", "say\x00test", "say\u2028stop", "x" * 65537]
+    "text",
+    ["say hi\nstop", "stop\rlist", "say\x00test", "say\u2028stop", "x" * 65537],
+    ids=["newline", "carriage-return", "nul", "line-separator", "oversized"],
 )
 def test_commands_reject_protocol_delimiters_and_oversize(text):
     with pytest.raises(SendCommandError):
@@ -240,32 +244,33 @@ async def test_plugin_log_wait_is_cancelled_when_owner_deactivates(
 
 
 async def test_stop_escalation_keeps_reader_alive_and_finishes_cleanup(
-    real_bedrock_server, monkeypatch
+    real_bedrock_server, dummy_server_args, tmp_path
 ):
-    import time
-
-    from bedrock_server_manager.core.server import process as module
-
-    original_spawn = asyncio.create_subprocess_exec
-
-    async def spawn(*args, **kwargs):
-        return await original_spawn(
-            sys.executable,
-            "-u",
-            "-c",
-            "import time; print('Server started.',flush=True);\nwhile True: print('ordinary output',flush=True); time.sleep(.005)",
-            **kwargs,
-        )
-
+    scenario = tmp_path / "stop-scenario.json"
+    scenario.write_text(
+        json.dumps(
+            [
+                {"when": "ready", "actions": ["__DUMMY__ SET_IGNORE_STOP true"]},
+                {
+                    "when": "after_command",
+                    "command": "stop",
+                    "actions": ["__DUMMY__ STDOUT_BURST 1000 256"],
+                },
+            ]
+        ),
+        encoding="utf-8",
+    )
     server = real_bedrock_server
-    monkeypatch.setattr(module.asyncio, "create_subprocess_exec", spawn)
+    dummy_server_args(server, "--startup-delay-ms=0", "--scenario", str(scenario))
     await server.settings.set("lifecycle.server_stop_timeout_seconds", 0.5)
     await server.start()
     run = server.process.run
     await asyncio.wait_for(run.ready_event.wait(), 5)
-    started = time.monotonic()
-    await server.stop()
-    assert time.monotonic() - started < 4
+    async with asyncio.timeout(4):
+        await server.stop()
+    assert "BURST 00000" in Path(server.paths.server_log_path).read_text(
+        encoding="utf-8"
+    )
     assert run.process.returncode is not None
     assert run.reader_done.is_set()
     assert run.exit_reason in {"terminated", "killed"}

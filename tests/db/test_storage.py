@@ -15,7 +15,6 @@ from bedrock_server_manager.state import (
 )
 
 
-@pytest.mark.asyncio
 async def test_storage_load_and_flush(db):
     test_data_dir = "/tmp/test_storage_data"
     storage = Storage(db=db, data_dir=test_data_dir)
@@ -40,7 +39,6 @@ async def test_storage_load_and_flush(db):
     assert new_state.settings.retention.backups == 10
 
 
-@pytest.mark.asyncio
 async def test_storage_transaction(db):
     storage = Storage(db=db, data_dir="/tmp/test_storage_tx")
     state = AppState()
@@ -56,7 +54,6 @@ async def test_storage_transaction(db):
     assert reloaded.settings.web.port == 9999
 
 
-@pytest.mark.asyncio
 async def test_storage_server_persistence(db):
     storage = Storage(db=db, data_dir="/tmp/test_storage_server")
     state = AppState()
@@ -87,7 +84,6 @@ async def test_storage_server_persistence(db):
     assert loaded_srv.custom == {"motd": "Welcome!"}
 
 
-@pytest.mark.asyncio
 async def test_storage_plugin_and_user_persistence(db, test_admin_user):
     storage = Storage(db=db, data_dir="/tmp/test_storage_plugin_user")
     state = AppState()
@@ -128,7 +124,6 @@ async def test_storage_plugin_and_user_persistence(db, test_admin_user):
     assert reloaded_plugin.version == "2.1.0"
 
 
-@pytest.mark.asyncio
 async def test_storage_subscription_observer(db):
     storage = Storage(db=db, data_dir="/tmp/test_storage_sub")
     state = AppState()
@@ -156,7 +151,6 @@ async def test_storage_subscription_observer(db):
     assert len(notified_changes) == 1
 
 
-@pytest.mark.asyncio
 async def test_alembic_migrations_upgrade_and_downgrade(tmp_path):
     from bedrock_server_manager.db.database import (
         Database,

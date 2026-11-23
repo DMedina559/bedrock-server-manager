@@ -14,7 +14,7 @@ def connection_manager():
 
 
 @pytest.fixture
-def test_user():
+def socket_user():
     return UserResponse(
         id=1,
         username="user1",
@@ -82,12 +82,12 @@ async def test_topic_broadcast_reaches_only_real_subscribers(
 
 
 async def test_websocket_disconnect_on_send_error(
-    connection_manager, mock_websocket, test_user
+    connection_manager, mock_websocket, socket_user
 ):
     """Test that a client is disconnected if sending a message fails."""
     mock_websocket.send_text.side_effect = RuntimeError("WebSocket is not connected")
 
-    client_id = await connection_manager.connect(mock_websocket, test_user)
+    client_id = await connection_manager.connect(mock_websocket, socket_user)
 
     await connection_manager.send_to_client({"test": 1}, client_id)
 
@@ -171,7 +171,6 @@ async def test_account_change_revokes_socket_before_delivery():
     assert not manager.subscriptions
 
 
-@pytest.mark.asyncio
 async def test_websocket_close_has_deadline():
     cm = ConnectionManager()
     cm.io_timeout = 0.01
@@ -193,7 +192,6 @@ async def test_websocket_close_has_deadline():
     assert not cm.active_connections
 
 
-@pytest.mark.asyncio
 async def test_stalled_websocket_send_disconnects():
     manager = ConnectionManager()
     manager.io_timeout = 0.01
@@ -213,13 +211,13 @@ async def test_stalled_websocket_send_disconnects():
 
 
 async def test_each_received_frame_refreshes_once_and_never_reuses_another_frame(
-    test_user, mock_websocket
+    socket_user, mock_websocket
 ):
     from bedrock_server_manager.web.authorization import Authorization
 
     authorization = Authorization(
-        user_id=test_user.id,
-        username=test_user.username,
+        user_id=socket_user.id,
+        username=socket_user.username,
         owner_id="owner",
         permissions=frozenset({"account:read"}),
         servers={},
@@ -231,7 +229,7 @@ async def test_each_received_frame_refreshes_once_and_never_reuses_another_frame
         authorization_resolver=resolver, topic_authorizer=authorizer
     )
     client_id = await manager.connect(
-        mock_websocket, test_user, authorization=authorization
+        mock_websocket, socket_user, authorization=authorization
     )
     assert await manager.authorize_frame(client_id, "access-policy")
     resolver.assert_awaited_once()

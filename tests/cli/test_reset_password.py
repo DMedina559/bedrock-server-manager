@@ -1,15 +1,8 @@
-import pytest
-from click.testing import CliRunner
 from sqlalchemy import select
 
 from bedrock_server_manager.cli.reset_password import reset_password_command
 from bedrock_server_manager.db.models import User
 from bedrock_server_manager.web.auth import get_password_hash, verify_password
-
-
-@pytest.fixture
-def runner():
-    return CliRunner()
 
 
 async def test_reset_password_success(runner, app_context, db_session):

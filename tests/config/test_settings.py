@@ -9,9 +9,8 @@ async def test_settings_initialization_and_load_defaults(
     app_context, db, isolated_bcm_config
 ):
     """Settings binds to shared state and loading on an empty DB populates defaults."""
-    base_dir = isolated_bcm_config
-    test_config_dir = base_dir / "test_config"
-    test_data_dir = base_dir / "test_data"
+    test_config_dir = isolated_bcm_config
+    test_data_dir = test_config_dir.parent / "test_data"
     settings = Settings(
         data_dir=str(test_data_dir),
         config_dir=str(test_config_dir),
@@ -41,9 +40,8 @@ async def test_settings_initialization_and_load_defaults(
 
 async def test_settings_load_merges_existing_db(app_context, db, isolated_bcm_config):
     """Test loading merges DB user config over defaults."""
-    base_dir = isolated_bcm_config
-    test_config_dir = base_dir / "test_config"
-    test_data_dir = base_dir / "test_data"
+    test_config_dir = isolated_bcm_config
+    test_data_dir = test_config_dir.parent / "test_data"
     # Pre-populate DB with a custom setting that overrides a default
     async with db.session_manager() as session:
         session.add(
@@ -72,7 +70,7 @@ async def test_settings_load_merges_existing_db(app_context, db, isolated_bcm_co
 @pytest.mark.parametrize("dotted", [False, True])
 async def test_settings_reload_accepts_removed_3x_fields(app_context, db, dotted):
     """Persisted 3.x settings must not prevent application state from loading."""
-    from sqlalchemy.future import select
+    original = app_context.state.settings.to_dict()
 
     async with db.session_manager() as session:
         for section, name, value in (
@@ -83,13 +81,11 @@ async def test_settings_reload_accepts_removed_3x_fields(app_context, db, dotted
             if dotted:
                 session.add(Setting(key=f"{section}.{name}", value=value))
             else:
-                row = (
-                    await session.execute(select(Setting).filter_by(key=section))
-                ).scalar_one()
-                row.value = {**row.value, name: value}
+                session.add(
+                    Setting(key=section, value={**original[section], name: value})
+                )
         await session.commit()
 
-    original = app_context.state.settings.to_dict()
     await app_context.load()
     assert app_context.state.settings.to_dict() == original
     # A later load must also work while legacy rows remain in the database.
@@ -227,13 +223,10 @@ async def test_bootstrap_cors_migrates_once_without_overwriting_database(
     import json
 
     # Simulate a database created before the typed CORS field existed.
+    web = app_context.state.settings.to_dict()["web"]
+    web.pop("cors_origins")
     async with app_context.storage.transaction() as session:
-        values = await app_context.storage.settings_repo.get_all_settings(session)
-        values["web"] = dict(values["web"])
-        values["web"].pop("cors_origins")
-        await app_context.storage.settings_repo.save_settings(
-            session, {"web": values["web"]}
-        )
+        await app_context.storage.settings_repo.save_settings(session, {"web": web})
     config_path = isolated_bcm_config / "bootstrap" / "bedrock_server_manager.json"
     bootstrap = json.loads(config_path.read_text())
     bootstrap["web"] = {"cors_origins": legacy}

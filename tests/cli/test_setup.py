@@ -2,16 +2,8 @@ import json
 from pathlib import Path
 from unittest.mock import MagicMock
 
-import pytest
-from click.testing import CliRunner
-
 from bedrock_server_manager.cli.setup import setup
 from bedrock_server_manager.config import bcm_config
-
-
-@pytest.fixture
-def runner():
-    return CliRunner()
 
 
 def test_setup_interactive_workflow(

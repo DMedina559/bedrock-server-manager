@@ -2,17 +2,16 @@ from pathlib import Path
 from types import SimpleNamespace
 
 import pytest
-from click.testing import CliRunner
 
 from bedrock_server_manager.cli.backup import backup
 from bedrock_server_manager.utils.threads import run_in_thread
 
 
 @pytest.fixture
-def invoke_backup(app_context):
+def invoke_backup(app_context, runner):
     async def invoke(*arguments):
         return await run_in_thread(
-            CliRunner().invoke,
+            runner.invoke,
             backup,
             list(arguments),
             obj={
@@ -43,6 +42,7 @@ async def test_backup_offline_guard_blocks_when_running(
     assert "Bedrock Server Manager is currently running" in restore_res.output
 
 
+@pytest.mark.filterwarnings("error::ResourceWarning")
 async def test_backup_create_inspect_list_restore_round_trip(
     invoke_backup, app_context, tmp_path
 ):

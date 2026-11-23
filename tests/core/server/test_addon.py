@@ -1,14 +1,20 @@
 import json
 import os
-import shutil
 from unittest.mock import patch
 
 import pytest
-from bsm_test_utils import create_behavior_pack, create_resource_pack
+from bsm_test_utils import (
+    PackFaults,
+    PackSpec,
+    create_behavior_pack,
+    create_resource_pack,
+    write_mcpack,
+)
 from pydantic import ValidationError
 
 from bedrock_server_manager.api.models.addon import ListInstalledAddonsResponse
 from bedrock_server_manager.core.data import SubpackRecord
+from bedrock_server_manager.error import ConfigParseError
 
 
 async def test_addon_lifecycle_and_subpack_listing(real_bedrock_server):
@@ -110,23 +116,22 @@ async def test_process_mcpack_archives(real_bedrock_server, tmp_path):
         world_dir = os.path.join(server.paths.server_dir, "worlds", "test_world")
         os.makedirs(world_dir, exist_ok=True)
 
-        # Invalid mcpack first
-        bad_zip = create_behavior_pack(
-            str(tmp_path), name="test_invalid_pack", as_zip=True, invalid_json=True
+        bad_mcpack = write_mcpack(
+            tmp_path,
+            PackSpec(
+                name="test_invalid_pack",
+                pack_type="data",
+                faults=PackFaults(malformed_json=True),
+            ),
         )
-        bad_mcpack = tmp_path / "test_invalid_pack.mcpack"
-        shutil.move(str(bad_zip), str(bad_mcpack))
-        try:
+        with pytest.raises(ConfigParseError):
             await server.addons.process_addon_file(str(bad_mcpack))
-        except Exception:
-            pass
         addons = await server.addons.list_installed_addons()
-        assert len(addons.get("behavior_packs", [])) == 0
+        assert addons.get("behavior_packs", []) == []
 
-        # Valid mcpack
-        zip_path = create_behavior_pack(str(tmp_path), name="test_pack", as_zip=True)
-        mcpack_path = tmp_path / "test_pack.mcpack"
-        shutil.move(str(zip_path), str(mcpack_path))
+        mcpack_path = write_mcpack(
+            tmp_path, PackSpec(name="test_pack", pack_type="data")
+        )
         await server.addons.process_addon_file(str(mcpack_path))
         addons = await server.addons.list_installed_addons()
         assert len(addons["behavior_packs"]) == 1
