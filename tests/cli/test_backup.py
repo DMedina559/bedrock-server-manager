@@ -42,6 +42,7 @@ async def test_backup_offline_guard_blocks_when_running(
     assert "Bedrock Server Manager is currently running" in restore_res.output
 
 
+@pytest.mark.filterwarnings("error::ResourceWarning")
 async def test_backup_create_inspect_list_restore_round_trip(
     invoke_backup, app_context, tmp_path
 ):

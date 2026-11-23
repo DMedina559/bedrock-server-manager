@@ -396,25 +396,26 @@ def create_app_backup(
         # Package payload.tar.gz
         payload_tar = temp_dir / "payload.tar.gz"
         comp_level = COMPRESSION_LEVELS.get(compression, 6)
-        with gzip.GzipFile(
-            fileobj=payload_tar.open("wb"), mode="wb", compresslevel=comp_level, mtime=0
-        ) as gz:
-            with tarfile.open(
-                fileobj=gz, mode="w|", bufsize=ARCHIVE_BUFFER_SIZE
-            ) as tar:
-                add_json(tar, "manifest.json", manifest.model_dump(mode="json"))
-                for d in manifest.directories:
-                    tar_info = tarfile.TarInfo(safe_name(d))
-                    tar_info.type = tarfile.DIRTYPE
-                    tar_info.mode = 0o700
-                    tar.addfile(tar_info)
-                for entry in manifest.files:
-                    src_file = content_dir / safe_name(entry.path)
-                    t_info = tarfile.TarInfo(safe_name(entry.path))
-                    t_info.size = entry.size
-                    t_info.mode = 0o700 if entry.executable else 0o600
-                    with src_file.open("rb", buffering=0) as f_stream:
-                        tar.addfile(t_info, f_stream)
+        with (
+            payload_tar.open("wb") as payload_file,
+            gzip.GzipFile(
+                fileobj=payload_file, mode="wb", compresslevel=comp_level, mtime=0
+            ) as gz,
+            tarfile.open(fileobj=gz, mode="w|", bufsize=ARCHIVE_BUFFER_SIZE) as tar,
+        ):
+            add_json(tar, "manifest.json", manifest.model_dump(mode="json"))
+            for d in manifest.directories:
+                tar_info = tarfile.TarInfo(safe_name(d))
+                tar_info.type = tarfile.DIRTYPE
+                tar_info.mode = 0o700
+                tar.addfile(tar_info)
+            for entry in manifest.files:
+                src_file = content_dir / safe_name(entry.path)
+                t_info = tarfile.TarInfo(safe_name(entry.path))
+                t_info.size = entry.size
+                t_info.mode = 0o700 if entry.executable else 0o600
+                with src_file.open("rb", buffering=0) as f_stream:
+                    tar.addfile(t_info, f_stream)
 
         # Wrap in SecureTarArchive v3 with bsm.json container header
         temp_archive = temp_dir / "archive.bsmappbackup"
