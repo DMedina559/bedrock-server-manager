@@ -1,4 +1,5 @@
 import os
+from pathlib import Path
 
 import aiofiles.ospath
 import pytest
@@ -22,22 +23,22 @@ async def test_installation_validation_permissions_and_deletion(real_bedrock_ser
     assert os.access(server.paths.bedrock_executable_path, os.R_OK | os.X_OK)
 
     # Missing properties invalidates installation
-    props_bytes = open(server.paths.server_properties_path, "rb").read()
-    os.remove(server.paths.server_properties_path)
+    properties = Path(server.paths.server_properties_path)
+    props_bytes = properties.read_bytes()
+    properties.unlink()
     assert not await server.is_installed()
     with pytest.raises(AppFileNotFoundError):
         await server.validate_installation()
-    with open(server.paths.server_properties_path, "wb") as f:
-        f.write(props_bytes)
+    properties.write_bytes(props_bytes)
 
     # Missing executable invalidates installation
-    exe_bytes = open(server.paths.bedrock_executable_path, "rb").read()
-    os.remove(server.paths.bedrock_executable_path)
+    executable = Path(server.paths.bedrock_executable_path)
+    exe_bytes = executable.read_bytes()
+    executable.unlink()
     assert await server.is_installed() is False
     with pytest.raises(AppFileNotFoundError):
         await server.validate_installation()
-    with open(server.paths.bedrock_executable_path, "wb") as f:
-        f.write(exe_bytes)
+    executable.write_bytes(exe_bytes)
 
     # Delete server files and then delete all data (including config and DB record)
     world_dir = os.path.join(server.paths.server_dir, "worlds")
