@@ -488,3 +488,53 @@ async def test_compression_profiles_preserve_recovery(populated_server):
         assert inspected.manifest.mode == "world"
         assert "Compressing backup" in backup.stage_durations_ms
         assert "Recording archive integrity" in backup.stage_durations_ms
+
+
+async def test_live_world_backup_benchmark(populated_server, tmp_path, monkeypatch):
+    import asyncio
+
+    import bsm_test_utils
+
+    if not hasattr(bsm_test_utils, "measure_async_backup_restore"):
+        pytest.skip("Requires the async benchmark and disk-backed dummy save query")
+
+    server = populated_server
+    world_name = await server.get_world_name()
+    server_dir = Path(server.paths.server_dir)
+    world_dir = server_dir / "worlds" / world_name
+    spec = bsm_test_utils.DatasetSpec(
+        world_name=world_name,
+        file_count=12,
+        total_bytes=64 * 1024,
+        component_weights={"worlds": 1},
+        empty_dir_count=0,
+        profile="seeded-random",
+    )
+    bsm_test_utils.create_server_dataset(server_dir, spec=spec)
+    monkeypatch.setenv("BSM_DUMMY_SAVE_FILES_FROM_DISK", "1")
+    await server.start()
+
+    archives = {}
+    backup_ids = {}
+
+    async def backup_world(_source, index):
+        snapshot = await server.backups.create_snapshot(mode="world", encrypted=False)
+        archive = Path(server.backups.server_backup_directory) / snapshot.filename
+        archives[index] = archive
+        backup_ids[index] = snapshot.backup_id
+        return archive
+
+    async def extract_world(index):
+        destination = tmp_path / f"restored-{index}"
+        await asyncio.to_thread(
+            server.backups.unpack_snapshot, archives[index], destination
+        )
+        return destination / "world"
+
+    result = await bsm_test_utils.measure_async_backup_restore(
+        world_dir, backup_world, extract_world
+    )
+    manifest = (await server.backups.inspect_snapshot(backup_ids[0])).manifest
+    assert manifest.capture_method == "live"
+    assert result.runs[0].verified
+    assert result.source_bytes >= spec.total_bytes

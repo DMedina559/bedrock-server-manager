@@ -10,6 +10,8 @@ from pathlib import Path
 
 import pytest
 import pytest_asyncio
+from bsm_test_utils import fixtures as bedrock_fixtures
+from bsm_test_utils import setup_dummy_server
 from httpx2 import ASGITransport, AsyncClient
 from jose import jwt
 
@@ -27,7 +29,6 @@ from bedrock_server_manager.web.auth import (
     get_password_hash,
 )
 
-_SERVER_TEMPLATE_DIR: Path | None = None
 _SERVER_TEMPLATE_VERSION: str = "1.20.0.01"
 _WORLD_TEMPLATE_DIR: Path | None = None
 
@@ -138,29 +139,27 @@ async def app_context(db, isolated_bcm_config, tmp_path):
     await context.shutdown()
 
 
-async def _ensure_server_template(tmp_path_factory, dummy_server_zip) -> Path:
-    from bedrock_server_manager.core.system.base import set_server_folder_permissions
-
-    global _SERVER_TEMPLATE_DIR
-    if _SERVER_TEMPLATE_DIR is None or not _SERVER_TEMPLATE_DIR.exists():
-        base = tmp_path_factory.mktemp("server-template")
-        archive = dummy_server_zip(target_dir=base, version=_SERVER_TEMPLATE_VERSION)
-        template_dir = base / "extracted"
-        template_dir.mkdir(parents=True, exist_ok=True)
-        with zipfile.ZipFile(archive, "r") as zf:
-            zf.extractall(template_dir)
-        await set_server_folder_permissions(str(template_dir))
-        _SERVER_TEMPLATE_DIR = template_dir
-    return _SERVER_TEMPLATE_DIR
+@pytest.fixture(scope="session")
+def released_dummy_server_template(tmp_path_factory):
+    target = tmp_path_factory.mktemp("released-dummy-template")
+    setup_dummy_server(target)
+    return target
 
 
 @pytest_asyncio.fixture
-async def real_bedrock_server(app_context, tmp_path_factory, dummy_server_zip):
-    """Install the bsm-test-utils binary using a session-cached extracted template."""
+async def real_bedrock_server(app_context, request, monkeypatch):
+    """Install an isolated dummy server for process integration tests."""
     server_name = "test_server"
-    template_dir = await _ensure_server_template(tmp_path_factory, dummy_server_zip)
     server = app_context.prepare_server(server_name)
-    shutil.copytree(template_dir, server.paths.server_dir, dirs_exist_ok=True)
+    if hasattr(bedrock_fixtures, "dummy_server_template"):
+        source = request.getfixturevalue("dummy_server_template")
+        monkeypatch.setenv(
+            "BSM_DUMMY_STARTUP_DELAY_MS",
+            os.environ.get("BSM_DUMMY_STARTUP_DELAY_MS", "0"),
+        )
+    else:
+        source = request.getfixturevalue("released_dummy_server_template")
+    shutil.copytree(source, server.paths.server_dir, dirs_exist_ok=True)
     os.makedirs(server.paths.server_config_dir, exist_ok=True)
     os.makedirs(server.paths.server_log_dir, exist_ok=True)
     await app_context.server_service.register_or_update_server(
