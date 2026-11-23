@@ -21,19 +21,12 @@ from bedrock_server_manager.state import (
 )
 
 
-@pytest.fixture
-async def file_db(db):
-    """Reuse the migrated file-backed SQLite database to test file locking and transaction semantics."""
-    yield db
-
-
-@pytest.mark.asyncio
-async def test_concurrent_mutations_stress(file_db, tmp_path):
+async def test_concurrent_mutations_stress(db, tmp_path):
     """
     Simulates concurrent task updates across settings, servers, plugins, and users with overlapping flushes.
     Verifies that no state is lost, dirty flags are correctly cleared, and reloaded state equals final state.
     """
-    storage = Storage(db=file_db, data_dir=str(tmp_path / "data"))
+    storage = Storage(db=db, data_dir=str(tmp_path / "data"))
     state = AppState()
     await storage.load_state(state)
 
@@ -110,13 +103,12 @@ async def test_concurrent_mutations_stress(file_db, tmp_path):
     assert reloaded_state.settings.retention.backups == state.settings.retention.backups
 
 
-@pytest.mark.asyncio
-async def test_concurrent_flushes_are_safe(file_db, tmp_path):
+async def test_concurrent_flushes_are_safe(db, tmp_path):
     """
     Verifies that multiple concurrent storage.flush() calls execute safely via Storage._flush_lock
     without race conditions or redundant overlapping database errors.
     """
-    storage = Storage(db=file_db, data_dir=str(tmp_path / "data"))
+    storage = Storage(db=db, data_dir=str(tmp_path / "data"))
     state = AppState()
     await storage.load_state(state)
 
@@ -137,13 +129,12 @@ async def test_concurrent_flushes_are_safe(file_db, tmp_path):
     assert reloaded.servers.get("concurrent_flush_srv").status == "STARTING"
 
 
-@pytest.mark.asyncio
-async def test_mutation_during_write_preserves_dirty_flag(file_db, tmp_path):
+async def test_mutation_during_write_preserves_dirty_flag(db, tmp_path):
     """
     Verifies that if a concurrent task mutates state while DB write is in progress,
     the post-write snapshot comparison detects the mismatch and keeps the entity dirty.
     """
-    storage = Storage(db=file_db, data_dir=str(tmp_path / "data"))
+    storage = Storage(db=db, data_dir=str(tmp_path / "data"))
     state = AppState()
     await storage.load_state(state)
 
@@ -194,13 +185,12 @@ async def test_mutation_during_write_preserves_dirty_flag(file_db, tmp_path):
     assert reloaded.servers.get("racing_server").status == "RUNNING"
 
 
-@pytest.mark.asyncio
-async def test_persistence_failure_retries_and_recovery(file_db, tmp_path):
+async def test_persistence_failure_retries_and_recovery(db, tmp_path):
     """
     Tests that database lock/busy errors trigger exponential backoff retries and rollback in storage.transaction(),
     and persistent non-retryable failures leave specific dirty keys marked dirty until a successful retry flush.
     """
-    storage = Storage(db=file_db, data_dir=str(tmp_path / "data"))
+    storage = Storage(db=db, data_dir=str(tmp_path / "data"))
     state = AppState()
     await storage.load_state(state)
 
@@ -209,7 +199,7 @@ async def test_persistence_failure_retries_and_recovery(file_db, tmp_path):
 
     fail_count = 0
 
-    original_session_manager = file_db.session_manager
+    original_session_manager = db.session_manager
 
     class MockSessionManager:
         def __init__(self, real_sm):
@@ -235,7 +225,7 @@ async def test_persistence_failure_retries_and_recovery(file_db, tmp_path):
             return await self.real_sm.__aexit__(exc_type, exc, tb)
 
     with patch.object(
-        file_db,
+        db,
         "session_manager",
         side_effect=lambda: MockSessionManager(original_session_manager()),
     ):
@@ -270,12 +260,11 @@ async def test_persistence_failure_retries_and_recovery(file_db, tmp_path):
     assert reloaded.settings.retention.downloads == 99
 
 
-@pytest.mark.asyncio
-async def test_task_cancellation_during_persistence_or_locking(file_db, tmp_path):
+async def test_task_cancellation_during_persistence_or_locking(db, tmp_path):
     """
     Verifies lock state, dirty set tracking, and lock reuse recovery when tasks waiting on locks or persistence are cancelled.
     """
-    storage = Storage(db=file_db, data_dir=str(tmp_path / "data"))
+    storage = Storage(db=db, data_dir=str(tmp_path / "data"))
     state = AppState()
     await storage.load_state(state)
 
@@ -323,14 +312,13 @@ async def test_task_cancellation_during_persistence_or_locking(file_db, tmp_path
     assert not state.is_dirty()
 
 
-@pytest.mark.asyncio
-async def test_storage_listeners_ordering_and_exception_isolation(file_db, tmp_path):
+async def test_storage_listeners_ordering_and_exception_isolation(db, tmp_path):
     """
     Verifies that storage subscriber listeners:
     1. Are invoked post-commit where persisted changes are visible to external DB queries.
     2. Do not abort storage transactions or block other listeners if one raises an exception.
     """
-    storage = Storage(db=file_db, data_dir=str(tmp_path / "data"))
+    storage = Storage(db=db, data_dir=str(tmp_path / "data"))
     state = AppState()
     await storage.load_state(state)
 
@@ -341,7 +329,7 @@ async def test_storage_listeners_ordering_and_exception_isolation(file_db, tmp_p
 
     async def querying_listener(app_st, changeset):
         nonlocal db_row_visible
-        async with file_db.session_manager() as session:
+        async with db.session_manager() as session:
             result = await session.execute(
                 select(Server).filter(Server.server_name == "event_srv")
             )
@@ -366,10 +354,10 @@ async def test_storage_listeners_ordering_and_exception_isolation(file_db, tmp_p
     storage.unsubscribe(querying_listener)
 
 
-async def test_listener_can_persist_and_changesets_are_isolated(file_db, tmp_path):
+async def test_listener_can_persist_and_changesets_are_isolated(db, tmp_path):
     from bedrock_server_manager.state.changeset import ChangeSet
 
-    storage = Storage(file_db, str(tmp_path))
+    storage = Storage(db, str(tmp_path))
     state = await storage.load_state()
     observed = []
 
@@ -396,12 +384,12 @@ async def test_listener_can_persist_and_changesets_are_isolated(file_db, tmp_pat
     assert loaded.settings.get("second") == 2
 
 
-async def test_failed_commit_preserves_all_dirty_records(file_db, tmp_path):
+async def test_failed_commit_preserves_all_dirty_records(db, tmp_path):
     from unittest.mock import AsyncMock
 
     from sqlalchemy.ext.asyncio import AsyncSession
 
-    storage = Storage(file_db, str(tmp_path))
+    storage = Storage(db, str(tmp_path))
     state = await storage.load_state()
     state.settings.set("custom_value", 1)
     state.servers.set(ServerConfigState(server_name="server"))
@@ -424,8 +412,8 @@ async def test_failed_commit_preserves_all_dirty_records(file_db, tmp_path):
     assert loaded.users.get("user") is not None
 
 
-async def test_reload_preserves_pending_updates(file_db, tmp_path):
-    storage = Storage(file_db, str(tmp_path))
+async def test_reload_preserves_pending_updates(db, tmp_path):
+    storage = Storage(db, str(tmp_path))
     state = await storage.load_state()
     state.settings.set("pending", 1)
     state.servers.set(ServerConfigState(server_name="pending", status="RUNNING"))

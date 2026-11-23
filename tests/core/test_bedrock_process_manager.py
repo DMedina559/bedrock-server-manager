@@ -198,6 +198,7 @@ async def test_process_manager_recovers_untracked_server_in_background(
     await server.configuration.update("server_info.status", "STOPPED")
     assert server.configuration.snapshot().status == "STOPPED"
 
+    await app_context.settings.set("monitoring.untracked_process_interval_sec", 1)
     # Start the manager background monitoring task
     await manager.start()
     try:

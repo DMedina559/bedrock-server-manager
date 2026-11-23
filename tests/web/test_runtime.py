@@ -10,14 +10,7 @@ from bedrock_server_manager.web.control import ControlFiles
 from bedrock_server_manager.web.main import create_server
 from bedrock_server_manager.web.process import WebProcessPaths, read_control
 from bedrock_server_manager.web.runtime import WebRunOptions, WebRuntime
-
-
-def attach_runtime(app_context, test_app):
-    runtime = WebRuntime()
-    server = create_server(app_context, WebRunOptions(), runtime)
-    test_app.state.web_runtime = runtime
-    runtime.ready()
-    return runtime, server
+from tests.web.helpers import attach_runtime
 
 
 async def test_shutdown_requires_admin_and_is_idempotent(

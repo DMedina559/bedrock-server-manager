@@ -7,17 +7,9 @@ from httpx2 import ASGITransport, AsyncClient
 
 from bedrock_server_manager.config import get_installed_version
 from bedrock_server_manager.web.control import ControlFiles
-from bedrock_server_manager.web.main import create_server
 from bedrock_server_manager.web.process import WebProcessPaths, read_control
-from bedrock_server_manager.web.runtime import WebRunOptions, WebRuntime
-
-
-def attach_runtime(app_context, test_app):
-    runtime = WebRuntime()
-    server = create_server(app_context, WebRunOptions(), runtime)
-    test_app.state.web_runtime = runtime
-    runtime.ready()
-    return runtime, server
+from bedrock_server_manager.web.runtime import WebRuntime
+from tests.web.helpers import attach_runtime
 
 
 async def test_local_readiness_works_before_first_user(

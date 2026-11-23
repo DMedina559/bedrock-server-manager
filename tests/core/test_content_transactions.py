@@ -5,8 +5,13 @@ import zipfile
 from pathlib import Path
 from unittest.mock import AsyncMock
 
-import aiohttp
 import pytest
+from bsm_test_utils import (
+    RouteBehavior,
+    assert_trees_equal,
+    build_tree_inventory,
+    create_corrupt_archive,
+)
 
 from bedrock_server_manager.core.downloader import BedrockDownloader
 from bedrock_server_manager.core.files import (
@@ -78,7 +83,6 @@ def test_manifest_normalizes_legacy_metadata_and_atomic_world_archive_rollback(
     assert not list(tmp_path.glob("bsm-export-*"))
 
 
-@pytest.mark.asyncio
 async def test_file_transaction_rollbacks(tmp_path, monkeypatch):
     live = tmp_path / "live"
     live.mkdir()
@@ -119,7 +123,6 @@ async def test_file_transaction_rollbacks(tmp_path, monkeypatch):
     assert (old / "marker").read_text() == "old"
 
 
-@pytest.mark.asyncio
 async def test_addon_and_world_archive_failures_preserve_existing_data(
     real_bedrock_server, tmp_path, monkeypatch
 ):
@@ -162,8 +165,7 @@ async def test_addon_and_world_archive_failures_preserve_existing_data(
     assert marker.read_bytes() == b"previous world data"
 
 
-@pytest.mark.asyncio
-async def test_downloader_update_and_download_failures_preserve_existing_files(
+async def test_downloader_update_failure_preserves_existing_files(
     app_context, tmp_path, monkeypatch
 ):
     server = tmp_path / "server"
@@ -176,6 +178,7 @@ async def test_downloader_update_and_download_failures_preserve_existing_files(
         archive.writestr("b", "new b")
     downloader = BedrockDownloader(app_context.settings, str(server), "LATEST")
     downloader.zip_file_path = str(path)
+    before = build_tree_inventory(server)
     replace = os.replace
 
     def fail_second(src, dst):
@@ -187,29 +190,42 @@ async def test_downloader_update_and_download_failures_preserve_existing_files(
         fault.setattr(os, "replace", fail_second)
         with pytest.raises(FileOperationError):
             await downloader.extract_server_files(True)
-    assert (server / "a").read_text() == "old a"
-    assert (server / "b").read_text() == "old b"
+    assert_trees_equal(before, server)
     assert not list(tmp_path.glob("bsm-*"))
 
+
+@pytest.mark.parametrize(
+    "failure", ["unavailable", "disconnect", "truncated", "corrupt"]
+)
+async def test_download_failure_preserves_cached_file(
+    app_context, tmp_path, mock_http_server, failure
+):
     destination = tmp_path / "cached.zip"
     destination.write_bytes(b"previous download")
-    dl2 = BedrockDownloader(app_context.settings, str(tmp_path / "server2"), "LATEST")
-    dl2.resolved_download_url = "https://example.com/server.zip"
-    dl2.zip_file_path = str(destination)
+    downloader = BedrockDownloader(
+        app_context.settings, str(tmp_path / "server"), "LATEST"
+    )
+    route = "/server.zip"
+    downloader.resolved_download_url = mock_http_server.url + route
+    downloader.zip_file_path = str(destination)
 
-    class Session:
-        async def __aenter__(self):
-            return self
+    if failure == "corrupt":
+        response = RouteBehavior(
+            file_path=create_corrupt_archive(tmp_path, filename="corrupt.zip")
+        )
+        expected_error = FileOperationError
+    else:
+        response = {
+            "unavailable": RouteBehavior(status_code=503),
+            "disconnect": RouteBehavior(drop_connection=True),
+            "truncated": RouteBehavior(body=b"download contents", truncate_bytes=3),
+        }[failure]
+        expected_error = InternetConnectivityError
 
-        async def __aexit__(self, *args):
-            pass
-
-        def get(self, url):
-            raise aiohttp.ClientError("connection lost")
-
-    with monkeypatch.context() as fault:
-        fault.setattr(aiohttp, "ClientSession", lambda **kwargs: Session())
-        with pytest.raises(InternetConnectivityError):
-            await dl2._download_server_zip_file()
-    assert destination.read_bytes() == b"previous download"
-    assert not list(tmp_path.glob("bsm-*"))
+    mock_http_server.add_route(route, response)
+    before = build_tree_inventory(tmp_path)
+    with pytest.raises(expected_error):
+        await downloader._download_server_zip_file()
+    assert_trees_equal(before, tmp_path)
+    assert {request.path for request in mock_http_server.requests} == {route}
+    assert all(request.method == "GET" for request in mock_http_server.requests)

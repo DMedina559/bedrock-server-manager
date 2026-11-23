@@ -12,6 +12,7 @@ from bedrock_server_manager.state.updates import AccountPatch
 from bedrock_server_manager.web.access_policy import Permission
 from bedrock_server_manager.web.deps.auth import get_admin_user, require_permissions
 from bedrock_server_manager.web.schemas import UserResponse
+from tests.web.helpers import issue_token
 
 
 @pytest.fixture
@@ -48,17 +49,15 @@ def scoped_test_routes(test_app):
 
 
 async def issue(client, permissions=None, **options):
-    response = await client.post(
-        "/api/account/tokens",
-        json={
+    return await issue_token(
+        client,
+        {
             "name": "Monitoring",
             "permissions": permissions
             or ["account:read", "servers:read", "tasks:read"],
             **options,
         },
     )
-    assert response.status_code == 201, response.text
-    return response.json()
 
 
 async def test_integration_token_scope_ceiling_secret_storage_and_legacy_isolation(

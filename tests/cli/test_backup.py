@@ -2,17 +2,16 @@ from pathlib import Path
 from types import SimpleNamespace
 
 import pytest
-from click.testing import CliRunner
 
 from bedrock_server_manager.cli.backup import backup
 from bedrock_server_manager.utils.threads import run_in_thread
 
 
 @pytest.fixture
-def invoke_backup(app_context):
+def invoke_backup(app_context, runner):
     async def invoke(*arguments):
         return await run_in_thread(
-            CliRunner().invoke,
+            runner.invoke,
             backup,
             list(arguments),
             obj={

@@ -27,6 +27,7 @@ from bedrock_server_manager.web.authorization import (
 from bedrock_server_manager.web.contract import export_contract
 from bedrock_server_manager.web.log_streamer import LogHistoryPage
 from bedrock_server_manager.web.websocket_manager import ConnectionManager
+from tests.web.helpers import issue_token
 
 
 async def test_bearer_login_and_failures_are_not_cacheable(unauth_client, test_user):
@@ -58,12 +59,9 @@ def test_conditional_access_contract_has_actual_capabilities():
 
 
 async def issue(client, permissions, **extra):
-    response = await client.post(
-        "/api/account/tokens",
-        json={"name": "Audit integration", "permissions": permissions, **extra},
+    return await issue_token(
+        client, {"name": "Audit integration", "permissions": permissions, **extra}
     )
-    assert response.status_code == 201, response.text
-    return response.json()
 
 
 async def test_application_log_http_and_socket_scopes_agree(

@@ -1,3 +1,6 @@
+import asyncio
+import threading
+
 """
 Integration tests for bedrock_server_manager/core/downloader.py
 """
@@ -5,10 +8,9 @@ Integration tests for bedrock_server_manager/core/downloader.py
 import os
 import platform
 import zipfile
-from unittest.mock import patch
 
-import aiohttp
 import pytest
+from bsm_test_utils import RouteBehavior
 
 from bedrock_server_manager.context import AppContext
 from bedrock_server_manager.core.downloader import (
@@ -45,7 +47,9 @@ async def test_prune_old_downloads(tmp_path):
     assert "bedrock-server-file5.zip" in remaining_files
 
 
-async def test_downloader_init_and_lookup(mock_bedrock_api, app_context: AppContext):
+async def test_downloader_init_and_lookup(
+    bedrock_download_catalog, app_context: AppContext
+):
     """Test initialization and looking up LATEST, PREVIEW, and failed URLs."""
     downloader = BedrockDownloader(
         settings_obj=app_context.settings,
@@ -63,28 +67,31 @@ async def test_downloader_init_and_lookup(mock_bedrock_api, app_context: AppCont
     )
     assert preview_downloader._version_type == "PREVIEW"
 
-    await app_context.settings.set(
-        "downloader.download_url", f"{mock_bedrock_api.url}/api/v1.0/download/links"
-    )
+    server = bedrock_download_catalog.publish()
+    links_path = "/api/v1.0/download/links"
+    await app_context.settings.set("downloader.download_url", server.url + links_path)
 
     latest_url = await downloader._lookup_bedrock_download_url()
-    assert mock_bedrock_api.url in latest_url and "bedrock-server" in latest_url
+    assert server.url in latest_url and "bedrock-server" in latest_url
 
     preview_url = await preview_downloader._lookup_bedrock_download_url()
-    assert mock_bedrock_api.url in preview_url and "preview" in preview_url
+    assert server.url in preview_url and "preview" in preview_url
 
-    with patch(
-        "aiohttp.ClientSession.get", side_effect=aiohttp.ClientError("API down")
+    bedrock_download_catalog.publish(stable="1.26.46.1")
+    updated_url = await downloader._lookup_bedrock_download_url()
+    assert updated_url.endswith("/bedrock-server-1.26.46.1.zip")
+    assert updated_url != latest_url
+
+    server.add_route(links_path, RouteBehavior(status_code=503))
+    with pytest.raises(
+        InternetConnectivityError, match="Could not contact the Minecraft download API"
     ):
-        with pytest.raises(
-            InternetConnectivityError,
-            match="Could not contact the Minecraft download API",
-        ):
-            await downloader._lookup_bedrock_download_url()
+        await downloader._lookup_bedrock_download_url()
+    assert [request.path for request in server.requests] == [links_path] * 4
 
 
 async def test_downloader_prepare_assets_and_full_setup(
-    app_context, tmp_path, download_api
+    app_context, tmp_path, download_api, bedrock_download_catalog
 ):
     await app_context.settings.set("paths.downloads", str(tmp_path / "downloads"))
     downloader = BedrockDownloader(
@@ -108,6 +115,19 @@ async def test_downloader_prepare_assets_and_full_setup(
         "bedrock_server.exe" if platform.system() == "Windows" else "bedrock_server"
     )
     assert (server_dir / binary).is_file()
+
+    properties = server_dir / "server.properties"
+    custom_name = "server-name=Keep existing settings"
+    properties.write_text(custom_name + "\n", encoding="utf-8")
+    bedrock_download_catalog.publish(stable="1.26.46.1")
+    update = BedrockDownloader(app_context.settings, str(server_dir), "LATEST")
+    assert await update.full_server_setup(is_update=True) == "1.26.46.1"
+    names = [
+        line
+        for line in properties.read_text(encoding="utf-8").splitlines()
+        if line.startswith("server-name=")
+    ]
+    assert names == [custom_name]
 
 
 async def test_downloader_extract_server_files_fresh_and_update(
@@ -165,9 +185,6 @@ async def test_downloader_extract_server_files_fresh_and_update(
 async def test_cancel_install_rolls_back_files_before_returning(
     app_context, tmp_path, dummy_server_zip, monkeypatch
 ):
-    import asyncio
-    import threading
-
     from bedrock_server_manager.core.files import FileTransaction
 
     target = tmp_path / "cancel-install"

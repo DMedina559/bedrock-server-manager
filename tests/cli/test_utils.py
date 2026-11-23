@@ -1,6 +1,5 @@
 import click
 import pytest
-from click.testing import CliRunner
 
 from bedrock_server_manager.api.models.common import ActionResponse, SuccessResponse
 from bedrock_server_manager.cli.utils import handle_api_response
@@ -20,11 +19,11 @@ from bedrock_server_manager.cli.utils import handle_api_response
         ),
     ],
 )
-def test_handle_api_response(response, expected):
+def test_handle_api_response(response, expected, runner):
     @click.command()
     def dummy_cmd():
         handle_api_response(response, "Default success msg")
 
-    result = CliRunner().invoke(dummy_cmd)
+    result = runner.invoke(dummy_cmd)
     assert result.exit_code == 0
     assert expected in result.output

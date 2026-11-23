@@ -10,6 +10,7 @@ from sqlalchemy import select, update
 
 from bedrock_server_manager.db.models import LoginSession, TrustedDevice, User
 from bedrock_server_manager.web.trusted_devices import cookie_name
+from tests.web.helpers import login as login_request
 
 
 @pytest.fixture
@@ -35,9 +36,9 @@ async def login(
     }
     if proof is not None:
         data["trusted_device_token"] = proof
-    return await client.post(
-        "/auth/token",
-        data=data,
+    return await login_request(
+        client,
+        **data,
         headers={
             "X-BSM-Auth-Mode": "cookie" if cookie else "bearer",
             "Origin": "http://testserver",

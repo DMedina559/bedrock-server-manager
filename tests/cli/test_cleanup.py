@@ -3,16 +3,10 @@ import os
 from pathlib import Path
 
 import pytest
-from click.testing import CliRunner
 
 from bedrock_server_manager.cli.cleanup import _cleanup_pycache, cleanup
 from bedrock_server_manager.cli.logs import logs
 from bedrock_server_manager.state.models import PluginInfoState, ServerConfigState
-
-
-@pytest.fixture
-def runner():
-    return CliRunner()
 
 
 @pytest.fixture

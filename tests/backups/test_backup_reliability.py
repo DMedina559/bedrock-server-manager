@@ -9,6 +9,7 @@ from types import SimpleNamespace
 from unittest.mock import AsyncMock
 
 import pytest
+from bsm_test_utils import assert_trees_equal, build_tree_inventory
 
 from bedrock_server_manager.backups.models import BASE_COMPONENTS, PACK_COMPONENTS
 from bedrock_server_manager.backups.recovery import RestoreJournal
@@ -89,9 +90,12 @@ sys.stdin.read()
 async def test_pack_capture_dry_run_and_restore(populated_server):
     server = populated_server
     root = Path(server.paths.server_dir)
+    originals = {}
     for name in PACK_COMPONENTS:
         (root / name).mkdir(exist_ok=True)
         (root / name / "manifest.json").write_text('{"pack":"original"}')
+        (root / name / "empty").mkdir()
+        originals[name] = build_tree_inventory(root / name)
     snapshot = await server.backups.create_snapshot(
         components=list(BASE_COMPONENTS + PACK_COMPONENTS)
     )
@@ -112,10 +116,8 @@ async def test_pack_capture_dry_run_and_restore(populated_server):
     await server.backups.restore_snapshot(
         snapshot.backup_id, plan.components, plan.token
     )
-    assert all(
-        (root / name / "manifest.json").read_text() == '{"pack":"original"}'
-        for name in PACK_COMPONENTS
-    )
+    for name, original in originals.items():
+        assert_trees_equal(original, root / name)
 
 
 async def test_old_manifests_remain_readable(populated_server, tmp_path):

@@ -78,21 +78,24 @@ async def subscribed_socket(websocket_client, app_context, test_admin_user):
                     return buffered.popleft()
                 return await raw_recv(*args, **kwargs)
 
-            await connection.send(
-                json.dumps({"action": "authenticate", "token": token})
-            )
-            assert json.loads(await raw_recv())["status"] == "success"
-            for topic in topics:
+            async with asyncio.timeout(5):
                 await connection.send(
-                    json.dumps({"action": "subscribe", "topic": topic})
+                    json.dumps({"action": "authenticate", "token": token})
                 )
-                while True:
-                    raw = await raw_recv()
-                    msg = json.loads(raw)
-                    if "status" in msg:
-                        assert msg["status"] == "success"
-                        break
-                    buffered.append(raw)
+                reply = json.loads(await raw_recv())
+                assert reply["status"] == "success", reply
+            for topic in topics:
+                async with asyncio.timeout(5):
+                    await connection.send(
+                        json.dumps({"action": "subscribe", "topic": topic})
+                    )
+                    while True:
+                        raw = await raw_recv()
+                        message = json.loads(raw)
+                        if "status" in message and "topic" not in message:
+                            assert message["status"] == "success", (topic, message)
+                            break
+                        buffered.append(raw)
             connection.recv = recv
             yield connection
 
