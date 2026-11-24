@@ -1,18 +1,24 @@
+import asyncio
 import os
+from collections import namedtuple
 
 import pytest
 
 from bedrock_server_manager.error import AppFileNotFoundError, FileOperationError
 from bedrock_server_manager.utils.general import (
+    ReentrantAsyncLock,
     get_timestamp,
     list_content_files,
     startup_checks,
 )
 
 
-async def test_startup_checks_creates_dirs(app_context, tmp_path, monkeypatch):
-    """Test startup_checks creates missing essential app directories."""
-    await app_context.settings.set("paths.servers", str(tmp_path / "servers"))
+async def test_startup_checks_and_dirs(app_context, tmp_path, monkeypatch):
+    """Test startup_checks creates missing directories, handles existing ones, and validates Python version."""
+    servers_dir = tmp_path / "servers"
+    servers_dir.mkdir()  # Existing dir beforehand
+
+    await app_context.settings.set("paths.servers", str(servers_dir))
     await app_context.settings.set("paths.content", str(tmp_path / "content"))
     await app_context.settings.set("paths.downloads", str(tmp_path / "downloads"))
     await app_context.settings.set("paths.plugins", str(tmp_path / "plugins"))
@@ -20,7 +26,7 @@ async def test_startup_checks_creates_dirs(app_context, tmp_path, monkeypatch):
 
     startup_checks(app_context)
 
-    assert os.path.isdir(tmp_path / "servers")
+    assert os.path.isdir(servers_dir)
     assert os.path.isdir(tmp_path / "content")
     assert os.path.isdir(tmp_path / "content" / "worlds")
     assert os.path.isdir(tmp_path / "content" / "addons")
@@ -28,148 +34,79 @@ async def test_startup_checks_creates_dirs(app_context, tmp_path, monkeypatch):
     assert os.path.isdir(tmp_path / "plugins")
     assert os.path.isdir(tmp_path / "backups")
 
-
-async def test_startup_checks_handles_existing_dirs(app_context, tmp_path):
-    """Test startup_checks gracefully handles existing directories without raising an error."""
-    # Create the servers dir beforehand
-    servers_dir = tmp_path / "servers"
-    servers_dir.mkdir()
-
-    await app_context.settings.set("paths.servers", str(servers_dir))
-
-    startup_checks(app_context)
-
-    # Still exists and no crash
-    assert os.path.isdir(servers_dir)
-
-
-def test_startup_checks_python_version_fail(app_context, monkeypatch):
-    """Test startup_checks raises a RuntimeError if the python version is unsupported."""
-    from collections import namedtuple
-
     VersionInfo = namedtuple("VersionInfo", ["major", "minor", "micro"])
     monkeypatch.setattr("sys.version_info", VersionInfo(3, 9, 0))
-
-    with pytest.raises(RuntimeError) as exc_info:
+    with pytest.raises(RuntimeError, match="Python version 3.11 or later is required"):
         startup_checks(app_context)
-    assert "Python version 3.11 or later is required" in str(exc_info.value)
 
 
-async def test_get_timestamp():
-    """Test get_timestamp generates a valid date string format."""
+async def test_list_content_files_and_timestamp(tmp_path, monkeypatch):
+    """Test get_timestamp and list_content_files across success, empty, missing, and OS error cases."""
     timestamp = get_timestamp()
-    assert isinstance(timestamp, str)
-    assert len(timestamp) == 15  # YYYYMMDD_HHMMSS
-    assert timestamp[8] == "_"
+    assert isinstance(timestamp, str) and len(timestamp) == 15 and timestamp[8] == "_"
 
-
-async def test_list_content_files_success(tmp_path):
-    """Test list_content_files correctly retrieves valid matches."""
     worlds_dir = tmp_path / "worlds"
     worlds_dir.mkdir()
-
     (worlds_dir / "world1.mcworld").touch()
     (worlds_dir / "world2.mcworld").touch()
     (worlds_dir / "ignore_this.txt").touch()
 
     result = await list_content_files(str(tmp_path), "worlds", [".mcworld"])
-
     assert len(result) == 2
     assert any("world1.mcworld" in f for f in result)
     assert any("world2.mcworld" in f for f in result)
     assert not any("ignore_this.txt" in f for f in result)
 
-
-async def test_list_content_files_no_matches(tmp_path):
-    """Test list_content_files returns empty when no files match."""
+    # No matches
     addons_dir = tmp_path / "addons"
     addons_dir.mkdir()
-
     (addons_dir / "file.txt").touch()
+    assert await list_content_files(str(tmp_path), "addons", [".mcpack"]) == []
 
-    result = await list_content_files(str(tmp_path), "addons", [".mcpack"])
-    assert result == []
+    # Subfolder does not exist
+    assert await list_content_files(str(tmp_path), "missing_folder", [".txt"]) == []
 
-
-async def test_list_content_files_subfolder_not_exist(tmp_path):
-    """Test list_content_files returns empty if the target subfolder doesn't exist."""
-    result = await list_content_files(str(tmp_path), "missing_folder", [".txt"])
-    assert result == []
-
-
-async def test_list_content_files_content_dir_missing():
-    """Test list_content_files raises AppFileNotFoundError if missing a content directory."""
-    with pytest.raises(AppFileNotFoundError) as exc_info:
+    # Content dir missing
+    with pytest.raises(AppFileNotFoundError, match="not found at path:"):
         await list_content_files("/does/not/exist/ever", "worlds", [".mcworld"])
-    assert "not found at path:" in str(exc_info.value)
 
-
-async def test_list_content_files_os_error(tmp_path, monkeypatch):
-    """Test list_content_files catches OS errors and raises a FileOperationError."""
-    worlds_dir = tmp_path / "worlds"
-    worlds_dir.mkdir()
-
+    # OS error
     def mock_find_files(*args, **kwargs):
         raise OSError("Permission denied")
 
     monkeypatch.setattr(
         "bedrock_server_manager.core.system.find_files", mock_find_files
     )
-
-    with pytest.raises(FileOperationError) as exc_info:
+    with pytest.raises(FileOperationError, match="Error scanning content directory"):
         await list_content_files(str(tmp_path), "worlds", [".mcworld"])
-    assert "Error scanning content directory" in str(exc_info.value)
 
 
-async def test_reentrant_async_lock_reentrancy():
-    """Test ReentrantAsyncLock re-entrancy and release."""
-    from bedrock_server_manager.utils.general import ReentrantAsyncLock
-
+def test_reentrant_async_lock_lifecycle():
+    """Test ReentrantAsyncLock re-entrancy, cross-event-loop reset, and unacquired release."""
     lock = ReentrantAsyncLock()
     assert not lock.locked()
-
-    async with lock:
-        assert lock.locked()
-        async with lock:
-            assert lock.locked()
-            assert lock._count == 2
-        assert lock._count == 1
-        assert lock.locked()
-
-    assert not lock.locked()
-    assert lock._count == 0
-
-
-def test_reentrant_async_lock_cross_event_loop():
-    """Test ReentrantAsyncLock resets cleanly when accessed across closed or different event loops."""
-    import asyncio
-
-    from bedrock_server_manager.utils.general import ReentrantAsyncLock
-
-    lock = ReentrantAsyncLock()
 
     async def run_loop_1():
+        with pytest.raises(RuntimeError, match="Cannot release un-acquired lock"):
+            lock.release()
+        async with lock:
+            assert lock.locked()
+            async with lock:
+                assert lock.locked()
+                assert lock._count == 2
+            assert lock._count == 1
+            assert lock.locked()
+        assert not lock.locked()
+        assert lock._count == 0
         await lock.acquire()
         assert lock.locked()
-        # Deliberately do not release lock before loop 1 closes
 
     asyncio.run(run_loop_1())
 
     async def run_loop_2():
-        # lock should reset owner and lock state for new loop
         await lock.acquire()
         assert lock.locked()
         lock.release()
         assert not lock.locked()
 
     asyncio.run(run_loop_2())
-
-
-async def test_reentrant_async_lock_unacquired_release():
-    """Test releasing an unacquired ReentrantAsyncLock raises RuntimeError."""
-    from bedrock_server_manager.utils.general import ReentrantAsyncLock
-
-    lock = ReentrantAsyncLock()
-    with pytest.raises(RuntimeError) as exc_info:
-        lock.release()
-    assert "Cannot release un-acquired lock" in str(exc_info.value)

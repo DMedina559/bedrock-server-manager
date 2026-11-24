@@ -3,12 +3,20 @@
 Plugin to automatically back up a server before it starts.
 """
 
-from typing import Any
+import asyncio
+from typing import Any, Literal
 
 from pydantic import BaseModel, ConfigDict, Field
 
-from bedrock_server_manager import ExistingServerName, PluginBase, app_event
+from bedrock_server_manager import (
+    ExistingServerName,
+    PluginBase,
+    PluginScope,
+    app_event,
+)
+from bedrock_server_manager.backups.contents import DEFAULT_COMPONENTS, BackupComponents
 from bedrock_server_manager.logging import log_operation_error
+from bedrock_server_manager.models import CreateSnapshotRequest, SnapshotReuseRequest
 
 
 class PluginSettings(BaseModel):
@@ -20,21 +28,45 @@ class PluginSettings(BaseModel):
     require_complete_backup: bool = Field(
         default=False, description="Cancel server start if the backup cannot complete."
     )
-    enable_backup_on_start: bool = Field(
-        default=True, description="Back up this server before starting it."
+    reuse_sequence_backup: bool = Field(
+        default=True,
+        description="Reuse a complete backup from the same operation sequence, including a pre-update backup.",
+    )
+    backup_mode: Literal["world", "selected", "full", "default"] = Field(
+        default="world",
+        description="Contents to capture before start. Default uses global backup settings.",
+    )
+    components: BackupComponents = Field(
+        default_factory=lambda: list(DEFAULT_COMPONENTS),
+        description="Components used only in selected mode.",
+    )
+    encryption: Literal["default", "on", "off"] = Field(
+        default="default",
+        description="Use global encryption, force encryption on, or force it off.",
+    )
+    timeout_seconds: float = Field(
+        default=300.0,
+        gt=0,
+        le=3600,
+        description="Maximum seconds for a pre-start backup (default 5 minutes). Optional backup failures allow startup; required backups prevent startup.",
     )
 
 
 class AutoBackupOnStart(PluginBase):
-    """Performs a full backup of a server each time a start command is initiated. This
+    """Backs up selected server contents before starting a server. This
     plugin hooks into the ``before_server_start`` event to ensure a recent backup
     exists before the server goes online.
     """
 
     settings_model = PluginSettings
 
-    version = "1.2.0"
-    description = "Performs a full backup of a server each time a start command is initiated. This plugin hooks into the `before_server_start` event."
+    version = "1.5.0"
+    permissions = [
+        PluginScope.BACKUPS_CREATE,
+        PluginScope.BACKUPS_READ,
+        PluginScope.SERVERS_READ,
+    ]
+    description = "Backs up selected server contents before starting a server. This plugin hooks into the `before_server_start` event."
     author = "dmedina559"
     name = "Auto Backup On Start"
 
@@ -42,16 +74,22 @@ class AutoBackupOnStart(PluginBase):
     async def plugin_loaded(self):
         """Logs a message when the plugin is loaded."""
         self.logger.debug(
-            "Plugin loaded. Will perform a full backup before any server starts."
+            "Plugin loaded. Will back up selected contents before server starts."
         )
 
-    @app_event("before_server_start")
+    @app_event("before_server_start", timeout_seconds=3600)
     async def backup_on_start(self, **kwargs: Any):
         """
-        Triggers a full backup of the server before it starts.
+        Backs up selected contents before the server starts.
         """
-        if not await self.get_plugin_setting("enable_backup_on_start", default=True):
-            self.logger.debug("Backup on start is disabled in plugin settings.")
+        from bedrock_server_manager.events.operations import OperationName
+
+        sequence = self.api.operations.sequence()
+        if sequence and any(
+            item.name == OperationName.BACKUP_RESTORE
+            and item.server_name == kwargs.get("server_name")
+            for item in sequence.ancestry
+        ):
             return
 
         server_name = kwargs.get("server_name")
@@ -61,15 +99,50 @@ class AutoBackupOnStart(PluginBase):
         if selected and server_name not in selected:
             return
 
+        mode = await self.get_plugin_setting("backup_mode", default="world")
+        components = (
+            await self.get_plugin_setting(
+                "components", default=list(DEFAULT_COMPONENTS)
+            )
+            if mode == "selected"
+            else None
+        )
+        request = SnapshotReuseRequest(
+            server_name=server_name,
+            mode=None if mode == "default" else mode,
+            components=components,
+        )
+        if await self.get_plugin_setting("reuse_sequence_backup", default=True):
+            coverage = await self.api.backup_restore.can_reuse_server_backup(
+                request=request
+            )
+            if coverage.reusable:
+                self.logger.info(
+                    "Skipping pre-start backup for '%s': a complete backup already finished in this operation sequence.",
+                    server_name,
+                )
+                return
+
         self.logger.info("Performing pre-start backup for server '%s'...", server_name)
 
         try:
-            # The server is guaranteed to be offline at this point, so it is safe
-            # to run a backup without stopping it first.
+            # The start operation holds the server lock and verified it is offline.
 
-            result = await self.api.backup_restore.backup_all(
-                request={"server_name": server_name}
-            )
+            encryption = await self.get_plugin_setting("encryption", default="default")
+            timeout = await self.get_plugin_setting("timeout_seconds", default=300.0)
+            self.logger.debug("Pre-start backup deadline: %.3f seconds", timeout)
+            async with asyncio.timeout(timeout):
+                result = await self.api.backup_restore.create_server_backup(
+                    request=CreateSnapshotRequest(
+                        server_name=request.server_name,
+                        purpose="pre_start",
+                        mode=request.mode,
+                        components=request.components,
+                        encrypted=(
+                            None if encryption == "default" else encryption == "on"
+                        ),
+                    )
+                )
 
             if result.status == "success":
                 self.logger.info(
@@ -87,6 +160,22 @@ class AutoBackupOnStart(PluginBase):
                     "Pre-start backup for '%s' failed: %s", server_name, error_message
                 )
 
+        except TimeoutError:
+            event = kwargs.get("event")
+            required = await self.get_plugin_setting(
+                "require_complete_backup", default=False
+            )
+            if required and event is not None:
+                event.cancel("Required pre-start backup timed out.")
+            self.logger.warning(
+                "Pre-start backup timed out for '%s'; startup %s",
+                server_name,
+                (
+                    "cancelled because a complete backup is required"
+                    if required
+                    else "will continue because backup is optional"
+                ),
+            )
         except Exception as e:
             event = kwargs.get("event")
             if event is not None and await self.get_plugin_setting(

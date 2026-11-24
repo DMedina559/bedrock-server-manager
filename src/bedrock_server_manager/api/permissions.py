@@ -5,20 +5,21 @@ from ..context import AppContext
 from ..error import AppFileNotFoundError, BSMError
 from ..events import trigger_event
 from ..logging import log_operation_error
-from ..plugins.api_bridge import api_method
-from . import player as player_api
-from .models.permissions import (
+from ..models.permissions import (
     GetPermissionsRequest,
     GetPermissionsResponse,
     SetPermissionsRequest,
     SetPermissionsResponse,
 )
-from .models.player import GetAllKnownPlayersRequest
+from ..models.player import GetAllKnownPlayersRequest
+from ..plugins.api_bridge import api_method
+from ..plugins.scopes import PluginScope
+from . import player as player_api
 
 logger = logging.getLogger(__name__)
 
 
-@api_method("set_permissions")
+@api_method("set_permissions", required_scope=PluginScope.PERMISSIONS_MANAGE)
 @trigger_event(
     before="before_permission_change",
     after="after_permission_change",
@@ -60,7 +61,7 @@ async def set_permissions(
         raise
 
 
-@api_method("get_permissions")
+@api_method("get_permissions", required_scope=PluginScope.PERMISSIONS_READ)
 async def get_permissions(
     request: GetPermissionsRequest, *, app_context: AppContext
 ) -> GetPermissionsResponse:

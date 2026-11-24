@@ -1,67 +1,46 @@
-"""
-Integration tests for the setup router endpoints.
-"""
+"""Integration tests for the setup router endpoints."""
 
 from httpx2 import ASGITransport, AsyncClient
 from sqlalchemy import delete
 
 from bedrock_server_manager.db.models import User
+from bedrock_server_manager.error import StorageError
 
 
-async def test_get_setup_status_needs_setup(unauth_client: AsyncClient, app_context):
-    """Test setup status when DB is empty."""
-    # Ensure DB is empty
-    async with app_context.db.session_manager() as db:
-        await db.execute(delete(User))
-        await db.commit()
-
-    response = await unauth_client.get("/api/setup/status")
-    assert response.status_code == 200
-    assert response.json()["needs_setup"] is True
-
-
-async def test_get_setup_status_no_setup_needed(unauth_client: AsyncClient, test_user):
-    """Test setup status when DB has users."""
-    response = await unauth_client.get("/api/setup/status")
-    assert response.status_code == 200
-    assert response.json()["needs_setup"] is False
-
-
-async def test_create_first_user_success(unauth_client: AsyncClient, app_context):
-    """Test creating the first user successfully."""
-    # Ensure DB is empty
-    async with app_context.db.session_manager() as db:
-        await db.execute(delete(User))
-        await db.commit()
-
-    response = await unauth_client.post(
-        "/api/setup/create-first-user",
-        json={"username": "admin", "password": "securepassword"},
-    )
-    assert response.status_code == 200
-    data = response.json()
-    assert data["status"] == "success"
-    assert "access_token" in data
-    assert "access_token_cookie" in response.cookies
-
-
-async def test_create_first_user_already_exists(
+async def test_setup_status_and_create_first_user(
     unauth_client: AsyncClient, test_user, app_context
 ):
-    """Test creating a user when one already exists."""
-    # Ensure needs_setup is evaluated to False
-    _ = (
-        app_context.needs_setup
-        if hasattr(app_context, "needs_setup")
-        else app_context.needs_setup
+    """Test setup status and first-user creation when users exist vs when DB is empty."""
+    # Users exist (from test_user fixture)
+    status_resp = await unauth_client.get("/api/setup/status")
+    assert status_resp.status_code == 200 and status_resp.json()["needs_setup"] is False
+
+    exists_resp = await unauth_client.post(
+        "/api/setup/create-first-user",
+        json={"username": "admin2", "password": "secure setup passphrase"},
+    )
+    assert exists_resp.status_code == 400
+    assert (
+        exists_resp.json()["error"]["message"] == "Application has already been set up."
     )
 
-    response = await unauth_client.post(
+    # Clear DB and verify needs_setup + first user creation
+    async with app_context.db.session_manager() as db:
+        await db.execute(delete(User))
+        await db.commit()
+    app_context._needs_setup = None
+
+    empty_resp = await unauth_client.get("/api/setup/status")
+    assert empty_resp.status_code == 200 and empty_resp.json()["needs_setup"] is True
+
+    create_resp = await unauth_client.post(
         "/api/setup/create-first-user",
-        json={"username": "admin2", "password": "securepassword"},
+        json={"username": "admin", "password": "secure setup passphrase"},
     )
-    assert response.status_code == 400
-    assert response.json()["error"]["message"] == "Application has already been set up."
+    assert create_resp.status_code == 200
+    data = create_resp.json()
+    assert data["status"] == "success" and "access_token" in data
+    assert "access_token_cookie" not in create_resp.cookies
 
 
 def test_setup_operations_are_in_openapi(test_app):
@@ -72,17 +51,15 @@ def test_setup_operations_are_in_openapi(test_app):
     create = schema["paths"]["/api/setup/create-first-user"]["post"]
     assert create["operationId"] == "create_first_user"
     assert create["responses"]["200"]["content"]["application/json"]["schema"] == {
-        "$ref": "#/components/schemas/SetupAccountResponse"
+        "$ref": "#/components/schemas/TokenResponse"
     }
-    fields = schema["components"]["schemas"]["SetupAccountResponse"]["properties"]
+    fields = schema["components"]["schemas"]["TokenResponse"]["properties"]
     assert {"access_token", "token_type", "status", "message"} <= fields.keys()
 
 
 async def test_setup_storage_outage_returns_unavailable(
     running_app, app_context, monkeypatch
 ):
-    from bedrock_server_manager.error import StorageError
-
     def unavailable(*args, **kwargs):
         raise StorageError("private database diagnostic")
 

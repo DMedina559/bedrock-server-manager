@@ -1,6 +1,6 @@
 server
 ======
 
-.. automodule:: bedrock_server_manager.api.models.server
+.. automodule:: bedrock_server_manager.models.server
    :members:
    :member-order: bysource

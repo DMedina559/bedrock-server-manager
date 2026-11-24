@@ -6,15 +6,12 @@ import logging
 from ..context import AppContext
 from ..core.player import (
     discover_and_store_players,
-    get_known_players,
     parse_player_string,
-    save_player_data,
 )
 from ..error import BSMError, UserInputError
 from ..events import trigger_event
 from ..logging import log_operation_error
-from ..plugins.api_bridge import api_method
-from .models.player import (
+from ..models.player import (
     AddPlayersManuallyRequest,
     AddPlayersManuallyResponse,
     GetAllKnownPlayersRequest,
@@ -22,11 +19,13 @@ from .models.player import (
     ScanAndUpdatePlayerDbRequest,
     ScanAndUpdatePlayerDbResponse,
 )
+from ..plugins.api_bridge import api_method
+from ..plugins.scopes import PluginScope
 
 logger = logging.getLogger(__name__)
 
 
-@api_method("add_players_manually")
+@api_method("add_players_manually", required_scope=PluginScope.PLAYERS_MANAGE)
 @trigger_event(before="before_players_add", after="after_players_add", identity_keys=())
 async def add_players_manually(
     request: AddPlayersManuallyRequest, *, app_context: AppContext
@@ -42,7 +41,7 @@ async def add_players_manually(
         players_data = parse_player_string(combined_input)
         unique = {player["xuid"]: player for player in players_data}
         saved_count = (
-            await save_player_data(storage, list(unique.values())) if unique else 0
+            int(await storage.save_players(list(unique.values()))) if unique else 0
         )
         return AddPlayersManuallyResponse.model_validate(
             {
@@ -61,7 +60,7 @@ async def add_players_manually(
         raise
 
 
-@api_method("get_all_known_players")
+@api_method("get_all_known_players", required_scope=PluginScope.PLAYERS_READ)
 async def get_all_known_players(
     request: GetAllKnownPlayersRequest, *, app_context: AppContext
 ) -> GetAllKnownPlayersResponse:
@@ -71,7 +70,7 @@ async def get_all_known_players(
     if storage is None:
         raise BSMError("Storage is not initialized.")
     try:
-        players = await get_known_players(storage)
+        players = list(await storage.get_all_players())
         return GetAllKnownPlayersResponse.model_validate(
             {"status": "success", "players": players}
         )
@@ -80,7 +79,7 @@ async def get_all_known_players(
         raise
 
 
-@api_method("scan_and_update_player_db")
+@api_method("scan_and_update_player_db", required_scope=PluginScope.PLAYERS_MANAGE)
 @trigger_event(
     before="before_player_db_scan", after="after_player_db_scan", identity_keys=()
 )

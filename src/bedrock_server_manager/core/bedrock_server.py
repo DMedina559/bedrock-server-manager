@@ -21,8 +21,10 @@ from .server.world import ServerWorlds
 if TYPE_CHECKING:
     from ..config.settings import Settings
     from ..db.storage import Storage
+    from ..events.operations import OperationService
     from ..events.publisher import EventPublisher
     from ..state.app_state import AppState
+    from .server.runtime import PlayerIdentityWriter
 
 
 class BedrockServer(ServerResources):
@@ -34,16 +36,20 @@ class BedrockServer(ServerResources):
         *,
         settings: "Settings | None" = None,
         events: "EventPublisher | None" = None,
+        operations: "OperationService | None" = None,
         state: "AppState | None" = None,
         storage: "Storage | None" = None,
+        identity_writer: "PlayerIdentityWriter | None" = None,
     ) -> None:
         super().__init__(
             server_name,
             settings=settings,
             events=events,
+            operations=operations,
             state=state,
             storage=storage,
         )
+        self.identity_writer = identity_writer
         self.configuration = ServerConfiguration(self)
         self.properties = ServerProperties(self)
         self.installation = ServerInstallation(self)
@@ -61,8 +67,10 @@ class BedrockServer(ServerResources):
     async def validate_installation(self) -> bool:
         return await self.installation.validate_installation()
 
-    async def is_running(self) -> bool:
-        return await self.process.is_running()
+    async def is_running(
+        self, *, force_scan: bool = False, reconcile: bool = True
+    ) -> bool:
+        return await self.process.is_running(force_scan=force_scan, reconcile=reconcile)
 
     async def start(self) -> None:
         await self.process.start()
@@ -113,9 +121,13 @@ class BedrockServer(ServerResources):
     async def get_status_from_config(self) -> str:
         return self.configuration.snapshot().status
 
-    async def set_status_in_config(self, status_string: str) -> None:
+    async def set_status_in_config(
+        self, status_string: str, *, cancellable: bool = False
+    ) -> None:
         """Persist status and emit hooks without going through the API facade."""
-        await self.configuration.set_status(status_string, self.events)
+        await self.configuration.set_status(
+            status_string, self.events, cancellable=cancellable
+        )
 
     async def get_world_name(self) -> str:
         value = (
@@ -129,25 +141,36 @@ class BedrockServer(ServerResources):
             )
         return value
 
-    async def get_status(self) -> str:
+    async def get_status(self, running: bool | None = None) -> str:
         """Read effective process status without persisting or emitting events."""
-        running = await self.is_running()
+        runtime = self._runtime_state.get_server_runtime(self.server_name)
+        if runtime.phase is not None and runtime.generation is not None:
+            return runtime.phase
+        if running is None:
+            running = await self.is_running(reconcile=False)
         stored = self.configuration.snapshot().status
-        if running:
-            return "RUNNING"
-        return "STOPPED" if stored in ("RUNNING", "UNKNOWN") else stored
-
-    async def reconcile_status(self, running: bool) -> str:
-        """Publish an observed process transition from the monitor."""
-        stored = self.configuration.snapshot().status
-        status = (
+        return (
             "RUNNING"
             if running
             else "STOPPED" if stored in ("RUNNING", "UNKNOWN") else stored
         )
-        if status != stored:
-            await self.set_status_in_config(status)
+
+    async def reconcile_status(self, running: bool | None = None) -> str:
+        """Owned runtime facts never depend on cancellable configuration hooks."""
+        if self.process.run is not None:
+            return self.process.run.phase
+        status = await self.get_status(running=running)
+        if status != self.configuration.snapshot().status:
+            await self.set_status_in_config(status, cancellable=False)
         return status
+
+    async def ensure_stopped(self) -> None:
+        from ..error import ServerRunningError
+
+        if await self.is_running(force_scan=True):
+            raise ServerRunningError(
+                f"Server '{self.server_name}' must be stopped for this operation."
+            )
 
     async def get_summary_info(self) -> SummaryRecord:
         status = await self.get_status()

@@ -48,7 +48,7 @@ async def unauth_client_test(auth_test_app):
 
 @pytest.fixture
 async def auth_client_test(auth_test_app, app_context, test_user):
-    from bedrock_server_manager.utils.auth import create_access_token
+    from bedrock_server_manager.web.auth import create_access_token
 
     token = await create_access_token(app_context, {"sub": test_user.username})
     async with AsyncClient(
@@ -62,7 +62,7 @@ async def auth_client_test(auth_test_app, app_context, test_user):
 
 @pytest.fixture
 async def admin_client_test(auth_test_app, app_context, test_admin_user):
-    from bedrock_server_manager.utils.auth import create_access_token
+    from bedrock_server_manager.web.auth import create_access_token
 
     token = await create_access_token(app_context, {"sub": test_admin_user.username})
     async with AsyncClient(
@@ -77,7 +77,7 @@ async def admin_client_test(auth_test_app, app_context, test_admin_user):
 @pytest.fixture
 async def moderator_client_test(auth_test_app, app_context, db_session):
     from bedrock_server_manager.db.models import User as UserModel
-    from bedrock_server_manager.utils.auth import create_access_token, get_password_hash
+    from bedrock_server_manager.web.auth import create_access_token, get_password_hash
 
     user = UserModel(
         username="moduser",
@@ -170,7 +170,7 @@ async def test_get_current_user_optional_bearer_token(
     auth_test_app, app_context, test_user
 ):
     """Test get_current_user_optional with a bearer token."""
-    from bedrock_server_manager.utils.auth import create_access_token
+    from bedrock_server_manager.web.auth import create_access_token
 
     token = await create_access_token(app_context, {"sub": test_user.username})
 

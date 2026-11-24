@@ -2,7 +2,14 @@
 
 from typing import Annotated, Literal
 
-from pydantic import ConfigDict, Field, JsonValue, TypeAdapter, field_validator
+from pydantic import (
+    ConfigDict,
+    Field,
+    JsonValue,
+    TypeAdapter,
+    field_validator,
+    model_validator,
+)
 
 from ..state.models import PersistentRecord
 
@@ -70,6 +77,17 @@ class SubpackRecord(ExternalRecord):
     folder_name: NonEmptyText
     name: str | None = None
     memory_tier: int | None = Field(default=None, ge=0)
+
+    @model_validator(mode="before")
+    @classmethod
+    def normalize_memory_tier(cls, value: object) -> object:
+        """Map Minecraft's field to BSM's existing public field name."""
+        if not isinstance(value, dict) or "memory_performance_tier" not in value:
+            return value
+        data = dict(value)
+        tier = data.pop("memory_performance_tier")
+        data.setdefault("memory_tier", tier)
+        return data
 
 
 class ManifestRecord(ExternalRecord):

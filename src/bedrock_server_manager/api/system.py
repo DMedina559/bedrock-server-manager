@@ -10,26 +10,27 @@ from ..context import AppContext
 from ..error import (
     BSMError,
 )
-from ..logging import log_operation_error
-from ..plugins.api_bridge import api_method
-from ..state_revision import revision_clock
-from .models.health import (
+from ..logging import RepeatedFailureReporter, log_operation_error
+from ..models.system import (
     GetApplicationHealthRequest,
     GetApplicationHealthResponse,
-    HealthCheck,
-)
-from .models.metrics import GetApplicationMetricsRequest, GetApplicationMetricsResponse
-from .models.system import (
+    GetApplicationMetricsRequest,
+    GetApplicationMetricsResponse,
     GetBedrockProcessInfoRequest,
     GetBedrockProcessInfoResponse,
     GetServerRunningStatusRequest,
     GetServerRunningStatusResponse,
+    HealthCheck,
 )
+from ..plugins.api_bridge import api_method
+from ..plugins.scopes import PluginScope
+from ..state.revision import revision_clock
 
 logger = logging.getLogger(__name__)
+_health_failures = RepeatedFailureReporter(logger)
 
 
-@api_method("get_server_running_status")
+@api_method("get_server_running_status", required_scope=PluginScope.SERVERS_READ)
 async def get_server_running_status(
     request: GetServerRunningStatusRequest, *, app_context: AppContext
 ) -> GetServerRunningStatusResponse:
@@ -66,7 +67,7 @@ async def get_server_running_status(
         raise
 
 
-@api_method("get_bedrock_process_info")
+@api_method("get_bedrock_process_info", required_scope=PluginScope.SERVERS_READ)
 async def get_bedrock_process_info(
     request: GetBedrockProcessInfoRequest, *, app_context: AppContext
 ) -> GetBedrockProcessInfoResponse:
@@ -106,7 +107,7 @@ async def get_bedrock_process_info(
         raise
 
 
-@api_method("get_application_metrics")
+@api_method("get_application_metrics", required_scope=PluginScope.RUNTIME_METRICS)
 async def get_application_metrics(
     request: GetApplicationMetricsRequest, *, app_context: AppContext
 ) -> GetApplicationMetricsResponse:
@@ -115,16 +116,26 @@ async def get_application_metrics(
     return GetApplicationMetricsResponse.model_validate(result.model_dump())
 
 
-@api_method("get_application_health")
+@api_method("get_application_health", required_scope=PluginScope.HEALTH_READ)
 async def get_application_health(
     request: GetApplicationHealthRequest, *, app_context: AppContext
 ) -> GetApplicationHealthResponse:
     """Read-only readiness checks; dependency errors never expose credentials."""
     try:
         database_healthy = await app_context.db.check_health()
-    except Exception:
+        if database_healthy:
+            _health_failures.recover("database")
+    except Exception as error:
+        _health_failures.report("database", "Health check %s failed: %s", error)
         database_healthy = False
+    from ..utils.timezones import timezone_database_available
+
     results = {
+        "timezone_data": (
+            timezone_database_available(),
+            "Regional timezone data available",
+            "Regional timezone data unavailable; UTC schedules remain usable",
+        ),
         "lifecycle": (
             app_context.is_ready,
             "Application ready",
@@ -136,10 +147,24 @@ async def get_application_health(
             "Application state loaded",
             "Application state unavailable",
         ),
+        "scheduler": (
+            app_context.scheduler.check_health(),
+            "Scheduler loop active",
+            "Scheduler loop stopped, failed, or stale",
+        ),
         "metrics": (
             app_context.metrics_service.check_health(),
             "Metrics sampler active",
             "Metrics sampler stopped or stale",
+        ),
+        "process_manager": (
+            (
+                app_context.bedrock_process_manager.check_health()
+                if app_context.bedrock_process_manager
+                else True
+            ),
+            "Server processes and monitoring healthy",
+            "Server processes or monitoring unhealthy (console unavailable, recovery failure, or stale monitoring)",
         ),
     }
     checks = {

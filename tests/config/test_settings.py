@@ -5,51 +5,43 @@ from bedrock_server_manager.db.models import Setting
 from bedrock_server_manager.error import ConfigurationError
 
 
-async def test_settings_initialization(app_context, isolated_bcm_config):
-    """Settings binds to shared state without maintaining a second cache."""
-    base_dir = isolated_bcm_config
-    test_config_dir = base_dir / "test_config"
-    test_data_dir = base_dir / "test_data"
+async def test_settings_initialization_and_load_defaults(
+    app_context, db, isolated_bcm_config
+):
+    """Settings binds to shared state and loading on an empty DB populates defaults."""
+    test_config_dir = isolated_bcm_config
+    test_data_dir = test_config_dir.parent / "test_data"
     settings = Settings(
         data_dir=str(test_data_dir),
         config_dir=str(test_config_dir),
         app_context=app_context,
     )
     assert settings.app_context == app_context
+    assert settings.config_dir is not None
+    assert settings.data_dir is not None
     assert settings._settings["web"]["port"] == app_context.settings.get("web.port")
 
-
-async def test_settings_load_populates_defaults(app_context, db, isolated_bcm_config):
-    """Test loading on an empty database populates default settings."""
-    base_dir = isolated_bcm_config
-    test_config_dir = base_dir / "test_config"
-    test_data_dir = base_dir / "test_data"
-    settings = Settings(
-        data_dir=str(test_data_dir),
-        config_dir=str(test_config_dir),
-        app_context=app_context,
-    )
     await settings.load()
-
-    # Check that settings were populated from default_config
     assert "web" in settings._settings
+    assert settings.get("web.cors_origins") == ()
     assert "port" in settings._settings["web"]
+    assert settings.get("paths.servers") is not None
+    assert settings.get("web.port") == 11325
+    assert settings.get("does.not.exist", "fallback") == "fallback"
+    assert settings.get("web.invalid", "fallback") == "fallback"
 
-    # Verify they were saved to the DB
     async with db.session_manager() as session:
         from sqlalchemy import func
         from sqlalchemy.future import select
 
         result = await session.execute(select(func.count(Setting.key)))
-        count = result.scalar()
-        assert count > 0
+        assert result.scalar() > 0
 
 
 async def test_settings_load_merges_existing_db(app_context, db, isolated_bcm_config):
     """Test loading merges DB user config over defaults."""
-    base_dir = isolated_bcm_config
-    test_config_dir = base_dir / "test_config"
-    test_data_dir = base_dir / "test_data"
+    test_config_dir = isolated_bcm_config
+    test_data_dir = test_config_dir.parent / "test_data"
     # Pre-populate DB with a custom setting that overrides a default
     async with db.session_manager() as session:
         session.add(
@@ -78,7 +70,7 @@ async def test_settings_load_merges_existing_db(app_context, db, isolated_bcm_co
 @pytest.mark.parametrize("dotted", [False, True])
 async def test_settings_reload_accepts_removed_3x_fields(app_context, db, dotted):
     """Persisted 3.x settings must not prevent application state from loading."""
-    from sqlalchemy.future import select
+    original = app_context.state.settings.to_dict()
 
     async with db.session_manager() as session:
         for section, name, value in (
@@ -89,13 +81,11 @@ async def test_settings_reload_accepts_removed_3x_fields(app_context, db, dotted
             if dotted:
                 session.add(Setting(key=f"{section}.{name}", value=value))
             else:
-                row = (
-                    await session.execute(select(Setting).filter_by(key=section))
-                ).scalar_one()
-                row.value = {**row.value, name: value}
+                session.add(
+                    Setting(key=section, value={**original[section], name: value})
+                )
         await session.commit()
 
-    original = app_context.state.settings.to_dict()
     await app_context.load()
     assert app_context.state.settings.to_dict() == original
     # A later load must also work while legacy rows remain in the database.
@@ -103,33 +93,25 @@ async def test_settings_reload_accepts_removed_3x_fields(app_context, db, dotted
     assert app_context.state.settings.to_dict() == original
 
 
-async def test_settings_get(settings):
-    """Test getting deeply nested keys and defaults."""
-    assert settings.get("paths.servers") is not None
-    assert settings.get("web.port") == 11325
-    assert settings.get("does.not.exist", "fallback") == "fallback"
-    assert settings.get("web.invalid", "fallback") == "fallback"
-
-
-async def test_settings_set(settings, db):
-    """Test setting deeply nested keys."""
-    # Test setting existing key
+async def test_settings_set_and_conflict(settings, db):
+    """Test setting deeply nested keys and rejecting path conflicts."""
     await settings.set("web.port", 8080)
     assert settings.get("web.port") == 8080
 
-    # Test setting new nested key
     await settings.set("custom.plugin", {"enabled": True})
     assert settings.get("custom.plugin") == {"enabled": True}
 
     await settings.storage.flush(settings.state)
 
-    # Verify written to DB
     async with db.session_manager() as session:
         from sqlalchemy.future import select
 
         result = await session.execute(select(Setting).filter_by(key="custom"))
         custom_setting = result.scalars().first()
         assert custom_setting.value["plugin"]["enabled"] is True
+
+    with pytest.raises(ConfigurationError, match="Cannot set key"):
+        await settings.set("web.port.sub.another", "value")
 
 
 async def test_settings_set_no_change_skips_write(settings, db):
@@ -154,18 +136,8 @@ async def test_settings_set_no_change_skips_write(settings, db):
         event.remove(db.engine.sync_engine, "before_cursor_execute", record)
 
 
-async def test_settings_set_conflict_raises_error(settings):
-    """Test setting a key where a path conflict exists raises ConfigurationError."""
-    # We must try to set a sub-key on a path that is already a primitive value, not a dict.
-    # web.port is an int, so setting web.port.sub should throw a ConfigurationError.
-
-    with pytest.raises(ConfigurationError, match="Cannot set key"):
-        await settings.set("web.port.sub.another", "value")
-
-
 async def test_settings_reload(settings, db):
     """Test reload pulls fresh changes from the database."""
-    # Modify db directly
     async with db.session_manager() as session:
         from sqlalchemy.future import select
 
@@ -175,22 +147,14 @@ async def test_settings_reload(settings, db):
             setting = Setting(key="web", value={"port": 11325})
             session.add(setting)
 
-        # we have to replace the whole dict in sqlalchemy JSON columns for it to register update sometimes,
-        # or use flag_modified. The safest way is to reassign.
         new_val = dict(setting.value) if setting.value else {}
         new_val["port"] = 5555
         setting.value = new_val
         await session.commit()
 
-    assert settings.get("web.port") == 11325  # Before reload
+    assert settings.get("web.port") == 11325
     await settings.reload()
-    assert settings.get("web.port") == 5555  # After reload
-
-
-async def test_settings_properties(settings):
-    """Test property getters like config_dir and data_dir."""
-    assert settings.config_dir is not None
-    assert settings.data_dir is not None
+    assert settings.get("web.port") == 5555
 
 
 async def test_settings_from_dict_unflattens_and_deep_merges():
@@ -259,14 +223,11 @@ async def test_bootstrap_cors_migrates_once_without_overwriting_database(
     import json
 
     # Simulate a database created before the typed CORS field existed.
+    web = app_context.state.settings.to_dict()["web"]
+    web.pop("cors_origins")
     async with app_context.storage.transaction() as session:
-        values = await app_context.storage.settings_repo.get_all_settings(session)
-        values["web"] = dict(values["web"])
-        values["web"].pop("cors_origins")
-        await app_context.storage.settings_repo.save_settings(
-            session, {"web": values["web"]}
-        )
-    config_path = isolated_bcm_config / "bedrock_server_manager.json"
+        await app_context.storage.settings_repo.save_settings(session, {"web": web})
+    config_path = isolated_bcm_config / "bootstrap" / "bedrock_server_manager.json"
     bootstrap = json.loads(config_path.read_text())
     bootstrap["web"] = {"cors_origins": legacy}
     config_path.write_text(json.dumps(bootstrap))
@@ -285,7 +246,7 @@ async def test_bootstrap_cors_migrates_once_without_overwriting_database(
 
 
 async def test_flat_database_cors_precedes_legacy_bootstrap(storage):
-    from bedrock_server_manager.config.settings import migrate_bootstrap_cors
+    from bedrock_server_manager.services.settings_service import migrate_bootstrap_cors
     from bedrock_server_manager.state.app_state import AppState
 
     async with storage.transaction() as session:
@@ -316,3 +277,14 @@ async def test_cors_validation_is_atomic_and_serializes_as_json(app_context):
     assert app_context.settings.get("web.cors_origins") == (
         "https://dashboard.example",
     )
+
+
+async def test_security_settings_persist_and_reload(app_context):
+    await app_context.settings.set("security.require_admin_mfa", True)
+    await app_context.settings.set("security.session_idle_hours", 3)
+    await app_context.settings.set("security.auth_peer_attempts", 120)
+    assert app_context.settings.get("security.require_admin_mfa") is True
+    await app_context.settings.load()
+    assert app_context.settings.get("security.require_admin_mfa") is True
+    assert app_context.settings.get("security.session_idle_hours") == 3
+    assert app_context.settings.get("security.auth_peer_attempts") == 120

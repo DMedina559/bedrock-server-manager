@@ -8,22 +8,22 @@ For an updated list of available APIs, please download and run the [api_docs_gen
 
 ## `misc.prune_download_cache`
 ```python
-await self.api.misc.prune_download_cache(request: bedrock_server_manager.api.models.misc.PruneDownloadCacheRequest)
+await self.api.misc.prune_download_cache(request: bedrock_server_manager.models.misc.PruneDownloadCacheRequest)
 ```
 - **Async (Requires await):** Yes
 
 - **Description:** Prunes old downloaded server archives (.zip) in a directory.
+
+- **Required Permission:** `downloads:prune`
 
 - **Returns:** `PruneDownloadCacheResponse`
 
 Runtime context and plugin identity are injected by the bridge. Failures raise application exceptions; plugin cancellation raises `APICancelledError`.
 
 ```python
-from bedrock_server_manager.api.models import PruneDownloadCacheRequest
-payload = {...}  # Supply required request fields below.
-request = PruneDownloadCacheRequest(**payload)
+from bedrock_server_manager.models import PruneDownloadCacheRequest
+request = PruneDownloadCacheRequest(download_dir=...)
 result = await self.api.misc.prune_download_cache(request)
-data = result.model_dump(mode="json")
 ```
 - **Request schema:** [PruneDownloadCacheRequest](models.md#prunedownloadcacherequest)
 - **Response schema:** [PruneDownloadCacheResponse](models.md#prunedownloadcacheresponse)
@@ -32,4 +32,4 @@ data = result.model_dump(mode="json")
 
 | Name | Type | Default |
 |------|------|---------|
-| `request` | `bedrock_server_manager.api.models.misc.PruneDownloadCacheRequest` | `REQUIRED` |
+| `request` | `bedrock_server_manager.models.misc.PruneDownloadCacheRequest` | `REQUIRED` |

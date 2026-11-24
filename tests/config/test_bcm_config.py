@@ -1,5 +1,7 @@
 import json
 import os
+from contextlib import closing
+from pathlib import Path
 from unittest.mock import MagicMock
 
 import pytest
@@ -27,31 +29,26 @@ def clean_env(monkeypatch):
     bcm_config.set_custom_log_level(None)
 
 
-def test_get_config_dir_cli_override(clean_env):
-    """Test get_config_dir returns the CLI override if set."""
+def test_get_config_dir_and_path(isolated_bcm_config, monkeypatch):
+    """Test get_config_dir priority (CLI override, env var, default) and get_config_path."""
+    expected = os.path.join(
+        str(isolated_bcm_config), "bootstrap", "bedrock_server_manager.json"
+    )
+    assert bcm_config.get_config_path() == expected
+
     bcm_config.set_custom_config_dir("/cli/config")
     assert bcm_config.get_config_dir() == "/cli/config"
+    bcm_config.set_custom_config_dir(None)
 
-
-def test_get_config_dir_env_var(clean_env, monkeypatch):
-    """Test get_config_dir returns the env var if set."""
     monkeypatch.setenv("BSM_CONFIG_DIR", "/env/config")
     assert bcm_config.get_config_dir() == "/env/config"
+    monkeypatch.delenv("BSM_CONFIG_DIR", raising=False)
 
-
-def test_get_config_dir_default(clean_env, monkeypatch):
-    """Test get_config_dir returns the user config dir default."""
     mock_user_config_dir = MagicMock(return_value="/default/config")
     monkeypatch.setattr(
         "bedrock_server_manager.config.bcm_config.user_config_dir", mock_user_config_dir
     )
     assert bcm_config.get_config_dir() == "/default/config"
-
-
-def test_get_config_path(isolated_bcm_config):
-    """Test get_config_path returns the full path to json file."""
-    expected = os.path.join(str(isolated_bcm_config), "bedrock_server_manager.json")
-    assert bcm_config.get_config_path() == expected
 
 
 def test_load_config_priority(clean_env, monkeypatch, tmp_path):
@@ -113,10 +110,14 @@ def test_load_config_defaults(clean_env, monkeypatch, tmp_path):
     assert "db_url" in config
     assert "logging_level" in config
     assert config["data_dir"] == os.path.join(str(mock_config_dir), "data")
+    assert (
+        config["db_url"]
+        == f"sqlite:///{os.path.join(str(mock_config_dir), 'db', 'bedrock-server-manager.db')}"
+    )
     assert config["logging_level"] == "INFO"
     # Ensure config file is not implicitly written by load_config
     assert not os.path.exists(
-        os.path.join(str(mock_config_dir), "bedrock_server_manager.json")
+        os.path.join(str(mock_config_dir), "bootstrap", "bedrock_server_manager.json")
     )
 
 
@@ -137,7 +138,7 @@ def test_load_config_invalid_json(clean_env, tmp_path, caplog):
         bcm_config.load_config()
     with pytest.raises(ConfigurationError):
         bcm_config.set_config_value("logging_level", "DEBUG")
-    assert config_file.read_text() == "{invalid json}"
+    assert Path(bcm_config.get_config_path()).read_text() == "{invalid json}"
     assert "Failed to load configuration file" in caplog.text
 
 
@@ -164,7 +165,7 @@ def test_save_config_creates_dir(clean_env, tmp_path):
     bcm_config.save_config({"key": "value"})
 
     assert new_dir.exists()
-    assert (new_dir / "bedrock_server_manager.json").exists()
+    assert (new_dir / "bootstrap" / "bedrock_server_manager.json").exists()
 
 
 def test_save_config_error(isolated_bcm_config, monkeypatch, caplog):
@@ -205,36 +206,24 @@ async def test_needs_setup(app_context):
     assert app_context.needs_setup is False
 
 
-@pytest.mark.parametrize(
-    "data",
-    [
-        {"logging_level": "BAD"},
-        {"db_url": "invalid"},
-        {"custom": float("nan")},
-        {"custom": object()},
-    ],
-)
-def test_invalid_save_preserves_existing_file(data, isolated_bcm_config):
-    from pathlib import Path
-
+def test_invalid_save_and_replace_failure_preserve_existing_file(
+    isolated_bcm_config, monkeypatch
+):
     from bedrock_server_manager.error import ConfigurationError
 
     bcm_config.save_config({"custom": "valid"})
     path = Path(bcm_config.get_config_path())
     before = path.read_bytes()
-    with pytest.raises(ConfigurationError):
-        bcm_config.save_config(data)
-    assert path.read_bytes() == before
+    for data in (
+        {"logging_level": "BAD"},
+        {"db_url": "invalid"},
+        {"custom": float("nan")},
+        {"custom": object()},
+    ):
+        with pytest.raises(ConfigurationError):
+            bcm_config.save_config(data)
+        assert path.read_bytes() == before
 
-
-def test_replace_failure_preserves_previous_file(isolated_bcm_config, monkeypatch):
-    from pathlib import Path
-
-    from bedrock_server_manager.error import ConfigurationError
-
-    bcm_config.save_config({"custom": "old"})
-    path = Path(bcm_config.get_config_path())
-    before = path.read_bytes()
     monkeypatch.setattr(
         bcm_config.os, "replace", lambda *args: (_ for _ in ()).throw(OSError("fail"))
     )
@@ -242,8 +231,99 @@ def test_replace_failure_preserves_previous_file(isolated_bcm_config, monkeypatc
         bcm_config.save_config({"custom": "new"})
     assert path.read_bytes() == before
     assert not list(path.parent.glob(".bsm-config-*"))
+    monkeypatch.undo()
 
-
-def test_set_config_value_supports_nested_paths(isolated_bcm_config):
     bcm_config.set_config_value("extension.nested.value", 42)
     assert bcm_config.get_config_value("extension.nested.value") == 42
+
+
+def test_bootstrap_migration_preserves_unknown_files(isolated_bcm_config):
+    root = Path(isolated_bcm_config)
+    unknown = root / "custom.json"
+    unknown.write_text("keep")
+    migrated = Path(bcm_config.get_config_path())
+    assert migrated.parent == root / "bootstrap"
+    assert migrated.is_file()
+    assert not (root / "bedrock_server_manager.json").exists()
+    assert unknown.read_text() == "keep"
+    assert bcm_config.get_config_path() == str(migrated)
+
+
+def test_bootstrap_migration_rejects_conflicts(isolated_bcm_config):
+    from bedrock_server_manager.error import ConfigurationError
+
+    root = Path(isolated_bcm_config)
+    (root / "bedrock_server_manager.json").write_text("{}")
+    with pytest.raises(ConfigurationError, match="Conflicting"):
+        bcm_config.get_config_path()
+    assert (root / "bedrock_server_manager.json").exists()
+
+
+@pytest.mark.parametrize("driver", ["sqlite", "sqlite+aiosqlite"])
+@pytest.mark.parametrize("source", ["cli", "env", "file"])
+def test_explicit_database_selection_never_moves_files(
+    clean_env, tmp_path, monkeypatch, driver, source
+):
+    bcm_config.set_custom_config_dir(str(tmp_path))
+    legacy = tmp_path / "bedrock-server-manager.db"
+    nested = tmp_path / "db" / legacy.name
+    nested.parent.mkdir()
+    # Neither validity nor user/server counts authorize touching an explicit DB.
+    legacy.write_bytes(b"legacy database")
+    nested.write_bytes(b"nested database")
+    wal = Path(f"{legacy}-wal")
+    wal.write_bytes(b"pending writes")
+    url = f"{driver}:///{legacy}"
+    if source == "cli":
+        bcm_config.set_custom_db_url(url)
+    elif source == "env":
+        monkeypatch.setenv("BSM_DB_URL", url)
+    else:
+        bcm_config.save_config({"db_url": url})
+
+    assert bcm_config.load_config()["db_url"] == url
+    assert legacy.read_bytes() == b"legacy database"
+    assert nested.read_bytes() == b"nested database"
+    assert wal.read_bytes() == b"pending writes"
+
+
+def test_legacy_default_preserves_live_database_and_wal(clean_env, tmp_path):
+    import sqlite3
+
+    bcm_config.set_custom_config_dir(str(tmp_path))
+    legacy = tmp_path / "bedrock-server-manager.db"
+    with closing(sqlite3.connect(legacy)) as db:
+        db.execute("PRAGMA journal_mode=WAL")
+        db.execute("CREATE TABLE settings (value TEXT)")
+        db.execute("INSERT INTO settings VALUES ('retained')")
+        db.commit()
+        wal = Path(f"{legacy}-wal")
+        before = wal.read_bytes()
+        assert bcm_config.load_config()["db_url"] == f"sqlite:///{legacy}"
+        assert wal.read_bytes() == before
+        assert db.execute("SELECT value FROM settings").fetchone() == ("retained",)
+    assert not (tmp_path / "db" / legacy.name).exists()
+
+
+@pytest.mark.parametrize("invalid", [False, True])
+def test_conflicting_default_databases_are_never_deleted(clean_env, tmp_path, invalid):
+    import sqlite3
+
+    from bedrock_server_manager.error import ConfigurationError
+
+    bcm_config.set_custom_config_dir(str(tmp_path))
+    legacy = tmp_path / "bedrock-server-manager.db"
+    nested = tmp_path / "db" / legacy.name
+    nested.parent.mkdir()
+    for path in (legacy, nested):
+        if invalid:
+            path.write_bytes(b"unreadable database")
+        else:
+            with closing(sqlite3.connect(path)) as db:
+                db.execute("CREATE TABLE settings (value TEXT)")
+                db.execute("INSERT INTO settings VALUES (?)", (path.name,))
+                db.commit()
+    before = {p: p.read_bytes() for p in (legacy, nested)}
+    with pytest.raises(ConfigurationError, match="Both legacy and nested"):
+        bcm_config.load_config()
+    assert {p: p.read_bytes() for p in before} == before

@@ -1,14 +1,16 @@
+import shutil
 from pathlib import Path
 
 import pytest
 
 
 async def test_http_custom_install_completes_and_registers_server(
-    admin_auth_client, app_context, dummy_server_zip, wait_for_task
+    admin_auth_client, app_context, custom_server_archive, wait_for_task
 ):
     directory = Path(app_context.settings.get("paths.downloads")) / "custom"
     directory.mkdir(parents=True, exist_ok=True)
-    archive = dummy_server_zip(target_dir=directory, version="1.26.45.1")
+    archive = directory / custom_server_archive.name
+    shutil.copyfile(custom_server_archive, archive)
     response = await admin_auth_client.get("/api/downloads/list")
     assert response.status_code == 200
     assert archive.name in response.json()["custom_zips"]
@@ -92,6 +94,54 @@ async def test_missing_custom_archive_preserves_existing_server(
     )
     assert response.status_code == 404
     assert executable.read_bytes() == original
+
+
+async def test_install_overwrite_requires_servers_delete_and_recent_interactive(
+    admin_auth_client, real_bedrock_server, app_context
+):
+    from sqlalchemy import update
+
+    from bedrock_server_manager.db.models import LoginSession
+
+    issued = await admin_auth_client.post(
+        "/api/account/tokens",
+        json={
+            "name": "Install only",
+            "permissions": ["servers:install", "servers:read"],
+        },
+    )
+    assert issued.status_code == 201, issued.text
+    headers = {"Authorization": f"Bearer {issued.json()['token']}"}
+
+    # Overwriting an existing server with only servers:install is rejected (403)
+    denied = await admin_auth_client.post(
+        "/api/server/install",
+        headers=headers,
+        json={
+            "server_name": real_bedrock_server.server_name,
+            "server_version": "LATEST",
+            "overwrite": True,
+        },
+    )
+    assert denied.status_code == 403
+
+    # Interactive session with stale verification is rejected on overwrite
+    account = (await admin_auth_client.get("/api/account")).json()
+    async with app_context.storage.transaction() as db:
+        await db.execute(
+            update(LoginSession)
+            .where(LoginSession.id == account["session_id"])
+            .values(verified_at=0)
+        )
+    stale = await admin_auth_client.post(
+        "/api/server/install",
+        json={
+            "server_name": real_bedrock_server.server_name,
+            "server_version": "LATEST",
+            "overwrite": True,
+        },
+    )
+    assert stale.status_code == 403
 
 
 @pytest.mark.parametrize(

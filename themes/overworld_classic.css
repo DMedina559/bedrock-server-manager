@@ -1,0 +1,57 @@
+/* Overworld Classic — BSM custom theme. Supports light/dark mode and both densities. */
+:root[data-theme="overworld_classic"][data-mode="dark"][data-density] {
+  --bsm-page: #0c150d;
+  --bsm-surface: #142115;
+  --bsm-surface-raised: #1d301e;
+  --bsm-input: #0f1a10;
+  --bsm-text: #eff5f0;
+  --bsm-muted: #abc4ad;
+  --bsm-border: #4b6c4e;
+  --bsm-accent: #8aea8a;
+  --bsm-accent-strong: #197b19;
+  --bsm-accent-hover: #146114;
+  --bsm-on-accent: #ffffff;
+  --bsm-success: #78e6ac;
+  --bsm-danger: #ffb0b7;
+  --bsm-danger-solid: #a51c36;
+  --bsm-warning: #f6d784;
+  --bsm-info: #a9ceff;
+  --bsm-console: #070b07;
+  --bsm-console-text: #b9dfb9;
+  --bsm-overlay: #030810b8;
+  --bsm-focus: #8aea8a;
+  --bsm-shadow: 0 12px 40px #00000030;
+  --bsm-chart-1: #86df86;
+  --bsm-chart-2: #8695df;
+  --bsm-chart-3: #df869c;
+  --sidebar-bg-custom: var(--bsm-surface);
+  --splash-text-color: var(--bsm-warning);
+}
+:root[data-theme="overworld_classic"][data-mode="light"][data-density] {
+  --bsm-page: #f1f6f1;
+  --bsm-surface: #fcfdfc;
+  --bsm-surface-raised: #dfece0;
+  --bsm-input: #f7faf7;
+  --bsm-text: #182519;
+  --bsm-muted: #47664a;
+  --bsm-border: #81a784;
+  --bsm-accent: #136c13;
+  --bsm-accent-strong: #197b19;
+  --bsm-accent-hover: #146114;
+  --bsm-on-accent: #ffffff;
+  --bsm-success: #16643f;
+  --bsm-danger: #a51c36;
+  --bsm-danger-solid: #a51c36;
+  --bsm-warning: #795000;
+  --bsm-info: #24549a;
+  --bsm-console: #e7f1e8;
+  --bsm-console-text: #265426;
+  --bsm-overlay: #17213180;
+  --bsm-focus: #136c13;
+  --bsm-shadow: 0 10px 30px #17213112;
+  --bsm-chart-1: #207920;
+  --bsm-chart-2: #202f79;
+  --bsm-chart-3: #792036;
+  --sidebar-bg-custom: var(--bsm-surface);
+  --splash-text-color: var(--bsm-warning);
+}

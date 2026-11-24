@@ -15,17 +15,17 @@ If an event is **Cancellable**, you can access `kwargs['event']` (which is a `Ca
 ### Listener Signature:
 ```python
 @app_event("after_add_server_ban")
-async def some_function(self, request, server_name, player_name, xuid, reason, result, **kwargs):
+async def some_function(self, request, player_name, xuid, reason, server_name, result, **kwargs):
     pass
 ```
 ### Available `kwargs`:
 | Key Name | Type |
 |----------|------|
 | `request` | `AddServerBanRequest` |
-| `server_name` | `str` |
 | `player_name` | `str` |
 | `xuid` | `str` |
 | `reason` | `str | None` |
+| `server_name` | `str` |
 | `result` | `AddServerBanResponse` |
 | `_triggering_plugin` | `str` (core, or plugin name) |
 
@@ -40,16 +40,16 @@ async def some_function(self, request, server_name, player_name, xuid, reason, r
 ### Listener Signature:
 ```python
 @app_event("after_addon_disable")
-async def some_function(self, request, server_name, pack_uuid, pack_type, result, **kwargs):
+async def some_function(self, request, pack_uuid, pack_type, server_name, result, **kwargs):
     pass
 ```
 ### Available `kwargs`:
 | Key Name | Type |
 |----------|------|
 | `request` | `DisableAddonRequest` |
-| `server_name` | `str` |
 | `pack_uuid` | `str` |
 | `pack_type` | `Literal['behavior', 'resource']` |
+| `server_name` | `str` |
 | `result` | `DisableAddonResponse` |
 | `_triggering_plugin` | `str` (core, or plugin name) |
 
@@ -64,16 +64,16 @@ async def some_function(self, request, server_name, pack_uuid, pack_type, result
 ### Listener Signature:
 ```python
 @app_event("after_addon_enable")
-async def some_function(self, request, server_name, pack_uuid, pack_type, result, **kwargs):
+async def some_function(self, request, pack_uuid, pack_type, server_name, result, **kwargs):
     pass
 ```
 ### Available `kwargs`:
 | Key Name | Type |
 |----------|------|
 | `request` | `EnableAddonRequest` |
-| `server_name` | `str` |
 | `pack_uuid` | `str` |
 | `pack_type` | `Literal['behavior', 'resource']` |
+| `server_name` | `str` |
 | `result` | `EnableAddonResponse` |
 | `_triggering_plugin` | `str` (core, or plugin name) |
 
@@ -113,16 +113,16 @@ async def some_function(self, request, server_name, addon_file_path, stop_start_
 ### Listener Signature:
 ```python
 @app_event("after_addon_reorder")
-async def some_function(self, request, server_name, uuids, pack_type, result, **kwargs):
+async def some_function(self, request, pack_type, uuids, server_name, result, **kwargs):
     pass
 ```
 ### Available `kwargs`:
 | Key Name | Type |
 |----------|------|
 | `request` | `ReorderAddonsRequest` |
-| `server_name` | `str` |
-| `uuids` | `list[str]` |
 | `pack_type` | `Literal['behavior', 'resource']` |
+| `uuids` | `list[str]` |
+| `server_name` | `str` |
 | `result` | `ReorderAddonsResponse` |
 | `_triggering_plugin` | `str` (core, or plugin name) |
 
@@ -137,17 +137,17 @@ async def some_function(self, request, server_name, uuids, pack_type, result, **
 ### Listener Signature:
 ```python
 @app_event("after_addon_subpack_update")
-async def some_function(self, request, server_name, pack_uuid, pack_type, subpack_name, result, **kwargs):
+async def some_function(self, request, pack_uuid, pack_type, subpack_name, server_name, result, **kwargs):
     pass
 ```
 ### Available `kwargs`:
 | Key Name | Type |
 |----------|------|
 | `request` | `UpdateSubpackRequest` |
-| `server_name` | `str` |
 | `pack_uuid` | `str` |
 | `pack_type` | `Literal['behavior', 'resource']` |
 | `subpack_name` | `str` |
+| `server_name` | `str` |
 | `result` | `UpdateSubpackResponse` |
 | `_triggering_plugin` | `str` (core, or plugin name) |
 
@@ -162,16 +162,16 @@ async def some_function(self, request, server_name, pack_uuid, pack_type, subpac
 ### Listener Signature:
 ```python
 @app_event("after_addon_uninstall")
-async def some_function(self, request, server_name, pack_uuid, pack_type, result, **kwargs):
+async def some_function(self, request, pack_uuid, pack_type, server_name, result, **kwargs):
     pass
 ```
 ### Available `kwargs`:
 | Key Name | Type |
 |----------|------|
 | `request` | `UninstallAddonRequest` |
-| `server_name` | `str` |
 | `pack_uuid` | `str` |
 | `pack_type` | `Literal['behavior', 'resource']` |
+| `server_name` | `str` |
 | `result` | `UninstallAddonResponse` |
 | `_triggering_plugin` | `str` (core, or plugin name) |
 
@@ -194,7 +194,7 @@ async def some_function(self, *, request, server_name, new_players_data=None, re
 |----------|------|
 | `request` | `AddToAllowlistRequest | RemoveFromAllowlistRequest` |
 | `server_name` | `str` |
-| `new_players_data` | `list[bedrock_server_manager.api.models.allowlist.AllowlistPlayer]` |
+| `new_players_data` | `list[bedrock_server_manager.models.allowlist.AllowlistPlayer]` |
 | `result` | `AddToAllowlistResponse | RemoveFromAllowlistResponse` |
 | `player_names` | `list[str]` |
 | `_triggering_plugin` | `str` (core, or plugin name) |
@@ -203,23 +203,25 @@ async def some_function(self, *, request, server_name, new_players_data=None, re
 
 
 ## `after_backup`
-**Description:** Triggered after 'backup_all'. Performs a full backup of the server's world and configuration files.
+**Description:** Triggered after 'create_server_backup'. Capture one coherent, optionally encrypted server archive.
 - **Cancellable:** No
 - **Identity Keys (for re-entrancy):** `server_name`
 
 ### Listener Signature:
 ```python
 @app_event("after_backup")
-async def some_function(self, *, request, server_name, result, file_to_backup=None, **kwargs):
+async def some_function(self, request, server_name, encrypted, purpose, schedule_slot, result, **kwargs):
     pass
 ```
 ### Available `kwargs`:
 | Key Name | Type |
 |----------|------|
-| `request` | `BackupWorldRequest | BackupConfigFileRequest | BackupAllRequest` |
+| `request` | `CreateSnapshotRequest` |
 | `server_name` | `str` |
-| `result` | `BackupWorldResponse | BackupConfigFileResponse | BackupAllResponse` |
-| `file_to_backup` | `str` |
+| `encrypted` | `bool | None` |
+| `purpose` | `Literal['manual', 'scheduled', 'pre_start', 'pre_update']` |
+| `schedule_slot` | `str | None` |
+| `result` | `CreateSnapshotResponse` |
 | `_triggering_plugin` | `str` (core, or plugin name) |
 
 ---
@@ -233,15 +235,15 @@ async def some_function(self, *, request, server_name, result, file_to_backup=No
 ### Listener Signature:
 ```python
 @app_event("after_command_send")
-async def some_function(self, request, server_name, command, result, **kwargs):
+async def some_function(self, request, command, server_name, result, **kwargs):
     pass
 ```
 ### Available `kwargs`:
 | Key Name | Type |
 |----------|------|
 | `request` | `SendCommandRequest` |
-| `server_name` | `str` |
 | `command` | `str` |
+| `server_name` | `str` |
 | `result` | `SendCommandResponse` |
 | `_triggering_plugin` | `str` (core, or plugin name) |
 
@@ -351,7 +353,7 @@ async def some_function(self, *, request, key=None, value=None, result, plugin_n
 | Key Name | Type |
 |----------|------|
 | `request` | `SetPluginSettingRequest | UpdatePluginSettingsRequest` |
-| `key` | `str` |
+| `key` | `str | None` |
 | `value` | `JsonValue` |
 | `result` | `SetPluginSettingResponse` |
 | `plugin_name` | `str` |
@@ -438,15 +440,15 @@ async def some_function(self, request, download_dir, keep_count, result, **kwarg
 ### Listener Signature:
 ```python
 @app_event("after_remove_server_ban")
-async def some_function(self, request, server_name, xuid, result, **kwargs):
+async def some_function(self, request, xuid, server_name, result, **kwargs):
     pass
 ```
 ### Available `kwargs`:
 | Key Name | Type |
 |----------|------|
 | `request` | `RemoveServerBanRequest` |
-| `server_name` | `str` |
 | `xuid` | `str` |
+| `server_name` | `str` |
 | `result` | `RemoveServerBanResponse` |
 | `_triggering_plugin` | `str` (core, or plugin name) |
 
@@ -454,24 +456,30 @@ async def some_function(self, request, server_name, xuid, result, **kwargs):
 
 
 ## `after_restore`
-**Description:** Triggered after 'restore_config_file'. Restores a specific config file from a backup.
+**Description:** Triggered after 'recover_server_backup'. Retry an interrupted restore's recovery while preserving its journal on failure.
 - **Cancellable:** No
 - **Identity Keys (for re-entrancy):** `server_name`
 
 ### Listener Signature:
 ```python
 @app_event("after_restore")
-async def some_function(self, *, request, server_name, stop_start_server, result, backup_file_path=None, **kwargs):
+async def some_function(self, *, request, server_name, stop_start_server=None, result, backup_file_path=None, component=None, backup_id=None, components=None, token=None, restart=None, stop_running=None, **kwargs):
     pass
 ```
 ### Available `kwargs`:
 | Key Name | Type |
 |----------|------|
-| `request` | `RestoreAllRequest | RestoreWorldRequest | RestoreConfigFileRequest` |
+| `request` | `RestoreAllRequest | RestoreWorldRequest | RestoreConfigFileRequest | RestoreSnapshotRequest | ListSnapshotsRequest` |
 | `server_name` | `str` |
 | `stop_start_server` | `bool` |
-| `result` | `RestoreAllResponse | RestoreWorldResponse | RestoreConfigFileResponse` |
+| `result` | `RestoreAllResponse | RestoreWorldResponse | RestoreConfigFileResponse | RestoreSnapshotResponse | RestoreRecoveryResponse` |
 | `backup_file_path` | `str` |
+| `component` | `Literal['server.properties', 'allowlist.json', 'permissions.json'] | None` |
+| `backup_id` | `str` |
+| `components` | `list[Literal['server_directory', 'world', 'server.properties', 'allowlist.json', 'permissions.json', 'script_config', 'bsm_settings', 'behavior_packs', 'resource_packs', 'development_behavior_packs', 'development_resource_packs']]` |
+| `token` | `str` |
+| `restart` | `bool` |
+| `stop_running` | `bool` |
 | `_triggering_plugin` | `str` (core, or plugin name) |
 
 ---
@@ -501,6 +509,58 @@ async def some_function(self, request, server_name, target_version, server_zip_p
 ---
 
 
+## `after_server_player_connected`
+**Description:** Application lifecycle notification.
+- **Cancellable:** No
+- **Identity Keys (for re-entrancy):** `server_name, generation, xuid`
+
+### Listener Signature:
+```python
+@app_event("after_server_player_connected")
+async def some_function(self, name, xuid, server_name, generation, sequence, action, reason, **kwargs):
+    pass
+```
+### Available `kwargs`:
+| Key Name | Type |
+|----------|------|
+| `name` | `str` |
+| `xuid` | `str` |
+| `server_name` | `str` |
+| `generation` | `str` |
+| `sequence` | `int` |
+| `action` | `Literal['connected', 'disconnected']` |
+| `reason` | `str` |
+| `_triggering_plugin` | `str` (core, or plugin name) |
+
+---
+
+
+## `after_server_player_disconnected`
+**Description:** Application lifecycle notification.
+- **Cancellable:** No
+- **Identity Keys (for re-entrancy):** `server_name, generation, xuid`
+
+### Listener Signature:
+```python
+@app_event("after_server_player_disconnected")
+async def some_function(self, name, xuid, server_name, generation, sequence, action, reason, **kwargs):
+    pass
+```
+### Available `kwargs`:
+| Key Name | Type |
+|----------|------|
+| `name` | `str` |
+| `xuid` | `str` |
+| `server_name` | `str` |
+| `generation` | `str` |
+| `sequence` | `int` |
+| `action` | `Literal['connected', 'disconnected']` |
+| `reason` | `str` |
+| `_triggering_plugin` | `str` (core, or plugin name) |
+
+---
+
+
 ## `after_server_players_change`
 **Description:** Triggered after 'update_server_player_stats'. Internal API to trigger player stat updates for websockets/plugins.
 - **Cancellable:** No
@@ -516,7 +576,7 @@ async def some_function(self, server_name, player_count, players, request, resul
 |----------|------|
 | `server_name` | `str` |
 | `player_count` | `int` |
-| `players` | `list[bedrock_server_manager.events.player.PlayerPresence] | list[bedrock_server_manager.api.models.common.PlayerInfo]` |
+| `players` | `list[bedrock_server_manager.events.player.PlayerPresence] | list[bedrock_server_manager.models.common.PlayerInfo]` |
 | `request` | `PlayerSnapshot | UpdateServerPlayerStatsRequest` |
 | `result` | `PlayerChangeResult | UpdateServerPlayerStatsResponse` |
 | `_triggering_plugin` | `str` (core, or plugin name) |
@@ -524,8 +584,60 @@ async def some_function(self, server_name, player_count, players, request, resul
 ---
 
 
+## `after_server_ready`
+**Description:** Application lifecycle notification.
+- **Cancellable:** No
+- **Identity Keys (for re-entrancy):** `server_name, generation`
+
+### Listener Signature:
+```python
+@app_event("after_server_ready")
+async def some_function(self, server_name, generation, phase, ready, running, exit_code, reason, **kwargs):
+    pass
+```
+### Available `kwargs`:
+| Key Name | Type |
+|----------|------|
+| `server_name` | `str` |
+| `generation` | `str` |
+| `phase` | `str` |
+| `ready` | `bool` |
+| `running` | `bool` |
+| `exit_code` | `int | None` |
+| `reason` | `str` |
+| `_triggering_plugin` | `str` (core, or plugin name) |
+
+---
+
+
+## `after_server_runtime_change`
+**Description:** Application lifecycle notification.
+- **Cancellable:** No
+- **Identity Keys (for re-entrancy):** `server_name, generation`
+
+### Listener Signature:
+```python
+@app_event("after_server_runtime_change")
+async def some_function(self, server_name, generation, phase, ready, running, exit_code, reason, **kwargs):
+    pass
+```
+### Available `kwargs`:
+| Key Name | Type |
+|----------|------|
+| `server_name` | `str` |
+| `generation` | `str` |
+| `phase` | `str` |
+| `ready` | `bool` |
+| `running` | `bool` |
+| `exit_code` | `int | None` |
+| `reason` | `str` |
+| `_triggering_plugin` | `str` (core, or plugin name) |
+
+---
+
+
 ## `after_server_start`
-**Description:** Triggered after 'start_server'. Start a server, or report that it is already running; failures raise.
+**Description:** Triggered after '_start_server'. Start a server, or report that it is already running; failures raise.
 - **Cancellable:** No
 - **Identity Keys (for re-entrancy):** `server_name`
 
@@ -622,15 +734,15 @@ async def some_function(self, request, server_name, send_message, result, **kwar
 ### Listener Signature:
 ```python
 @app_event("after_set_plugin_status")
-async def some_function(self, request, plugin_name, enabled, result, **kwargs):
+async def some_function(self, request, enabled, plugin_name, result, **kwargs):
     pass
 ```
 ### Available `kwargs`:
 | Key Name | Type |
 |----------|------|
 | `request` | `SetPluginStatusRequest` |
-| `plugin_name` | `str` |
 | `enabled` | `bool` |
+| `plugin_name` | `str` |
 | `result` | `SetPluginStatusResponse` |
 | `_triggering_plugin` | `str` (core, or plugin name) |
 
@@ -645,16 +757,16 @@ async def some_function(self, request, plugin_name, enabled, result, **kwargs):
 ### Listener Signature:
 ```python
 @app_event("after_set_server_setting")
-async def some_function(self, request, server_name, key, value, result, **kwargs):
+async def some_function(self, request, key, value, server_name, result, **kwargs):
     pass
 ```
 ### Available `kwargs`:
 | Key Name | Type |
 |----------|------|
 | `request` | `SetServerSettingRequest` |
-| `server_name` | `str` |
 | `key` | `str` |
 | `value` | `JsonValue` |
+| `server_name` | `str` |
 | `result` | `SetServerSettingResponse` |
 | `_triggering_plugin` | `str` (core, or plugin name) |
 
@@ -753,6 +865,52 @@ async def some_function(self, request, server_name, result, **kwargs):
 ---
 
 
+## `backup_activity`
+**Description:** Backup capture, verification, or destination copy outcome; no credentials or file values.
+- **Cancellable:** No
+- **Identity Keys (for re-entrancy):** `server_name, backup_id, action`
+
+### Listener Signature:
+```python
+@app_event("backup_activity")
+async def some_function(self, server_name, backup_id, action, status, destination, **kwargs):
+    pass
+```
+### Available `kwargs`:
+| Key Name | Type |
+|----------|------|
+| `server_name` | `str` |
+| `backup_id` | `str` |
+| `action` | `Literal['capture', 'verify', 'copy', 'delete']` |
+| `status` | `Literal['completed', 'failed']` |
+| `destination` | `str | None` |
+| `_triggering_plugin` | `str` (core, or plugin name) |
+
+---
+
+
+## `backup_attention`
+**Description:** Deduplicated recovery readiness alert without secret values.
+- **Cancellable:** No
+- **Identity Keys (for re-entrancy):** `server_name, alert_id`
+
+### Listener Signature:
+```python
+@app_event("backup_attention")
+async def some_function(self, server_name, alert_id, message, **kwargs):
+    pass
+```
+### Available `kwargs`:
+| Key Name | Type |
+|----------|------|
+| `server_name` | `str` |
+| `alert_id` | `str` |
+| `message` | `str` |
+| `_triggering_plugin` | `str` (core, or plugin name) |
+
+---
+
+
 ## `before_add_server_ban`
 **Description:** Triggered before 'add_server_ban'. Adds a player to the server ban list.
 - **Cancellable:** Yes (`event.cancel()`)
@@ -761,17 +919,17 @@ async def some_function(self, request, server_name, result, **kwargs):
 ### Listener Signature:
 ```python
 @app_event("before_add_server_ban")
-async def some_function(self, request, server_name, player_name, xuid, reason, event, **kwargs):
+async def some_function(self, request, player_name, xuid, reason, server_name, event, **kwargs):
     pass
 ```
 ### Available `kwargs`:
 | Key Name | Type |
 |----------|------|
 | `request` | `AddServerBanRequest` |
-| `server_name` | `str` |
 | `player_name` | `str` |
 | `xuid` | `str` |
 | `reason` | `str | None` |
+| `server_name` | `str` |
 | `event` | `CancellableEvent` |
 | `_triggering_plugin` | `str` (core, or plugin name) |
 
@@ -786,16 +944,16 @@ async def some_function(self, request, server_name, player_name, xuid, reason, e
 ### Listener Signature:
 ```python
 @app_event("before_addon_disable")
-async def some_function(self, request, server_name, pack_uuid, pack_type, event, **kwargs):
+async def some_function(self, request, pack_uuid, pack_type, server_name, event, **kwargs):
     pass
 ```
 ### Available `kwargs`:
 | Key Name | Type |
 |----------|------|
 | `request` | `DisableAddonRequest` |
-| `server_name` | `str` |
 | `pack_uuid` | `str` |
 | `pack_type` | `Literal['behavior', 'resource']` |
+| `server_name` | `str` |
 | `event` | `CancellableEvent` |
 | `_triggering_plugin` | `str` (core, or plugin name) |
 
@@ -810,16 +968,16 @@ async def some_function(self, request, server_name, pack_uuid, pack_type, event,
 ### Listener Signature:
 ```python
 @app_event("before_addon_enable")
-async def some_function(self, request, server_name, pack_uuid, pack_type, event, **kwargs):
+async def some_function(self, request, pack_uuid, pack_type, server_name, event, **kwargs):
     pass
 ```
 ### Available `kwargs`:
 | Key Name | Type |
 |----------|------|
 | `request` | `EnableAddonRequest` |
-| `server_name` | `str` |
 | `pack_uuid` | `str` |
 | `pack_type` | `Literal['behavior', 'resource']` |
+| `server_name` | `str` |
 | `event` | `CancellableEvent` |
 | `_triggering_plugin` | `str` (core, or plugin name) |
 
@@ -859,16 +1017,16 @@ async def some_function(self, request, server_name, addon_file_path, stop_start_
 ### Listener Signature:
 ```python
 @app_event("before_addon_reorder")
-async def some_function(self, request, server_name, uuids, pack_type, event, **kwargs):
+async def some_function(self, request, pack_type, uuids, server_name, event, **kwargs):
     pass
 ```
 ### Available `kwargs`:
 | Key Name | Type |
 |----------|------|
 | `request` | `ReorderAddonsRequest` |
-| `server_name` | `str` |
-| `uuids` | `list[str]` |
 | `pack_type` | `Literal['behavior', 'resource']` |
+| `uuids` | `list[str]` |
+| `server_name` | `str` |
 | `event` | `CancellableEvent` |
 | `_triggering_plugin` | `str` (core, or plugin name) |
 
@@ -883,17 +1041,17 @@ async def some_function(self, request, server_name, uuids, pack_type, event, **k
 ### Listener Signature:
 ```python
 @app_event("before_addon_subpack_update")
-async def some_function(self, request, server_name, pack_uuid, pack_type, subpack_name, event, **kwargs):
+async def some_function(self, request, pack_uuid, pack_type, subpack_name, server_name, event, **kwargs):
     pass
 ```
 ### Available `kwargs`:
 | Key Name | Type |
 |----------|------|
 | `request` | `UpdateSubpackRequest` |
-| `server_name` | `str` |
 | `pack_uuid` | `str` |
 | `pack_type` | `Literal['behavior', 'resource']` |
 | `subpack_name` | `str` |
+| `server_name` | `str` |
 | `event` | `CancellableEvent` |
 | `_triggering_plugin` | `str` (core, or plugin name) |
 
@@ -908,16 +1066,16 @@ async def some_function(self, request, server_name, pack_uuid, pack_type, subpac
 ### Listener Signature:
 ```python
 @app_event("before_addon_uninstall")
-async def some_function(self, request, server_name, pack_uuid, pack_type, event, **kwargs):
+async def some_function(self, request, pack_uuid, pack_type, server_name, event, **kwargs):
     pass
 ```
 ### Available `kwargs`:
 | Key Name | Type |
 |----------|------|
 | `request` | `UninstallAddonRequest` |
-| `server_name` | `str` |
 | `pack_uuid` | `str` |
 | `pack_type` | `Literal['behavior', 'resource']` |
+| `server_name` | `str` |
 | `event` | `CancellableEvent` |
 | `_triggering_plugin` | `str` (core, or plugin name) |
 
@@ -940,7 +1098,7 @@ async def some_function(self, *, request, server_name, new_players_data=None, pl
 |----------|------|
 | `request` | `AddToAllowlistRequest | RemoveFromAllowlistRequest` |
 | `server_name` | `str` |
-| `new_players_data` | `list[bedrock_server_manager.api.models.allowlist.AllowlistPlayer]` |
+| `new_players_data` | `list[bedrock_server_manager.models.allowlist.AllowlistPlayer]` |
 | `player_names` | `list[str]` |
 | `event` | `CancellableEvent` |
 | `_triggering_plugin` | `str` (core, or plugin name) |
@@ -949,22 +1107,24 @@ async def some_function(self, *, request, server_name, new_players_data=None, pl
 
 
 ## `before_backup`
-**Description:** Triggered before 'backup_all'. Performs a full backup of the server's world and configuration files.
+**Description:** Triggered before 'create_server_backup'. Capture one coherent, optionally encrypted server archive.
 - **Cancellable:** Yes (`event.cancel()`)
 - **Identity Keys (for re-entrancy):** `server_name`
 
 ### Listener Signature:
 ```python
 @app_event("before_backup")
-async def some_function(self, *, request, server_name, file_to_backup=None, event, **kwargs):
+async def some_function(self, request, server_name, encrypted, purpose, schedule_slot, event, **kwargs):
     pass
 ```
 ### Available `kwargs`:
 | Key Name | Type |
 |----------|------|
-| `request` | `BackupWorldRequest | BackupConfigFileRequest | BackupAllRequest` |
+| `request` | `CreateSnapshotRequest` |
 | `server_name` | `str` |
-| `file_to_backup` | `str` |
+| `encrypted` | `bool | None` |
+| `purpose` | `Literal['manual', 'scheduled', 'pre_start', 'pre_update']` |
+| `schedule_slot` | `str | None` |
 | `event` | `CancellableEvent` |
 | `_triggering_plugin` | `str` (core, or plugin name) |
 
@@ -979,15 +1139,15 @@ async def some_function(self, *, request, server_name, file_to_backup=None, even
 ### Listener Signature:
 ```python
 @app_event("before_command_send")
-async def some_function(self, request, server_name, command, event, **kwargs):
+async def some_function(self, request, command, server_name, event, **kwargs):
     pass
 ```
 ### Available `kwargs`:
 | Key Name | Type |
 |----------|------|
 | `request` | `SendCommandRequest` |
-| `server_name` | `str` |
 | `command` | `str` |
+| `server_name` | `str` |
 | `event` | `CancellableEvent` |
 | `_triggering_plugin` | `str` (core, or plugin name) |
 
@@ -1160,15 +1320,15 @@ async def some_function(self, request, download_dir, keep_count, event, **kwargs
 ### Listener Signature:
 ```python
 @app_event("before_remove_server_ban")
-async def some_function(self, request, server_name, xuid, event, **kwargs):
+async def some_function(self, request, xuid, server_name, event, **kwargs):
     pass
 ```
 ### Available `kwargs`:
 | Key Name | Type |
 |----------|------|
 | `request` | `RemoveServerBanRequest` |
-| `server_name` | `str` |
 | `xuid` | `str` |
+| `server_name` | `str` |
 | `event` | `CancellableEvent` |
 | `_triggering_plugin` | `str` (core, or plugin name) |
 
@@ -1176,23 +1336,29 @@ async def some_function(self, request, server_name, xuid, event, **kwargs):
 
 
 ## `before_restore`
-**Description:** Triggered before 'restore_config_file'. Restores a specific config file from a backup.
+**Description:** Triggered before 'recover_server_backup'. Retry an interrupted restore's recovery while preserving its journal on failure.
 - **Cancellable:** Yes (`event.cancel()`)
 - **Identity Keys (for re-entrancy):** `server_name`
 
 ### Listener Signature:
 ```python
 @app_event("before_restore")
-async def some_function(self, *, request, server_name, stop_start_server, backup_file_path=None, event, **kwargs):
+async def some_function(self, *, request, server_name, stop_start_server=None, backup_file_path=None, component=None, backup_id=None, components=None, token=None, restart=None, stop_running=None, event, **kwargs):
     pass
 ```
 ### Available `kwargs`:
 | Key Name | Type |
 |----------|------|
-| `request` | `RestoreAllRequest | RestoreWorldRequest | RestoreConfigFileRequest` |
+| `request` | `RestoreAllRequest | RestoreWorldRequest | RestoreConfigFileRequest | RestoreSnapshotRequest | ListSnapshotsRequest` |
 | `server_name` | `str` |
 | `stop_start_server` | `bool` |
 | `backup_file_path` | `str` |
+| `component` | `Literal['server.properties', 'allowlist.json', 'permissions.json'] | None` |
+| `backup_id` | `str` |
+| `components` | `list[Literal['server_directory', 'world', 'server.properties', 'allowlist.json', 'permissions.json', 'script_config', 'bsm_settings', 'behavior_packs', 'resource_packs', 'development_behavior_packs', 'development_resource_packs']]` |
+| `token` | `str` |
+| `restart` | `bool` |
+| `stop_running` | `bool` |
 | `event` | `CancellableEvent` |
 | `_triggering_plugin` | `str` (core, or plugin name) |
 
@@ -1238,7 +1404,7 @@ async def some_function(self, server_name, player_count, players, request, event
 |----------|------|
 | `server_name` | `str` |
 | `player_count` | `int` |
-| `players` | `list[bedrock_server_manager.events.player.PlayerPresence] | list[bedrock_server_manager.api.models.common.PlayerInfo]` |
+| `players` | `list[bedrock_server_manager.events.player.PlayerPresence] | list[bedrock_server_manager.models.common.PlayerInfo]` |
 | `request` | `PlayerSnapshot | UpdateServerPlayerStatsRequest` |
 | `event` | `CancellableEvent` |
 | `_triggering_plugin` | `str` (core, or plugin name) |
@@ -1247,7 +1413,7 @@ async def some_function(self, server_name, player_count, players, request, event
 
 
 ## `before_server_start`
-**Description:** Triggered before 'start_server'. Start a server, or report that it is already running; failures raise.
+**Description:** Triggered before '_start_server'. Start a server, or report that it is already running; failures raise.
 - **Cancellable:** Yes (`event.cancel()`)
 - **Identity Keys (for re-entrancy):** `server_name`
 
@@ -1344,15 +1510,15 @@ async def some_function(self, request, server_name, send_message, event, **kwarg
 ### Listener Signature:
 ```python
 @app_event("before_set_plugin_status")
-async def some_function(self, request, plugin_name, enabled, event, **kwargs):
+async def some_function(self, request, enabled, plugin_name, event, **kwargs):
     pass
 ```
 ### Available `kwargs`:
 | Key Name | Type |
 |----------|------|
 | `request` | `SetPluginStatusRequest` |
-| `plugin_name` | `str` |
 | `enabled` | `bool` |
+| `plugin_name` | `str` |
 | `event` | `CancellableEvent` |
 | `_triggering_plugin` | `str` (core, or plugin name) |
 
@@ -1367,16 +1533,16 @@ async def some_function(self, request, plugin_name, enabled, event, **kwargs):
 ### Listener Signature:
 ```python
 @app_event("before_set_server_setting")
-async def some_function(self, request, server_name, key, value, event, **kwargs):
+async def some_function(self, request, key, value, server_name, event, **kwargs):
     pass
 ```
 ### Available `kwargs`:
 | Key Name | Type |
 |----------|------|
 | `request` | `SetServerSettingRequest` |
-| `server_name` | `str` |
 | `key` | `str` |
 | `value` | `JsonValue` |
+| `server_name` | `str` |
 | `event` | `CancellableEvent` |
 | `_triggering_plugin` | `str` (core, or plugin name) |
 
@@ -1471,6 +1637,20 @@ async def some_function(self, request, server_name, event, **kwargs):
 | `server_name` | `str` |
 | `event` | `CancellableEvent` |
 | `_triggering_plugin` | `str` (core, or plugin name) |
+
+---
+
+
+## `on_account_security`
+**Description:** Committed account security changes without credentials or factor secrets.
+- **Cancellable:** No
+
+### Listener Signature:
+```python
+@app_event("on_account_security")
+async def some_function(self, **kwargs):
+    pass
+```
 
 ---
 

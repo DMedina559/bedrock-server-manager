@@ -7,11 +7,12 @@ from typing import Any, Callable
 from fastapi import APIRouter, WebSocket, WebSocketDisconnect, WebSocketException
 from pydantic import ValidationError
 
-from ...api.errors import error_response
 from ...context import AppContext
+from ...failures import error_response
 from ...logging import log_operation_error
-from ...utils import authenticate_websocket_token
 from ...utils.threads import run_in_thread
+from ..auth import resolve_session_token
+from ..origin import browser_origin
 from ..schemas.websocket import (
     AuthenticationFrame,
     ClientFrame,
@@ -21,6 +22,7 @@ from ..schemas.websocket import (
 
 router = APIRouter(prefix="/ws", tags=["WebSocket"])
 logger = logging.getLogger(__name__)
+AUTH_TIMEOUT_SECONDS = 5.0
 
 
 async def _call_data_provider(
@@ -71,7 +73,9 @@ async def websocket_endpoint(  # noqa: C901
 
     # Wait for the first message to authenticate
     try:
-        data = await asyncio.wait_for(websocket.receive_json(), timeout=5.0)
+        data = await asyncio.wait_for(
+            websocket.receive_json(), timeout=AUTH_TIMEOUT_SECONDS
+        )
         auth_frame = AuthenticationFrame.model_validate(data)
         action = auth_frame.action
 
@@ -82,6 +86,12 @@ async def websocket_endpoint(  # noqa: C901
 
         token = auth_frame.token
         if not token:
+            origin = websocket.headers.get("origin")
+            if origin != browser_origin(websocket):
+                raise WebSocketException(
+                    code=1008,
+                    reason="Cookie socket requires same-origin authentication",
+                )
             token = websocket.cookies.get("access_token_cookie")
 
         if not token:
@@ -91,7 +101,31 @@ async def websocket_endpoint(  # noqa: C901
             await websocket.close(code=1008, reason="Missing token")
             return
 
-        user = await authenticate_websocket_token(app_context, token)
+        if token.startswith("bsm_it_"):
+            if not auth_frame.token:
+                raise WebSocketException(
+                    code=1008,
+                    reason="Integration credentials require explicit authentication",
+                )
+            identity = await app_context.access_service.authenticate(token)
+            if identity is None:
+                raise WebSocketException(
+                    code=1008, reason="Invalid integration credential"
+                )
+            user, authorization = identity
+        else:
+            identity = await resolve_session_token(app_context, token)
+            if identity is None:
+                raise WebSocketException(code=1008, reason="Invalid session credential")
+            user, authorization = identity.user, identity.authorization
+        if authorization is not None and authorization.mfa_enrollment_required:
+            raise WebSocketException(
+                code=1008, reason="Administrator MFA enrollment required"
+            )
+        if authorization is None:
+            raise WebSocketException(
+                code=1008, reason="Account authorization unavailable"
+            )
 
     except WebSocketDisconnect:
         logger.debug("WebSocket auth failed: Client disconnected during authentication")
@@ -113,7 +147,9 @@ async def websocket_endpoint(  # noqa: C901
         return
 
     connection_manager = app_context.connection_manager
-    client_id = await connection_manager.connect(websocket, user)
+    client_id = await connection_manager.connect(
+        websocket, user, authorization=authorization
+    )
 
     # Send authentication success response
     await connection_manager.send_to_client(
@@ -127,12 +163,11 @@ async def websocket_endpoint(  # noqa: C901
     try:
         while True:
             data = await websocket.receive_json()
-            if not await connection_manager.refresh_authorization(client_id):
-                break
-            user = connection_manager.active_connections[client_id].user
             try:
                 frame = ClientFrame.model_validate(data)
             except ValidationError as error:
+                if not await connection_manager.authorize_frame(client_id, None):
+                    break
                 reply = SocketReply(
                     status="error",
                     message="Action and topic are required and must be valid.",
@@ -143,6 +178,26 @@ async def websocket_endpoint(  # noqa: C901
                 )
                 continue
             topic = frame.topic
+            if not await connection_manager.authorize_frame(
+                client_id, None if frame.action == "unsubscribe" else topic
+            ):
+                if client_id not in connection_manager.active_connections:
+                    break
+                reply = SocketReply(
+                    status="error",
+                    type="response",
+                    topic=topic,
+                    request_id=frame.request_id,
+                    message="Topic access denied",
+                )
+                await connection_manager.send_to_client(
+                    reply.model_dump(mode="json", exclude_unset=True), client_id
+                )
+                continue
+            client = connection_manager.active_connections.get(client_id)
+            if client is None:
+                break
+            user = client.user
             if frame.action in {"subscribe", "unsubscribe"}:
                 if frame.action == "subscribe":
                     await connection_manager.subscribe(client_id, topic)
@@ -194,19 +249,72 @@ async def websocket_endpoint(  # noqa: C901
             )
             # Replay the owner's current snapshot after acknowledging subscription.
             # Fast tasks may finish before the client receives their task ID.
-            if frame.action == "subscribe" and topic.startswith("task:"):
-                task = await app_context.task_manager.get_task(
-                    topic.removeprefix("task:"), username=user.username
-                )
-                if task is not None:
-                    await connection_manager.send_to_client(
-                        {
-                            "type": "task_update",
-                            "topic": topic,
-                            "data": task.model_dump(mode="json"),
-                        },
-                        client_id,
+            if frame.action == "subscribe":
+                if topic.startswith("task:"):
+                    task = await app_context.task_manager.get_task(
+                        topic.removeprefix("task:"), username=user.username
                     )
+                    if task is not None:
+                        await connection_manager.send_to_client(
+                            {
+                                "type": "task_update",
+                                "topic": topic,
+                                "data": task.model_dump(mode="json"),
+                            },
+                            client_id,
+                        )
+                elif topic in {"health", "application-health"}:
+                    try:
+                        from ...api import system as system_api
+                        from ...api.models.system import GetApplicationHealthRequest
+
+                        health = await system_api.get_application_health(
+                            GetApplicationHealthRequest(), app_context=app_context
+                        )
+                        await connection_manager.send_to_client(
+                            {
+                                "type": "health_update",
+                                "topic": topic,
+                                "data": health.model_dump(mode="json"),
+                            },
+                            client_id,
+                        )
+                    except Exception as error:
+                        log_operation_error(
+                            logger,
+                            "Failed to replay health state for client %s",
+                            client_id,
+                            error=error,
+                        )
+                elif topic in {"diagnostics", "diagnostics:summary"}:
+                    try:
+                        snapshot = await app_context.diagnostics.snapshot()
+                        if topic == "diagnostics":
+                            await connection_manager.send_to_client(
+                                {
+                                    "type": "diagnostic_update",
+                                    "topic": topic,
+                                    "data": snapshot.model_dump(mode="json"),
+                                },
+                                client_id,
+                            )
+                        else:
+                            await connection_manager.send_to_client(
+                                {
+                                    "type": "diagnostic_summary",
+                                    "topic": topic,
+                                    "data": snapshot.summary.model_dump(mode="json"),
+                                },
+                                client_id,
+                            )
+                    except Exception as error:
+                        log_operation_error(
+                            logger,
+                            "Failed to replay %s for client %s",
+                            topic,
+                            client_id,
+                            error=error,
+                        )
 
     except WebSocketDisconnect:
         logger.debug("WebSocket client disconnected: %s", client_id)

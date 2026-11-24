@@ -19,10 +19,13 @@ another caller after the task finishes.
 ```python
 import asyncio
 from fastapi import APIRouter, Depends
-from bedrock_server_manager import PluginBase
-from bedrock_server_manager.api.models.tasks import TaskAcceptedResponse
-from bedrock_server_manager.web import get_admin_user
-from bedrock_server_manager.web.schemas import UserResponse
+from bedrock_server_manager import (
+    PluginBase,
+    TaskAcceptedResponse,
+    UserResponse,
+    app_event,
+    get_admin_user,
+)
 
 class MyTaskPlugin(PluginBase):
     version = "4.0.0"
@@ -31,18 +34,20 @@ class MyTaskPlugin(PluginBase):
         await asyncio.sleep(5)
         return {"message": "Collection finished."}
 
-    def get_fastapi_routers(self):
-        router = APIRouter(prefix="/my_task_plugin", tags=["My Task Plugin"])
+    @app_event("on_load")
+    async def on_load(self, **kwargs):
+        self.router = APIRouter(prefix="/my_task_plugin", tags=["My Task Plugin"])
 
-        @router.post("/collect", operation_id="my_task_plugin_collect",
-                     response_model=TaskAcceptedResponse)
+        @self.router.post(
+            "/collect",
+            operation_id="my_task_plugin_collect",
+            response_model=TaskAcceptedResponse,
+        )
         async def collect(current_user: UserResponse = Depends(get_admin_user)):
             task_id = await self.api.runtime.run_task(
                 self.collect, username=current_user.username
             )
             return TaskAcceptedResponse(task_id=task_id, message="Collection queued.")
-
-        return [router]
 ```
 
 Return JSON data or a serializable Pydantic model from your function. Errors are
@@ -83,19 +88,45 @@ def collect(cancellation_event: Event):
 
 Use timeouts for blocking I/O so your function can check the event regularly.
 
+## Reporting progress
+
+Core operations publish descriptive stages to their current managed task.
+Nested pre-start backups use the same task context as the start request;
+manual backups publish the same capture stages. Downloads report their own
+transfer percentage in the stage message. Operations with no measurable total
+remain indeterminate.
+
+Plugin tasks can call `await self.api.runtime.report_task_stage("Checking files")`
+to publish a short description (1 to 240 characters). Stage messages are visible
+to the task owner: never include credentials, raw exceptions, or request bodies.
+
+Call `await self.api.runtime.report_task_progress(percent)` with a
+finite percentage from 0 to 100. Updates are owner checked, revise the task
+snapshot, and notify polling/WebSocket consumers through the existing message
+field. A stage message can include the reported percentage; task diagnostics
+also expose the numeric value. Only report a percentage when its meaning is
+known. Successful completion sets a previously reported percentage to 100;
+failed and cancelled tasks retain their last reported value.
+
+These updates preserve the existing task response schema. Internal periodic
+services remain lifecycle-owned services, rather than creating user task IDs
+on every poll.
+
 ## Using `@task_loop` for Periodic Tasks
 
 If you need a task to run continuously in the background on a fixed interval (e.g., polling an external API, performing cleanups), you don't need to manually interact with the `TaskManager`.
 
-Instead, use the `@task_loop(interval)` decorator provided by the plugin system. The `PluginManager` will automatically schedule these methods as background tasks when your plugin is loaded and cancel them when it is unloaded.
+Instead, use the `@task_loop(interval)` decorator provided by the plugin system. The `PluginManager` will automatically schedule these methods as background tasks when your plugin is loaded and cancel them when it is unloaded. (For administrator-configured per-server calendar tasks, use `@scheduled_task` or `scheduled_apis` instead; see [Scheduled tasks in plugins](scheduled_tasks.md).)
+
+- **Minimum interval:** `interval` is clamped to a minimum of `0.1` seconds (`max(0.1, float(interval))`).
+- **Automatic failure backoff:** If a `@task_loop` iteration raises an unhandled exception, `PluginManager` logs the error and applies exponential backoff (`min(max(interval, 1.0) * 2**(failures - 1), 300.0)`, up to 5 minutes) so a failing loop cannot spin at 100% CPU. A successful iteration resets the failure counter to `0`.
 
 Both synchronous and asynchronous methods are supported.
 
 ```python
 import asyncio
 import time
-from bedrock_server_manager import PluginBase
-from bedrock_server_manager.plugins.task_loop import task_loop
+from bedrock_server_manager import PluginBase, task_loop
 
 class MyPollingPlugin(PluginBase):
     version = "1.0.0"

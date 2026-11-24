@@ -1,126 +1,113 @@
 from pathlib import Path
 
 from bedrock_server_manager.api.backup_restore import (
-    backup_all,
-    backup_config_file,
-    backup_world,
-    list_backup_files,
+    create_server_backup,
+    inspect_server_backup,
+    list_server_snapshots,
+    plan_server_restore,
     prune_old_backups,
-    restore_all,
-    restore_config_file,
-    restore_world,
+    restore_server_snapshot,
 )
-from bedrock_server_manager.api.models import (
-    BackupAllRequest,
-    BackupConfigFileRequest,
-    BackupWorldRequest,
-    ListBackupFilesRequest,
-    PruneOldBackupsRequest,
-    RestoreAllRequest,
-    RestoreConfigFileRequest,
-    RestoreWorldRequest,
+from bedrock_server_manager.api.models import PruneOldBackupsRequest
+from bedrock_server_manager.api.models.backup_restore import (
+    CreateSnapshotRequest,
+    InspectSnapshotRequest,
+    ListSnapshotsRequest,
+    PlanSnapshotRestoreRequest,
+    RestoreSnapshotRequest,
 )
 
 
-async def test_config_backup_and_restore_round_trip(app_context, populated_server):
+async def test_unified_api_round_trip_and_pruning(app_context, populated_server):
     name = populated_server.server_name
-    properties = Path(populated_server.paths.server_dir) / "server.properties"
-    original = properties.read_bytes()
-    assert (
-        await backup_config_file(
-            BackupConfigFileRequest(
-                server_name=name, file_to_backup="server.properties"
-            ),
-            app_context=app_context,
-        )
-    ).status == "success"
-    files = (
-        await list_backup_files(
-            ListBackupFilesRequest(server_name=name, backup_type="properties"),
-            app_context=app_context,
-        )
-    ).backups
-    assert files
-    properties.unlink()
-    assert name not in app_context.get_valid_server_names()
-    backup = Path(files[0])
-    assert (
-        await restore_config_file(
-            RestoreConfigFileRequest(server_name=name, backup_file_path=str(backup)),
-            app_context=app_context,
-        )
-    ).status == "success"
-    assert properties.read_bytes() == original
-    assert name in app_context.get_valid_server_names()
 
+    # Prune unified archives
+    await populated_server.settings.set("retention.backups", 3)
+    for _ in range(2):
+        await populated_server.backups.create_snapshot()
+    created = await create_server_backup(
+        CreateSnapshotRequest(server_name=name),
+        app_context=app_context,
+    )
+    assert created.backup.filename.endswith(".bsmbackup")
+    assert created.backup.file_count > 0
+    assert "world" in created.backup.components
+    assert "manifest" not in created.backup.model_dump()
 
-async def test_world_backup_and_restore_preserves_world_files(
-    app_context, populated_server
-):
-    name = populated_server.server_name
+    await populated_server.settings.set("retention.backups", 1)
+    prune_res = await prune_old_backups(
+        PruneOldBackupsRequest(server_name=name), app_context=app_context
+    )
+    assert prune_res.status == "success"
+    snapshots = await populated_server.backups.list_snapshots()
+    assert len(snapshots) == 1
+
+    # Round-trip create, list, inspect, plan, restore
+    await populated_server.settings.set("retention.backups", 3)
+    snapshot = (
+        await create_server_backup(
+            CreateSnapshotRequest(server_name=name), app_context=app_context
+        )
+    ).backup
+    listing = await list_server_snapshots(
+        ListSnapshotsRequest(server_name=name), app_context=app_context
+    )
+    assert any(b.backup_id == snapshot.backup_id for b in listing.backups)
+    inspection = await inspect_server_backup(
+        InspectSnapshotRequest(server_name=name, backup_id=snapshot.backup_id),
+        app_context=app_context,
+    )
+    assert inspection.backup.manifest.source_server == name
     world = (
         Path(populated_server.paths.server_dir)
         / "worlds"
         / await populated_server.get_world_name()
     )
-    marker = world / "integration.txt"
-    marker.write_text("original")
-    assert (
-        await backup_world(
-            BackupWorldRequest(server_name=name), app_context=app_context
+    marker = world / "marker.txt"
+    marker.write_text("remove this newer file")
+    request = dict(server_name=name, backup_id=snapshot.backup_id, components=["world"])
+    plan = (
+        await plan_server_restore(
+            PlanSnapshotRestoreRequest(**request), app_context=app_context
         )
-    ).status == "success"
-    files = (
-        await list_backup_files(
-            ListBackupFilesRequest(server_name=name, backup_type="world"),
-            app_context=app_context,
-        )
-    ).backups
-    marker.write_text("changed")
-    backup = Path(files[0])
-    assert (
-        await restore_world(
-            RestoreWorldRequest(server_name=name, backup_file_path=str(backup)),
-            app_context=app_context,
-        )
-    ).status == "success"
-    assert marker.read_text() == "original"
+    ).plan
+    result = await restore_server_snapshot(
+        RestoreSnapshotRequest(**request, token=plan.token), app_context=app_context
+    )
+    assert result.result.committed
+    assert not marker.exists()
 
 
-async def test_backup_all_and_restore_all_preserve_configuration(
-    app_context, populated_server
+async def test_restore_running_server_skips_start_backup_and_update(
+    app_context, populated_server, plugin_factory
 ):
-    name = populated_server.server_name
-    original = (
-        Path(populated_server.paths.server_dir) / "server.properties"
-    ).read_bytes()
-    assert (
-        await backup_all(BackupAllRequest(server_name=name), app_context=app_context)
-    ).status == "success"
-    (Path(populated_server.paths.server_dir) / "server.properties").write_text(
-        "changed"
-    )
-    assert (
-        await restore_all(RestoreAllRequest(server_name=name), app_context=app_context)
-    ).status == "success"
-    assert (
-        Path(populated_server.paths.server_dir) / "server.properties"
-    ).read_bytes() == original
-    assert (
-        await prune_old_backups(
-            PruneOldBackupsRequest(server_name=name), app_context=app_context
+    server = populated_server
+    await server.set_autoupdate(True)
+    snapshot = await server.backups.create_snapshot()
+    await server.start()
+    original_process = server.process._process
+    for name in ("backup_on_start", "update_before_start"):
+        path = (
+            Path(__file__).parents[2]
+            / "src/bedrock_server_manager/plugins/default"
+            / f"{name}.py"
         )
-    ).status == "skipped"
-
-
-async def test_api_prunes_existing_properties_backups(app_context, real_bedrock_server):
-    server = real_bedrock_server
-    await server.settings.set("retention.backups", 3)
-    for _ in range(3):
-        await server.backups.backup_config("server.properties")
-    await server.settings.set("retention.backups", 1)
-    response = await prune_old_backups(
-        PruneOldBackupsRequest(server_name=server.server_name), app_context=app_context
+        await plugin_factory(name, path.read_text())
+    selected = ["world", "bsm_settings"]
+    plan = await server.backups.plan_restore(snapshot.backup_id, selected)
+    result = await restore_server_snapshot(
+        RestoreSnapshotRequest(
+            server_name=server.server_name,
+            backup_id=snapshot.backup_id,
+            components=selected,
+            token=plan.token,
+        ),
+        app_context=app_context,
     )
-    assert response.status == "success"
-    assert len(await server.backups.list_backups("properties")) == 1
+    assert result.result.restarted
+    assert result.result.restart_error is None
+    assert original_process.returncode is not None
+    snapshots = await server.backups.list_snapshots()
+    assert len(snapshots) == 2
+    assert sum(item.purpose == "pre_restore" for item in snapshots) == 1
+    assert server.configuration.snapshot().autoupdate

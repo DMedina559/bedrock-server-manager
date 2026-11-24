@@ -1,7 +1,7 @@
 import json
 import logging
 import shutil
-from datetime import datetime
+from datetime import datetime, timezone
 from importlib.resources import files
 from pathlib import Path
 
@@ -13,10 +13,11 @@ from sqlalchemy import create_engine, inspect, select
 
 from ..context import AppContext
 from ..db import models
+from ..db.backup import backup_database, get_current_db_revision, restore_database
+from ..db.database import run_migrations_downgrade, run_migrations_upgrade
 from ..logging import log_operation_error
-from ..utils.database import backup_database, get_current_db_revision, restore_database
 from ..utils.general import run_async
-from ..utils.migration import run_migrations_downgrade, run_migrations_upgrade
+from .utils import assert_bsm_offline_cli
 
 logger = logging.getLogger(__name__)
 
@@ -57,6 +58,7 @@ def db_status(ctx: click.Context):
 def upgrade(ctx: click.Context, yes: bool):  # noqa: C901
     """Upgrades the database to the latest version, stamping it if necessary."""
     app_context: AppContext = ctx.obj["app_context"]
+    assert_bsm_offline_cli(app_context, operation_name="Database upgrade")
     alembic_ini_path = files("bedrock_server_manager").joinpath("db/alembic.ini")
     alembic_cfg = Config(str(alembic_ini_path))
     alembic_cfg.set_main_option("skip_logging_config", "true")
@@ -69,7 +71,7 @@ def upgrade(ctx: click.Context, yes: bool):  # noqa: C901
     try:
         backup_dir = app_context.settings.get("paths.backups")
         Path(backup_dir).mkdir(parents=True, exist_ok=True)
-        timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+        timestamp = datetime.now(timezone.utc).strftime("%Y%m%d_%H%M%S")
         output = f"{backup_dir}/db_data_backup_{timestamp}.json"
         run_async(backup_database(app_context.db, output))
         click.secho(f"Database data backup successful! Saved to {output}", fg="green")
@@ -203,10 +205,17 @@ def upgrade(ctx: click.Context, yes: bool):  # noqa: C901
     default="-1",
     help="The revision to downgrade to (e.g., -1 for previous, or a specific revision ID).",
 )
+@click.option(
+    "--yes",
+    "-y",
+    is_flag=True,
+    help="Skip confirmation prompts.",
+)
 @click.pass_context
-def downgrade(ctx: click.Context, revision: str):
+def downgrade(ctx: click.Context, revision: str, yes: bool = False):
     """Downgrades the database to a previous version."""
     app_context: AppContext = ctx.obj["app_context"]
+    assert_bsm_offline_cli(app_context, operation_name="Database downgrade")
     alembic_ini_path = files("bedrock_server_manager").joinpath("db/alembic.ini")
     alembic_cfg = Config(str(alembic_ini_path))
     alembic_cfg.set_main_option("skip_logging_config", "true")
@@ -219,7 +228,9 @@ def downgrade(ctx: click.Context, revision: str):
         fg="yellow",
         bold=True,
     )
-    if not click.confirm("Are you sure you want to proceed?", default=False):
+    if not yes and not click.confirm(
+        "Are you sure you want to proceed?", default=False
+    ):
         raise click.Abort()
 
     # --- Backup Database ---
@@ -227,7 +238,7 @@ def downgrade(ctx: click.Context, revision: str):
         db_path = sync_db_url.split("sqlite:///")[1]
         backup_dir = app_context.settings.get("paths.backups")
         Path(backup_dir).mkdir(parents=True, exist_ok=True)
-        timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+        timestamp = datetime.now(timezone.utc).strftime("%Y%m%d_%H%M%S")
         backup_path = f"{backup_dir}/db_backup_pre_downgrade_{timestamp}.sqlite3"
         try:
             shutil.copy(db_path, backup_path)
@@ -264,7 +275,7 @@ def backup_db(ctx: click.Context, output: str | None):
 
     if not output:
         backup_dir = app_context.settings.get("paths.backups")
-        timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+        timestamp = datetime.now(timezone.utc).strftime("%Y%m%d_%H%M%S")
         output = f"{backup_dir}/db_data_backup_{timestamp}.json"
 
     click.echo("Backing up database to JSON...")
@@ -296,6 +307,7 @@ def backup_db(ctx: click.Context, output: str | None):
 def restore_db(ctx: click.Context, input: str):
     """Restores database records from a JSON file. Wipes existing data!"""
     app_context: AppContext = ctx.obj["app_context"]
+    assert_bsm_offline_cli(app_context, operation_name="Database restore")
     target_db = app_context.db
 
     click.secho("Database Restore Utility", fg="cyan", bold=True)

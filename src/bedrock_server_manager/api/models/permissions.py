@@ -1,36 +1,21 @@
 """Serializable permissions API request and response contracts."""
 
-from .common import (
-    ActionResponse,
-    APIRequest,
-    APIResponse,
-    NonEmptyStr,
-    PermissionLevel,
-    ServerName,
-    SuccessResponse,
+from ...models.permissions import (
+    GetPermissionsRequest,
+    GetPermissionsResponse,
+    PermissionsSetPayload,
+    PlayerPermission,
+    PlayerPermissionPayload,
+    SetPermissionsRequest,
+    SetPermissionsResponse,
 )
 
-
-class PlayerPermission(APIResponse):
-    xuid: str
-    name: str
-    permission_level: str
-
-
-class SetPermissionsRequest(APIRequest):
-    server_name: ServerName
-    xuid: NonEmptyStr
-    player_name: NonEmptyStr | None
-    permission: PermissionLevel
-
-
-class SetPermissionsResponse(ActionResponse):
-    server_name: ServerName
-
-
-class GetPermissionsRequest(APIRequest):
-    server_name: ServerName
-
-
-class GetPermissionsResponse(SuccessResponse):
-    permissions: list[PlayerPermission]
+__all__ = [
+    "GetPermissionsRequest",
+    "GetPermissionsResponse",
+    "PermissionsSetPayload",
+    "PlayerPermission",
+    "PlayerPermissionPayload",
+    "SetPermissionsRequest",
+    "SetPermissionsResponse",
+]

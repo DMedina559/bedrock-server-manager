@@ -8,20 +8,23 @@ from ..error import (
     UserInputError,
 )
 from ..events import trigger_event
+from ..events.operations import OperationName, track_operation
 from ..logging import log_operation_error
-from ..plugins.api_bridge import api_method
-from ..plugins.runtime_capabilities import server_lifecycle_manager
-from .models.install import (
+from ..models.install import (
     InstallNewServerRequest,
     InstallNewServerResponse,
     UpdateServerRequest,
     UpdateServerResponse,
 )
+from ..plugins.api_bridge import api_method
+from ..plugins.scopes import PluginScope
+from ..utils.preparation import preparation_stage
+from .server import server_lifecycle_manager
 
 logger = logging.getLogger(__name__)
 
 
-@api_method("install_new_server")
+@api_method("install_new_server", required_scope=PluginScope.SERVERS_INSTALL)
 @trigger_event(
     before="before_server_install",
     after="after_server_install",
@@ -92,7 +95,8 @@ async def install_new_server(
         server.operation_lock.release()
 
 
-@api_method("update_server")
+@api_method("update_server", required_scope=PluginScope.SERVERS_INSTALL)
+@track_operation(OperationName.SERVER_UPDATE)
 @trigger_event(
     before="before_server_update",
     after="after_server_update",
@@ -150,8 +154,17 @@ async def update_server(
             app_context=app_context,
         ):
             logger.debug("Backing up '%s' before update...", server_name)
-            backup = await server.backups.backup_all_data()
-            if backup.outcome != "completed":
+            from ..models.backup_restore import CreateSnapshotRequest
+            from .backup_restore import create_server_backup
+
+            async with preparation_stage(server.settings, "backup"):
+                backup = await create_server_backup(
+                    CreateSnapshotRequest(
+                        server_name=server_name, purpose="pre_update"
+                    ),
+                    app_context=app_context,
+                )
+            if backup.status != "success":
                 from ..error import IncompleteOperationError
 
                 raise IncompleteOperationError(

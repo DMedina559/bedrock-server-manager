@@ -10,14 +10,7 @@ from bedrock_server_manager.web.control import ControlFiles
 from bedrock_server_manager.web.main import create_server
 from bedrock_server_manager.web.process import WebProcessPaths, read_control
 from bedrock_server_manager.web.runtime import WebRunOptions, WebRuntime
-
-
-def attach_runtime(app_context, test_app):
-    runtime = WebRuntime()
-    server = create_server(app_context, WebRunOptions(), runtime)
-    test_app.state.web_runtime = runtime
-    runtime.ready()
-    return runtime, server
+from tests.web.helpers import attach_runtime
 
 
 async def test_shutdown_requires_admin_and_is_idempotent(
@@ -97,7 +90,7 @@ def test_control_lock_and_owner_cleanup(tmp_path):
     assert paths.control_file.exists()
     files.close()
     assert not paths.control_file.exists()
-    assert not (tmp_path / "web_server.pid").exists()
+    assert not paths.pid_file.exists()
     other.acquire()
     other.close()
 
@@ -127,7 +120,8 @@ def test_systemd_web_unit_uses_clean_exit_policy(app_context, systemd):
 
 
 def test_stale_control_is_replaced_only_after_lock_acquired(tmp_path):
-    (tmp_path / "web_server.control.json").write_text("corrupt")
+    (tmp_path / "runtime").mkdir(parents=True, exist_ok=True)
+    (tmp_path / "runtime" / "web_server.control.json").write_text("corrupt")
     files = ControlFiles(tmp_path, WebRuntime())
     files.acquire()
     files.publish("::", 8080)
@@ -149,7 +143,8 @@ async def test_force_stop_requires_verified_legacy_identity(tmp_path):
     paths = WebProcessPaths(
         config_dir=str(tmp_path), data_dir=str(tmp_path), db_url="sqlite:///test"
     )
-    pid = tmp_path / "web_server.pid"
+    pid = paths.pid_file
+    pid.parent.mkdir(parents=True, exist_ok=True)
     pid.write_text(str(os.getpid()))
     with pytest.raises(ServerStopError, match="No graceful"):
         await stop_local(paths)
@@ -290,6 +285,8 @@ async def test_invalid_shutdown_receipt_preserves_control_record(tmp_path, monke
     data["token"] = "test"
     import json
 
+    paths.control_file.parent.mkdir(parents=True, exist_ok=True)
+    paths.control_file.parent.mkdir(parents=True, exist_ok=True)
     paths.control_file.write_text(json.dumps(data))
     transport = MockTransport(
         lambda request: Response(202, json={"unexpected": "response"})

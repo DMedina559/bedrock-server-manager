@@ -8,15 +8,27 @@ from typing import Any, ClassVar, List, cast
 
 from pydantic import BaseModel
 
-from ..api.models.plugins import SetPluginSettingResponse
+from ..logging import log_operation_error
+from ..models import (
+    GetPluginSettingRequest,
+    GetServerRunningStatusRequest,
+    SetPluginSettingRequest,
+    SetPluginSettingResponse,
+)
 from .api_bridge import AppAPI
 
 
 class PluginBase(ABC):
     """Base class for plugins with a version, scoped API and logger.
 
-    Declare event handlers with ``@app_event`` or register them through
-    ``api.events``.
+    Declare event handlers with ``@app_event``, periodic tasks with ``@task_loop``,
+    scheduled tasks with ``@scheduled_task``, diagnostic providers with
+    ``@diagnostic_provider``, and WebSocket data providers with ``@data_provider``
+    or ``@websocket_provider``.
+
+    Declarative extension attributes (``router``, ``routers``, ``static_mounts``,
+    ``http_permissions``, ``scheduled_apis``) are discovered and registered
+    automatically after ``on_load`` completes.
     """
 
     # Class attribute: version
@@ -27,6 +39,8 @@ class PluginBase(ABC):
     # but the PluginManager's synchronization step enforces its presence for a plugin
     # to be considered valid and loadable.
     settings_model: ClassVar[type[BaseModel] | None] = None
+    global_settings_model: ClassVar[type[BaseModel] | None] = None
+    server_settings_model: ClassVar[type[BaseModel] | None] = None
 
     name: str = "N/A"  # Optional class attribute for a friendly display name.
     version: str = "N/A"  # Default placeholder, should be overridden.
@@ -39,11 +53,22 @@ class PluginBase(ABC):
         []
     )  # Optional list of optional plugin names (strings) to load before this plugin, if they are enabled.
 
+    # Standardized declarative extension attributes:
+    permissions: ClassVar[list[str] | None] = None
+    router: Any = None
+    routers: List[Any] = []
+    static_mounts: List[tuple[str, "Path", str]] = []
+    http_permissions: List[tuple[str, str, list[str]]] = []
+    scheduled_apis: List[dict[str, Any]] = []
+
     def __init__(self, plugin_name: str, api: AppAPI, logger: Logger):
         """Bind this plugin to its name, scoped API and logger."""
         # Use class property name if provided, else fallback to module name
         class_name = getattr(self.__class__, "name", "N/A")
         self.name: str = class_name if class_name != "N/A" else plugin_name
+        from .scopes import normalize_permissions
+
+        self._capability_permissions = normalize_permissions(self.permissions)
         self.api: AppAPI = api
         self.logger: Logger = logger
 
@@ -65,7 +90,14 @@ class PluginBase(ABC):
         # Construction precedes on_load; activation is reported by the manager.
         self.logger.debug("Plugin '%s' v%s initialized.", self.name, self.version)
 
-    async def get_plugin_setting(self, key: str, default: Any = None) -> Any:
+    async def get_plugin_setting(
+        self,
+        key: str,
+        default: Any = None,
+        *,
+        scope="plugin",
+        server_name: str | None = None,
+    ) -> Any:
         """Return a setting specific to this plugin.
 
         :param key: The setting key.
@@ -73,7 +105,11 @@ class PluginBase(ABC):
 
         :returns: The setting value or the default.
         """
-        result = await self.api.plugins.get_plugin_setting(request={"key": key})
+        result = await self.api.plugins.get_plugin_setting(
+            request=GetPluginSettingRequest(
+                key=key, scope=scope, server_name=server_name
+            )
+        )
         if result and result.status == "success":
             value = result.value
             if value is not None:
@@ -81,7 +117,7 @@ class PluginBase(ABC):
         return default
 
     async def set_plugin_setting(
-        self, key: str, value: Any
+        self, key: str, value: Any, *, scope="plugin", server_name: str | None = None
     ) -> SetPluginSettingResponse:
         """Save a setting specific to this plugin.
 
@@ -93,27 +129,77 @@ class PluginBase(ABC):
         return cast(
             SetPluginSettingResponse,
             await self.api.plugins.set_plugin_setting(
-                request={"key": key, "value": value}
+                request=SetPluginSettingRequest(
+                    key=key, value=value, scope=scope, server_name=server_name
+                )
             ),
         )
+
+    async def get_plugin_settings(
+        self, *, scope="plugin", server_name: str | None = None
+    ) -> dict:
+        """Read the caller's effective settings for one scope, including defaults."""
+        result = await self.api.plugins.get_plugin_setting(
+            request=GetPluginSettingRequest(scope=scope, server_name=server_name)
+        )
+        return cast(dict, result.value)
+
+    async def set_plugin_settings(
+        self, values: dict, *, scope="plugin", server_name: str | None = None
+    ) -> SetPluginSettingResponse:
+        """Atomically replace the caller's settings namespace after validation."""
+        return cast(
+            SetPluginSettingResponse,
+            await self.api.plugins.set_plugin_setting(
+                request=SetPluginSettingRequest(
+                    value=values, scope=scope, server_name=server_name
+                )
+            ),
+        )
+
+    async def _is_server_running(self, server_name: str) -> bool:
+        """Check if a server is currently running via the API."""
+        try:
+            response = await self.api.system.get_server_running_status(
+                request=GetServerRunningStatusRequest(server_name=server_name)
+            )
+            if response and response.status == "success":
+                return bool(response.is_running)
+
+            self.logger.warning(
+                "Could not determine running status for '%s'.",
+                server_name,
+            )
+        except AttributeError:
+            self.logger.error(
+                "API is missing 'get_server_running_status'. Cannot check server status."
+            )
+        except Exception as e:
+            log_operation_error(
+                self.logger,
+                "Error checking server status for '%s': %s",
+                server_name,
+                e,
+                error=e,
+            )
+        return False
 
     # --- Plugin Extension Hooks ---
 
     def get_fastapi_routers(self) -> List[Any]:
-        """Called by the PluginManager after the plugin is loaded to retrieve
-        any custom FastAPI routers (fastapi.APIRouter instances)
-        the plugin wishes to register with the main web application.
+        """Deprecated extension hook returning custom FastAPI routers.
 
-        Plugins should override this method to return a list of APIRouter objects.
+        Prefer setting ``self.router`` or ``self.routers`` (or declaring them on
+        the plugin class) instead of overriding ``get_fastapi_routers()``.
 
-        :returns: A list of fastapi.APIRouter objects. Defaults to an empty list.
+        :returns: A list of ``fastapi.APIRouter`` objects. Defaults to an empty list.
         """
         return []
 
     def get_static_mounts(self) -> List[tuple[str, "Path", str]]:
-        """Return static mounts as ``(URL prefix, directory, name)`` tuples.
+        """Deprecated extension hook returning static mounts as ``(URL prefix, directory, name)`` tuples.
 
-        Prefixes and names must be unique across plugins; the default is an empty
-        list.
+        Prefer setting ``self.static_mounts`` (or declaring it on the plugin class)
+        instead of overriding ``get_static_mounts()``.
         """
         return []

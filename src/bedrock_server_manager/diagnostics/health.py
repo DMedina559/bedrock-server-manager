@@ -4,6 +4,7 @@ from collections import Counter
 from typing import Literal
 
 from .models import (
+    BackupsDiagnostics,
     CollectionDiagnostics,
     DiagnosticData,
     DiagnosticFinding,
@@ -19,6 +20,7 @@ from .models import (
     RuntimeDiagnostics,
     StateDiagnostics,
     StorageDiagnostics,
+    TasksDiagnostics,
     TransportDiagnostics,
 )
 
@@ -26,9 +28,43 @@ Status = Literal["ok", "degraded", "unknown"]
 
 
 def evaluate_health(
-    data: DiagnosticData, options: DiagnosticOptions
+    data: DiagnosticData, options: DiagnosticOptions, *, subsystem: str | None = None
 ) -> tuple[Status, list[DiagnosticIssue]]:
     """Explain current evidence without inferring health from lifetime failure totals."""
+    if subsystem == "scheduler" and isinstance(data, PluginValues):
+        if data.health == "degraded":
+            return "degraded", [
+                DiagnosticIssue(
+                    code="scheduler_attention",
+                    message="Scheduler runtime, enabled jobs, or timezone data needs attention.",
+                    action="check_configuration",
+                )
+            ]
+        return data.health, []
+    if isinstance(data, BackupsDiagnostics):
+        if data.failed or data.missing_keys or data.destination_failures:
+            return "degraded", [
+                DiagnosticIssue(
+                    code="backup_attention",
+                    message="Backup verification, recovery keys, or storage copies need attention.",
+                    action="check_configuration",
+                    severity=(
+                        "error"
+                        if (data.failed or data.destination_failures)
+                        else "warning"
+                    ),
+                )
+            ]
+        if data.without_backup and data.servers > 0 and data.archives > 0:
+            return "degraded", [
+                DiagnosticIssue(
+                    code="backup_missing",
+                    message="One or more servers do not have any backup archives.",
+                    action="check_configuration",
+                    severity="warning",
+                )
+            ]
+        return "ok", []
     if isinstance(data, PluginValues):
         issues = (
             [
@@ -51,6 +87,7 @@ def evaluate_health(
         "processes": _processes,
         "transport": _transport,
         "state": _state,
+        "tasks": _tasks,
     }
     rule = rules.get(data.kind)
     return rule(data, options) if rule is not None else ("ok", [])
@@ -65,7 +102,7 @@ def _issue(
 
 
 def _runtime(
-    data: DiagnosticData, options: DiagnosticOptions
+    data: DiagnosticData, options: DiagnosticOptions, *, subsystem: str | None = None
 ) -> tuple[Status, list[DiagnosticIssue]]:
     assert isinstance(data, RuntimeDiagnostics)
     if data.phase == "failed":
@@ -75,11 +112,19 @@ def _runtime(
             "inspect_logs",
             severity="error",
         )
+    if data.draining_workers or (
+        data.pending_lifecycle_stages and data.phase in {"stopping", "failed"}
+    ):
+        return _issue(
+            "runtime_draining",
+            "Runtime work is waiting for cleanup to finish.",
+            "wait_for_drain",
+        )
     return ("ok" if data.ready else "unknown"), []
 
 
 def _storage(
-    data: DiagnosticData, options: DiagnosticOptions
+    data: DiagnosticData, options: DiagnosticOptions, *, subsystem: str | None = None
 ) -> tuple[Status, list[DiagnosticIssue]]:
     assert isinstance(data, StorageDiagnostics)
     if data.last_error_type or data.last_reload_error_type:
@@ -93,7 +138,7 @@ def _storage(
 
 
 def _events(
-    data: DiagnosticData, options: DiagnosticOptions
+    data: DiagnosticData, options: DiagnosticOptions, *, subsystem: str | None = None
 ) -> tuple[Status, list[DiagnosticIssue]]:
     assert isinstance(data, EventsDiagnostics)
     if data.activity.pending_workers >= (
@@ -108,13 +153,19 @@ def _events(
 
 
 def _metrics(
-    data: DiagnosticData, options: DiagnosticOptions
+    data: DiagnosticData, options: DiagnosticOptions, *, subsystem: str | None = None
 ) -> tuple[Status, list[DiagnosticIssue]]:
     assert isinstance(data, MetricsDiagnostics)
     if data.last_error_type:
         return _issue(
             "metrics_collection_failed",
             "The last metrics collection failed.",
+            "inspect_logs",
+        )
+    if data.event_loop_lag_ms >= data.event_loop_lag_threshold_ms:
+        return _issue(
+            "event_loop_lag",
+            "The event loop is taking longer than expected to respond.",
             "inspect_logs",
         )
     if data.last_sample_at is None or data.warming_up:
@@ -139,7 +190,7 @@ def _metrics(
 
 
 def _plugins(
-    data: DiagnosticData, options: DiagnosticOptions
+    data: DiagnosticData, options: DiagnosticOptions, *, subsystem: str | None = None
 ) -> tuple[Status, list[DiagnosticIssue]]:
     assert isinstance(data, PluginsDiagnostics)
     if any(plugin.status == "ERROR" for plugin in data.plugins):
@@ -158,11 +209,35 @@ def _plugins(
 
 
 def _processes(
-    data: DiagnosticData, options: DiagnosticOptions
+    data: DiagnosticData, options: DiagnosticOptions, *, subsystem: str | None = None
 ) -> tuple[Status, list[DiagnosticIssue]]:
     assert isinstance(data, ProcessesDiagnostics)
-    if not data.observation_available or data.last_monitor_at is None:
+    if not data.observation_available:
         return "unknown", []
+    if data.identity_error is not None:
+        return _issue(
+            "player_identity_persistence_failed",
+            "Player identities are pending database persistence.",
+            "inspect_logs",
+        )
+    if data.command_unavailable_count > 0:
+        return _issue(
+            "process_command_unavailable",
+            "A surviving Bedrock process has no console command channel; kicks and console commands are unavailable.",
+            "inspect_logs",
+        )
+    if data.untracked_recoveries_count > 0:
+        return _issue(
+            "untracked_processes_recovered",
+            "One or more Bedrock server processes were recovered outside normal management.",
+            "inspect_logs",
+        )
+    if data.unhealthy_count > 0:
+        return _issue(
+            "unhealthy_processes_detected",
+            "One or more Bedrock server processes are unhealthy or crash-looping.",
+            "inspect_logs",
+        )
     if any(process.last_error_type for process in data.processes):
         return _issue(
             "process_probe_failed",
@@ -178,11 +253,20 @@ def _processes(
             "An expected running process was observed stopped.",
             "inspect_logs",
         )
+    if any(
+        process.observed_running is True and process.expected_status == "STOPPED"
+        for process in data.processes
+    ):
+        return _issue(
+            "process_state_mismatch",
+            "A stopped server was observed running.",
+            "inspect_logs",
+        )
     return "ok", []
 
 
 def _transport(
-    data: DiagnosticData, options: DiagnosticOptions
+    data: DiagnosticData, options: DiagnosticOptions, *, subsystem: str | None = None
 ) -> tuple[Status, list[DiagnosticIssue]]:
     assert isinstance(data, TransportDiagnostics)
     if (
@@ -198,7 +282,7 @@ def _transport(
 
 
 def _state(
-    data: DiagnosticData, options: DiagnosticOptions
+    data: DiagnosticData, options: DiagnosticOptions, *, subsystem: str | None = None
 ) -> tuple[Status, list[DiagnosticIssue]]:
     assert isinstance(data, StateDiagnostics)
     if (
@@ -209,6 +293,27 @@ def _state(
             "state_persistence_delayed",
             "Pending changes have exceeded the configured age threshold.",
             "inspect_storage",
+        )
+    return "ok", []
+
+
+def _tasks(
+    data: DiagnosticData, options: DiagnosticOptions, *, subsystem: str | None = None
+) -> tuple[Status, list[DiagnosticIssue]]:
+    assert isinstance(data, TasksDiagnostics)
+    if not data.accepting:
+        return _issue(
+            "tasks_not_accepting",
+            "Task execution is not accepting new work.",
+            "wait_for_drain",
+        )
+    if data.active >= data.capacity or (
+        data.concurrency_limit is not None and data.active >= data.concurrency_limit
+    ):
+        return _issue(
+            "task_capacity_reached",
+            "Active task capacity has been reached.",
+            "wait_for_drain",
         )
     return "ok", []
 

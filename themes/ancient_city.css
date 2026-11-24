@@ -1,0 +1,57 @@
+/* Ancient City — BSM custom theme. Supports light/dark mode and both densities. */
+:root[data-theme="ancient_city"][data-mode="dark"][data-density] {
+  --bsm-page: #091213;
+  --bsm-surface: #112225;
+  --bsm-surface-raised: #183035;
+  --bsm-input: #0d1a1c;
+  --bsm-text: #eff4f5;
+  --bsm-muted: #abc0c4;
+  --bsm-border: #4b676c;
+  --bsm-accent: #8aeae7;
+  --bsm-accent-strong: #197b78;
+  --bsm-accent-hover: #14615f;
+  --bsm-on-accent: #ffffff;
+  --bsm-success: #78e6ac;
+  --bsm-danger: #ffb0b7;
+  --bsm-danger-solid: #a51c36;
+  --bsm-warning: #f6d784;
+  --bsm-info: #a9ceff;
+  --bsm-console: #060b0c;
+  --bsm-console-text: #b9dfde;
+  --bsm-overlay: #030810b8;
+  --bsm-focus: #8aeae7;
+  --bsm-shadow: 0 12px 40px #00000030;
+  --bsm-chart-1: #86dfdc;
+  --bsm-chart-2: #cd86df;
+  --bsm-chart-3: #dfc686;
+  --sidebar-bg-custom: var(--bsm-surface);
+  --splash-text-color: var(--bsm-warning);
+}
+:root[data-theme="ancient_city"][data-mode="light"][data-density] {
+  --bsm-page: #eff6f8;
+  --bsm-surface: #fbfdfd;
+  --bsm-surface-raised: #dcecef;
+  --bsm-input: #f6fafb;
+  --bsm-text: #182325;
+  --bsm-muted: #476166;
+  --bsm-border: #81a1a7;
+  --bsm-accent: #136c69;
+  --bsm-accent-strong: #197b78;
+  --bsm-accent-hover: #14615f;
+  --bsm-on-accent: #ffffff;
+  --bsm-success: #16643f;
+  --bsm-danger: #a51c36;
+  --bsm-danger-solid: #a51c36;
+  --bsm-warning: #795000;
+  --bsm-info: #24549a;
+  --bsm-console: #e5f1f3;
+  --bsm-console-text: #265453;
+  --bsm-overlay: #17213180;
+  --bsm-focus: #136c69;
+  --bsm-shadow: 0 10px 30px #17213112;
+  --bsm-chart-1: #207976;
+  --bsm-chart-2: #672079;
+  --bsm-chart-3: #796020;
+  --sidebar-bg-custom: var(--bsm-surface);
+  --splash-text-color: var(--bsm-warning);
+}

@@ -124,3 +124,13 @@ builtin_events = EventRegistry()
 
 for name in ("on_load", "on_unload", "on_manager_startup"):
     builtin_events.register(EventDefinition(name=name, phase="lifecycle", public=False))
+
+
+builtin_events.register(
+    EventDefinition(
+        name="on_account_security",
+        phase="after",
+        public=False,
+        description="Committed account security changes without credentials or factor secrets.",
+    )
+)

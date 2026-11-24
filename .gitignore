@@ -185,3 +185,8 @@ TestResults
 
 test.db
 test.db-journal
+
+# Public password-screening data belongs in the installed package.
+!src/bedrock_server_manager/data/
+src/bedrock_server_manager/data/*
+!src/bedrock_server_manager/data/common-passwords*

@@ -1,13 +1,19 @@
 # autostart_servers.py
 from typing import Any
 
-from bedrock_server_manager import PluginBase, app_event
+from bedrock_server_manager import PluginBase, PluginScope, app_event
+from bedrock_server_manager.models import (
+    GetAllServersDataRequest,
+    GetServerSettingRequest,
+    StartServerRequest,
+)
 
 
 class AutostartServers(PluginBase):
     """Start all servers with the autostart setting set to true on manager startup."""
 
-    version = "1.1.0"
+    version = "1.2.0"
+    permissions = [PluginScope.SERVERS_LIFECYCLE, PluginScope.SERVERS_READ]
     description = (
         "Starts all servers with the autostart setting set to true on manager startup."
     )
@@ -26,8 +32,10 @@ class AutostartServers(PluginBase):
     @app_event("on_manager_startup")
     async def autostart_servers(self, **kwargs: Any):
 
-        # Run API calls in thread to not block startup loop
-        result = await self.api.application.get_all_servers_data(request={})
+        # Read server data asynchronously during startup.
+        result = await self.api.application.get_all_servers_data(
+            request=GetAllServersDataRequest()
+        )
         servers = result.servers
 
         for server in servers:
@@ -36,7 +44,9 @@ class AutostartServers(PluginBase):
                 continue
 
             setting_result = await self.api.server.get_setting(
-                request={"server_name": server_name, "key": "settings.autostart"}
+                request=GetServerSettingRequest(
+                    server_name=server_name, key="settings.autostart"
+                )
             )
             server_settings = setting_result.value
 
@@ -49,6 +59,6 @@ class AutostartServers(PluginBase):
                 # especially if an update is required.
                 await self.api.runtime.run_task(
                     self.api.server.start,
-                    request={"server_name": server_name},
+                    request=StartServerRequest(server_name=server_name),
                     username="System (Autostart)",
                 )

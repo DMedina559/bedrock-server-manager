@@ -2,6 +2,11 @@
 
 Published documentation: https://bedrock-server-manager.readthedocs.io/en/latest/
 
+For server recovery, see [Back up and restore a server](source/features/backups.md),
+including world-only, selected-component and full-directory archives, encryption
+keys, selective restore, scheduler jobs, verification and recovery drills,
+retention, external copies, and offline recovery.
+
 Sources live in `docs/source`; contributor setup and validation are in
 [the development guide](source/developer/development.md).
 Generated plugin references come from `python scripts/generate_plugin_docs.py`.

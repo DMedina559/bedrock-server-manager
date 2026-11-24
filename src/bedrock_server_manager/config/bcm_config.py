@@ -66,7 +66,36 @@ def get_config_dir() -> str:
 
 def get_config_path() -> str:
     """Return the full, platform-specific path to the configuration file."""
-    return os.path.join(get_config_dir(), CONFIG_FILE_NAME)
+    from pathlib import Path
+
+    with _config_write_lock:
+        root = Path(get_config_dir())
+        destination = root / "bootstrap" / CONFIG_FILE_NAME
+        legacy_candidates = (
+            root / CONFIG_FILE_NAME,
+            root / "config" / CONFIG_FILE_NAME,
+        )
+        existing_legacies = [p for p in legacy_candidates if p.exists()]
+        if existing_legacies:
+            all_existing = existing_legacies + (
+                [destination] if destination.exists() else []
+            )
+            first_bytes = all_existing[0].read_bytes()
+            if any(p.read_bytes() != first_bytes for p in all_existing[1:]):
+                raise ConfigurationError(
+                    "Conflicting legacy and nested startup configuration files."
+                )
+            destination.parent.mkdir(parents=True, exist_ok=True)
+            if not destination.exists():
+                os.replace(existing_legacies[0], destination)
+                existing_legacies = existing_legacies[1:]
+            for legacy in existing_legacies:
+                legacy.unlink()
+            try:
+                (root / "config").rmdir()
+            except OSError:
+                pass
+        return str(destination)
 
 
 def _read_raw_config() -> Dict[str, Any]:
@@ -147,14 +176,36 @@ def load_config() -> Dict[str, Any]:
         default_val=os.path.join(config_dir, "data"),
     )
 
-    final_config["db_url"] = _resolve_setting(
+    db_dir = os.path.join(config_dir, "db")
+    os.makedirs(db_dir, exist_ok=True)
+    default_db_path = os.path.join(db_dir, f"{package_name}.db")
+    legacy_db_path = os.path.join(config_dir, f"{package_name}.db")
+    # Resolve explicit selections before inspecting legacy defaults. Database files
+    # may still be open in another process; moving a main file and its WAL here
+    # cannot safely migrate a running SQLite database.
+    selected_db_url = _resolve_setting(
         name="db_url",
         cli_val=_custom_db_url,
         env_var_name=f"{env_name}_DB_URL",
         config=config,
         config_key="db_url",
-        default_val=f"sqlite:///{os.path.join(config_dir, f'{package_name}.db')}",
+        default_val=None,
     )
+    if selected_db_url is None:
+        if os.path.exists(legacy_db_path):
+            if os.path.exists(default_db_path):
+                raise ConfigurationError(
+                    "Both legacy and nested default SQLite databases exist. "
+                    "Select the intended database with db_url or BSM_DB_URL; "
+                    "neither file has been modified."
+                )
+            # Preserve upgrades in place, including WAL/SHM files and open handles.
+            # New installations use the nested layout. Relocation is an explicit
+            # administrative operation performed with BSM stopped.
+            selected_db_url = f"sqlite:///{legacy_db_path}"
+        else:
+            selected_db_url = f"sqlite:///{default_db_path}"
+    final_config["db_url"] = selected_db_url
 
     final_log_level = _resolve_setting(
         name="log_level",
@@ -195,11 +246,11 @@ def save_config(data: Dict[str, Any]):
     temporary = None
     with _config_write_lock:
         try:
-            os.makedirs(get_config_dir(), exist_ok=True)
+            os.makedirs(os.path.dirname(get_config_path()), exist_ok=True)
             with tempfile.NamedTemporaryFile(
                 mode="w",
                 encoding="utf-8",
-                dir=get_config_dir(),
+                dir=os.path.dirname(get_config_path()),
                 prefix=".bsm-config-",
                 delete=False,
             ) as file:

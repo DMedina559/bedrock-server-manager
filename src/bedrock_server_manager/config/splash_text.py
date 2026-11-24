@@ -6,6 +6,13 @@ often related to Minecraft, server management, or the application itself. The te
 are categorized for potential varied use.
 """
 
+import logging
+import random
+
+from ..logging import log_operation_error
+
+logger = logging.getLogger(__name__)
+
 # --- User Interface (UI) Related ---
 SPLASH_TEXTS_UI = [
     "Web UI!",
@@ -129,3 +136,26 @@ A dictionary categorizing all splash text lists.
 Keys are category names (e.g., "UI", "Features"), and values are the
 corresponding lists of splash text strings.
 """
+
+
+def get_splash_text() -> str:
+    """Selects and returns a random splash text message."""
+    fallback_splash = "Amazing Error Handling!"
+    try:
+        all_texts: list[str] = []
+        if isinstance(SPLASH_TEXTS, dict):
+            for category_list in SPLASH_TEXTS.values():
+                if isinstance(category_list, (list, tuple)):
+                    all_texts.extend(category_list)
+        elif isinstance(SPLASH_TEXTS, (list, tuple)):
+            all_texts = list(SPLASH_TEXTS)
+
+        if all_texts:
+            return random.choice(all_texts)
+        return fallback_splash
+    except Exception as e:
+        log_operation_error(logger, "Error choosing splash text: %s", e, error=e)
+        return "Error retrieving splash!"
+
+
+_get_splash_text = get_splash_text

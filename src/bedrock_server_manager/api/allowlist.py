@@ -4,8 +4,7 @@ from ..context import AppContext
 from ..error import BSMError, FileOperationError
 from ..events import trigger_event
 from ..logging import log_operation_error
-from ..plugins.api_bridge import api_method
-from .models.allowlist import (
+from ..models.allowlist import (
     AddToAllowlistRequest,
     AddToAllowlistResponse,
     GetAllowlistRequest,
@@ -13,11 +12,13 @@ from .models.allowlist import (
     RemoveFromAllowlistRequest,
     RemoveFromAllowlistResponse,
 )
+from ..plugins.api_bridge import api_method
+from ..plugins.scopes import PluginScope
 
 logger = logging.getLogger(__name__)
 
 
-@api_method("add_to_allowlist")
+@api_method("add_to_allowlist", required_scope=PluginScope.ALLOWLIST_MANAGE)
 @trigger_event(
     before="before_allowlist_change",
     after="after_allowlist_change",
@@ -58,7 +59,7 @@ async def add_to_allowlist(
         raise
 
 
-@api_method("get_allowlist")
+@api_method("get_allowlist", required_scope=PluginScope.ALLOWLIST_READ)
 async def get_allowlist(
     request: GetAllowlistRequest, *, app_context: AppContext
 ) -> GetAllowlistResponse:
@@ -86,7 +87,7 @@ async def get_allowlist(
         raise
 
 
-@api_method("remove_from_allowlist")
+@api_method("remove_from_allowlist", required_scope=PluginScope.ALLOWLIST_MANAGE)
 @trigger_event(
     before="before_allowlist_change",
     after="after_allowlist_change",

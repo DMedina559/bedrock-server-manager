@@ -8,7 +8,7 @@ import copy
 import logging
 import os
 import time
-from typing import Any, Dict, Optional, Set
+from typing import Any, Dict, Literal, Optional, Set
 
 from pydantic import (
     AnyHttpUrl,
@@ -21,9 +21,15 @@ from pydantic import (
     field_validator,
 )
 
+from ..backups.contents import (
+    DEFAULT_COMPONENTS,
+    BackupComponents,
+    BackupMode,
+)
 from ..diagnostics.models import DiagnosticOptions
 from ..error import ConfigurationError
-from .validation import json_equal
+from ..events.models import EventOptions
+from .models import json_equal
 
 logger = logging.getLogger(__name__)
 
@@ -37,6 +43,25 @@ class SettingsRecord(BaseModel):
         allow_inf_nan=False,
         revalidate_instances="always",
     )
+
+
+class GeneralSettings(SettingsRecord):
+    timezone: str = "UTC"
+
+    @field_validator("timezone")
+    @classmethod
+    def known_timezone(cls, value: str) -> str:
+        from zoneinfo import ZoneInfoNotFoundError
+
+        from ..utils.timezones import resolve_timezone
+
+        try:
+            resolve_timezone(value)
+        except (ZoneInfoNotFoundError, ValueError):
+            raise ValueError(
+                "Choose a valid IANA timezone, such as America/Los_Angeles"
+            ) from None
+        return value
 
 
 class PathsSettings(SettingsRecord):
@@ -56,17 +81,42 @@ class RetentionSettings(SettingsRecord):
 class MonitoringSettings(SettingsRecord):
     max_retries: int = Field(default=3, ge=0)
     process_interval_sec: int = Field(default=10, gt=0)
-    player_interval_sec: int = Field(default=10, gt=0)
     app_metrics_interval_sec: int = Field(default=3, ge=1, le=3600)
     bedrock_metrics_interval_sec: int = Field(default=3, ge=1, le=3600)
+    untracked_process_interval_sec: int = Field(
+        default=5,
+        ge=1,
+        le=3600,
+        title="Untracked process scan interval",
+        description="Minimum seconds between system process scans when verifying stopped servers without a PID file.",
+    )
+    recover_untracked_processes: bool = Field(
+        default=True,
+        title="Recover untracked server processes",
+        description="Automatically scan the system process table and regenerate PID files for orphaned or unmonitored Bedrock servers.",
+    )
 
 
-DEFAULT_CORS_ORIGINS = (
-    "http://localhost:3000",
-    "http://127.0.0.1:3000",
-    "http://localhost:5173",
-    "http://127.0.0.1:5173",
-)
+DEFAULT_CORS_ORIGINS: tuple[str, ...] = ()
+
+
+class SecuritySettings(SettingsRecord):
+    require_admin_mfa: bool = Field(
+        default=False,
+        title="Require MFA for administrators",
+        description="Unenrolled administrator logins can only enroll MFA; integration credentials are independent.",
+    )
+    auth_account_attempts: int = Field(default=10, ge=3, le=100)
+    auth_peer_attempts: int = Field(default=60, ge=10, le=10000)
+    auth_window_seconds: int = Field(default=300, ge=30, le=3600)
+    auth_ipv6_prefix: int = Field(
+        default=128,
+        ge=48,
+        le=128,
+        description="IPv6 prefix for authentication peer budgets; 128 keeps each address separate.",
+    )
+    session_idle_hours: int = Field(default=24, ge=1, le=672)
+    session_max_days: int = Field(default=28, ge=1, le=90)
 
 
 class WebSettings(SettingsRecord):
@@ -76,7 +126,25 @@ class WebSettings(SettingsRecord):
     host: str = "127.0.0.1"
     port: int = Field(default=11325, ge=1, le=65535)
     token_expires_weeks: int = Field(default=4, gt=0)
-    jwt_secret_key: Optional[str] = None
+    jwt_secret_key: Optional[str] = Field(default=None, repr=False)
+    jwt_key_initialized: bool = False
+    frame_ancestors: Optional[str] = Field(
+        default=None,
+        description="Optional CSP frame-ancestors sources. Leave unset for cross-origin Home Assistant embedding.",
+    )
+    csp_report_only: Optional[str] = Field(
+        default=None,
+        description="Optional Content-Security-Policy-Report-Only header; test integrations before enforcement.",
+    )
+
+    @field_validator("frame_ancestors", "csp_report_only")
+    @classmethod
+    def validate_policy_header(cls, value):
+        if value is not None and (
+            any(ord(c) < 32 or ord(c) == 127 for c in value) or len(value) > 8192
+        ):
+            raise ValueError("Invalid security policy header")
+        return value
 
     @field_validator("cors_origins", mode="before")
     @classmethod
@@ -111,6 +179,12 @@ class WebSettings(SettingsRecord):
 
 
 class LifecycleSettings(SettingsRecord):
+    preparation_backup_timeout_seconds: float = Field(default=600.0, gt=0, le=900)
+    preparation_download_timeout_seconds: float = Field(default=600.0, gt=0, le=900)
+    preparation_install_timeout_seconds: float = Field(default=600.0, gt=0, le=900)
+    command_timeout_seconds: float = Field(default=5.0, gt=0, le=60)
+    server_ready_timeout_seconds: float = Field(default=60.0, gt=0, le=600)
+    output_drain_timeout_seconds: float = Field(default=2.0, gt=0, le=60)
     server_stop_timeout_seconds: float = Field(default=10.0, gt=0, le=600)
     startup_timeout_seconds: float = Field(default=30.0, gt=0, le=600)
     shutdown_timeout_seconds: float = Field(default=15.0, gt=0, le=600)
@@ -118,6 +192,83 @@ class LifecycleSettings(SettingsRecord):
     plugin_timeout_seconds: float = Field(default=10.0, gt=0, le=600)
     cancellation_grace_seconds: float = Field(default=2.0, gt=0, le=30)
     request_drain_timeout_seconds: float = Field(default=10.0, gt=0, le=600)
+
+
+class SchedulerSettings(SettingsRecord):
+    max_concurrent_servers: int = Field(default=4, ge=1, le=32)
+    poll_interval_seconds: int = Field(default=60, ge=1, le=60)
+
+
+class BackupDestination(SettingsRecord):
+    path: str = Field(min_length=1)
+    enabled: bool = True
+    keep_count: int = Field(default=0, ge=0)
+    storage_budget_bytes: int = Field(default=0, ge=0)
+    min_free_bytes: int = Field(default=1073741824, ge=0)
+
+
+class BackupSchedule(SettingsRecord):
+    enabled: bool = True
+    time: str = Field(default="03:00", pattern=r"^(?:[01][0-9]|2[0-3]):[0-5][0-9]$")
+    timezone: str = "UTC"
+    weekdays: list[int] = Field(
+        default_factory=lambda: list(range(7)), min_length=1, max_length=7
+    )
+    catch_up: bool = True
+    stagger_minutes: int = Field(default=15, ge=0, le=120)
+
+    @field_validator("timezone")
+    @classmethod
+    def known_timezone(cls, value):
+        from zoneinfo import ZoneInfoNotFoundError
+
+        from ..utils.timezones import resolve_timezone
+
+        try:
+            resolve_timezone(value)
+        except (ZoneInfoNotFoundError, ValueError):
+            raise ValueError("Choose a valid IANA timezone") from None
+        return value
+
+    @field_validator("weekdays")
+    @classmethod
+    def valid_weekdays(cls, value):
+        if len(set(value)) != len(value) or any(day < 0 or day > 6 for day in value):
+            raise ValueError("Weekdays must be unique integers from 0 through 6")
+        return value
+
+
+class ScheduledTask(BackupSchedule):
+    task: str = Field(
+        pattern=r"^(backup|verify|[a-zA-Z0-9_.-]+:[a-zA-Z0-9_.-]+)$", max_length=160
+    )
+    server_name: str = Field(min_length=1, max_length=160)
+    options: dict[str, JsonValue] = Field(default_factory=dict)
+
+
+class BackupSettings(SettingsRecord):
+    readiness_max_age_hours: int = Field(default=48, ge=1, le=8760)
+    recovery_drill_interval_hours: int = Field(default=0, ge=0, le=8760)
+    encryption: bool = False
+    mode: BackupMode = "selected"
+    components: BackupComponents = Field(
+        default_factory=lambda: list(DEFAULT_COMPONENTS)
+    )
+    compression: Literal["fast", "balanced", "small"] = Field(
+        default="balanced",
+        description="Fast uses less compression; Small favors archive size. All modes preserve encryption and integrity checks.",
+    )
+    verify_after_create: bool = False
+    verification_interval_hours: int = Field(default=0, ge=0, le=8760)
+    safety_window_hours: int = Field(default=168, ge=1, le=8760)
+    keep_daily: int = Field(default=0, ge=0, le=365)
+    keep_weekly: int = Field(default=0, ge=0, le=520)
+    keep_monthly: int = Field(default=0, ge=0, le=120)
+    storage_budget_bytes: int = Field(default=0, ge=0)
+    destinations: dict[str, BackupDestination] = Field(default_factory=dict)
+    max_files: int = Field(default=1_000_000, ge=1, le=1_000_000)
+    max_expanded_bytes: int = Field(default=1024**4, ge=1)
+    max_archive_bytes: int = Field(default=1024**4, ge=1)
 
 
 class SettingsState(BaseModel):
@@ -129,12 +280,17 @@ class SettingsState(BaseModel):
         allow_inf_nan=False,
         revalidate_instances="always",
     )
+    general: GeneralSettings = Field(default_factory=GeneralSettings)
+    scheduler: SchedulerSettings = Field(default_factory=SchedulerSettings)
     paths: PathsSettings = Field(default_factory=PathsSettings)
     retention: RetentionSettings = Field(default_factory=RetentionSettings)
+    backups: BackupSettings = Field(default_factory=BackupSettings)
     monitoring: MonitoringSettings = Field(default_factory=MonitoringSettings)
     web: WebSettings = Field(default_factory=WebSettings)
+    security: SecuritySettings = Field(default_factory=SecuritySettings)
     lifecycle: LifecycleSettings = Field(default_factory=LifecycleSettings)
     diagnostics: DiagnosticOptions = Field(default_factory=DiagnosticOptions)
+    events: EventOptions = Field(default_factory=EventOptions)
     custom: Dict[str, JsonValue] = Field(default_factory=dict)
     plugin_settings: Dict[str, Dict[str, JsonValue]] = Field(default_factory=dict)
 
@@ -306,10 +462,13 @@ class SettingsState(BaseModel):
     def to_dict(self) -> Dict[str, Any]:
         """Export settings state into a dictionary matching database key/value structure."""
         return {
+            "general": self.general.model_dump(),
             "paths": self.paths.model_dump(),
             "retention": self.retention.model_dump(),
+            "backups": self.backups.model_dump(),
             "monitoring": self.monitoring.model_dump(),
             "web": self.web.model_dump(mode="json", exclude_none=True),
+            "security": self.security.model_dump(),
             "lifecycle": self.lifecycle.model_dump(),
             "diagnostics": self.diagnostics.model_dump(),
             "custom": copy.deepcopy(self.custom),
@@ -368,6 +527,8 @@ class SettingsState(BaseModel):
             "paths": ("logs",),
             "retention": ("logs",),
             "web": ("threads",),
+            "backups": ("schedules",),
+            "monitoring": ("player_interval_sec",),
         }
         for section, removed_names in removed_fields.items():
             values = merged.get(section)
@@ -392,9 +553,9 @@ class SettingsState(BaseModel):
             "monitoring": (
                 "max_retries",
                 "process_interval_sec",
-                "player_interval_sec",
                 "app_metrics_interval_sec",
                 "bedrock_metrics_interval_sec",
+                "untracked_process_interval_sec",
             ),
             "web": ("port", "token_expires_weeks"),
         }

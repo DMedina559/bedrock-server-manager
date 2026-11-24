@@ -42,7 +42,11 @@ class ServerConfiguration:
         )
 
     async def set_status(
-        self, status: str, events: EventPublisher | None = None
+        self,
+        status: str,
+        events: EventPublisher | None = None,
+        *,
+        cancellable: bool = True,
     ) -> StatusResult:
         request = StatusRequest(server_name=self.server.server_name, status=status)
         data = {**request.model_dump(), "request": request}
@@ -55,7 +59,7 @@ class ServerConfiguration:
                     )
                 finally:
                     control.seal()
-                if control.is_cancelled:
+                if cancellable and control.is_cancelled:
                     raise APICancelledError(
                         control.cancel_reason or "Status change cancelled"
                     )

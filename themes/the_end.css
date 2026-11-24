@@ -1,0 +1,57 @@
+/* The End — BSM custom theme. Supports light/dark mode and both densities. */
+:root[data-theme="the_end"][data-mode="dark"][data-density] {
+  --bsm-page: #110d14;
+  --bsm-surface: #1b1521;
+  --bsm-surface-raised: #261d2f;
+  --bsm-input: #141019;
+  --bsm-text: #f2eff5;
+  --bsm-muted: #b8abc4;
+  --bsm-border: #5c4b6c;
+  --bsm-accent: #ca8aea;
+  --bsm-accent-strong: #5a197b;
+  --bsm-accent-hover: #481461;
+  --bsm-on-accent: #ffffff;
+  --bsm-success: #78e6ac;
+  --bsm-danger: #ffb0b7;
+  --bsm-danger-solid: #a51c36;
+  --bsm-warning: #f6d784;
+  --bsm-info: #a9ceff;
+  --bsm-console: #09070b;
+  --bsm-console-text: #d2b9df;
+  --bsm-overlay: #030810b8;
+  --bsm-focus: #ca8aea;
+  --bsm-shadow: 0 12px 40px #00000030;
+  --bsm-chart-1: #c186df;
+  --bsm-chart-2: #dfb286;
+  --bsm-chart-3: #86dfab;
+  --sidebar-bg-custom: var(--bsm-surface);
+  --splash-text-color: var(--bsm-warning);
+}
+:root[data-theme="the_end"][data-mode="light"][data-density] {
+  --bsm-page: #f4f1f6;
+  --bsm-surface: #fcfcfd;
+  --bsm-surface-raised: #e6e0eb;
+  --bsm-input: #f9f7fa;
+  --bsm-text: #1f1825;
+  --bsm-muted: #574766;
+  --bsm-border: #9481a7;
+  --bsm-accent: #4f136c;
+  --bsm-accent-strong: #5a197b;
+  --bsm-accent-hover: #481461;
+  --bsm-on-accent: #ffffff;
+  --bsm-success: #16643f;
+  --bsm-danger: #a51c36;
+  --bsm-danger-solid: #a51c36;
+  --bsm-warning: #795000;
+  --bsm-info: #24549a;
+  --bsm-console: #ece7f0;
+  --bsm-console-text: #452654;
+  --bsm-overlay: #17213180;
+  --bsm-focus: #4f136c;
+  --bsm-shadow: 0 10px 30px #17213112;
+  --bsm-chart-1: #5b2079;
+  --bsm-chart-2: #794c20;
+  --bsm-chart-3: #207945;
+  --sidebar-bg-custom: var(--bsm-surface);
+  --splash-text-color: var(--bsm-warning);
+}

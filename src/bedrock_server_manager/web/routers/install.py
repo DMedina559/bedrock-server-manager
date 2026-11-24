@@ -2,25 +2,36 @@ import logging
 import os
 
 import aiofiles.ospath
-from fastapi import APIRouter, Depends, HTTPException, status
-
-from bedrock_server_manager.api.models import (
-    DeleteServerDataRequest,
-    InstallNewServerRequest,
-)
+from fastapi import APIRouter, Depends, HTTPException, Request, Security, status
 
 from ...api import install as install_api
+from ...api import misc as misc_api
 from ...api import server as server_api
 from ...context import AppContext
 from ...core.system import find_files
-from ..deps import get_admin_user, get_app_context, get_moderator_user
+from ...error import BSMError
+from ...models import (
+    DeleteServerDataRequest,
+    InstallNewServerRequest,
+    InstallServerPayload,
+    PruneDownloadCacheRequest,
+    PruneDownloadCacheResponse,
+    PruneDownloadsPayload,
+)
+from ..access_policy import Permission
+from ..deps import get_app_context
+from ..deps.auth import (
+    require_context_permission,
+    require_permissions,
+    require_recent_interactive,
+)
 from ..schemas import (
     CustomZipsResponse,
-    InstallServerPayload,
+    InstallationAcceptedResponse,
+    InstallConfirmationResponse,
     InstallServerResponse,
     UserResponse,
 )
-from ..schemas.install import InstallationAcceptedResponse, InstallConfirmationResponse
 
 logger = logging.getLogger(__name__)
 
@@ -34,7 +45,9 @@ router = APIRouter()
     response_model=CustomZipsResponse,
 )
 async def get_custom_zips(
-    current_user: UserResponse = Depends(get_moderator_user),
+    current_user: UserResponse = Security(
+        require_permissions, scopes=[Permission.DOWNLOADS_READ]
+    ),
     app_context: AppContext = Depends(get_app_context),
 ) -> CustomZipsResponse:
     download_dir = app_context.settings.get("paths.downloads")
@@ -48,6 +61,63 @@ async def get_custom_zips(
     return CustomZipsResponse(status="success", custom_zips=custom_zips)
 
 
+@router.put(
+    "/api/downloads/prune",
+    operation_id="prune_downloads",
+    tags=["Downloads"],
+    response_model=PruneDownloadCacheResponse,
+)
+async def put_prune_downloads(
+    payload: PruneDownloadsPayload,
+    current_user: UserResponse = Security(
+        require_permissions, scopes=[Permission.DOWNLOADS_PRUNE]
+    ),
+    app_context: AppContext = Depends(get_app_context),
+) -> PruneDownloadCacheResponse:
+    """
+    Prunes old downloaded server archives from a specified cache subdirectory.
+    """
+    identity = current_user.username
+    logger.info("Download cache cleanup requested by user '%s'.", identity)
+    download_cache_base_dir = app_context.settings.get("paths.downloads")
+    if not download_cache_base_dir:
+        raise BSMError("DOWNLOAD_DIR setting is missing or empty in configuration.")
+
+    full_download_dir_path = os.path.normpath(
+        os.path.join(download_cache_base_dir, payload.directory)
+    )
+
+    if not os.path.abspath(full_download_dir_path).startswith(
+        os.path.abspath(download_cache_base_dir) + os.sep
+    ):
+        logger.error(
+            "API Prune Downloads: Security violation - Invalid directory path '%s'.",
+            payload.directory,
+        )
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Invalid directory path: Path is outside the allowed download cache base directory.",
+        )
+
+    if not await aiofiles.ospath.isdir(full_download_dir_path):
+        logger.warning(
+            "API Prune Downloads: Target cache directory not found: %s (from relative: '%s')",
+            full_download_dir_path,
+            payload.directory,
+        )
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Target cache directory not found.",
+        )
+
+    return await misc_api.prune_download_cache(
+        request=PruneDownloadCacheRequest(
+            download_dir=full_download_dir_path, keep_count=payload.keep
+        ),
+        app_context=app_context,
+    )
+
+
 @router.post(
     "/api/server/install",
     operation_id="install_server",
@@ -55,8 +125,11 @@ async def get_custom_zips(
     response_model=InstallServerResponse,
 )
 async def post_install_server(  # noqa: C901
+    request: Request,
     payload: InstallServerPayload,
-    current_user: UserResponse = Depends(get_admin_user),
+    current_user: UserResponse = Security(
+        require_permissions, scopes=[Permission.SERVERS_INSTALL]
+    ),
     app_context: AppContext = Depends(get_app_context),
 ) -> InstallServerResponse:
     identity = current_user.username
@@ -112,6 +185,10 @@ async def post_install_server(  # noqa: C901
         )
 
     if payload.overwrite and server_exists:
+        await require_context_permission(
+            request, current_user, Permission.SERVERS_DELETE, payload.server_name
+        )
+        await require_recent_interactive(request, current_user, app_context)
         logger.info(
             "Overwrite flag set for existing server '%s'. Deleting first.",
             payload.server_name,

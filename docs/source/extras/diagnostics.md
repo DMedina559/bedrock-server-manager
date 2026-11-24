@@ -30,10 +30,14 @@ Use your normal administrator authentication:
 |---|---|---|
 | `GET /api/diagnostics` | `get_application_diagnostics` | Current subsystem observations |
 | `GET /api/diagnostics/{subsystem}` | `get_subsystem_diagnostics` | One subsystem, such as `events` or `storage` |
+| `GET /api/diagnostics/activity` | `get_diagnostic_activity` | Global active/recent events and operations, plus listener configuration |
 | `GET /api/diagnostics/history` | `get_diagnostic_history` | Retained sanitized failure and lifecycle records |
 | `GET /api/diagnostics/runs` | `get_diagnostic_runs` | Retained records grouped by application instance |
 | `GET /api/diagnostics/trace/{correlation_id}` | `get_diagnostic_trace` | Correlated live events, tasks, and retained records |
 | `GET /api/diagnostics/report` | `get_diagnostic_report` | Current observations and bounded history for a support report |
+| `POST /api/diagnostics/compare` | `compare_diagnostic_snapshots` | Compare two diagnostic snapshots and return up to 200 metadata deltas |
+| `GET /api/events` | `get_event_catalog` | Public event contract catalog, schemas, and registered listener counts |
+| `GET /api/events/activity` | `get_event_activity` | Active and recent event emissions and listener delivery stats (`EventActivityQuery`) |
 
 History accepts `limit` (1–200), `subsystem`, `instance_id`, `correlation_id`, `owner`, `code`, `outcome`, and `operation_id`. Results are newest first. Pass `next_cursor` as `cursor` to continue without duplicating records with equal timestamps; `truncated` indicates more matching records. Runs summarize retained records, not complete process lifetimes. A missing closing record does not prove that an instance crashed. The event catalog and filtered event details remain available through `/api/events` and `/api/events/activity`.
 
@@ -51,32 +55,18 @@ Live counters, active operations, and event activity reset for each application 
 
 Diagnostic recording uses an independent best-effort queue. It never participates in the transaction it observes. Database failures and overflow increment the report's write-failure/drop counts. A crash can lose records still queued in memory; diagnostic history is not a guaranteed audit log.
 
-Defaults retain at most 1,000 records for seven days, with a 256-record write queue. Settings under `diagnostics` configure `history_limit`, `retention_days`, `queue_limit`, `provider_timeout_seconds`, `max_providers`, and `max_providers_per_owner`. Restart the application after changing these settings. Expired records are excluded from reads and pruned during writes. Existing records remain subject to current retention limits.
+Defaults retain at most 1,000 records for seven days, with a 256-record write queue. Settings under `diagnostics` configure `history_limit`, `retention_days`, `queue_limit`, `provider_timeout_seconds`, `stale_after_seconds` (age threshold before cached observations are marked stale), `state_pending_warn_seconds` (warn threshold for pending state transitions), `max_providers`, `max_providers_per_owner`, `event_record_limit`, `event_detail_limit`, and `snapshot_interval_seconds`. Restart the application after changing these settings. Expired records are excluded from reads and pruned during writes. Existing records remain subject to current retention limits.
 
 The report contains metadata only, but plugin names and event names can still identify your installation. Review downloaded reports before sharing them.
 
 ## Plugin-owned observations
 
-Plugins can register an asynchronous provider during load:
+Enabled plugins can contribute bounded numeric and boolean telemetry under `plugin:<plugin_name>:<name>`.
 
-```python
-from bedrock_server_manager.diagnostics import PluginValues
+- Each section identifies its owning plugin, health (`ok`, `degraded`, `unknown`, or `unavailable`), units, and freshness. Arbitrary state dumps and string values are excluded so plugin telemetry cannot leak secrets or large payloads into support reports.
+- Providers are automatically removed when a plugin is unloaded, and registration limits (`diagnostics.max_providers` and `diagnostics.max_providers_per_owner`) bound provider counts globally and per plugin. Registry diagnostics show configured limits, ownership, pending providers, failures, timeouts, and rejected registrations.
 
-async def diagnostic_values():
-    return PluginValues(
-        health="ok",
-        values={"queued": 3, "connected": True},
-        units={"queued": "count"},
-    )
-
-await self.api.runtime.register_diagnostic_provider("connection", diagnostic_values)
-```
-
-The runtime assigns the section name `plugin:<plugin_name>:connection` and its owner. Providers return bounded numeric/boolean observations; arbitrary state dumps and string values are excluded. Providers must yield normally and cooperate with cancellation. A timeout cannot forcibly terminate Python code that blocks the event loop.
-
-Providers are removed during plugin unload. An old unfinished provider prevents replacement of the same name until it drains. Registration limits bound provider counts globally and per plugin owner. Registry diagnostics show configured limits, ownership, pending providers, failures, timeouts, and rejected registrations. Built-in application providers are outside the per-plugin limit. Plugin authors can read typed diagnostics with `self.api.diagnostics.get_application_diagnostics({})`, `get_diagnostic_history({})`, and `get_diagnostic_report({})`.
-
-Provider health defaults to `unknown`; explicitly return `ok` or `degraded` when the provider has evidence. Provider collection failures are reported separately as `unavailable`. Optional units are `count`, `seconds`, `milliseconds`, `bytes`, or `percent` and must refer to a returned value. Labels are bounded to 80 characters. Providers should report measurements rather than perform expensive probes.
+For declaring `@diagnostic_provider` methods and `PluginValues` in your own plugin, see [Write a plugin](../developer/plugins/introduction.md#diagnostic-and-websocket-data-providers).
 
 ## Diagnose the diagnostic subsystem
 
@@ -105,3 +95,61 @@ For remote support reports, the API/CLI client provides `bsm-cli diagnostics rep
 Diagnostic collection/recording failures contribute an actionable `diagnostics` finding to the overall summary. They do not change application readiness. `/api/health` exposes `ready` using the same loaded-state and application/web-runtime rule as diagnostics; its dependency checks remain separate from optional diagnostic health.
 
 Periodic observations expose `periodic_status` (`disabled`, `not_started`, `running`, `stopped`, or `failed`), `last_periodic_success_at`, and `last_periodic_error_type`. Successful sample time describes collection, not guaranteed journal persistence. An unexpected worker exit or a failed sample degrades diagnostic health; a successful sample clears its last error. Removed/replaced providers cannot publish or cache observations from an earlier registration.
+
+
+## Global event and operation activity
+
+`GET /api/diagnostics/activity` reads activity across every execution chain in the
+current application instance. No correlation ID is required. Optional filters are
+`name` (event name), `source`, `owner`, `server_name`, `phase`, `status` (event
+status), `operation_name`, `operation_id`, `sequence_id`, and `correlation_id`.
+`limit` accepts 1–200; the configured diagnostic record limit also applies.
+Operation filters use operation identity, name, server, source, owner, sequence,
+and correlation; event name, phase, and event status only narrow events. Listener
+configuration is filtered by event name and owner, not by execution-chain IDs.
+
+The `events` section contains active and recent event metadata. Event records link
+back to their operation and sequence when emitted inside an operation. The
+`operations` section contains active operations and recent completed, failed, or
+cancelled operations. `parent_operation_id` and `root_operation_id` describe the
+ancestry; a limited response can omit ancestors. `subscriptions.items` includes
+listener owners, priorities, filters, ordering, unresolved references, and delivery
+statistics. Callback objects and predicates are never serialized.
+
+The existing Events diagnostic section and support reports include operation
+activity and listener details too. Correlation traces include matching operations.
+A source that cannot be read does not hide other sources: unavailable global
+activity sources are `null`, with errors reported in `issues` without exception
+text. Traces expose operation availability separately.
+
+Activity is bounded metadata, not an unlimited or durable event log. Event history
+uses the event bus history limit; global operation history retains the latest 200
+operation outcomes by default and resets on restart. It works even when event
+history is disabled. Global operation results are newest first; event recent
+records retain their existing oldest-to-newest order. Counts describe the whole
+service, while returned records follow the filters. Truncation flags identify
+partial views. The retained diagnostic journal continues to store sanitized
+failure/lifecycle records under its existing retention policy. Payloads, task
+arguments, credentials, and cancellation messages are excluded from these
+administrator activity responses.
+
+
+## Troubleshooting long operations
+
+Use INFO logs for backup selection and completion, scheduled-run outcomes, and
+operational warnings. Enable DEBUG temporarily to include API durations,
+backup/restore stages, reused capture hash counts, inventory file counts and sizes, and event-listener
+start/finish records. Event records include the listener owner, event ID,
+deadline, outcome, and elapsed time. A hook deadline can cancel a pre-start
+backup even when the same backup succeeds manually.
+
+Backup cancellation logs identify the last reported stage. Cancellation waits
+for owned filesystem workers to stop before releasing locks; a timeout may
+therefore take longer than its configured deadline to return. Inventory checks
+for cancellation between files and while hashing file contents.
+
+Unexpected exceptions retain tracebacks in application log files. Normal API
+responses and background-task errors use sanitized messages, without exception
+text or tracebacks. Expected validation and state conflicts are DEBUG records;
+repeated diagnostic-store/provider failures are rate limited. Stage and timing
+records omit request bodies; raw WebSocket protocol frame dumps are suppressed.

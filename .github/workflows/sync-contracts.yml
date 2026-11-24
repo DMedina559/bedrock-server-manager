@@ -1,0 +1,133 @@
+name: Sync Contracts and Docs
+
+on:
+  workflow_dispatch:
+  workflow_run:
+    workflows: ['Build and Test']
+    types: [completed]
+    branches: [dev]
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ${{ github.workflow }}
+  cancel-in-progress: true
+
+jobs:
+  sync-local:
+    if: github.event_name == 'workflow_dispatch' || github.event.workflow_run.conclusion == 'success'
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    permissions:
+      contents: write
+      pull-requests: write
+    steps:
+      - name: Resolve sync token
+        id: auth
+        uses: DMedina559/.github/actions/get-sync-token@main
+        with:
+          app-id: ${{ secrets.SYNC_APP_ID }}
+          private-key: ${{ secrets.SYNC_APP_PRIVATE_KEY }}
+          repositories: bedrock-server-manager
+          fallback-token: ${{ secrets.CROSS_REPO_TOKEN || github.token }}
+
+      - uses: actions/checkout@v7
+        with:
+          fetch-depth: 0
+          ref: ${{ github.event.workflow_run.head_sha || github.sha }}
+          token: ${{ steps.auth.outputs.token }}
+
+      - uses: DMedina559/.github/actions/setup-python-env@main
+        with:
+          install-args: "-e '.[dev,docs,cli]'"
+
+      - name: Regenerate plugin API and docs
+        run: |
+          python scripts/generate_plugin_api.py
+          python scripts/generate_plugin_docs.py
+
+      - name: Verify changes with hooks
+        id: changes
+        run: |
+          if [ -n "$(git status --porcelain)" ]; then
+            echo "changed=true" >> "$GITHUB_OUTPUT"
+            pre-commit run --all-files || true
+            python scripts/check_api_callers.py
+            python scripts/generate_plugin_api.py --check
+          else
+            echo "changed=false" >> "$GITHUB_OUTPUT"
+            echo "No plugin API or doc changes detected."
+          fi
+
+      - name: Create or update Pull Request
+        if: steps.changes.outputs.changed == 'true'
+        uses: peter-evans/create-pull-request@v8
+        with:
+          token: ${{ steps.auth.outputs.token }}
+          base: dev
+          branch: chore/sync-plugin-api-docs
+          delete-branch: true
+          title: 'docs(plugins): regenerate plugin API and docs'
+          commit-message: 'docs(plugins): regenerate plugin API and docs'
+          labels: |
+            docs
+            chore
+
+  export-and-dispatch:
+    if: github.event_name == 'workflow_dispatch' || github.event.workflow_run.conclusion == 'success'
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - name: Resolve sync token
+        id: auth
+        uses: DMedina559/.github/actions/get-sync-token@main
+        with:
+          app-id: ${{ secrets.SYNC_APP_ID }}
+          private-key: ${{ secrets.SYNC_APP_PRIVATE_KEY }}
+          repositories: |
+            bsm-api-client
+            bsm-frontend
+            minecraft
+          fallback-token: ${{ secrets.CROSS_REPO_TOKEN }}
+
+      - name: Validate sync token
+        if: steps.auth.outputs.token == ''
+        run: |
+          echo "Configure SYNC_APP_ID + SYNC_APP_PRIVATE_KEY (recommended) or CROSS_REPO_TOKEN." >&2
+          exit 1
+
+      - uses: actions/checkout@v7
+        with:
+          ref: ${{ github.event.workflow_run.head_sha || github.sha }}
+          persist-credentials: false
+
+      - uses: DMedina559/.github/actions/setup-python-env@main
+        with:
+          install-args: "-e ."
+
+      - name: Export OpenAPI contract and hash
+        id: contract
+        run: |
+          python -m bedrock_server_manager.web.contract --output "$RUNNER_TEMP/openapi.json"
+          hash=$(sha256sum "$RUNNER_TEMP/openapi.json" | awk '{print $1}')
+          echo "hash=$hash" >> "$GITHUB_OUTPUT"
+          echo "sha=${{ github.event.workflow_run.head_sha || github.sha }}" >> "$GITHUB_OUTPUT"
+
+      - name: Dispatch contract sync to downstream repositories
+        uses: actions/github-script@v9
+        with:
+          github-token: ${{ steps.auth.outputs.token }}
+          script: |
+            const targets = ['bsm-api-client', 'bsm-frontend', 'minecraft'];
+            for (const repo of targets) {
+              await github.rest.repos.createDispatchEvent({
+                owner: 'DMedina559',
+                repo,
+                event_type: 'bsm-contract-updated',
+                client_payload: {
+                  backend_sha: '${{ steps.contract.outputs.sha }}',
+                  contract_hash: '${{ steps.contract.outputs.hash }}'
+                }
+              });
+            }

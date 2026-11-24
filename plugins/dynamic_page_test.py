@@ -1,10 +1,10 @@
 from json import JSONDecodeError
 
-from fastapi import APIRouter, Depends, Request
+from fastapi import APIRouter, Request, Security
 from fastapi.responses import JSONResponse
 
 from bedrock_server_manager import PluginBase, app_event
-from bedrock_server_manager.web import get_admin_user
+from bedrock_server_manager.web.deps.auth import require_permissions
 from bedrock_server_manager.web.schemas import UserResponse
 
 
@@ -13,10 +13,15 @@ class DynamicPageTestPlugin(PluginBase):
     A plugin to test all Dynamic Page UI components.
     """
 
-    version = "1.1.0"
+    version = "1.2.0"
+    permissions = []
     description = "A plugin to test all Dynamic Page UI components."
     author = "dmedina559"
     name = "Dynamic Page Test"
+
+    http_permissions = [
+        ("manage", "Manage dynamic page test UI", ["admin"]),
+    ]
 
     @app_event("on_load")
     async def plugin_loaded(self, **kwargs):
@@ -27,13 +32,17 @@ class DynamicPageTestPlugin(PluginBase):
     def _define_routes(self):
         @self.router.get(
             "/dynamic_page_test/ui",
+            operation_id="Dynamic_Page_Test_UI_dynamic_page_test_ui_get",
             response_class=JSONResponse,
             name="Dynamic Page Test UI",
             summary="Test Dynamic Components",
             tags=["plugin-json-ui"],
         )
         async def get_test_ui(
-            request: Request, current_user: UserResponse = Depends(get_admin_user)
+            request: Request,
+            current_user: UserResponse = Security(
+                require_permissions, scopes=["plugin:dynamic_page_test:manage"]
+            ),
         ):
             return JSONResponse(
                 content={
@@ -346,10 +355,14 @@ class DynamicPageTestPlugin(PluginBase):
 
         @self.router.post(
             "/api/dynamic_page_test/submit",
+            operation_id="submit_test_form_api_dynamic_page_test_submit_post",
             summary="Echo Submit",
         )
         async def submit_test_form(
-            request: Request, current_user: UserResponse = Depends(get_admin_user)
+            request: Request,
+            current_user: UserResponse = Security(
+                require_permissions, scopes=["plugin:dynamic_page_test:manage"]
+            ),
         ):
             try:
                 data = await request.json()
@@ -367,6 +380,3 @@ class DynamicPageTestPlugin(PluginBase):
     @app_event("on_unload")
     async def plugin_unloaded(self, **kwargs):
         pass
-
-    def get_fastapi_routers(self, **kwargs):
-        return [self.router]

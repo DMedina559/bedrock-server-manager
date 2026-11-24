@@ -10,6 +10,7 @@ import re
 from urllib.parse import quote
 
 import aiofiles
+import aiofiles.ospath
 import bsm_frontend
 from fastapi import APIRouter, HTTPException, Request
 from fastapi.responses import HTMLResponse, RedirectResponse
@@ -42,7 +43,7 @@ async def serve_spa(request: Request, full_path: str = ""):
     static_dir = bsm_frontend.get_static_dir()
     index_path = os.path.join(static_dir, "index.html")
 
-    if os.path.exists(index_path):
+    if await aiofiles.ospath.exists(index_path):
         root_path = quote(request.scope.get("root_path", ""), safe="/-._~!$&'()*+,;=:@")
         async with aiofiles.open(index_path, "r", encoding="utf-8") as file:
             content = await file.read()

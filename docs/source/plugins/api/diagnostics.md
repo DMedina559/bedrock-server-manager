@@ -8,22 +8,22 @@ For an updated list of available APIs, please download and run the [api_docs_gen
 
 ## `diagnostics.compare_diagnostic_snapshots`
 ```python
-await self.api.diagnostics.compare_diagnostic_snapshots(request: bedrock_server_manager.api.models.diagnostics.CompareDiagnosticSnapshotsRequest)
+await self.api.diagnostics.compare_diagnostic_snapshots(request: bedrock_server_manager.models.diagnostics.CompareDiagnosticSnapshotsRequest)
 ```
 - **Async (Requires await):** Yes
 
 - **Description:** Compare metadata snapshots without treating restarted counters as activity.
+
+- **Required Permission:** `diagnostics:read`
 
 - **Returns:** `CompareDiagnosticSnapshotsResponse`
 
 Runtime context and plugin identity are injected by the bridge. Failures raise application exceptions; plugin cancellation raises `APICancelledError`.
 
 ```python
-from bedrock_server_manager.api.models import CompareDiagnosticSnapshotsRequest
-payload = {...}  # Supply required request fields below.
-request = CompareDiagnosticSnapshotsRequest(**payload)
+from bedrock_server_manager.models import CompareDiagnosticSnapshotsRequest
+request = CompareDiagnosticSnapshotsRequest(before=..., after=...)
 result = await self.api.diagnostics.compare_diagnostic_snapshots(request)
-data = result.model_dump(mode="json")
 ```
 - **Request schema:** [CompareDiagnosticSnapshotsRequest](models.md#comparediagnosticsnapshotsrequest)
 - **Response schema:** [CompareDiagnosticSnapshotsResponse](models.md#comparediagnosticsnapshotsresponse)
@@ -32,29 +32,29 @@ data = result.model_dump(mode="json")
 
 | Name | Type | Default |
 |------|------|---------|
-| `request` | `bedrock_server_manager.api.models.diagnostics.CompareDiagnosticSnapshotsRequest` | `REQUIRED` |
+| `request` | `bedrock_server_manager.models.diagnostics.CompareDiagnosticSnapshotsRequest` | `REQUIRED` |
 
 ---
 
 
 ## `diagnostics.get_application_diagnostics`
 ```python
-await self.api.diagnostics.get_application_diagnostics(request: bedrock_server_manager.api.models.diagnostics.GetApplicationDiagnosticsRequest)
+await self.api.diagnostics.get_application_diagnostics(request: bedrock_server_manager.models.diagnostics.GetApplicationDiagnosticsRequest)
 ```
 - **Async (Requires await):** Yes
 
 - **Description:** Read bounded subsystem metadata; unavailable providers remain isolated.
+
+- **Required Permission:** `diagnostics:read`
 
 - **Returns:** `GetApplicationDiagnosticsResponse`
 
 Runtime context and plugin identity are injected by the bridge. Failures raise application exceptions; plugin cancellation raises `APICancelledError`.
 
 ```python
-from bedrock_server_manager.api.models import GetApplicationDiagnosticsRequest
-payload = {}
-request = GetApplicationDiagnosticsRequest(**payload)
+from bedrock_server_manager.models import GetApplicationDiagnosticsRequest
+request = GetApplicationDiagnosticsRequest()
 result = await self.api.diagnostics.get_application_diagnostics(request)
-data = result.model_dump(mode="json")
 ```
 - **Request schema:** [GetApplicationDiagnosticsRequest](models.md#getapplicationdiagnosticsrequest)
 - **Response schema:** [GetApplicationDiagnosticsResponse](models.md#getapplicationdiagnosticsresponse)
@@ -63,29 +63,60 @@ data = result.model_dump(mode="json")
 
 | Name | Type | Default |
 |------|------|---------|
-| `request` | `bedrock_server_manager.api.models.diagnostics.GetApplicationDiagnosticsRequest` | `REQUIRED` |
+| `request` | `bedrock_server_manager.models.diagnostics.GetApplicationDiagnosticsRequest` | `REQUIRED` |
+
+---
+
+
+## `diagnostics.get_diagnostic_activity`
+```python
+await self.api.diagnostics.get_diagnostic_activity(request: bedrock_server_manager.models.diagnostics.GetDiagnosticActivityRequest)
+```
+- **Async (Requires await):** Yes
+
+- **Description:** Read all-chain event, operation, and subscription metadata without payloads.
+
+- **Required Permission:** `diagnostics:read`
+
+- **Returns:** `GetDiagnosticActivityResponse`
+
+Runtime context and plugin identity are injected by the bridge. Failures raise application exceptions; plugin cancellation raises `APICancelledError`.
+
+```python
+from bedrock_server_manager.models import GetDiagnosticActivityRequest
+request = GetDiagnosticActivityRequest()
+result = await self.api.diagnostics.get_diagnostic_activity(request)
+```
+- **Request schema:** [GetDiagnosticActivityRequest](models.md#getdiagnosticactivityrequest)
+- **Response schema:** [GetDiagnosticActivityResponse](models.md#getdiagnosticactivityresponse)
+- **Transport error schema:** [APIErrorResponse](models.md#apierrorresponse)
+**Parameters:**
+
+| Name | Type | Default |
+|------|------|---------|
+| `request` | `bedrock_server_manager.models.diagnostics.GetDiagnosticActivityRequest` | `REQUIRED` |
 
 ---
 
 
 ## `diagnostics.get_diagnostic_history`
 ```python
-await self.api.diagnostics.get_diagnostic_history(request: bedrock_server_manager.api.models.diagnostics.GetDiagnosticHistoryRequest)
+await self.api.diagnostics.get_diagnostic_history(request: bedrock_server_manager.models.diagnostics.GetDiagnosticHistoryRequest)
 ```
 - **Async (Requires await):** Yes
 
 - **Description:** Read sanitized retained records, optionally scoped to an application run.
+
+- **Required Permission:** `diagnostics:read`
 
 - **Returns:** `GetDiagnosticHistoryResponse`
 
 Runtime context and plugin identity are injected by the bridge. Failures raise application exceptions; plugin cancellation raises `APICancelledError`.
 
 ```python
-from bedrock_server_manager.api.models import GetDiagnosticHistoryRequest
-payload = {}
-request = GetDiagnosticHistoryRequest(**payload)
+from bedrock_server_manager.models import GetDiagnosticHistoryRequest
+request = GetDiagnosticHistoryRequest()
 result = await self.api.diagnostics.get_diagnostic_history(request)
-data = result.model_dump(mode="json")
 ```
 - **Request schema:** [GetDiagnosticHistoryRequest](models.md#getdiagnostichistoryrequest)
 - **Response schema:** [GetDiagnosticHistoryResponse](models.md#getdiagnostichistoryresponse)
@@ -94,29 +125,29 @@ data = result.model_dump(mode="json")
 
 | Name | Type | Default |
 |------|------|---------|
-| `request` | `bedrock_server_manager.api.models.diagnostics.GetDiagnosticHistoryRequest` | `REQUIRED` |
+| `request` | `bedrock_server_manager.models.diagnostics.GetDiagnosticHistoryRequest` | `REQUIRED` |
 
 ---
 
 
 ## `diagnostics.get_diagnostic_report`
 ```python
-await self.api.diagnostics.get_diagnostic_report(request: bedrock_server_manager.api.models.diagnostics.GetDiagnosticReportRequest)
+await self.api.diagnostics.get_diagnostic_report(request: bedrock_server_manager.models.diagnostics.GetDiagnosticReportRequest)
 ```
 - **Async (Requires await):** Yes
 
 - **Description:** Build a support report without secrets, task arguments, or event payloads.
+
+- **Required Permission:** `diagnostics:read`
 
 - **Returns:** `GetDiagnosticReportResponse`
 
 Runtime context and plugin identity are injected by the bridge. Failures raise application exceptions; plugin cancellation raises `APICancelledError`.
 
 ```python
-from bedrock_server_manager.api.models import GetDiagnosticReportRequest
-payload = {}
-request = GetDiagnosticReportRequest(**payload)
+from bedrock_server_manager.models import GetDiagnosticReportRequest
+request = GetDiagnosticReportRequest()
 result = await self.api.diagnostics.get_diagnostic_report(request)
-data = result.model_dump(mode="json")
 ```
 - **Request schema:** [GetDiagnosticReportRequest](models.md#getdiagnosticreportrequest)
 - **Response schema:** [GetDiagnosticReportResponse](models.md#getdiagnosticreportresponse)
@@ -125,29 +156,29 @@ data = result.model_dump(mode="json")
 
 | Name | Type | Default |
 |------|------|---------|
-| `request` | `bedrock_server_manager.api.models.diagnostics.GetDiagnosticReportRequest` | `REQUIRED` |
+| `request` | `bedrock_server_manager.models.diagnostics.GetDiagnosticReportRequest` | `REQUIRED` |
 
 ---
 
 
 ## `diagnostics.get_diagnostic_runs`
 ```python
-await self.api.diagnostics.get_diagnostic_runs(request: bedrock_server_manager.api.models.diagnostics.GetDiagnosticRunsRequest)
+await self.api.diagnostics.get_diagnostic_runs(request: bedrock_server_manager.models.diagnostics.GetDiagnosticRunsRequest)
 ```
 - **Async (Requires await):** Yes
 
 - **Description:** List retained application instances without guessing whether older runs are alive.
+
+- **Required Permission:** `diagnostics:read`
 
 - **Returns:** `GetDiagnosticRunsResponse`
 
 Runtime context and plugin identity are injected by the bridge. Failures raise application exceptions; plugin cancellation raises `APICancelledError`.
 
 ```python
-from bedrock_server_manager.api.models import GetDiagnosticRunsRequest
-payload = {}
-request = GetDiagnosticRunsRequest(**payload)
+from bedrock_server_manager.models import GetDiagnosticRunsRequest
+request = GetDiagnosticRunsRequest()
 result = await self.api.diagnostics.get_diagnostic_runs(request)
-data = result.model_dump(mode="json")
 ```
 - **Request schema:** [GetDiagnosticRunsRequest](models.md#getdiagnosticrunsrequest)
 - **Response schema:** [GetDiagnosticRunsResponse](models.md#getdiagnosticrunsresponse)
@@ -156,29 +187,29 @@ data = result.model_dump(mode="json")
 
 | Name | Type | Default |
 |------|------|---------|
-| `request` | `bedrock_server_manager.api.models.diagnostics.GetDiagnosticRunsRequest` | `REQUIRED` |
+| `request` | `bedrock_server_manager.models.diagnostics.GetDiagnosticRunsRequest` | `REQUIRED` |
 
 ---
 
 
 ## `diagnostics.get_diagnostic_trace`
 ```python
-await self.api.diagnostics.get_diagnostic_trace(request: bedrock_server_manager.api.models.diagnostics.GetDiagnosticTraceRequest)
+await self.api.diagnostics.get_diagnostic_trace(request: bedrock_server_manager.models.diagnostics.GetDiagnosticTraceRequest)
 ```
 - **Async (Requires await):** Yes
 
 - **Description:** Read events, tasks, and retained failures sharing one correlation identity.
+
+- **Required Permission:** `diagnostics:read`
 
 - **Returns:** `GetDiagnosticTraceResponse`
 
 Runtime context and plugin identity are injected by the bridge. Failures raise application exceptions; plugin cancellation raises `APICancelledError`.
 
 ```python
-from bedrock_server_manager.api.models import GetDiagnosticTraceRequest
-payload = {...}  # Supply required request fields below.
-request = GetDiagnosticTraceRequest(**payload)
+from bedrock_server_manager.models import GetDiagnosticTraceRequest
+request = GetDiagnosticTraceRequest(correlation_id=...)
 result = await self.api.diagnostics.get_diagnostic_trace(request)
-data = result.model_dump(mode="json")
 ```
 - **Request schema:** [GetDiagnosticTraceRequest](models.md#getdiagnostictracerequest)
 - **Response schema:** [GetDiagnosticTraceResponse](models.md#getdiagnostictraceresponse)
@@ -187,4 +218,4 @@ data = result.model_dump(mode="json")
 
 | Name | Type | Default |
 |------|------|---------|
-| `request` | `bedrock_server_manager.api.models.diagnostics.GetDiagnosticTraceRequest` | `REQUIRED` |
+| `request` | `bedrock_server_manager.models.diagnostics.GetDiagnosticTraceRequest` | `REQUIRED` |

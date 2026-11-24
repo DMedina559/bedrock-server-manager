@@ -31,6 +31,11 @@ server internals. Plugins should use the supported capability and event guides.
    :maxdepth: 2
    :caption: Miscellaneous
 
+   data
+   files
+   manifests
+   player
+   service
    misc
 
 Platform Dependent Core Documentation

@@ -16,6 +16,4 @@ Internal contributor reference. Plugins should use supported capabilities.
    process
    runtime
    static
-   task_record
-   tasks
    windows_service

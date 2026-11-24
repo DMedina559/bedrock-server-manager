@@ -1,8 +1,9 @@
 # bedrock_server_manager/api/server.py
 """Provide API functions for managing Bedrock server instances."""
 
+import asyncio
 import logging
-import os
+from contextlib import asynccontextmanager
 from typing import Any, Dict
 
 from pydantic import ValidationError
@@ -21,19 +22,11 @@ from ..error import (
     UserInputError,
 )
 from ..events import trigger_event
+from ..events.operations import OperationName, report_operation_stage, track_operation
 from ..logging import log_operation_error
-from ..plugins.api_bridge import api_method
-from ..plugins.api_contract import validate_contract
-from ..state_revision import revision_clock
-from .models import (
-    RestartServerRequest,
-    RestartServerResponse,
-    StartServerRequest,
-    StartServerResponse,
-    StopServerRequest,
-    StopServerResponse,
-)
-from .models.server import (
+from ..models.logs import WaitForServerLogRequest, WaitForServerLogResponse
+from ..models.process import GetServerProcessRequest, GetServerProcessResponse
+from ..models.server import (
     DeleteServerDataRequest,
     DeleteServerDataResponse,
     GetAllServerSettingsRequest,
@@ -44,6 +37,8 @@ from .models.server import (
     GetServerSummaryResponse,
     GetValidServerNamesRequest,
     GetValidServerNamesResponse,
+    RestartServerRequest,
+    RestartServerResponse,
     SendCommandRequest,
     SendCommandResponse,
     SetServerCustomValueRequest,
@@ -52,14 +47,22 @@ from .models.server import (
     SetServerSettingResponse,
     SetServerStatusRequest,
     SetServerStatusResponse,
+    StartServerRequest,
+    StartServerResponse,
+    StopServerRequest,
+    StopServerResponse,
     UpdateServerPlayerStatsRequest,
     UpdateServerPlayerStatsResponse,
 )
+from ..plugins.api_bridge import api_method
+from ..plugins.scopes import PluginScope
+from ..state.revision import revision_clock
+from ..utils.threads import run_in_thread
 
 logger = logging.getLogger(__name__)
 
 
-@api_method("get_server_setting")
+@api_method("get_server_setting", required_scope=PluginScope.SERVERS_READ)
 async def get_server_setting(
     request: GetServerSettingRequest, *, app_context: AppContext
 ) -> GetServerSettingResponse:
@@ -93,7 +96,7 @@ async def get_server_setting(
         raise
 
 
-@validate_contract
+@api_method("set_server_setting", expose_to_plugins=False)
 @trigger_event(
     before="before_set_server_setting",
     after="after_set_server_setting",
@@ -138,7 +141,7 @@ async def set_server_setting(
         raise
 
 
-@api_method("set_server_custom_value")
+@api_method("set_server_custom_value", required_scope=PluginScope.SERVERS_CONFIGURE)
 async def set_server_custom_value(
     request: SetServerCustomValueRequest, *, app_context: AppContext
 ) -> SetServerCustomValueResponse:
@@ -170,7 +173,7 @@ async def set_server_custom_value(
         raise
 
 
-@api_method("get_all_server_settings")
+@api_method("get_all_server_settings", required_scope=PluginScope.SERVERS_READ)
 async def get_all_server_settings(
     request: GetAllServerSettingsRequest, *, app_context: AppContext
 ) -> GetAllServerSettingsResponse:
@@ -205,7 +208,7 @@ async def get_all_server_settings(
         raise
 
 
-@api_method("get_server_summary")
+@api_method("get_server_summary", required_scope=PluginScope.SERVERS_READ)
 async def get_server_summary(
     request: GetServerSummaryRequest, *, app_context: AppContext
 ) -> GetServerSummaryResponse:
@@ -235,37 +238,45 @@ async def get_server_summary(
         raise
 
 
-@api_method("start_server")
+@api_method("start_server", required_scope=PluginScope.SERVERS_LIFECYCLE)
+@track_operation(OperationName.SERVER_START)
+async def start_server(
+    request: StartServerRequest, *, app_context: AppContext
+) -> StartServerResponse:
+    """Start an offline server under its lock, dispatching hooks only when needed."""
+    server = app_context.get_server(request.server_name)
+    async with server.operation_lock:
+        if await server.is_running(force_scan=True):
+            return StartServerResponse(
+                server_name=request.server_name,
+                outcome="already_running",
+                message=f"Server '{request.server_name}' is already running.",
+            )
+        return await _start_server(request, app_context=app_context)
+
+
 @trigger_event(
     before="before_server_start",
     after="after_server_start",
     identity_keys=("server_name",),
 )
-async def start_server(
+async def _start_server(
     request: StartServerRequest, *, app_context: AppContext
 ) -> StartServerResponse:
     """Start a server, or report that it is already running; failures raise."""
-    server_name = request.server_name
-    server = app_context.get_server(server_name)
-    async with server.operation_lock:
-        if await server.is_running():
-            return StartServerResponse(
-                server_name=server_name,
-                outcome="already_running",
-                message=f"Server '{server_name}' is already running.",
-            )
-
-        await server.start()
-        await app_context.bedrock_process_manager.add_server(server)
-        logger.debug("Start for server '%s' completed.", server_name)
-        return StartServerResponse(
-            server_name=server_name,
-            outcome="started",
-            message=f"Server '{server_name}' process started.",
-        )
+    server = app_context.get_server(request.server_name)
+    report_operation_stage("starting")
+    await server.start()
+    await app_context.bedrock_process_manager.add_server(server)
+    return StartServerResponse(
+        server_name=request.server_name,
+        outcome="started",
+        message=f"Server '{request.server_name}' process started.",
+    )
 
 
-@api_method("stop_server")
+@api_method("stop_server", required_scope=PluginScope.SERVERS_LIFECYCLE)
+@track_operation(OperationName.SERVER_STOP)
 @trigger_event(
     before="before_server_stop",
     after="after_server_stop",
@@ -280,8 +291,9 @@ async def stop_server(
     async with server.operation_lock:
         stopped = False
         try:
-            if not await server.is_running():
+            if not await server.is_running(force_scan=True):
                 await server.set_status_in_config("STOPPED")
+                await app_context.bedrock_process_manager.remove_server(server_name)
                 stopped = True
                 return StopServerResponse(
                     server_name=server_name,
@@ -305,18 +317,22 @@ async def stop_server(
             # A failed stop may leave a live process: retain its PID file.
             if stopped:
                 try:
+                    import aiofiles.ospath
+
                     pid_file_path = server.get_pid_file_path()
-                    if os.path.isfile(pid_file_path):
+                    if await aiofiles.ospath.isfile(pid_file_path):
                         await remove_pid_file_if_exists(pid_file_path)
                 except Exception as cleanup_error:
                     logger.warning(
                         "Error during PID file cleanup for '%s': %s",
                         server_name,
                         cleanup_error,
+                        exc_info=True,
                     )
 
 
-@api_method("restart_server")
+@api_method("restart_server", required_scope=PluginScope.SERVERS_LIFECYCLE)
+@track_operation(OperationName.SERVER_RESTART)
 async def restart_server(
     request: RestartServerRequest, *, app_context: AppContext
 ) -> RestartServerResponse:
@@ -324,7 +340,7 @@ async def restart_server(
     server_name = request.server_name
     server = app_context.get_server(server_name)
     async with server.operation_lock:
-        was_running = await server.is_running()
+        was_running = await server.is_running(force_scan=True)
         if was_running:
             if request.send_message:
                 try:
@@ -351,7 +367,7 @@ async def restart_server(
         )
 
 
-@api_method("send_command")
+@api_method("send_command", required_scope=PluginScope.SERVERS_COMMAND)
 @trigger_event(
     before="before_command_send",
     after="after_command_send",
@@ -403,7 +419,7 @@ async def send_command(
         raise ServerError(f"Unexpected error sending command: {e}") from e
 
 
-@validate_contract
+@api_method("delete_server_data", expose_to_plugins=False)
 @trigger_event(
     before="before_delete_server_data",
     after="after_delete_server_data",
@@ -434,11 +450,11 @@ async def delete_server_data(
             server_name,
             stop_if_running,
         )
-        if not stop_if_running and await server.is_running():
+        if not stop_if_running and await server.is_running(force_scan=True):
             raise ServerRunningError(
                 f"Server '{server_name}' must be stopped before deletion."
             )
-        if stop_if_running and await server.is_running():
+        if stop_if_running and await server.is_running(force_scan=True):
             logger.debug(
                 "Server '%s' is running. Stopping before deletion...", server_name
             )
@@ -494,6 +510,12 @@ async def update_server_player_stats(
     server_name = request.server_name
     player_count = request.player_count
     players = request.model_dump(mode="python")["players"]
+    run = app_context.get_server(server_name).process.run
+    if run is not None:
+        run.players = {item["xuid"]: item["name"] for item in players}
+        run.sessions = {
+            xuid: run.sessions.get(xuid, run.sequence) for xuid in run.players
+        }
     app_context.state.runtime.update_server_runtime(
         server_name, players=players, players_online=player_count
     )
@@ -507,11 +529,165 @@ async def update_server_player_stats(
     )
 
 
-@api_method("get_valid_server_names")
+@api_method("get_valid_server_names", required_scope=PluginScope.SERVERS_READ)
 async def get_valid_server_names(
     request: GetValidServerNamesRequest, *, app_context: AppContext
 ) -> GetValidServerNamesResponse:
     """Return current registered server names without sampling processes."""
     return GetValidServerNamesResponse(
-        server_names=app_context.get_valid_server_names()
+        server_names=await run_in_thread(app_context.get_valid_server_names)
+    )
+
+
+@asynccontextmanager
+async def server_lifecycle_manager(
+    server_name: str,
+    stop_before: bool,
+    start_after: bool = True,
+    restart_on_success_only: bool = False,
+    *,
+    app_context: AppContext,
+):
+    """A context manager to safely stop and restart a server for an operation."""
+    server = app_context.get_server(server_name, require_installation=False)
+    was_running = False
+    operation_succeeded = True
+    operation_cancelled = False
+    original_error: BaseException | None = None
+
+    if not stop_before:
+        logger.debug("Stop/Start not flagged for '%s'. Skipping.", server_name)
+        yield
+        return
+
+    try:
+        if await server.is_running(force_scan=True):
+            logger.debug("Server '%s' is running. Stopping...", server_name)
+            await stop_server(
+                StopServerRequest(server_name=server_name), app_context=app_context
+            )
+            was_running = True
+            logger.debug("Server '%s' stopped.", server_name)
+        else:
+            logger.debug("Server '%s' is not running. No stop needed.", server_name)
+
+        yield
+
+    except asyncio.CancelledError:
+        original_error = asyncio.CancelledError()
+        operation_cancelled = True
+        operation_succeeded = False
+        raise
+    except Exception as error:
+        original_error = error
+        operation_succeeded = False
+        log_operation_error(
+            logger,
+            "Exception occurred during managed operation for '%s'.",
+            server_name,
+            error=error,
+        )
+        raise
+    finally:
+        if was_running and start_after and not operation_cancelled:
+            should_restart = True
+            if restart_on_success_only and not operation_succeeded:
+                should_restart = False
+                logger.warning(
+                    "Operation for '%s' failed. Skipping restart as requested.",
+                    server_name,
+                )
+
+            if should_restart:
+                logger.debug("Restarting server '%s'...", server_name)
+                try:
+                    await start_server(
+                        StartServerRequest(server_name=str(server_name)),
+                        app_context=app_context,
+                    )
+                    logger.debug("Server '%s' restart initiated.", server_name)
+                except Exception as e:
+                    log_operation_error(
+                        logger, "FAILED to restart '%s': %s", server_name, e, error=e
+                    )
+                    if operation_succeeded:
+                        raise
+                    if original_error is not None:
+                        original_error.add_note(
+                            f"Server restart also failed: {type(e).__name__}"
+                        )
+
+
+@api_method("wait_for_server_log", required_scope=PluginScope.SERVERS_LOGS)
+async def wait_for_server_log(
+    request: WaitForServerLogRequest,
+    *,
+    app_context: AppContext,
+    plugin_name: str | None = None,
+) -> WaitForServerLogResponse:
+    """Wait for owned live output, bounded and cancelled with its plugin owner."""
+    from ..error import ServerProcessError
+
+    run = app_context.get_server(request.server_name).process.run
+    if run is None:
+        raise ServerProcessError("Live output requires an owned BDS process.")
+    future = run.watch(
+        request.text,
+        exact=request.exact,
+        after=request.after_sequence,
+        generation=request.generation,
+    )
+    owner = f"plugin:{plugin_name}" if plugin_name else "application"
+    generation = app_context.events.owner_generation(owner)
+    try:
+        app_context.events.track_waiter(owner, future)
+        async with asyncio.timeout(request.timeout):
+            record = await future
+        app_context.events.check_owner(owner, generation)
+        return WaitForServerLogResponse(
+            server_name=request.server_name,
+            generation=record.generation,
+            sequence=record.sequence,
+            line=record.line,
+        )
+    finally:
+        future.cancel()
+        run._waiters.pop(future, None)
+
+
+@api_method("get_server_process", required_scope=PluginScope.SERVERS_INSPECT)
+async def get_server_process(
+    request: GetServerProcessRequest, *, app_context: AppContext
+) -> GetServerProcessResponse:
+    """Return observed process capabilities independently of the server summary."""
+    server = app_context.get_server(request.server_name)
+    await server.is_running()
+    runtime = server._runtime_state.get_server_runtime(request.server_name)
+    return GetServerProcessResponse.model_validate(
+        {
+            "server_name": request.server_name,
+            "process": {
+                "generation": runtime.generation,
+                "running": runtime.running,
+                "phase": runtime.phase,
+                "ready": runtime.ready,
+                "pid": runtime.pid,
+                "owned": runtime.process_owned,
+                "recovered": runtime.recovered_untracked,
+                "command_available": runtime.command_available,
+                "observed_at": runtime.process_observed_at,
+                "output": {
+                    "source": runtime.output_source,
+                    "available": runtime.output_available,
+                    "error": runtime.output_error,
+                    "queued_bytes": runtime.output_queued_bytes,
+                    "dropped_bytes": runtime.output_dropped_bytes,
+                },
+                "bans": {
+                    "available": runtime.ban_enforcement_available,
+                    "error": runtime.ban_error,
+                },
+                "exit": {"code": runtime.exit_code, "reason": runtime.exit_reason},
+            },
+        }
     )

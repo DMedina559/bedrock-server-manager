@@ -1,26 +1,35 @@
-"""Serializable system API request and response contracts."""
+"""Serializable system, health, and metrics API request and response contracts."""
 
-from .common import APIRequest, APIResponse, ServerName, StateRevision, SuccessResponse
+from ...models.system import (
+    FileNamePayload,
+    GetApplicationHealthRequest,
+    GetApplicationHealthResponse,
+    GetApplicationMetricsRequest,
+    GetApplicationMetricsResponse,
+    GetBedrockProcessInfoRequest,
+    GetBedrockProcessInfoResponse,
+    GetServerRunningStatusRequest,
+    GetServerRunningStatusResponse,
+    HealthCheck,
+    MetricsSample,
+    MetricsSnapshot,
+    ProcessInfo,
+    ServerMetrics,
+)
 
-
-class ProcessInfo(APIResponse):
-    pid: int
-    cpu_percent: float
-    memory_mb: float
-    uptime: str
-
-
-class GetServerRunningStatusRequest(APIRequest):
-    server_name: ServerName
-
-
-class GetServerRunningStatusResponse(SuccessResponse, StateRevision):
-    is_running: bool
-
-
-class GetBedrockProcessInfoRequest(APIRequest):
-    server_name: ServerName
-
-
-class GetBedrockProcessInfoResponse(SuccessResponse, StateRevision):
-    process_info: ProcessInfo | None
+__all__ = [
+    "FileNamePayload",
+    "ProcessInfo",
+    "GetServerRunningStatusRequest",
+    "GetServerRunningStatusResponse",
+    "GetBedrockProcessInfoRequest",
+    "GetBedrockProcessInfoResponse",
+    "GetApplicationHealthRequest",
+    "HealthCheck",
+    "GetApplicationHealthResponse",
+    "MetricsSample",
+    "MetricsSnapshot",
+    "ServerMetrics",
+    "GetApplicationMetricsRequest",
+    "GetApplicationMetricsResponse",
+]

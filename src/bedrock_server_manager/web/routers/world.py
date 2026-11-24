@@ -3,15 +3,8 @@ import os
 
 import aiofiles.ospath
 import bsm_frontend
-from fastapi import APIRouter, Depends, HTTPException, status
+from fastapi import APIRouter, Depends, HTTPException, Security, status
 from fastapi.responses import FileResponse
-
-from bedrock_server_manager.api.models import (
-    ExportWorldRequest,
-    ImportWorldRequest,
-    ListAvailableWorldsRequest,
-    ResetWorldRequest,
-)
 
 from ...api import application as app_api
 from ...api import world as world_api
@@ -20,14 +13,20 @@ from ...error import (
     AppFileNotFoundError,
 )
 from ...logging import log_operation_error
-from ..deps import (
-    get_admin_user,
-    get_app_context,
-    get_moderator_user,
-    validate_server_exists,
+from ...models import (
+    ExportWorldRequest,
+    FileNamePayload,
+    ImportWorldRequest,
+    ListAvailableWorldsRequest,
+    ListAvailableWorldsResponse,
+    ResetWorldRequest,
+    TaskAcceptedResponse,
 )
-from ..schemas import ContentListResponse, FileNamePayload, UserResponse
-from ..schemas.base import TaskAcceptedResponse
+from ..access_policy import Permission
+from ..deps import get_app_context, validate_server_exists
+from ..deps.auth import require_permissions
+from ..schemas import UserResponse
+from .content import resolve_content_file
 
 logger = logging.getLogger(__name__)
 
@@ -39,12 +38,14 @@ STATIC_DIR = bsm_frontend.get_static_dir()
 @router.get(
     "/api/content/worlds",
     operation_id="list_available_worlds",
-    response_model=ContentListResponse,
+    response_model=ListAvailableWorldsResponse,
 )
 async def get_worlds_list(
-    current_user: UserResponse = Depends(get_moderator_user),
+    current_user: UserResponse = Security(
+        require_permissions, scopes=[Permission.CONTENT_READ]
+    ),
     app_context: AppContext = Depends(get_app_context),
-) -> ContentListResponse:
+) -> ListAvailableWorldsResponse:
     """Return a list of available .mcworld template files."""
     identity = current_user.username
     logger.debug("List available worlds request by user '%s'.", identity)
@@ -53,7 +54,7 @@ async def get_worlds_list(
     )
     full_paths = api_result.files
     basenames = [os.path.basename(p) for p in full_paths]
-    return ContentListResponse(
+    return ListAvailableWorldsResponse(
         status="success", files=basenames, message=api_result.message
     )
 
@@ -66,8 +67,10 @@ async def get_worlds_list(
 )
 async def post_world_install(
     payload: FileNamePayload,
+    current_user: UserResponse = Security(
+        require_permissions, scopes=[Permission.WORLDS_MANAGE]
+    ),
     server_name: str = Depends(validate_server_exists),
-    current_user: UserResponse = Depends(get_admin_user),
     app_context: AppContext = Depends(get_app_context),
 ) -> TaskAcceptedResponse:
     """
@@ -81,43 +84,10 @@ async def post_world_install(
         server_name,
         identity,
     )
-    from ...utils.server import validate_server
 
-    if not await validate_server(server_name=server_name, app_context=app_context):
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND,
-            detail=f"Server '{server_name}' not found.",
-        )
-
-    content_base_dir = os.path.join(app_context.settings.get("paths.content"), "worlds")
-    full_world_file_path = os.path.normpath(
-        os.path.join(content_base_dir, selected_filename)
+    full_world_file_path = str(
+        await resolve_content_file(app_context, "worlds", selected_filename)
     )
-
-    if not os.path.abspath(full_world_file_path).startswith(
-        os.path.abspath(content_base_dir) + os.sep
-    ):
-        logger.error(
-            "API Install World '%s': Security violation - Invalid path '%s'.",
-            server_name,
-            selected_filename,
-        )
-        raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
-            detail="Invalid file path (security check failed).",
-        )
-
-    if not await aiofiles.ospath.isfile(full_world_file_path):
-        logger.warning(
-            "API Install World '%s': World file '%s' not found at '%s'.",
-            server_name,
-            selected_filename,
-            full_world_file_path,
-        )
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND,
-            detail=f"World file '{selected_filename}' not found for import.",
-        )
 
     task_id = await app_context.task_manager.run_task(
         world_api.import_world,
@@ -142,8 +112,10 @@ async def post_world_install(
     status_code=status.HTTP_202_ACCEPTED,
 )
 async def post_world_export(
+    current_user: UserResponse = Security(
+        require_permissions, scopes=[Permission.WORLDS_MANAGE]
+    ),
     server_name: str = Depends(validate_server_exists),
-    current_user: UserResponse = Depends(get_admin_user),
     app_context: AppContext = Depends(get_app_context),
 ) -> TaskAcceptedResponse:
     """
@@ -151,13 +123,6 @@ async def post_world_export(
     """
     identity = current_user.username
     logger.info("World export requested for '%s' by user '%s'.", server_name, identity)
-    from ...utils.server import validate_server
-
-    if not await validate_server(server_name=server_name, app_context=app_context):
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND,
-            detail=f"Server '{server_name}' not found.",
-        )
 
     task_id = await app_context.task_manager.run_task(
         world_api.export_world,
@@ -180,8 +145,10 @@ async def post_world_export(
     status_code=status.HTTP_202_ACCEPTED,
 )
 async def delete_world_reset(
+    current_user: UserResponse = Security(
+        require_permissions, scopes=[Permission.WORLDS_RESET]
+    ),
     server_name: str = Depends(validate_server_exists),
-    current_user: UserResponse = Depends(get_admin_user),
     app_context: AppContext = Depends(get_app_context),
 ) -> TaskAcceptedResponse:
     """
@@ -189,13 +156,6 @@ async def delete_world_reset(
     """
     identity = current_user.username
     logger.info("World reset requested for '%s' by user '%s'.", server_name, identity)
-    from ...utils.server import validate_server
-
-    if not await validate_server(server_name=server_name, app_context=app_context):
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND,
-            detail=f"Server '{server_name}' not found.",
-        )
 
     task_id = await app_context.task_manager.run_task(
         world_api.reset_world,
@@ -214,19 +174,29 @@ async def delete_world_reset(
 @router.get(
     "/api/server/{server_name}/world/icon",
     operation_id="get_world_icon",
+    responses={
+        200: {
+            "content": {
+                media: {"schema": {"type": "string", "format": "binary"}}
+                for media in ("image/png", "image/jpeg", "image/vnd.microsoft.icon")
+            }
+        }
+    },
     response_class=FileResponse,
 )
 async def get_world_icon(
+    current_user: UserResponse = Security(
+        require_permissions, scopes=[Permission.WORLDS_READ]
+    ),
     server_name: str = Depends(validate_server_exists),
     app_context: AppContext = Depends(get_app_context),
 ):
     """Serves the ``world_icon.jpeg`` for a server, or a default icon if not found."""
     logger.debug("Request to serve world icon for server '%s'.", server_name)
+
     try:
         server = app_context.get_server(server_name)
         icon_path = await server.worlds.get_world_icon_filesystem_path()
-
-        import aiofiles.ospath
 
         if (
             await server.worlds.has_world_icon()
@@ -234,7 +204,11 @@ async def get_world_icon(
             and await aiofiles.ospath.isfile(icon_path)
         ):
             logger.debug("Serving world icon from path: %s", icon_path)
-            return FileResponse(icon_path, media_type="image/jpeg")
+            return FileResponse(
+                icon_path,
+                media_type="image/jpeg",
+                headers={"Cache-Control": "private, no-store"},
+            )
         else:
 
             logger.debug(
@@ -248,9 +222,13 @@ async def get_world_icon(
         default_icon_path = os.path.join(
             STATIC_DIR, "image", "icon", "web-app-manifest-192x192.png"
         )
-        if os.path.isfile(default_icon_path):
+        if await aiofiles.ospath.isfile(default_icon_path):
             logger.debug("Serving default world icon from: %s", default_icon_path)
-            return FileResponse(default_icon_path, media_type="image/png")
+            return FileResponse(
+                default_icon_path,
+                media_type="image/png",
+                headers={"Cache-Control": "private, no-store"},
+            )
         else:
             log_operation_error(
                 logger,

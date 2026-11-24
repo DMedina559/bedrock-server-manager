@@ -43,3 +43,22 @@ for name, phase, model in (
         ),
         model,
     )
+
+
+class ServerRuntimeChange(EventModel):
+    server_name: str
+    generation: str
+    phase: str
+    ready: bool
+    running: bool
+    exit_code: int | None = None
+    reason: str
+
+
+for name in ("after_server_runtime_change", "after_server_ready"):
+    builtin_events.register(
+        EventDefinition(
+            name=name, phase="after", identity_keys=("server_name", "generation")
+        ),
+        ServerRuntimeChange,
+    )

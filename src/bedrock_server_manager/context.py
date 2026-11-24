@@ -21,18 +21,18 @@ if TYPE_CHECKING:
     from .db.storage import Storage
     from .diagnostics.service import Diagnostics
     from .events import EventBus
+    from .events.operations import OperationService
     from .plugins.api_bridge import AppAPI
     from .plugins.plugin_manager import PluginManager
-    from .services.metrics_service import MetricsService
+    from .services.metrics_service import MetricsService, ResourceMonitor
     from .services.plugin_service import PluginService
     from .services.server_service import ServerService
     from .services.settings_service import SettingsService
+    from .services.task_service import TaskManager
     from .services.user_service import UserService
     from .state.app_state import AppState
     from .web.log_streamer import LogStreamer
-    from .web.resource_monitor import ResourceMonitor
     from .web.runtime import WebRuntime
-    from .web.tasks import TaskManager
     from .web.websocket_manager import ConnectionManager
 
 
@@ -65,6 +65,9 @@ class AppContext:
         self._plugin_manager: Optional["PluginManager"] = None
         self._task_manager: Optional["TaskManager"] = None
         self._connection_manager: Optional["ConnectionManager"] = None
+        from .scheduler.service import Scheduler
+
+        self.scheduler = Scheduler(self)
         self._metrics_service: Optional["MetricsService"] = None
         self._resource_monitor: Optional["ResourceMonitor"] = None
         self._log_streamer: Optional["LogStreamer"] = None
@@ -90,6 +93,9 @@ class AppContext:
         self._server_service: Optional["ServerService"] = None
         self._plugin_service: Optional["PluginService"] = None
         self._user_service: Optional["UserService"] = None
+        self._access_service = None
+        self._session_service = None
+        self._trusted_device_service = None
 
     async def load(self):
         """Load the application context by initializing the settings, AppState, and
@@ -108,6 +114,15 @@ class AppContext:
             raise RuntimeError("Cannot reload context while its runtime is active.")
         if any(not task.done() for task in self._lifecycle_tasks):
             raise RuntimeError("Cannot reload while lifecycle work is still running.")
+        if self._events is not None and self._events.has_pending_work:
+            raise RuntimeError("Cannot reload while event work is still running.")
+        if (
+            self._plugin_manager is not None
+            and self._plugin_manager.has_pending_lifespans
+        ):
+            raise RuntimeError(
+                "Cannot reload while plugin router work is still running."
+            )
         if self._diagnostics is not None and self._diagnostics.has_pending_providers:
             raise RuntimeError(
                 "Cannot reload while diagnostic providers are still running."
@@ -140,13 +155,14 @@ class AppContext:
         self._server_service = None
         self._plugin_service = None
         self._user_service = None
+        self._access_service = None
+        self._session_service = None
+        self._trusted_device_service = None
         legacy_web = self.pre_app_config.get("web")
         if isinstance(legacy_web, dict) and "cors_origins" in legacy_web:
-            from .config.settings import migrate_bootstrap_cors
+            from .services.settings_service import migrate_bootstrap_cors
 
             await migrate_bootstrap_cors(self._storage, legacy_web["cors_origins"])
-        await self._storage.load_state(self._state)
-
         if self._settings is not None:
             self._settings.app_context = self
         else:
@@ -157,6 +173,10 @@ class AppContext:
             )
         await self._settings.load()
 
+        from .services.jwt_credentials import signing_key
+
+        await signing_key(self._settings, create=False)
+
         from .diagnostics.composition import configure_diagnostics
 
         if self._diagnostics is not None:
@@ -164,9 +184,9 @@ class AppContext:
         self._diagnostics = configure_diagnostics(self)
         self._storage.diagnostics = self._diagnostics
 
-        from .utils import get_utils
+        from .config.splash_text import get_splash_text
 
-        self.splash_txt = get_utils._get_splash_text()
+        self.splash_txt = get_splash_text()
 
     async def reload(self):
         """
@@ -179,9 +199,6 @@ class AppContext:
         self._db_url = None
         self._log_level = None
         self._log_dir = None
-
-        if self._storage and self._state:
-            await self._storage.load_state(self._state)
 
         await self.settings.reload()
 
@@ -235,7 +252,22 @@ class AppContext:
             if not os.environ.get(GUARD_VARIABLE):
                 await self.events.emit("on_manager_startup", public=False)
 
+        async def recover_backups() -> None:
+            for name in self.state.servers.servers:
+                try:
+                    await self.get_server(
+                        name, require_installation=False
+                    ).backups.recover_pending_restore()
+                except Exception:
+                    getLogger(__name__).warning(
+                        "Restore recovery for '%s' requires attention; the server remains blocked from starting.",
+                        name,
+                        exc_info=True,
+                    )
+
         steps = (
+            ("authentication retention", lambda: self.session_service.start()),
+            ("backup recovery", recover_backups),
             ("plugins", lambda: self.plugin_manager.load_plugins()),
             ("servers", lambda: self.bedrock_process_manager.start()),
             (
@@ -244,6 +276,7 @@ class AppContext:
             ),
             ("resources", lambda: self.resource_monitor.start()),
             ("metrics", lambda: self.metrics_service.start()),
+            ("scheduler", lambda: self.scheduler.start()),
             ("metrics readiness", lambda: self.metrics_service.snapshot()),
             (
                 "startup hooks",
@@ -264,6 +297,7 @@ class AppContext:
                     diagnostics=self._diagnostics,
                 )
             self.lifecycle_phase = LifecyclePhase.READY
+            self.scheduler._wake.set()
             getLogger(__name__).info("Application runtime ready.")
         except BaseException as error:
             self._startup_failed = True
@@ -291,6 +325,17 @@ class AppContext:
             if startup.done() and not startup.cancelled():
                 startup.exception()
         task = self._shutdown_task
+        if (
+            task is not None
+            and task.done()
+            and not task.cancelled()
+            and task.exception() is not None
+            and self._db is not None
+            and self._db.engine is not None
+        ):
+            if any(not pending.done() for pending in self._lifecycle_tasks):
+                task.result()
+            task = None
         if task is asyncio.current_task():
             raise RuntimeError(
                 "Application cleanup cannot recursively shut down itself."
@@ -336,11 +381,19 @@ class AppContext:
                     else RuntimeError(f"{name} cancelled")
                 )
                 errors.append(failure)
+                if any(not task.done() for task in self._lifecycle_tasks):
+                    self.lifecycle_phase = LifecyclePhase.FAILED
+                    getLogger(__name__).error(
+                        "Shutdown paused while lifecycle work drains; dependencies remain available."
+                    )
+                    raise ExceptionGroup("Application shutdown failed", errors)
 
         if self._task_manager is not None:
             self._task_manager.begin_shutdown()
         # Observers release process and websocket dependencies before teardown.
         for name, component in (
+            ("authentication retention", self._session_service),
+            ("scheduler", self.scheduler),
             ("metrics", self._metrics_service),
             ("resources", self._resource_monitor),
             ("logs", self._log_streamer),
@@ -370,13 +423,37 @@ class AppContext:
             started is None or "plugins" in started
         ):
             await stop("unload plugins", self._plugin_manager.shutdown)
+            if self._plugin_manager.has_pending_lifespans:
+                self.lifecycle_phase = LifecyclePhase.FAILED
+                errors.append(
+                    RuntimeError("Plugin router lifespans are still draining.")
+                )
+                raise ExceptionGroup("Application shutdown failed", errors)
+        for server in list(self._servers.values()):
+            await stop(f"drain process {server.server_name}", server.process.drain)
+        if any(server.process.has_pending_work for server in self._servers.values()):
+            self.lifecycle_phase = LifecyclePhase.FAILED
+            raise ExceptionGroup(
+                "Application shutdown paused; process workers remain active",
+                errors or [RuntimeError("Process workers are still draining.")],
+            )
+        if getattr(self, "_player_identity_writer", None) is not None:
+            await stop("flush player identities", self._player_identity_writer.shutdown)
         if self._events is not None:
             await stop("drain events", self._events.close)
+            if self._events.has_pending_work:
+                self.lifecycle_phase = LifecyclePhase.FAILED
+                errors.append(RuntimeError("Event workers are still draining."))
+                raise ExceptionGroup("Application shutdown failed", errors)
         if self._connection_manager is not None:
             await stop("close websockets", self._connection_manager.shutdown)
         await stop("flush state", self.flush)
         if self._diagnostics is not None:
-            await self._diagnostics.close()
+            await stop("close diagnostics", self._diagnostics.close)
+            if self._diagnostics.has_pending_providers:
+                self.lifecycle_phase = LifecyclePhase.FAILED
+                errors.append(RuntimeError("Diagnostic providers are still draining."))
+                raise ExceptionGroup("Application shutdown failed", errors)
         if self._db is not None:
             await stop("close database", self._db.shutdown)
         self.lifecycle_phase = (
@@ -588,6 +665,11 @@ class AppContext:
         return self._settings
 
     @property
+    def operations(self) -> "OperationService":
+        """Application-owned live operation sequences."""
+        return self.events.operations
+
+    @property
     def events(self) -> EventBus:
         """Application-owned events remain available without plugins or HTTP."""
         if self._events is None:
@@ -596,7 +678,7 @@ class AppContext:
             options = (
                 self.settings.get("events", {}) if self._settings is not None else {}
             )
-            from .state_revision import revision_clock
+            from .state.revision import revision_clock
 
             self._events = EventBus(
                 EventOptions.model_validate(options),
@@ -605,6 +687,11 @@ class AppContext:
             if self._diagnostics is not None:
                 self._events.diagnostic_recorder = self._diagnostics.record_event
         return self._events
+
+    def _cleanup_plugin_capabilities(self, owner: str) -> None:
+        key = owner if owner.startswith("plugin:") else f"plugin:{owner}"
+        self.diagnostics.remove_owner(key)
+        self.scheduler.tasks.remove_owner(key)
 
     @property
     def plugin_manager(self) -> "PluginManager":
@@ -622,18 +709,20 @@ class AppContext:
                 events=self.events,
                 api_factory=lambda name: create_app_api(name, self),
                 settings_models=self.plugin_service.settings_models,
+                global_settings_models=self.plugin_service.global_settings_models,
+                server_settings_models=self.plugin_service.server_settings_models,
                 task_manager_provider=lambda: self._task_manager,
-                connection_manager_provider=lambda: self._connection_manager,
-                diagnostic_cleanup=lambda owner: self.diagnostics.remove_owner(
-                    f"plugin:{owner}"
-                ),
+                connection_manager_provider=lambda: self.connection_manager,
+                scheduler_provider=lambda: self.scheduler,
+                diagnostics_provider=lambda: self.diagnostics,
+                diagnostic_cleanup=self._cleanup_plugin_capabilities,
                 diagnostic_failure=(
                     self._diagnostics.record_plugin_failure
                     if self._diagnostics
                     else None
                 ),
                 diagnostic_pending=lambda owner: self.diagnostics.owner_pending(
-                    f"plugin:{owner}"
+                    owner if owner.startswith("plugin:") else f"plugin:{owner}"
                 ),
             )
         return self._plugin_manager
@@ -644,7 +733,7 @@ class AppContext:
         Lazily loads and returns the TaskManager instance.
         """
         if self._task_manager is None:
-            from .web.tasks import TaskManager
+            from .services.task_service import TaskManager
 
             self._task_manager = TaskManager(
                 connection_manager=self.connection_manager,
@@ -662,6 +751,10 @@ class AppContext:
 
             self._connection_manager = ConnectionManager(
                 user_provider=self.state.users.get,
+                authorization_resolver=self.access_service.snapshot,
+                topic_authorizer=self.access_service.topic_allowed,
+                message_filter=self.access_service.filter_message,
+                policy_revision_provider=lambda: self.plugin_manager.access_policy.revision,
                 outbound_queue_limit=self.settings.get("web.outbound_queue_limit", 64),
                 record_failure=(
                     self._diagnostics.record_transport_failure
@@ -688,7 +781,7 @@ class AppContext:
         Lazily loads and returns the ResourceMonitor instance.
         """
         if self._resource_monitor is None:
-            from .web.resource_monitor import ResourceMonitor
+            from .services.metrics_service import ResourceMonitor
 
             self._resource_monitor = ResourceMonitor(
                 connection_manager=self.connection_manager,
@@ -738,7 +831,9 @@ class AppContext:
         if self._server_service is None:
             from .services.server_service import ServerService
 
-            self._server_service = ServerService(state=self.state, storage=self.storage)
+            self._server_service = ServerService(
+                state=self.state, storage=self.storage, ban_changed=self._ban_changed
+            )
         return self._server_service
 
     @property
@@ -751,6 +846,31 @@ class AppContext:
         return self._plugin_service
 
     @property
+    def trusted_device_service(self):
+        if self._trusted_device_service is None:
+            from .services.trusted_device_service import TrustedDeviceService
+
+            self._trusted_device_service = TrustedDeviceService(self)
+        return self._trusted_device_service
+
+    @property
+    def session_service(self):
+        if self._session_service is None:
+            from .services.session_service import SessionService
+
+            self._session_service = SessionService(self)
+        return self._session_service
+
+    @property
+    def access_service(self):
+        """Persisted credential and server authorization service."""
+        if self._access_service is None:
+            from .services.access_service import AccessService
+
+            self._access_service = AccessService(self)
+        return self._access_service
+
+    @property
     def user_service(self) -> "UserService":
         """Return the UserService instance."""
         if self._user_service is None:
@@ -760,21 +880,24 @@ class AppContext:
                 state=self.state,
                 storage=self.storage,
                 revoke_connections=self._revoke_user_connections,
+                credentials_changed=self.session_service.close_revoked,
+                security_event=self.session_service.publish,
             )
         return self._user_service
 
     async def _revoke_user_connections(self, username: str) -> None:
+        record = self.state.users.get(username)
+        if record is not None and not record.is_active:
+            await self.session_service.revoke_owner(username, "account_disabled")
+        await self.access_service.notify(username)
         if self._connection_manager is not None:
             await self._connection_manager.revoke_user(username)
 
     async def _stop_monitored_server(self, server_name: str) -> None:
         await self.api.server.stop({"server_name": server_name})
 
-    async def _get_monitored_bans(self, server_name: str):
-        from .state.models import BanItem
-
-        response = await self.api.ban.get_server_bans({"server_name": server_name})
-        return [BanItem.model_validate(item.model_dump()) for item in response.bans]
+    async def _start_monitored_server(self, server_name: str) -> None:
+        await self.api.server.start({"server_name": server_name})
 
     @property
     def bedrock_process_manager(self) -> "BedrockProcessManager":
@@ -786,11 +909,13 @@ class AppContext:
 
             self._bedrock_process_manager = BedrockProcessManager(
                 settings=self.settings,
-                storage=self.storage,
-                server_provider=self.get_server,
-                events=self.events,
+                server_provider=lambda name: self.get_server(
+                    name, require_installation=False
+                ),
+                registered_servers=lambda: list(self.state.servers.servers),
+                runtime=self.state.runtime,
                 stop_server=self._stop_monitored_server,
-                get_bans=self._get_monitored_bans,
+                start_server=self._start_monitored_server,
                 record_failure=(
                     self._diagnostics.record_monitor_failure
                     if self._diagnostics is not None
@@ -840,9 +965,24 @@ class AppContext:
 
     def get_valid_server_names(self) -> list[str]:
         """Registered installations with an executable and server.properties."""
-        from .server_validation import valid_server_names
+        from .utils.server import valid_server_names
 
         return valid_server_names(self.state)
+
+    @property
+    def player_identity_writer(self):
+        from .core.server.runtime import PlayerIdentityWriter
+
+        writer = getattr(self, "_player_identity_writer", None)
+        if writer is None:
+            writer = PlayerIdentityWriter(self.storage)
+            self._player_identity_writer = writer
+        return writer
+
+    def _ban_changed(self, server_name: str) -> None:
+        server = self._servers.get(server_name)
+        if server is not None and server.process.run is not None:
+            server.process.run.invalidate_bans()
 
     def prepare_server(self, server_name: str) -> "BedrockServer":
         """
@@ -857,9 +997,11 @@ class AppContext:
             self._servers[server_name] = BedrockServer(
                 server_name=server_name,
                 events=self.events,
+                operations=self.operations,
                 settings=self.settings,
                 state=self._state,
                 storage=self._storage,
+                identity_writer=self.player_identity_writer,
             )
         return self._servers[server_name]
 

@@ -1,10 +1,11 @@
 import logging
 import os
-from typing import TYPE_CHECKING, Any, Callable, Dict, List
+from typing import TYPE_CHECKING, Callable, Dict, List
 
 if TYPE_CHECKING:
     from ..db.storage import Storage
     from .bedrock_server import BedrockServer
+
 from ..error import (
     AppFileNotFoundError,
     FileOperationError,
@@ -12,7 +13,7 @@ from ..error import (
 )
 from ..failures import classify_failure
 from ..logging import log_operation_error
-from ..results import PlayerScanDetails, PlayerScanError
+from ..models.common import PlayerScanDetails, PlayerScanError
 
 logger = logging.getLogger(__name__)
 
@@ -37,18 +38,6 @@ def parse_player_string(player_string: str) -> List[Dict[str, str]]:
     return player_list
 
 
-async def save_player_data(storage: Any, players_data: List[Dict[str, str]]) -> int:
-    """Save or updates player data in the database asynchronously via Storage."""
-    res = await storage.save_players(players_data)
-    return int(res)
-
-
-async def get_known_players(storage: Any) -> List[Dict[str, str]]:
-    """Return all known players from the database asynchronously via Storage."""
-    res = await storage.get_all_players()
-    return list(res)
-
-
 async def discover_and_store_players(  # noqa: C901
     base_dir: str,
     *,
@@ -69,7 +58,7 @@ async def discover_and_store_players(  # noqa: C901
         "Starting discovery of players from all server logs in '%s'.", base_dir
     )
 
-    for server_name_candidate in os.listdir(base_dir):
+    for server_name_candidate in await aiofiles.os.listdir(base_dir):
         potential_server_path = os.path.join(base_dir, server_name_candidate)
         if not await aiofiles.ospath.isdir(potential_server_path):
             continue
@@ -126,7 +115,7 @@ async def discover_and_store_players(  # noqa: C901
         unique_players_to_save_map = {p["xuid"]: p for p in all_discovered_from_logs}
         unique_players_to_save_list = list(unique_players_to_save_map.values())
         try:
-            saved_count = await save_player_data(storage, unique_players_to_save_list)
+            saved_count = int(await storage.save_players(unique_players_to_save_list))
         except (FileOperationError, Exception) as e_save:
             log_operation_error(
                 logger,

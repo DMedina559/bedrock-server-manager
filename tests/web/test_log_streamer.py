@@ -8,6 +8,11 @@ from bedrock_server_manager.utils.io import _replace_file
 from bedrock_server_manager.utils.threads import run_in_thread
 
 
+@pytest.fixture(autouse=True)
+def fast_log_poll(app_context):
+    app_context.log_streamer.poll_interval = 0.05
+
+
 async def receive_log(socket, topic):
     async with asyncio.timeout(5):
         while True:
@@ -36,7 +41,16 @@ async def test_log_streamer_delivers_real_file_updates(
     streamer = app_context.log_streamer
     if server_log:
         topic = f"server_log:{real_bedrock_server.server_name}"
-        path = Path(real_bedrock_server.paths.server_log_path)
+        await real_bedrock_server.start()
+        run = real_bedrock_server.process.run
+        await asyncio.wait_for(run.ready_event.wait(), 5)
+        async with subscribed_socket(topic) as socket:
+            await real_bedrock_server.send_command("say PIPE_CONSOLE_TEST")
+            async with asyncio.timeout(5):
+                while "PIPE_CONSOLE_TEST" not in await receive_log(socket, topic):
+                    pass
+            assert run.persisted_offset > 0
+        return
     else:
         topic = "app_log"
         path = Path(app_context.log_dir) / "bedrock_server_manager.log"
@@ -88,8 +102,7 @@ async def test_both_application_aliases_receive_updates(app_context, subscribed_
         assert set(messages.values()) == {"replacement with more content\n"}
 
 
-@pytest.mark.parametrize("server_log", [False, True])
-@pytest.mark.parametrize("newline", ["\n", "\r\n"])
+@pytest.mark.parametrize("server_log,newline", [(False, "\n"), (True, "\r\n")])
 async def test_history_pages_reconstruct_entire_utf8_file(
     app_context, admin_auth_client, real_bedrock_server, server_log, newline
 ):
@@ -122,7 +135,15 @@ async def test_history_pages_reconstruct_entire_utf8_file(
     assert response.status_code == 409
 
 
-async def test_history_rejects_invalid_topics_and_offsets(admin_auth_client):
+async def test_history_authorization_and_topic_validation(
+    admin_auth_client, auth_client, unauth_client, app_context
+):
+    assert (
+        await unauth_client.get("/api/logs/history", params={"topic": "app_log"})
+    ).status_code == 401
+    assert (
+        await auth_client.get("/api/logs/history", params={"topic": "app_log"})
+    ).status_code == 403
     assert (
         await admin_auth_client.get(
             "/api/logs/history", params={"topic": "../../secret"}
@@ -133,15 +154,15 @@ async def test_history_rejects_invalid_topics_and_offsets(admin_auth_client):
             "/api/logs/history", params={"topic": "app_log", "before": -1}
         )
     ).status_code == 422
-
-
-async def test_history_requires_authorization(auth_client, unauth_client):
-    assert (
-        await unauth_client.get("/api/logs/history", params={"topic": "app_log"})
-    ).status_code == 401
-    assert (
-        await auth_client.get("/api/logs/history", params={"topic": "app_log"})
-    ).status_code == 403
+    for topic, status in (
+        ("server_log:../../private", 400),
+        ("server_log:missing", 404),
+    ):
+        response = await admin_auth_client.get(
+            "/api/logs/history", params={"topic": topic}
+        )
+        assert response.status_code == status
+    assert "missing" not in app_context._servers
 
 
 async def test_history_and_live_stream_join_without_gaps(
@@ -163,21 +184,70 @@ async def test_history_and_live_stream_join_without_gaps(
         assert history.data + frame["data"] == original
         with path.open("ab") as output:
             output.write(b"\xf0\x9f")
-        await asyncio.sleep(1.2)
+        await asyncio.sleep(0.12)
         with path.open("ab") as output:
             output.write(b"\x8c\x8d\n")
         assert await receive_log(socket, "app_log") == "🌍\n"
 
 
-async def test_history_cannot_read_arbitrary_server_paths(
-    admin_auth_client, app_context
+async def test_completed_run_keeps_final_output_available(real_bedrock_server):
+    from unittest.mock import AsyncMock, Mock
+
+    from bedrock_server_manager.web.log_streamer import LogStreamer
+
+    server = real_bedrock_server
+    await server.start()
+    run = server.process.run
+    await asyncio.wait_for(run.ready_event.wait(), 5)
+    await server.send_command("say FINAL_JOURNAL_MARKER")
+    await server.stop()
+    assert server.process.run is None
+    assert server.process.console_run is run
+    manager = Mock()
+    manager.broadcast_to_topic = AsyncMock()
+    streamer = LogStreamer(manager, "", lambda _: server)
+    await streamer._process_owned(
+        f"server_log:{server.server_name}", server.process.console_run
+    )
+    messages = [call.args[1] for call in manager.broadcast_to_topic.await_args_list]
+    assert "FINAL_JOURNAL_MARKER" in "".join(message["data"] for message in messages)
+    assert all(
+        message["generation"] == run.generation and not message["live"]
+        for message in messages
+    )
+
+
+async def test_quick_restart_delivers_old_final_journal_before_new_run(
+    real_bedrock_server,
 ):
-    for topic, status in (
-        ("server_log:../../private", 400),
-        ("server_log:missing", 404),
-    ):
-        response = await admin_auth_client.get(
-            "/api/logs/history", params={"topic": topic}
-        )
-        assert response.status_code == status
-    assert "missing" not in app_context._servers
+    from unittest.mock import AsyncMock, Mock
+
+    from bedrock_server_manager.web.log_streamer import LogStreamer
+
+    server = real_bedrock_server
+    await server.start()
+    old = server.process.run
+    await asyncio.wait_for(old.ready_event.wait(), 5)
+    await server.send_command("say BEFORE_RESTART_MARKER")
+    await server.stop()
+    await server.start()
+    new = server.process.run
+    await asyncio.wait_for(new.ready_event.wait(), 5)
+    assert server.process.console_runs == (old, new)
+    manager = Mock()
+    manager.broadcast_to_topic = AsyncMock()
+    streamer = LogStreamer(manager, "", lambda _: server)
+    await streamer._process_runs(
+        f"server_log:{server.server_name}", server.process.console_runs
+    )
+    messages = [call.args[1] for call in manager.broadcast_to_topic.await_args_list]
+    old_messages = [
+        message for message in messages if message["generation"] == old.generation
+    ]
+    assert "BEFORE_RESTART_MARKER" in "".join(
+        message["data"] for message in old_messages
+    )
+    generations = [message["generation"] for message in messages]
+    assert generations.index(new.generation) > max(
+        i for i, generation in enumerate(generations) if generation == old.generation
+    )

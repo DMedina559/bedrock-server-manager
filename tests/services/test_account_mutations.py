@@ -163,3 +163,58 @@ async def test_revocation_failure_preserves_committed_account_result(
     async with app_context.storage.transaction() as session:
         user = await app_context.storage.user_repo.get_user_by_id(session, user_id)
         assert not user.is_active
+
+
+async def test_change_password_off_transaction_and_concurrency(
+    app_context, monkeypatch
+):
+    from sqlalchemy import update
+
+    import bedrock_server_manager.web.auth as web_auth
+    from bedrock_server_manager.db.models import User
+    from bedrock_server_manager.web.auth import get_password_hash
+
+    plain_old = "correct horse battery staple 1"
+    plain_new = "correct horse battery staple 2"
+    initial_hash = get_password_hash(plain_old)
+
+    async with app_context.storage.transaction() as session:
+        user = await app_context.storage.user_repo.create_user(
+            session, "concurrency_user", initial_hash, "user"
+        )
+        await session.flush()
+        user_id = user.id
+
+    original_hash_async = web_auth.get_password_hash_async
+    hashing_called_outside_tx = False
+
+    async def monitored_hash(pwd):
+        nonlocal hashing_called_outside_tx
+        assert not app_context.storage.write_lock.locked()
+        hashing_called_outside_tx = True
+        return await original_hash_async(pwd)
+
+    monkeypatch.setattr(web_auth, "get_password_hash_async", monitored_hash)
+
+    success = await app_context.user_service.change_password(
+        "concurrency_user", plain_old, plain_new
+    )
+    assert success is True
+    assert hashing_called_outside_tx is True
+
+    # Concurrent collision test: if auth_revision changed during hashing, update fails safely
+    async def conflicting_hash(pwd):
+        async with app_context.storage.transaction() as session:
+            await session.execute(
+                update(User)
+                .where(User.id == user_id)
+                .values(auth_revision=User.auth_revision + 1)
+            )
+        return await original_hash_async(pwd)
+
+    monkeypatch.setattr(web_auth, "get_password_hash_async", conflicting_hash)
+
+    with pytest.raises(UserInputError, match="Account credentials changed; try again"):
+        await app_context.user_service.change_password(
+            "concurrency_user", plain_new, "correct horse battery staple 3"
+        )

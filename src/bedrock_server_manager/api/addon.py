@@ -15,11 +15,7 @@ from ..error import (
 )
 from ..events import trigger_event
 from ..logging import log_operation_error
-from ..plugins.api_bridge import api_method
-from ..plugins.api_contract import validate_contract
-from ..plugins.runtime_capabilities import server_lifecycle_manager
-from ..utils import list_content_files
-from .models.addon import (
+from ..models.addon import (
     DisableAddonRequest,
     DisableAddonResponse,
     EnableAddonRequest,
@@ -37,11 +33,15 @@ from .models.addon import (
     UpdateSubpackRequest,
     UpdateSubpackResponse,
 )
+from ..plugins.api_bridge import api_method
+from ..plugins.scopes import PluginScope
+from ..utils import list_content_files
+from .server import server_lifecycle_manager
 
 logger = logging.getLogger(__name__)
 
 
-@api_method("list_available_addons")
+@api_method("list_available_addons", required_scope=PluginScope.CONTENT_READ)
 async def list_available_addons(
     request: ListAvailableAddonsRequest, *, app_context: AppContext
 ) -> ListAvailableAddonsResponse:
@@ -62,7 +62,7 @@ async def list_available_addons(
         raise
 
 
-@api_method("import_addon")
+@api_method("import_addon", required_scope=PluginScope.ADDONS_MANAGE)
 @trigger_event(
     before="before_addon_import",
     after="after_addon_import",
@@ -72,11 +72,13 @@ async def import_addon(
     request: ImportAddonRequest, *, app_context: AppContext
 ) -> ImportAddonResponse:
     """Installs an addon to a specified Bedrock server."""
+    import aiofiles.ospath
+
     server_name = request.server_name
     addon_file_path = request.addon_file_path
     stop_start_server = request.stop_start_server
     restart_only_on_success = request.restart_only_on_success
-    if not os.path.isfile(addon_file_path):
+    if not await aiofiles.ospath.isfile(addon_file_path):
         raise AppFileNotFoundError(addon_file_path, "Addon file")
     server = app_context.get_server(server_name)
     try:
@@ -157,7 +159,7 @@ async def import_addon(
         server.operation_lock.release()
 
 
-@api_method("list_installed_addons")
+@api_method("list_installed_addons", required_scope=PluginScope.ADDONS_READ)
 async def list_installed_addons(
     request: ListInstalledAddonsRequest, *, app_context: AppContext
 ) -> ListInstalledAddonsResponse:
@@ -169,7 +171,7 @@ async def list_installed_addons(
     )
 
 
-@api_method("enable_addon")
+@api_method("enable_addon", required_scope=PluginScope.ADDONS_MANAGE)
 @trigger_event(
     before="before_addon_enable",
     after="after_addon_enable",
@@ -229,7 +231,7 @@ async def enable_addon(
         server.operation_lock.release()
 
 
-@api_method("disable_addon")
+@api_method("disable_addon", required_scope=PluginScope.ADDONS_MANAGE)
 @trigger_event(
     before="before_addon_disable",
     after="after_addon_disable",
@@ -289,7 +291,7 @@ async def disable_addon(
         server.operation_lock.release()
 
 
-@validate_contract
+@api_method("update_subpack", required_scope=PluginScope.ADDONS_MANAGE)
 @trigger_event(
     before="before_addon_subpack_update",
     after="after_addon_subpack_update",
@@ -352,7 +354,7 @@ async def update_subpack(
         server.operation_lock.release()
 
 
-@validate_contract
+@api_method("uninstall_addon", expose_to_plugins=False)
 @trigger_event(
     before="before_addon_uninstall",
     after="after_addon_uninstall",
@@ -412,7 +414,7 @@ async def uninstall_addon(
         server.operation_lock.release()
 
 
-@api_method("reorder_addons")
+@api_method("reorder_addons", required_scope=PluginScope.ADDONS_MANAGE)
 @trigger_event(
     before="before_addon_reorder",
     after="after_addon_reorder",

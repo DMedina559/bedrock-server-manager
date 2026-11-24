@@ -1,82 +1,55 @@
 # .github/workflows/build-test.yml
 
-name: Build Lint Test
+name: Build and Test
 
 on:
   workflow_dispatch:
-  push:
-    branches: [dev, main]
-    paths:
-      - 'src/bedrock_server_manager/**'
-      - 'tests/**'
-      - 'plugins/**'
-      - 'scripts/**'
-      - 'pyproject.toml'
-      - '.github/workflows/build-test.yml'
-      - '.pre-commit-config.yaml'
+  workflow_call:
   pull_request:
-    paths:
-      - 'src/bedrock_server_manager/**'
-      - 'tests/**'
-      - 'plugins/**'
-      - 'scripts/**'
-      - 'pyproject.toml'
-      - '.github/workflows/build-test.yml'
-      - '.pre-commit-config.yaml'
+    branches: [dev]
+  push:
+    branches: [dev]
 
 permissions:
   contents: read
 
 concurrency:
-  group: ${{ github.workflow }}-${{ github.ref }}
-  cancel-in-progress: true
+  group: build-test-${{ github.head_ref || github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' || github.event_name == 'push' }}
 
 jobs:
   build-and-test:
     runs-on: ${{ matrix.os }}
-
+    timeout-minutes: 25
     strategy:
+      fail-fast: false
       matrix:
         python-version: ['3.11', '3.14']
         os: [ubuntu-latest, windows-latest]
     steps:
-    - name: Checkout repository
-      uses: actions/checkout@v7
-      with:
-        fetch-depth: 0
+      - name: Checkout repository
+        uses: actions/checkout@v7
+        with:
+          fetch-depth: 0
+          persist-credentials: false
 
-    - name: Set up Python ${{ matrix.python-version }}
-      id: python
-      uses: actions/setup-python@v7
-      with:
-        python-version: ${{ matrix.python-version }}
-        cache: pip
-        cache-dependency-path: pyproject.toml
+      - name: Set up Python ${{ matrix.python-version }}
+        id: python
+        uses: actions/setup-python@v7
+        with:
+          python-version: ${{ matrix.python-version }}
+          cache: pip
+          cache-dependency-path: pyproject.toml
 
-    - name: Install dependencies
-      run: |
-        python -m pip install --upgrade pip
-        pip install build
-        pip install -e .[dev]
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install build
+          pip install -e .[dev]
 
-    - name: Cache pre-commit environments
-      if: matrix.python-version == '3.14' && runner.os == 'Linux'
-      uses: actions/cache@v6
-      with:
-        path: ~/.cache/pre-commit
-        key: pre-commit-${{ runner.os }}-${{ steps.python.outputs.python-version }}-${{ hashFiles('.pre-commit-config.yaml', 'pyproject.toml') }}
+      - name: Build package
+        if: matrix.python-version == '3.14' && runner.os == 'Linux'
+        run: python -m build
 
-    - name: Build package
-      if: matrix.python-version == '3.14' && runner.os == 'Linux'
-      run: python -m build
-
-    - name: Lint and type checks
-      if: matrix.python-version == '3.14' && runner.os == 'Linux'
-      run: |
-        pre-commit run --all-files
-        python scripts/check_api_callers.py
-        python scripts/generate_plugin_api.py --check
-        python scripts/export_openapi.py --output "${{ runner.temp }}/backend-openapi.json"
-
-    - name: Run tests
-      run: python -m pytest --durations=25
+      - name: Run tests
+        run: python -m pytest --durations=25

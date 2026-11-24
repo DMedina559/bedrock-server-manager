@@ -50,7 +50,7 @@ them before any listener or transport receives them.
 
 ```python
 from pydantic import BaseModel, ConfigDict
-from bedrock_server_manager import PluginBase
+from bedrock_server_manager import PluginBase, app_event
 
 class RefreshPayload(BaseModel):
     model_config = ConfigDict(extra="forbid")
@@ -61,7 +61,8 @@ class DashboardPlugin(PluginBase):
     version = "4.0.0"
 
     # This example is installed as dashboard.py.
-    def on_load(self):
+    @app_event("on_load")
+    async def on_load(self, **kwargs):
         self.api.events.define("dashboard:refresh", RefreshPayload)
         self.refresh_listener = self.api.events.listen(
             "dashboard:refresh", self.refreshed
@@ -82,9 +83,10 @@ class DashboardPlugin(PluginBase):
 that subscription. Listeners and definitions are removed automatically on unload.
 A saved API from an unloaded plugin cannot register or emit after reload.
 Plugins and external callers may emit custom events; core before, after, and
-lifecycle events are reserved for the application. Legacy `send_event()` and
-`listen_for_event()` remain supported through the same bus. Both `send_event()` and `events.emit()` require a declaration owned by the
-emitting plugin. Undeclared emission is rejected in 4.0.
+lifecycle events are reserved for the application. Unscoped `self.api.send_event()`
+and `self.api.listen_for_event()` remain supported for backward compatibility
+(and require a declaration owned by the emitting plugin), but they are deprecated
+and log warnings—prefer `self.api.events.emit()` and `@app_event` / `self.api.events.listen()`.
 
 For a private custom event, pass `public=False` to `events.define()`. Public
 events keep the WebSocket topic `event:<name>` and the existing `type`, `topic`,
@@ -93,13 +95,14 @@ The before/after pair shares a correlation ID; nested dispatches also identify
 their parent event internally.
 
 For transport-only topic data and live dashboards, use
-`self.api.websocket.websocket_broadcast` and
-`self.api.runtime.register_data_provider`; see the
+`self.api.websocket.websocket_broadcast` and the `@data_provider` (or
+`@websocket_provider`) decorator; see the
 [plugin introduction](introduction.md) and [Native JSON UI](native_json_ui.md).
 
 ## Diagnostics and limits
 
-`events.diagnostics()` returns copied metadata for current and recent dispatches,
+`events.diagnostics()` requires `diagnostics:read` for explicitly scoped plugins and
+returns copied metadata for current and recent dispatches,
 including pending worker and wait counts, workers and timeouts by owner,
 rejections by reason, per-listener subscription IDs, callback names, durations, outcomes,
 listener failures, delivery counts, and correlation IDs.
@@ -113,6 +116,15 @@ events and returns a typed dispatch summary.
 
 The `events` settings section controls `history_limit` (200), `max_active` (256),
 `max_depth` (32), `listener_timeout_seconds` (30), and `hook_timeout_seconds` (120).
+A listener may opt into a bounded override using
+`@app_event("before_server_start", timeout_seconds=900)` or
+`self.api.events.listen(name, callback, timeout_seconds=900)`. The optional
+value must be positive and no greater than 3600 seconds. Existing listeners
+retain the global default. A nested callback's context deadline remains bounded
+by its active parent's deadline. Plugins should choose an operation-specific
+budget and handle optional work failures explicitly; an unhandled before-hook
+failure still cancels the operation.
+
 `max_workers` bounds outstanding synchronous callbacks globally, including queued
 and timed-out work; by default it follows `max_active`. `max_workers_per_owner`
 can impose a tighter owner limit and otherwise follows the global worker limit.
@@ -201,36 +213,183 @@ contract replacement. Event envelopes require epoch/revision together and
 positive JavaScript-safe revisions; transport counts reuse the shared delivery
 invariant that every targeted recipient has an outcome.
 
-## Core dependency boundaries
+## Opt-in typed hooks and observers
 
-Application composition owns the bus. Core server handles receive an
-`EventPublisher` rather than AppContext; status changes run through
-`ServerConfiguration.set_status(status, events)`. Player observations use
-`publish_player_snapshot(events, PlayerSnapshot(...))` and return an `EventRecord`.
-The process monitor retains rejected snapshots for a later retry, while partial
-listener delivery is recorded without replaying handlers that already succeeded.
-The publisher supplies revision metadata, so core producers do not reach into a
-global revision clock.
+Typed hooks receive one `PluginEvent[Payload]` argument. Supply a Pydantic model
+for the fields your plugin needs; request/result fields can use the existing API
+models. Payload validation errors follow the listener-failure policy.
 
-Non-API operation hooks can receive a keyword-only `events` bus explicitly.
-That dependency is excluded from event payloads. API operation hooks retain their
-AppContext adapter. Event-only HTTP handlers resolve a bus dependency, and plugin
-native event capabilities capture their original bus and generation for the
-entire runtime lifetime. A stale capability cannot follow AppContext to a new bus
-after shutdown/load.
+```python
+from pydantic import BaseModel
+from bedrock_server_manager.events import EventFilter, PluginEvent
 
-Importing `bedrock_server_manager.events` does not initialize API registration,
-plugins, or HTTP. Public root exports remain available through lazy imports;
-creating AppAPI explicitly registers built-in API adapters. The legacy unused
-`plugins.util.broadcast_event` transport helper has been removed; public events
-use the bus observer.
+class StartPayload(BaseModel):
+    server_name: str
 
-Payload declarations reject reserved runtime fields (`app_context`, `current_user`,
-`event`, `_triggering_plugin`, and `cancellation_event`) before a publisher runs.
-Delivery aggregation requires one owner and combines only recipient counts.
+# Inside on_load:
+self.api.events.listen_typed(
+    "before_server_start", StartPayload, self.check_start,
+    filters=EventFilter(server_name="example"),
+    listener_id="maintenance", priority=100,
+)
 
-Synchronous listeners remain owned while their worker thread runs, including
-when dispatch times out. An optional `cancellation_event` parameter receives a
-threading event signaled on timeout/cancellation/shutdown; cooperative workers
-should check it and return promptly. Plugin unload drains worker completion within
-its lifecycle deadline. A deadline cannot forcibly terminate a worker thread.
+# Plugin method:
+async def check_start(self, call: PluginEvent[StartPayload]):
+    self.logger.debug("Event %s, sequence %s, %.2fs remaining",
+                      call.context.event_id, call.context.sequence_id,
+                      call.remaining_seconds)
+    if call.can_cancel and await self.get_plugin_setting("maintenance", False):
+        call.cancel("Maintenance is enabled")
+```
+
+`events.hook(name, callback, payload_model=Model)` is the equivalent registration.
+Without a model, `call.payload` uses an extra-field Pydantic view. `call.data` and
+`call.arguments` contain recursively immutable JSON notification data and positional
+arguments. `call.payload` is a detached typed copy: changing it never changes the
+operation, another listener, or the immutable notification data. Event metadata,
+operation snapshots, and operation ancestry are also available through the context.
+A legacy handler may call `events.handler(Model)` to inspect the same typed view
+without changing its signature.
+
+Use `events.observe(name, callback, payload_model=Model)` for notifications.
+Observers run inline after ordinary hooks, use the existing notification timeout,
+and cannot cancel work, including when they observe a before-event. Their failures
+are recorded without vetoing an operation. They may read `is_cancelled` and
+`cancel_reason`. An escaped typed hook cannot cancel from another callback, another
+asyncio task, after its deadline, or after unload. Nested awaited callbacks report
+a remaining deadline bounded by their enclosing callback. Prefer async handlers;
+synchronous callbacks retain the existing bounded-worker and unload-drain behavior.
+There is no implicit background queue or replay: submit independent slow work
+through `api.runtime.run_task` when appropriate.
+
+## Discovering contracts and inspecting subscriptions
+
+```python
+catalog = self.api.events.catalog()
+contract = self.api.events.describe("before_server_start")
+for subscription in self.api.events.subscriptions():
+    self.logger.debug("%s: %s calls, %s failures, %s timeouts",
+                      subscription.listener_id, subscription.calls,
+                      subscription.failures, subscription.timeouts)
+```
+
+Catalogs contain copied payload schemas and descriptions for public events, your
+own private events, and application lifecycle events. `phase="before"` identifies
+before-operation hooks; actual cancellation availability is `call.can_cancel`.
+Unknown descriptions raise `KeyError`; another plugin's private contract is not
+exposed. Explicit typed hooks and observers respect this visibility. Existing
+legacy private-event listeners retain their 4.0 behavior. An owned private event
+can be observed by its owner without making it public to transport observers.
+
+Subscription inspection is restricted to the current plugin. It includes tokens,
+stable listener IDs, mode, priority, ordering, filters, activation, delivery-attempt
+counts, failures, timeouts, and the last status/duration. Returned objects are
+copies. Unsubscription removes these live statistics; bounded event diagnostics
+remain the place to inspect completed one-shot deliveries. All saved capabilities
+remain tied to their original plugin generation.
+
+The `unresolved_before` and `unresolved_after` fields list ordering references that
+have no registered target for the same event and delivery stage. They update when
+listeners register or leave; an unresolved reference does not prevent delivery.
+
+## Filtering and ordering listeners
+
+`listen`, `once`, `hook`, and `observe` accept `filters=EventFilter(...)`. Supported
+fields are `server_name`, `source`, `plugin_name`, `operation_name`, `sequence_id`,
+and `correlation_id`; populated fields must all match. `source` is the event
+producer, and `plugin_name` matches its plugin identity. A subscription predicate
+receives one `EventNotification` with immutable data and no cancellation method.
+Predicates run within the existing worker/deadline bounds and must be synchronous.
+Unmatched filters and predicates do not consume a one-shot registration. Predicate
+failures follow listener failure policy, including cancelling a before-hook.
+If a subscription is removed or its owner deactivated while its predicate runs,
+its callback does not start. Removing a subscription does not interrupt a callback
+that has already started; plugin unload retains its existing draining behavior.
+
+This is separate from `wait_for(predicate=...)`, whose existing predicate continues
+to receive ordinary positional/keyword callback arguments and retains its existing
+error behavior.
+
+Higher priorities still run first. Optional stable `listener_id` values support
+`before=("plugin:listener",)` and `after=("plugin:listener",)` constraints, which
+precede priority when selecting execution order. Short IDs are prefixed with your
+plugin's internal module name. IDs must be unique and created in your own namespace;
+ordering references may name another plugin. Unknown references are inactive until
+the listener is registered, allowing either plugin load order. Cycles are rejected
+without keeping the invalid subscription. Hooks and observers have separate stages;
+explicit ordering cannot cross those stages. Equal-priority unconstrained listeners
+retain registration order. Constraints order listeners; they do not activate or
+require another plugin.
+
+IDs and ordering references must be nonempty identifiers of at most 160 characters
+including their namespace. Repeating the same typed callback registration with the
+same payload model and options reuses its token, as legacy registration does.
+Different payload models remain distinct registrations.
+
+`@app_event` accepts the same `filters`, `listener_id`, `before`, and `after`
+options while keeping its existing callback convention.
+
+## Temporary event subscriptions
+
+```python
+async with self.api.events.subscription(
+    "after_server_start", self.on_started, mode="observer",
+    payload_model=StartPayload,
+):
+    await perform_work()
+```
+
+Scopes also support ordinary `with`. Modes are `legacy` (the default), `hook`, and
+`observer`. Registration happens on entry. Exit releases that scope's registration
+on success, exceptions, or task cancellation. Identical overlapping scopes share a
+listener until their last scope exits. A permanent registration of the same
+listener survives scope exit, whether it was registered before or during the scope.
+Explicit unsubscription, one-shot delivery, and plugin unload still remove the
+listener; later scope cleanup remains harmless. A scope is entered once and cannot
+attach to a replacement plugin generation.
+
+## Plugin-owned operation scopes
+
+```python
+with self.api.operations.scope("dashboard:refresh", server_name="example"):
+    await refresh_external_dashboard()
+```
+
+Use your internal plugin name followed by a colon. These scopes inherit an active
+awaited sequence, record your plugin as owner/source, and report completion, failure,
+or cancellation. They yield immutable operation metadata. Core operation names and
+core completion records remain unavailable through this capability. Scopes do not
+replace managed tasks or persist execution across restarts.
+
+
+## Observe events across all execution chains
+
+`events.observe_all(callback, **options)` is the explicit wildcard observer API.
+It observes live public events across servers and sequences, plus private events
+already visible to that plugin. It has the same filters and lifecycle cleanup as
+`events.observe("*", callback)` and cannot cancel events. It does not replay past
+events or expose another plugin's private payloads.
+
+```python
+from bedrock_server_manager import EventActivityQuery, OperationActivityQuery
+
+self.api.events.observe_all(self.on_any_event)
+activity = self.api.events.activity(EventActivityQuery(server_name="example"))
+operations = self.api.operations.activity(OperationActivityQuery(server_name="example"))
+```
+
+`events.activity()` reads copied global metadata from active/recent events, just
+like the existing `events.diagnostics()` API. It never retains payloads. Event
+records now include operation/sequence IDs, operation name, server name, and phase.
+It can be called outside a callback. `operations.activity()` independently reads
+active and recently completed operation metadata across all sequences, including
+namespaced plugin operations. Its recent list is newest first and is bounded to
+200 outcomes by default. History resets on restart; truncation is explicit.
+
+`operations.current()`, `sequence()`, and `results()` retain their existing
+sequence-local behavior. Use `results()` for coordination within your current
+operation, and global activity for observation. All capabilities remain tied to
+the plugin generation and are rejected after unload. To read the combined global
+administrator-style metadata, plugins can call
+`await self.api.diagnostics.get_diagnostic_activity({})`. That projection includes
+bounded listener configuration and statistics without callback objects.

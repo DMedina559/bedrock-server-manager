@@ -7,8 +7,12 @@ from typing import Any
 
 from pydantic import BaseModel, ConfigDict, Field
 
-from bedrock_server_manager import PluginBase, app_event
+from bedrock_server_manager import PluginBase, PluginScope, app_event
 from bedrock_server_manager.logging import log_operation_error
+from bedrock_server_manager.models import (
+    GetServerSummaryRequest,
+    SendCommandRequest,
+)
 
 
 class PluginSettings(BaseModel):
@@ -32,8 +36,10 @@ class WorldOperationNotificationsPlugin(PluginBase):
 
     settings_model = PluginSettings
 
-    version = "1.2.0"
-    description = "Notifies in-game players before significant world operations (export, import, reset) are performe..."
+    name = "World Operation Notifications"
+    version = "1.4.0"
+    permissions = [PluginScope.SERVERS_COMMAND, PluginScope.SERVERS_READ]
+    description = "Notifies in-game players before significant world operations (export, import, reset) are performed on a running server."
     author = "dmedina559"
 
     @app_event("on_load")
@@ -42,32 +48,6 @@ class WorldOperationNotificationsPlugin(PluginBase):
         self.logger.debug(
             "Plugin loaded. Will send notifications for world operations."
         )
-
-    async def _is_server_running(self, server_name: str) -> bool:
-        """Check if a server is currently running via the API."""
-        try:
-            response = await self.api.system.get_server_running_status(
-                request={"server_name": server_name}
-            )
-            if response and response.status == "success":
-                return bool(response.is_running)
-            self.logger.warning(
-                "Could not determine running status for '%s'.",
-                server_name,
-            )
-        except AttributeError:
-            self.logger.error(
-                "API is missing 'get_server_running_status'. Cannot check server status."
-            )
-        except Exception as e:
-            log_operation_error(
-                self.logger,
-                "Error checking server status for '%s': %s",
-                server_name,
-                e,
-                error=e,
-            )
-        return False
 
     async def _send_ingame_warning(self, server_name: str, message: str, context: str):
         """Helper to send an in-game "say" command if the server is running."""
@@ -80,7 +60,7 @@ class WorldOperationNotificationsPlugin(PluginBase):
                     command = message
 
                 await self.api.server.send_command(
-                    request={"server_name": server_name, "command": command}
+                    request=SendCommandRequest(server_name=server_name, command=command)
                 )
                 self.logger.debug(
                     "Sent %s warning to '%s': %s", context, server_name, message
@@ -112,7 +92,7 @@ class WorldOperationNotificationsPlugin(PluginBase):
             "Handling before_world_export for '%s' to '%s'.", server_name, export_dir
         )
         summary = await self.api.server.get_summary(
-            request={"server_name": server_name}
+            request=GetServerSummaryRequest(server_name=server_name)
         )
         player_count = (
             summary.summary.player_count if summary.status == "success" else 0
@@ -137,7 +117,7 @@ class WorldOperationNotificationsPlugin(PluginBase):
             "Handling before_world_import for '%s' from '%s'.", server_name, file_path
         )
         summary = await self.api.server.get_summary(
-            request={"server_name": server_name}
+            request=GetServerSummaryRequest(server_name=server_name)
         )
         player_count = (
             summary.summary.player_count if summary.status == "success" else 0
@@ -162,7 +142,7 @@ class WorldOperationNotificationsPlugin(PluginBase):
             "Critical operation: World reset initiated for server '%s'.", server_name
         )
         summary = await self.api.server.get_summary(
-            request={"server_name": server_name}
+            request=GetServerSummaryRequest(server_name=server_name)
         )
         player_count = (
             summary.summary.player_count if summary.status == "success" else 0

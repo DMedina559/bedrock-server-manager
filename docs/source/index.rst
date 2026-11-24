@@ -18,7 +18,6 @@ documentation matching your installed release.
    cli/general.md
    web/general.md
    web/role_access_table.md
-   general/plugins.md
    general/troubleshooting.md
 
 .. toctree::
@@ -29,6 +28,7 @@ documentation matching your installed release.
    features/server_management.md
    features/configuration.md
    features/backups.md
+   features/scheduler.md
    features/content_management.md
    features/settings.md
    features/default_plugins.md
@@ -72,6 +72,7 @@ documentation matching your installed release.
    developer/plugins/plugin_manager
    developer/plugins/custom_events.md
    developer/plugins/settings.md
+   developer/plugins/scheduled_tasks.md
    developer/plugins/fastapi_endpoints.md
    developer/plugins/native_json_ui.md
    developer/plugins/task_manager.md
@@ -88,6 +89,7 @@ documentation matching your installed release.
    developer/runtime.md
    developer/contracts.md
    developer/web_architecture.md
+   developer/http_access.md
    developer/api/api
    developer/classes/classes
    developer/core/core
@@ -107,3 +109,7 @@ Source Code: `Github <https://github.com/DMedina559/bedrock-server-manager>`_
    developer/reference/runtime/index
    developer/reference/contracts/index
    developer/reference/components/index
+   developer/reference/backups/index
+   developer/reference/scheduler/index
+   developer/reference/plugins/index
+   developer/reference/utils/index

@@ -9,6 +9,17 @@ OPENAPI_TAGS = [
         ("Authentication", "Sign in, reauthenticate, and sign out."),
         ("Registration", "Registration tokens and account creation."),
         ("Account Management", "Your profile, password, and appearance preferences."),
+        (
+            "Access Management",
+            "Effective access, integration credentials, and server grants.",
+        ),
+        (
+            "Account Security",
+            "Login sessions, recent verification, MFA, and remembered devices.",
+        ),
+        ("Scheduler", "Scheduled work and run history."),
+        ("Diagnostics", "Sanitized application observations and support reports."),
+        ("Application Events", "Event catalog and activity diagnostics."),
         ("User Management", "Administrative account and role management."),
         (
             "Server Management",
@@ -24,6 +35,10 @@ OPENAPI_TAGS = [
         ("Player Management", "Discover and manage the global player directory."),
         ("World Management", "Install, export, and reset server worlds."),
         ("Addon Management", "Install and configure server addons."),
+        (
+            "Content Management",
+            "Upload, download, and manage world and addon content archives.",
+        ),
         ("Backup & Restore", "Create, list, prune, and restore server backups."),
         ("Downloads", "Downloaded Bedrock versions and cleanup."),
         ("Plugin Management", "Plugin discovery, configuration, events, and reloads."),

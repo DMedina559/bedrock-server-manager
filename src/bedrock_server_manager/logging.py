@@ -8,7 +8,7 @@ import platform
 import re
 import sys
 import time
-from datetime import datetime
+from datetime import datetime, timezone
 from logging.handlers import RotatingFileHandler
 from typing import Optional
 from uuid import uuid4
@@ -23,13 +23,14 @@ _HANDLER_MARKER = "_bsm_handler"
 
 # Protect common credential representations in URLs, messages, and tracebacks.
 _CREDENTIAL = re.compile(
-    r"(?i)(\b(?:access_token|refresh_token|token|password|secret|jwt_secret_key|authorization|api_key)"
-    r"['\"]?\s*[:=]\s*)(?:\"(?:\\.|[^\"\\])*\"|'(?:\\.|[^'\\])*'|[^\s&,'\"}]+)"
+    r"(?i)(\b(?:access_token|refresh_token|trusted_device_token|bsm_trusted_device_[a-f0-9]{32}|token|password|secret|jwt_secret_key|authorization|api_key|otp|recovery_codes|provisioning_uri|qr_svg)"
+    r"['\"]?\s*[:=]\s*)(?:\[[^\]]*\]|\"(?:\\.|[^\"\\])*\"|'(?:\\.|[^'\\])*'|[^\s&,'\"}]+)"
 )
+_OPAQUE_CREDENTIAL = re.compile(r"\bbsm_(?:td|it)_[a-fA-F0-9]{32}\.[A-Za-z0-9_-]+")
 _BEARER = re.compile(r"(?i)\bBearer\s+[^\s,;\'\"]+")
 _URL_CREDENTIAL = re.compile(r"(https?://)[^/\s:@]+:[^/\s@]+@", re.IGNORECASE)
 _REGISTRATION_LINK = re.compile(
-    r"((?:/app/register|/api/register/validate)/)[^/\s?'\"#]+"
+    r"((?:/app/register|/api/register(?:/validate)?)/)[^/\s?'\"#]+"
 )
 
 
@@ -89,6 +90,10 @@ class _TransportFilter(logging.Filter):
     """Keep HTTP access and routine WebSocket lifecycle records at DEBUG."""
 
     def filter(self, record: logging.LogRecord) -> bool:
+        # Protocol frame dumps include arbitrary client payloads and cannot be
+        # made safe by credential-pattern redaction alone.
+        if record.levelno <= logging.DEBUG and str(record.msg).startswith(("< ", "> ")):
+            return False
         routine = record.name == "uvicorn.access" or (
             record.msg in ("connection open", "connection closed")
             or ('"WebSocket %s" [accepted]' in str(record.msg))
@@ -113,6 +118,7 @@ def _safe_text(value: str) -> str:
     value = _URL_CREDENTIAL.sub(r"\1[redacted]@", value)
     value = _REGISTRATION_LINK.sub(r"\1[redacted]", value)
     value = _BEARER.sub("Bearer [redacted]", value)
+    value = _OPAQUE_CREDENTIAL.sub("[redacted]", value)
     return _CREDENTIAL.sub(r"\1[redacted]", value)
 
 
@@ -123,6 +129,15 @@ class ApplicationFormatter(logging.Formatter):
     tracebacks at every level. Embedded control characters cannot create fake log
     lines or terminal escape sequences; formatter-generated tracebacks stay multiline.
     """
+
+    def formatTime(self, record, datefmt=None) -> str:
+        """Write an unambiguous UTC instant independently of the host timezone."""
+        moment = datetime.fromtimestamp(record.created, timezone.utc)
+        return (
+            moment.strftime(datefmt)
+            if datefmt
+            else moment.isoformat(timespec="milliseconds")
+        )
 
     def __init__(self, fmt: str, *, console: bool = False):
         super().__init__(fmt)
@@ -187,6 +202,36 @@ def _prune_old_logs(
         logging.getLogger(__name__).warning(
             "Could not prune logs in '%s': %s", log_dir, error
         )
+
+
+def prepare_server_log_path(
+    log_dir: str, server_name: str, keep: int = DEFAULT_LOG_KEEP
+) -> str:
+    """Prune old server logs and return a new timestamped log file path."""
+    os.makedirs(log_dir, exist_ok=True)
+    for legacy_name in ("server_output.log", "server_output.txt"):
+        legacy_path = os.path.join(log_dir, legacy_name)
+        if os.path.isfile(legacy_path):
+            try:
+                if os.path.getsize(legacy_path) > 0:
+                    mtime = datetime.fromtimestamp(
+                        os.path.getmtime(legacy_path), timezone.utc
+                    ).strftime("%Y%m%d_%H%M%S_%f")
+                    archived = os.path.join(
+                        log_dir,
+                        f"{server_name}_{mtime}_{os.getpid()}_{uuid4().hex}.log",
+                    )
+                    os.replace(legacy_path, archived)
+                else:
+                    os.remove(legacy_path)
+            except OSError:
+                pass
+    _prune_old_logs(log_dir, base_name=server_name, keep=keep)
+    timestamp = datetime.now(timezone.utc).strftime("%Y%m%d_%H%M%S_%f")
+    return os.path.join(
+        log_dir,
+        f"{server_name}_{timestamp}_{os.getpid()}_{uuid4().hex}.log",
+    )
 
 
 def _configure_handler(handler: logging.Handler, level: int, *, console: bool) -> None:
@@ -276,7 +321,7 @@ def setup_logging(
         os.makedirs(log_dir, exist_ok=True)
         _prune_old_logs(log_dir, keep=DEFAULT_LOG_KEEP)
         # Windows clock resolution can repeat even with microseconds displayed.
-        timestamp = datetime.now().strftime("%Y%m%d_%H%M%S_%f")
+        timestamp = datetime.now(timezone.utc).strftime("%Y%m%d_%H%M%S_%f")
         path = os.path.join(
             log_dir,
             f"bedrock_server_manager_{timestamp}_{os.getpid()}_{uuid4().hex}.log",
@@ -311,7 +356,7 @@ def log_separator(
         f'{app_name or "Application"} v{app_version}',
         f"Operating System: {os_info}",
         f"Python Version: {platform.python_version()}",
-        f"Timestamp: {datetime.now():%Y-%m-%d %H:%M:%S}",
+        f"Timestamp: {datetime.now(timezone.utc).isoformat()}",
         "=" * 100,
     ]
     for handler in logger.handlers:

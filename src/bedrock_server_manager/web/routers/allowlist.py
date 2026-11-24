@@ -1,24 +1,23 @@
 import logging
 
-from fastapi import APIRouter, Depends, status
-
-from bedrock_server_manager.api.models import (
-    AddToAllowlistRequest,
-    AddToAllowlistResponse,
-    GetAllowlistRequest,
-    RemoveFromAllowlistRequest,
-    RemoveFromAllowlistResponse,
-)
+from fastapi import APIRouter, Depends, Security, status
 
 from ...api import allowlist as allowlist_api
 from ...context import AppContext
-from ..deps import get_app_context, get_moderator_user, validate_server_exists
-from ..schemas import (
+from ...models import (
+    AddToAllowlistRequest,
+    AddToAllowlistResponse,
     AllowlistAddPayload,
-    AllowlistGetResponse,
     AllowlistRemovePayload,
-    UserResponse,
+    GetAllowlistRequest,
+    GetAllowlistResponse,
+    RemoveFromAllowlistRequest,
+    RemoveFromAllowlistResponse,
 )
+from ..access_policy import Permission
+from ..deps import get_app_context, validate_server_exists
+from ..deps.auth import require_permissions
+from ..schemas import UserResponse
 
 logger = logging.getLogger(__name__)
 router = APIRouter(tags=["Server Access"])
@@ -32,8 +31,10 @@ router = APIRouter(tags=["Server Access"])
 )
 async def post_allowlist(
     payload: AllowlistAddPayload,
+    current_user: UserResponse = Security(
+        require_permissions, scopes=[Permission.ALLOWLIST_MANAGE]
+    ),
     server_name: str = Depends(validate_server_exists),
-    current_user: UserResponse = Depends(get_moderator_user),
     app_context: AppContext = Depends(get_app_context),
 ) -> AddToAllowlistResponse:
     identity = current_user.username
@@ -59,18 +60,19 @@ async def post_allowlist(
 @router.get(
     "/api/server/{server_name}/allowlist/get",
     operation_id="get_allowlist",
-    response_model=AllowlistGetResponse,
+    response_model=GetAllowlistResponse,
 )
 async def get_allowlist(
+    current_user: UserResponse = Security(
+        require_permissions, scopes=[Permission.ALLOWLIST_READ]
+    ),
     server_name: str = Depends(validate_server_exists),
-    current_user: UserResponse = Depends(get_moderator_user),
     app_context: AppContext = Depends(get_app_context),
-) -> AllowlistGetResponse:
-    result = await allowlist_api.get_allowlist(
+) -> GetAllowlistResponse:
+    return await allowlist_api.get_allowlist(
         request=GetAllowlistRequest.model_validate({"server_name": server_name}),
         app_context=app_context,
     )
-    return result
 
 
 @router.delete(
@@ -81,8 +83,10 @@ async def get_allowlist(
 )
 async def delete_allowlist(
     payload: AllowlistRemovePayload,
+    current_user: UserResponse = Security(
+        require_permissions, scopes=[Permission.ALLOWLIST_MANAGE]
+    ),
     server_name: str = Depends(validate_server_exists),
-    current_user: UserResponse = Depends(get_moderator_user),
     app_context: AppContext = Depends(get_app_context),
 ) -> RemoveFromAllowlistResponse:
     result = await allowlist_api.remove_from_allowlist(

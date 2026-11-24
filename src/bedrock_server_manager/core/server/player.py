@@ -72,14 +72,9 @@ class ServerPlayers:
                             if name and xuid:
                                 yield ("disconnect", name, xuid, f.tell())
         except OSError as e:
-            log_operation_error(
-                self.logger,
-                "Error parsing log file '%s' for server '%s': %s",
-                log_file,
-                self.server.server_name,
-                e,
-                error=e,
-            )
+            raise FileOperationError(
+                f"Could not scan historical player log: {e}"
+            ) from e
 
     async def scan_log_for_players(
         self, incremental: bool = False
@@ -96,6 +91,15 @@ class ServerPlayers:
             log_file,
             incremental,
         )
+        identity = await asyncio.to_thread(
+            lambda: os.stat(log_file) if os.path.isfile(log_file) else None
+        )
+        file_key = (identity.st_dev, identity.st_ino) if identity is not None else None
+        if getattr(self, "_scan_identity", None) != file_key or (
+            identity and identity.st_size < self._scan_log_cursor
+        ):
+            self._scan_log_cursor = 0
+        self._scan_identity = file_key
         start_pos = self._scan_log_cursor if incremental else 0
         unique_players = {}
         try:
@@ -135,33 +139,9 @@ class ServerPlayers:
         Return name/XUID records and retain the cursor. Clear players when the
         server is stopped.
         """
-        is_running = await self.server.is_running()
-        if not is_running:
-            self.server.players = []
-            return []
-        online_players: Dict[str, str] = {}
-        for p in self.server.players:
-            if isinstance(p, dict):
-                p_xuid = p.get("xuid")
-                p_name = p.get("name")
-                if p_xuid and p_name:
-                    online_players[str(p_xuid)] = str(p_name)
-        events = await asyncio.to_thread(
-            lambda: list(self._parse_player_log_events(self._log_file_cursor))
-        )
-        for event_type, name, xuid, new_cursor in events:
-            if event_type == "connect" and xuid and name:
-                online_players[xuid] = name
-            elif event_type == "disconnect" and xuid:
-                if xuid in online_players:
-                    del online_players[xuid]
-            self._log_file_cursor = new_cursor
-        setattr(
-            self.server,
-            "players",
-            [{"name": name, "xuid": xuid} for xuid, name in online_players.items()],
-        )
-        return getattr(self.server, "players", [])
+        await self.server.is_running()
+        # Compatibility accessor: live presence is owned by the output consumer.
+        return self.server.players
 
     def reset(self) -> None:
         """Reset both log consumers when the process starts or stops."""

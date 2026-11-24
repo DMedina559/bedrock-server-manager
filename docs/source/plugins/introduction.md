@@ -4,9 +4,15 @@ Plugins run in BSM's process and can access host resources. Review their source,
 
 ## Install
 
-Place the plugin's Python file or supported package in the plugin directory under the selected data directory. Follow the plugin author's installation instructions for additional dependencies. Use the same Python environment and operating-system account as the manager.
+Place the plugin's Python file (`<plugin_name>.py`) or package directory (`<plugin_name>/__init__.py`) in `<data_dir>/plugins/` (configurable via `paths.plugins`). Follow the plugin author's installation instructions for any third-party Python packages, installing them into the same Python environment and OS account as BSM.
 
-Refresh discovery or restart as appropriate, then inspect the plugin management view. Confirm the plugin's internal name, version and status before enabling it. A discovered plugin is not necessarily enabled.
+* **Discovery rules:** BSM scans `<data_dir>/plugins/` (plus its own bundled plugins). Files or folders starting with `_` or `.`, symlinked plugin entries that fail path checks, classes without a valid `version` attribute, and the reserved directory names `public`, `shared`, and `private` are ignored.
+* **Code vs. persistent data:** Plugin source code lives in `<data_dir>/plugins/`. Runtime plugin state lives separately in the database (`plugin_settings` table and `plugins.json` registry) and under dedicated persistent file roots:
+  * **Private plugin data:** `<config_dir>/plugins/<plugin_name>/` (isolated per plugin). Plugins access this directory via `await self.api.runtime.get_plugin_data_path()`, `read_plugin_file()`, and `write_plugin_file()`. No special filesystem permissions are required.
+  * **Shared public plugin data:** `<config_dir>/plugins/public/` (shared cross-plugin artifacts or static web assets).
+  See [Plugin Settings and Storage](../developer/plugins/settings.md) for code examples and storage scopes.
+
+Refresh discovery (**Reload Plugins** in the Web UI or `PUT /api/plugins/reload`) or restart the manager, then inspect the **Manage Plugins** view. Confirm the plugin's internal name, version, and status before enabling it. Newly discovered third-party plugins start disabled until you enable them.
 
 ```{figure} ../../images/web_manage_plugins.png
 :alt: Plugin Management showing plugin cards, loaded status, filtering and reload controls
@@ -37,5 +43,10 @@ See [bundled plugins](../features/default_plugins.md) for built-in behavior and 
 The repository's `plugins/ping_plugin.py` and `pong_plugin.py` demonstrate typed,
 owned custom events. Enable ping before pong. The event-sender example exposes
 only its own declared message event and requires administrator authentication.
-Recursive and server-restarting diagnostic plugins were removed; automated event
-and lifecycle tests cover those behaviors without deploying them to a live host.
+
+
+## Settings scopes
+
+Plugins may declare independent Pydantic models for their own settings, manager-wide settings, and per-server settings. Configure plugin-local values on **Plugin Settings**, global values under **Global Settings → Plugins**, and server values on **Server Settings**. Only plugins declaring a model for a scope appear in its editor. Server settings apply independently to each server.
+
+Defaults appear without writing to the database. Saving validates the complete namespace before committing. A disabled plugin's schema remains available while it is installed; uninstalling a plugin does not silently discard its saved values.

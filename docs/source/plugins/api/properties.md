@@ -8,22 +8,22 @@ For an updated list of available APIs, please download and run the [api_docs_gen
 
 ## `properties.get_properties`
 ```python
-await self.api.properties.get_properties(request: bedrock_server_manager.api.models.properties.GetPropertiesRequest)
+await self.api.properties.get_properties(request: bedrock_server_manager.models.properties.GetPropertiesRequest)
 ```
 - **Async (Requires await):** Yes
 
 - **Description:** Return the current server properties for a given server.
+
+- **Required Permission:** `properties:read`
 
 - **Returns:** `GetPropertiesResponse`
 
 Runtime context and plugin identity are injected by the bridge. Failures raise application exceptions; plugin cancellation raises `APICancelledError`.
 
 ```python
-from bedrock_server_manager.api.models import GetPropertiesRequest
-payload = {'server_name': 'example'}
-request = GetPropertiesRequest(**payload)
+from bedrock_server_manager.models import GetPropertiesRequest
+request = GetPropertiesRequest(server_name='example')
 result = await self.api.properties.get_properties(request)
-data = result.model_dump(mode="json")
 ```
 - **Request schema:** [GetPropertiesRequest](models.md#getpropertiesrequest)
 - **Response schema:** [GetPropertiesResponse](models.md#getpropertiesresponse)
@@ -32,29 +32,29 @@ data = result.model_dump(mode="json")
 
 | Name | Type | Default |
 |------|------|---------|
-| `request` | `bedrock_server_manager.api.models.properties.GetPropertiesRequest` | `REQUIRED` |
+| `request` | `bedrock_server_manager.models.properties.GetPropertiesRequest` | `REQUIRED` |
 
 ---
 
 
 ## `properties.get_raw_properties`
 ```python
-await self.api.properties.get_raw_properties(request: bedrock_server_manager.api.models.properties.GetRawPropertiesRequest)
+await self.api.properties.get_raw_properties(request: bedrock_server_manager.models.properties.GetRawPropertiesRequest)
 ```
 - **Async (Requires await):** Yes
 
 - **Description:** Read the complete properties document without parsing its keys or comments.
+
+- **Required Permission:** `properties:read`
 
 - **Returns:** `GetRawPropertiesResponse`
 
 Runtime context and plugin identity are injected by the bridge. Failures raise application exceptions; plugin cancellation raises `APICancelledError`.
 
 ```python
-from bedrock_server_manager.api.models import GetRawPropertiesRequest
-payload = {'server_name': 'example'}
-request = GetRawPropertiesRequest(**payload)
+from bedrock_server_manager.models import GetRawPropertiesRequest
+request = GetRawPropertiesRequest(server_name='example')
 result = await self.api.properties.get_raw_properties(request)
-data = result.model_dump(mode="json")
 ```
 - **Request schema:** [GetRawPropertiesRequest](models.md#getrawpropertiesrequest)
 - **Response schema:** [GetRawPropertiesResponse](models.md#getrawpropertiesresponse)
@@ -63,29 +63,29 @@ data = result.model_dump(mode="json")
 
 | Name | Type | Default |
 |------|------|---------|
-| `request` | `bedrock_server_manager.api.models.properties.GetRawPropertiesRequest` | `REQUIRED` |
+| `request` | `bedrock_server_manager.models.properties.GetRawPropertiesRequest` | `REQUIRED` |
 
 ---
 
 
 ## `properties.set_properties`
 ```python
-await self.api.properties.set_properties(request: bedrock_server_manager.api.models.properties.SetPropertiesRequest)
+await self.api.properties.set_properties(request: bedrock_server_manager.models.properties.SetPropertiesRequest)
 ```
 - **Async (Requires await):** Yes
 
 - **Description:** Set one or multiple server properties for a given server.
+
+- **Required Permission:** `properties:manage`
 
 - **Returns:** `SetPropertiesResponse`
 
 Runtime context and plugin identity are injected by the bridge. Failures raise application exceptions; plugin cancellation raises `APICancelledError`.
 
 ```python
-from bedrock_server_manager.api.models import SetPropertiesRequest
-payload = {...}  # Supply required request fields below.
-request = SetPropertiesRequest(**payload)
+from bedrock_server_manager.models import SetPropertiesRequest
+request = SetPropertiesRequest(server_name='example', properties_to_update=...)
 result = await self.api.properties.set_properties(request)
-data = result.model_dump(mode="json")
 ```
 - **Request schema:** [SetPropertiesRequest](models.md#setpropertiesrequest)
 - **Response schema:** [SetPropertiesResponse](models.md#setpropertiesresponse)
@@ -94,29 +94,29 @@ data = result.model_dump(mode="json")
 
 | Name | Type | Default |
 |------|------|---------|
-| `request` | `bedrock_server_manager.api.models.properties.SetPropertiesRequest` | `REQUIRED` |
+| `request` | `bedrock_server_manager.models.properties.SetPropertiesRequest` | `REQUIRED` |
 
 ---
 
 
 ## `properties.validate_property_value`
 ```python
-self.api.properties.validate_property_value(request: bedrock_server_manager.api.models.properties.ValidatePropertyValueRequest)
+self.api.properties.validate_property_value(request: bedrock_server_manager.models.properties.ValidatePropertyValueRequest)
 ```
 - **Async (Requires await):** No
 
 - **Description:** Validates a specific server property value before it gets applied.
+
+- **Authorization:** No additional capability required.
 
 - **Returns:** `ValidatePropertyValueResponse`
 
 Runtime context and plugin identity are injected by the bridge. Failures raise application exceptions; plugin cancellation raises `APICancelledError`.
 
 ```python
-from bedrock_server_manager.api.models import ValidatePropertyValueRequest
-payload = {...}  # Supply required request fields below.
-request = ValidatePropertyValueRequest(**payload)
+from bedrock_server_manager.models import ValidatePropertyValueRequest
+request = ValidatePropertyValueRequest(property_name=..., value=...)
 result = self.api.properties.validate_property_value(request)
-data = result.model_dump(mode="json")
 ```
 - **Request schema:** [ValidatePropertyValueRequest](models.md#validatepropertyvaluerequest)
 - **Response schema:** [ValidatePropertyValueResponse](models.md#validatepropertyvalueresponse)
@@ -125,4 +125,4 @@ data = result.model_dump(mode="json")
 
 | Name | Type | Default |
 |------|------|---------|
-| `request` | `bedrock_server_manager.api.models.properties.ValidatePropertyValueRequest` | `REQUIRED` |
+| `request` | `bedrock_server_manager.models.properties.ValidatePropertyValueRequest` | `REQUIRED` |

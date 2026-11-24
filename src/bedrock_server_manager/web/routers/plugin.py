@@ -1,35 +1,65 @@
-# bedrock_server_manager/web/routers/plugin.py
 """FastAPI router for managing the application's plugin system."""
 
 import logging
+from typing import Literal
 
-from fastapi import APIRouter, Depends
-
-from bedrock_server_manager.api.models import (
-    GetPluginStatusesRequest,
-    ReloadPluginsRequest,
-    ReloadSinglePluginRequest,
-    SetPluginStatusRequest,
-    TriggerExternalAppEventRequest,
-)
+from fastapi import APIRouter, Depends, Request, Security
 
 from ...api import plugins as plugins_api
-from ...api.models.plugins import PluginSettingsPayload
 from ...context import AppContext
-from ..deps import get_admin_user, get_app_context, get_current_user
-from ..schemas import (
-    ActionResponse,
-    PluginPagesResponse,
-    PluginStatusesResponse,
+from ...models import (
+    GetPluginSettingsRequest,
+    GetPluginSettingsResponse,
+    GetPluginStatusesRequest,
+    GetPluginStatusesResponse,
+    PluginSettingsPayload,
     PluginStatusSetPayload,
+    ReloadPluginsRequest,
+    ReloadPluginsResponse,
+    ReloadSinglePluginRequest,
+    ReloadSinglePluginResponse,
+    SetPluginSettingResponse,
+    SetPluginStatusRequest,
+    SetPluginStatusResponse,
     TriggerEventPayload,
-    TriggerEventResponse,
+    TriggerExternalAppEventRequest,
+    TriggerExternalAppEventResponse,
+    UpdatePluginSettingsRequest,
+)
+from ..access_metadata import describe_access
+from ..access_policy import Permission
+from ..authorization import server_collection
+from ..deps import get_app_context
+from ..deps.auth import require_context_permission, require_permissions
+from ..schemas import (
+    PluginPagesResponse,
     UserResponse,
 )
+
+# bedrock_server_manager/web/routers/plugin.py
+
 
 logger = logging.getLogger(__name__)
 
 router = APIRouter(tags=["Plugin Management"])
+
+
+SETTINGS_PERMISSIONS = {
+    "plugin": (Permission.PLUGINS_READ, Permission.PLUGINS_MANAGE),
+    "global": (Permission.SETTINGS_READ, Permission.SETTINGS_MANAGE),
+    "server": (Permission.SERVERS_READ, Permission.SERVERS_CONFIGURE),
+}
+
+
+def settings_alternatives(index):
+    return [
+        {
+            "condition": f"scope={scope}",
+            "schemes": ["OAuth2PasswordBearer", "APIKeyCookie", "IntegrationToken"],
+            "permissions": [permissions[index]],
+        }
+        for scope, permissions in SETTINGS_PERMISSIONS.items()
+    ]
 
 
 # --- API Route ---
@@ -39,7 +69,9 @@ router = APIRouter(tags=["Plugin Management"])
     response_model=PluginPagesResponse,
 )
 async def get_plugin_pages(
-    current_user: UserResponse = Depends(get_current_user),
+    current_user: UserResponse = Security(
+        require_permissions, scopes=[Permission.PLUGINS_PAGES]
+    ),
     app_context: AppContext = Depends(get_app_context),
 ) -> PluginPagesResponse:
     """Return a list of custom native UI pages registered by plugins."""
@@ -50,31 +82,34 @@ async def get_plugin_pages(
 @router.get(
     "/api/plugins",
     operation_id="list_plugins",
-    response_model=PluginStatusesResponse,
+    response_model=GetPluginStatusesResponse,
 )
 async def get_plugins_status(
-    current_user: UserResponse = Depends(get_admin_user),
+    current_user: UserResponse = Security(
+        require_permissions, scopes=[Permission.PLUGINS_READ]
+    ),
     app_context: AppContext = Depends(get_app_context),
-) -> PluginStatusesResponse:
+) -> GetPluginStatusesResponse:
     """Return the statuses and metadata of all discovered plugins."""
     identity = current_user.username
     logger.debug("Get plugin statuses request by '%s'.", identity)
-    result = await plugins_api.get_plugin_statuses(
+    return await plugins_api.get_plugin_statuses(
         request=GetPluginStatusesRequest(), app_context=app_context
     )
-    return PluginStatusesResponse(status="success", plugins=result.plugins)
 
 
 @router.post(
     "/api/plugins/trigger_event",
     operation_id="trigger_plugin_event",
-    response_model=TriggerEventResponse,
+    response_model=TriggerExternalAppEventResponse,
 )
 async def post_trigger_event(
     payload: TriggerEventPayload,
-    current_user: UserResponse = Depends(get_admin_user),
+    current_user: UserResponse = Security(
+        require_permissions, scopes=[Permission.PLUGINS_MANAGE]
+    ),
     app_context: AppContext = Depends(get_app_context),
-) -> TriggerEventResponse:
+) -> TriggerExternalAppEventResponse:
     """
     Allows an external source to trigger a custom plugin event within the system.
     """
@@ -85,29 +120,27 @@ async def post_trigger_event(
         identity,
     )
 
-    result = await plugins_api.trigger_external_app_event(
+    return await plugins_api.trigger_external_app_event(
         request=TriggerExternalAppEventRequest(
             event_name=payload.event_name, payload=payload.payload
         ),
         app_context=app_context,
-    )
-    return TriggerEventResponse(
-        status=result.status,
-        message=result.message,
     )
 
 
 @router.post(
     "/api/plugins/{plugin_name}",
     operation_id="set_plugin_status",
-    response_model=ActionResponse,
+    response_model=SetPluginStatusResponse,
 )
 async def post_set_plugin_status(
     plugin_name: str,
     payload: PluginStatusSetPayload,
-    current_user: UserResponse = Depends(get_admin_user),
+    current_user: UserResponse = Security(
+        require_permissions, scopes=[Permission.PLUGINS_MANAGE]
+    ),
     app_context: AppContext = Depends(get_app_context),
-) -> ActionResponse:
+) -> SetPluginStatusResponse:
     """Set the enabled or disabled status for a specific plugin."""
     identity = current_user.username
     action = "enable" if payload.enabled else "disable"
@@ -115,69 +148,87 @@ async def post_set_plugin_status(
         "Request to %s plugin '%s' by user '%s'.", action, plugin_name, identity
     )
 
-    result = await plugins_api.set_plugin_status(
+    return await plugins_api.set_plugin_status(
         request=SetPluginStatusRequest(
             target_plugin_name=plugin_name, enabled=payload.enabled
         ),
         app_context=app_context,
     )
-    return ActionResponse(status=result.status, message=str(result.message))
 
 
 @router.post(
     "/api/plugins/{plugin_name}/reload",
     operation_id="reload_plugin",
-    response_model=ActionResponse,
+    response_model=ReloadSinglePluginResponse,
 )
 async def post_reload_single_plugin(
     plugin_name: str,
-    current_user: UserResponse = Depends(get_admin_user),
+    current_user: UserResponse = Security(
+        require_permissions, scopes=[Permission.PLUGINS_MANAGE]
+    ),
     app_context: AppContext = Depends(get_app_context),
-) -> ActionResponse:
+) -> ReloadSinglePluginResponse:
     """
     Reloads a single plugin by name.
     """
     identity = current_user.username
     logger.info("Request to reload plugin '%s' by user '%s'.", plugin_name, identity)
 
-    result = await plugins_api.reload_single_plugin(
+    return await plugins_api.reload_single_plugin(
         request=ReloadSinglePluginRequest(target_plugin_name=plugin_name),
         app_context=app_context,
     )
-    return ActionResponse(status=result.status, message=str(result.message))
 
 
 @router.put(
-    "/api/plugins/reload", operation_id="reload_plugins", response_model=ActionResponse
+    "/api/plugins/reload",
+    operation_id="reload_plugins",
+    response_model=ReloadPluginsResponse,
 )
 async def put_reload_plugins(
-    current_user: UserResponse = Depends(get_admin_user),
+    current_user: UserResponse = Security(
+        require_permissions, scopes=[Permission.PLUGINS_MANAGE]
+    ),
     app_context: AppContext = Depends(get_app_context),
-) -> ActionResponse:
+) -> ReloadPluginsResponse:
     """
     Triggers a full reload of the plugin system.
     """
     identity = current_user.username
     logger.info("Reload plugins request by '%s'.", identity)
 
-    result = await plugins_api.reload_plugins(
+    return await plugins_api.reload_plugins(
         request=ReloadPluginsRequest(), app_context=app_context
     )
-    return ActionResponse(status=result.status, message=str(result.message))
 
 
 @router.get(
     "/api/plugins/{plugin_name}/settings",
     operation_id="get_plugin_settings",
-    response_model=plugins_api.GetPluginSettingsResponse,
+    response_model=GetPluginSettingsResponse,
 )
+@describe_access(
+    "custom",
+    additional_checks=["settings-scope", "query-server-access"],
+    allowed_roles=["user", "moderator", "admin"],
+    credential_alternatives=settings_alternatives(0),
+)
+@server_collection
 async def get_plugin_settings(
+    request: Request,
     plugin_name: str,
-    current_user: UserResponse = Depends(get_admin_user),
+    scope: Literal["plugin", "global", "server"] = "plugin",
+    server_name: str | None = None,
+    current_user: UserResponse = Security(require_permissions, scopes=[]),
     app_context: AppContext = Depends(get_app_context),
 ):
+    await require_context_permission(
+        request, current_user, SETTINGS_PERMISSIONS[scope][0], server_name
+    )
     return await plugins_api.get_plugin_settings(
-        plugins_api.GetPluginSettingsRequest(target_plugin_name=plugin_name),
+        GetPluginSettingsRequest(
+            target_plugin_name=plugin_name, scope=scope, server_name=server_name
+        ),
         app_context=app_context,
     )
 
@@ -185,17 +236,34 @@ async def get_plugin_settings(
 @router.put(
     "/api/plugins/{plugin_name}/settings",
     operation_id="update_plugin_settings",
-    response_model=plugins_api.SetPluginSettingResponse,
+    response_model=SetPluginSettingResponse,
 )
+@describe_access(
+    "custom",
+    additional_checks=["settings-scope", "body-server-access"],
+    allowed_roles=["admin"],
+    credential_alternatives=settings_alternatives(1),
+)
+@server_collection
 async def update_plugin_settings(
+    request: Request,
     plugin_name: str,
     payload: PluginSettingsPayload,
-    current_user: UserResponse = Depends(get_admin_user),
+    current_user: UserResponse = Security(require_permissions, scopes=[]),
     app_context: AppContext = Depends(get_app_context),
 ):
+    await require_context_permission(
+        request,
+        current_user,
+        SETTINGS_PERMISSIONS[payload.scope][1],
+        payload.server_name,
+    )
     return await plugins_api.update_plugin_settings(
-        plugins_api.UpdatePluginSettingsRequest(
-            target_plugin_name=plugin_name, settings=payload.settings
+        UpdatePluginSettingsRequest(
+            target_plugin_name=plugin_name,
+            settings=payload.settings,
+            scope=payload.scope,
+            server_name=payload.server_name,
         ),
         app_context=app_context,
     )

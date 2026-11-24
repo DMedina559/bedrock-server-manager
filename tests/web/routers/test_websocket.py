@@ -1,18 +1,22 @@
 import asyncio
 import json
 import threading
+from contextlib import asynccontextmanager
 
 import pytest
 from websockets.exceptions import ConnectionClosed
 
-from bedrock_server_manager.utils.auth import create_access_token
+from bedrock_server_manager.web.auth import create_access_token
 
 
-async def authenticate(socket, context, user):
+@asynccontextmanager
+async def authenticated_socket(websocket_client, context, user):
     token = await create_access_token(context, {"sub": user.username})
-    await socket.send(json.dumps({"action": "authenticate", "token": token}))
-    response = json.loads(await socket.recv())
-    assert response["status"] == "success"
+    async with websocket_client() as socket:
+        await socket.send(json.dumps({"action": "authenticate", "token": token}))
+        response = json.loads(await socket.recv())
+        assert response["status"] == "success"
+        yield socket
 
 
 async def test_websocket_missing_auth_action(websocket_client):
@@ -23,7 +27,10 @@ async def test_websocket_missing_auth_action(websocket_client):
         assert failure.value.rcvd.code == 1008
 
 
-async def test_websocket_auth_timeout(websocket_client):
+async def test_websocket_auth_timeout(websocket_client, monkeypatch):
+    from bedrock_server_manager.web.routers import websocket as websocket_router
+
+    monkeypatch.setattr(websocket_router, "AUTH_TIMEOUT_SECONDS", 0.05)
     async with websocket_client() as socket:
         with pytest.raises(ConnectionClosed) as failure:
             await socket.recv()
@@ -33,8 +40,7 @@ async def test_websocket_auth_timeout(websocket_client):
 async def test_websocket_auth_success_and_messaging(
     websocket_client, app_context, test_user
 ):
-    async with websocket_client() as socket:
-        await authenticate(socket, app_context, test_user)
+    async with authenticated_socket(websocket_client, app_context, test_user) as socket:
         for action in ("subscribe", "unsubscribe"):
             await socket.send(json.dumps({"action": action, "topic": "test_topic"}))
             response = json.loads(await socket.recv())
@@ -68,8 +74,7 @@ async def test_websocket_providers_report_results_and_safe_failures(
     manager = app_context.connection_manager
     manager.register_data_provider("sample", sample_provider)
     manager.register_data_provider("failing", error_provider)
-    async with websocket_client() as socket:
-        await authenticate(socket, app_context, test_user)
+    async with authenticated_socket(websocket_client, app_context, test_user) as socket:
         for topic in ("unknown_topic", "sample", "failing"):
             await socket.send(
                 json.dumps(
@@ -97,8 +102,7 @@ async def test_invalid_provider_data_keeps_connection_usable(
         return {"value": float("nan")}
 
     app_context.connection_manager.register_data_provider("invalid", invalid)
-    async with websocket_client() as socket:
-        await authenticate(socket, app_context, test_user)
+    async with authenticated_socket(websocket_client, app_context, test_user) as socket:
         await socket.send(
             json.dumps(
                 {"action": "request", "topic": "invalid", "request_id": "same-id"}
@@ -120,8 +124,7 @@ async def test_sync_provider_runs_off_the_application_loop(
         return threading.get_ident()
 
     app_context.connection_manager.register_data_provider("thread", provider)
-    async with websocket_client() as socket:
-        await authenticate(socket, app_context, test_user)
+    async with authenticated_socket(websocket_client, app_context, test_user) as socket:
         await socket.send(
             json.dumps({"action": "request", "topic": "thread", "request_id": "thread"})
         )
@@ -144,8 +147,7 @@ async def test_task_subscription_replays_completed_owner_snapshot(
         app_context=app_context,
     )
     completed = await wait_for_task(app_context, task_id)
-    async with websocket_client() as socket:
-        await authenticate(socket, app_context, test_user)
+    async with authenticated_socket(websocket_client, app_context, test_user) as socket:
         await socket.send(
             json.dumps({"action": "subscribe", "topic": f"task:{task_id}"})
         )
@@ -164,12 +166,126 @@ async def test_task_subscription_does_not_replay_another_users_snapshot(
 ):
     task_id = await app_context.task_manager.run_task(lambda: "private", "other")
     await wait_for_task(app_context, task_id)
-    async with websocket_client() as socket:
-        await authenticate(socket, app_context, test_user)
+    async with authenticated_socket(websocket_client, app_context, test_user) as socket:
         await socket.send(
             json.dumps({"action": "subscribe", "topic": f"task:{task_id}"})
         )
-        assert json.loads(await socket.recv())["status"] == "success"
+        assert json.loads(await socket.recv())["status"] == "error"
         await socket.send(json.dumps({"action": "subscribe", "topic": "next"}))
         async with asyncio.timeout(5):
             assert "next" in json.loads(await socket.recv())["message"]
+
+
+async def test_health_and_diagnostics_websocket_subscriptions_and_replay(
+    websocket_client, app_context, test_user, test_admin_user
+):
+    manager = app_context.connection_manager
+    assert not manager.has_subscribers("health")
+    assert not manager.has_subscribers("diagnostics")
+
+    # Regular user can subscribe to health and receives immediate replay
+    async with authenticated_socket(websocket_client, app_context, test_user) as socket:
+        await socket.send(json.dumps({"action": "subscribe", "topic": "health"}))
+        reply = json.loads(await socket.recv())
+        assert reply["status"] == "success"
+        assert manager.has_subscribers("health")
+
+        async with asyncio.timeout(5):
+            update = json.loads(await socket.recv())
+        assert update["type"] == "health_update"
+        assert update["topic"] == "health"
+        assert "health" in update["data"]
+
+        # Regular user is denied subscription to diagnostics
+        await socket.send(json.dumps({"action": "subscribe", "topic": "diagnostics"}))
+        denied = json.loads(await socket.recv())
+        assert denied["status"] == "error"
+        assert denied["message"] == "Topic access denied"
+
+    assert not manager.has_subscribers("health")
+
+    # Admin user can subscribe to diagnostics and diagnostics:summary and receives replay
+    async with authenticated_socket(
+        websocket_client, app_context, test_admin_user
+    ) as socket:
+        await socket.send(json.dumps({"action": "subscribe", "topic": "diagnostics"}))
+        reply = json.loads(await socket.recv())
+        assert reply["status"] == "success"
+        assert manager.has_subscribers("diagnostics")
+
+        async with asyncio.timeout(5):
+            update = json.loads(await socket.recv())
+        assert update["type"] == "diagnostic_update"
+        assert update["topic"] == "diagnostics"
+        assert "summary" in update["data"]
+
+        await socket.send(
+            json.dumps({"action": "subscribe", "topic": "diagnostics:summary"})
+        )
+        reply = json.loads(await socket.recv())
+        assert reply["status"] == "success"
+
+        async with asyncio.timeout(5):
+            update = json.loads(await socket.recv())
+        assert update["type"] == "diagnostic_summary"
+        assert update["topic"] == "diagnostics:summary"
+        assert "status" in update["data"]
+
+
+async def test_health_transition_broadcasts_to_subscribers(
+    websocket_client, app_context, test_user
+):
+    manager = app_context.connection_manager
+    async with authenticated_socket(websocket_client, app_context, test_user) as socket:
+        await socket.send(json.dumps({"action": "subscribe", "topic": "health"}))
+        reply = json.loads(await socket.recv())
+        assert reply["status"] == "success"
+
+        # Replay
+        async with asyncio.timeout(5):
+            replay = json.loads(await socket.recv())
+        assert replay["type"] == "health_update"
+
+        # Trigger subscriber notification (e.g. status transition)
+        app_context.diagnostics.wake_subscribers()
+        if app_context.diagnostics.subscriber_notifier:
+            await app_context.diagnostics.subscriber_notifier()
+
+        # If a transition occurred or heartbeat triggered, a frame is delivered
+        assert manager.has_subscribers("health")
+
+
+async def test_recovered_process_broadcasts_to_websocket_subscribers(
+    websocket_client, app_context, test_user, real_bedrock_server
+):
+    server = real_bedrock_server
+    await server.start()
+    child = server.process._process
+    manager = app_context.bedrock_process_manager
+    await manager.remove_server(server.server_name)
+    server.process._process = None
+    # Simulate config being STOPPED while process was left running
+    await server.configuration.update("server_info.status", "STOPPED")
+
+    async with authenticated_socket(websocket_client, app_context, test_user) as socket:
+        await socket.send(
+            json.dumps(
+                {
+                    "action": "subscribe",
+                    "topic": "event:after_server_status_change",
+                }
+            )
+        )
+        reply = json.loads(await socket.recv())
+        assert reply["status"] == "success"
+
+        try:
+            assert await server.is_running()
+            async with asyncio.timeout(5):
+                msg = json.loads(await socket.recv())
+            assert msg["topic"] == "event:after_server_status_change"
+            assert msg["data"]["result"]["new_status"] == "RUNNING"
+            assert msg["data"]["server_name"] == server.server_name
+        finally:
+            await server.stop()
+            await asyncio.wait_for(child.wait(), 5)

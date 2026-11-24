@@ -3,17 +3,16 @@ from pathlib import Path
 from types import SimpleNamespace
 
 import pytest
-from click.testing import CliRunner
 
 from bedrock_server_manager.cli.database import database
 from bedrock_server_manager.utils.threads import run_in_thread
 
 
 @pytest.fixture
-def invoke_database(app_context):
+def invoke_database(app_context, runner):
     async def invoke(*arguments):
         return await run_in_thread(
-            CliRunner().invoke,
+            runner.invoke,
             database,
             list(arguments),
             obj={"app_context": app_context},
@@ -112,3 +111,29 @@ async def test_backup_failure_preserves_original_error(
     ]
     assert len(failures) == 1
     assert isinstance(failures[0].exc_info[1], OSError)
+
+
+async def test_database_upgrade_blocks_when_bsm_running(invoke_database, monkeypatch):
+    monkeypatch.setattr(
+        "bedrock_server_manager.web.process.check_bsm_offline",
+        lambda *args, **kwargs: (False, 12345),
+    )
+    result = await invoke_database("upgrade", "--yes")
+    assert result.exit_code != 0
+    assert "Bedrock Server Manager is currently running (PID 12345)" in result.output
+    assert "Database upgrade requires BSM to be stopped first" in result.output
+
+
+async def test_database_restore_blocks_when_bsm_running(
+    invoke_database, tmp_path, monkeypatch
+):
+    backup = tmp_path / "backup.json"
+    backup.write_text("{}")
+    monkeypatch.setattr(
+        "bedrock_server_manager.web.process.check_bsm_offline",
+        lambda *args, **kwargs: (False, 12345),
+    )
+    result = await invoke_database("restore", "--input", str(backup))
+    assert result.exit_code != 0
+    assert "Bedrock Server Manager is currently running (PID 12345)" in result.output
+    assert "Database restore requires BSM to be stopped first" in result.output

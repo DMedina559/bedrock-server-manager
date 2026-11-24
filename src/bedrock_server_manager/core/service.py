@@ -40,6 +40,17 @@ elif platform.system() == "Windows":
 logger = logging.getLogger(__name__)
 
 
+def _run_service_command(*args, **kwargs):
+    """Bound platform management commands without blocking an async hot path."""
+    kwargs.setdefault("timeout", 30)
+    try:
+        return subprocess.run(*args, **kwargs)
+    except subprocess.TimeoutExpired as error:
+        raise SystemError(
+            "Service management command exceeded its deadline."
+        ) from error
+
+
 def _ensure_linux_for_web_service(operation_name: str) -> None:
     """Ensure the current OS is Linux before proceeding with a Web UI systemd operation."""
     if platform.system() != "Linux":
@@ -266,7 +277,7 @@ def remove_web_service_file(system: bool = False) -> bool:
                     if not system:
                         command.append("--user")
                     command.append("daemon-reload")
-                    subprocess.run(
+                    _run_service_command(
                         command,
                         check=False,
                         capture_output=True,
@@ -316,7 +327,7 @@ def _query_web_service_state(*, enabled: bool, system: bool) -> bool:
             ["is-enabled" if enabled else "is-active", WEB_SERVICE_SYSTEMD_NAME]
         )
         try:
-            process = subprocess.run(
+            process = _run_service_command(
                 command, capture_output=True, text=True, check=False, timeout=10
             )
         except (OSError, subprocess.SubprocessError) as error:
@@ -358,7 +369,7 @@ def _query_web_service_state(*, enabled: bool, system: bool) -> bool:
             raise DependencyUnavailableError(
                 "Service status query returned conflicting results."
             )
-        return process.returncode == 0 and state == positive
+        return bool(process.returncode == 0 and state == positive)
     if os_type == "Windows":
         executable = shutil.which("sc.exe")
         if not executable:

@@ -7,39 +7,35 @@ import os
 
 import aiofiles.ospath
 import bsm_frontend
-from fastapi import APIRouter, Depends, HTTPException, Query, status
+from fastapi import APIRouter, Depends, HTTPException, Query, Security, status
 from fastapi.responses import FileResponse
-
-from bedrock_server_manager.api.models import (
-    DisableAddonRequest,
-    EnableAddonRequest,
-    ImportAddonRequest,
-    ListAvailableAddonsRequest,
-    ListAvailableAddonsResponse,
-    ListInstalledAddonsRequest,
-    ReorderAddonsRequest,
-    UninstallAddonRequest,
-    UpdateSubpackRequest,
-)
 
 from ...api import addon as addon_api
 from ...context import AppContext
 from ...error import AppFileNotFoundError
-from ..deps import (
-    get_admin_user,
-    get_app_context,
-    get_moderator_user,
-    validate_server_exists,
-)
-from ..schemas.addon import (
+from ...models import (
     AddonActionPayload,
-    AddonListResponse,
     AddonReorderPayload,
     AddonSubpackPayload,
+    DisableAddonRequest,
+    EnableAddonRequest,
+    FileNamePayload,
+    ImportAddonRequest,
+    ListAvailableAddonsRequest,
+    ListAvailableAddonsResponse,
+    ListInstalledAddonsRequest,
+    ListInstalledAddonsResponse,
+    ReorderAddonsRequest,
+    TaskAcceptedResponse,
+    UninstallAddonRequest,
+    UpdateSubpackRequest,
 )
-from ..schemas.base import TaskAcceptedResponse
-from ..schemas.system import FileNamePayload
+from ..access_policy import Permission
+from ..authorization import current_authorization
+from ..deps import get_app_context, validate_server_exists
+from ..deps.auth import require_permissions
 from ..schemas.users import UserResponse
+from .content import resolve_content_file
 
 logger = logging.getLogger(__name__)
 router = APIRouter(tags=["Addon Management"])
@@ -52,7 +48,9 @@ STATIC_DIR = bsm_frontend.get_static_dir()
     response_model=ListAvailableAddonsResponse,
 )
 async def get_addons(
-    current_user: UserResponse = Depends(get_moderator_user),
+    current_user: UserResponse = Security(
+        require_permissions, scopes=[Permission.CONTENT_READ]
+    ),
     app_context: AppContext = Depends(get_app_context),
 ) -> ListAvailableAddonsResponse:
     """Return a list of available .mcaddon or .mcpack template files."""
@@ -69,13 +67,15 @@ async def get_addons(
 @router.get(
     "/api/server/{server_name}/addons",
     operation_id="list_server_addons",
-    response_model=AddonListResponse,
+    response_model=ListInstalledAddonsResponse,
 )
 async def get_server_addons(
+    current_user: UserResponse = Security(
+        require_permissions, scopes=[Permission.ADDONS_READ]
+    ),
     server_name: str = Depends(validate_server_exists),
-    current_user: UserResponse = Depends(get_admin_user),
     app_context: AppContext = Depends(get_app_context),
-) -> AddonListResponse:
+) -> ListInstalledAddonsResponse:
     """Return a list of addons installed on a server's active world."""
     identity = current_user.username
     logger.debug(
@@ -85,7 +85,27 @@ async def get_server_addons(
         request=ListInstalledAddonsRequest.model_validate({"server_name": server_name}),
         app_context=app_context,
     )
-    return AddonListResponse(status="success", addons=result.addons)
+    authorization = current_authorization.get()
+    addons = result.addons
+    if authorization is not None and not authorization.allows(
+        Permission.ADDONS_MANAGE, server_name
+    ):
+        # Read-only consumers need inventory and icon availability, not host paths.
+        addons = addons.model_copy(
+            update={
+                group: [
+                    pack.model_copy(
+                        update={
+                            "path": None,
+                            "icon": "pack_icon.png" if pack.icon else None,
+                        }
+                    )
+                    for pack in getattr(addons, group)
+                ]
+                for group in ("behavior_packs", "resource_packs")
+            }
+        )
+    return ListInstalledAddonsResponse(status="success", addons=addons)
 
 
 @router.post(
@@ -96,8 +116,10 @@ async def get_server_addons(
 )
 async def post_enable_addon(
     payload: AddonActionPayload,
+    current_user: UserResponse = Security(
+        require_permissions, scopes=[Permission.ADDONS_MANAGE]
+    ),
     server_name: str = Depends(validate_server_exists),
-    current_user: UserResponse = Depends(get_admin_user),
     app_context: AppContext = Depends(get_app_context),
 ) -> TaskAcceptedResponse:
     """
@@ -132,8 +154,10 @@ async def post_enable_addon(
 )
 async def post_disable_addon(
     payload: AddonActionPayload,
+    current_user: UserResponse = Security(
+        require_permissions, scopes=[Permission.ADDONS_MANAGE]
+    ),
     server_name: str = Depends(validate_server_exists),
-    current_user: UserResponse = Depends(get_admin_user),
     app_context: AppContext = Depends(get_app_context),
 ) -> TaskAcceptedResponse:
     """
@@ -168,8 +192,10 @@ async def post_disable_addon(
 )
 async def post_update_subpack(
     payload: AddonSubpackPayload,
+    current_user: UserResponse = Security(
+        require_permissions, scopes=[Permission.ADDONS_MANAGE]
+    ),
     server_name: str = Depends(validate_server_exists),
-    current_user: UserResponse = Depends(get_admin_user),
     app_context: AppContext = Depends(get_app_context),
 ) -> TaskAcceptedResponse:
     """
@@ -208,8 +234,10 @@ async def post_update_subpack(
 )
 async def delete_uninstall_addon(
     payload: AddonActionPayload,
+    current_user: UserResponse = Security(
+        require_permissions, scopes=[Permission.ADDONS_MANAGE]
+    ),
     server_name: str = Depends(validate_server_exists),
-    current_user: UserResponse = Depends(get_admin_user),
     app_context: AppContext = Depends(get_app_context),
 ) -> TaskAcceptedResponse:
     """
@@ -246,8 +274,10 @@ async def delete_uninstall_addon(
 )
 async def post_reorder_addons(
     payload: AddonReorderPayload,
+    current_user: UserResponse = Security(
+        require_permissions, scopes=[Permission.ADDONS_MANAGE]
+    ),
     server_name: str = Depends(validate_server_exists),
-    current_user: UserResponse = Depends(get_admin_user),
     app_context: AppContext = Depends(get_app_context),
 ) -> TaskAcceptedResponse:
     """
@@ -284,8 +314,10 @@ async def post_reorder_addons(
 )
 async def post_install_addon(
     payload: FileNamePayload,
+    current_user: UserResponse = Security(
+        require_permissions, scopes=[Permission.ADDONS_MANAGE]
+    ),
     server_name: str = Depends(validate_server_exists),
-    current_user: UserResponse = Depends(get_admin_user),
     app_context: AppContext = Depends(get_app_context),
 ) -> TaskAcceptedResponse:
     """
@@ -299,43 +331,10 @@ async def post_install_addon(
         server_name,
         identity,
     )
-    from ...utils.server import validate_server
 
-    if not await validate_server(server_name=server_name, app_context=app_context):
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND,
-            detail=f"Server '{server_name}' not found.",
-        )
-
-    content_base_dir = os.path.join(app_context.settings.get("paths.content"), "addons")
-    full_addon_file_path = os.path.normpath(
-        os.path.join(content_base_dir, selected_filename)
+    full_addon_file_path = str(
+        await resolve_content_file(app_context, "addons", selected_filename)
     )
-
-    if not os.path.abspath(full_addon_file_path).startswith(
-        os.path.abspath(content_base_dir) + os.sep
-    ):
-        logger.error(
-            "API Install Addon '%s': Security violation - Invalid path '%s'.",
-            server_name,
-            selected_filename,
-        )
-        raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
-            detail="Invalid file path (security check failed).",
-        )
-
-    if not await aiofiles.ospath.isfile(full_addon_file_path):
-        logger.warning(
-            "API Install Addon '%s': Addon file '%s' not found at '%s'.",
-            server_name,
-            selected_filename,
-            full_addon_file_path,
-        )
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND,
-            detail=f"Addon file '{selected_filename}' not found for import.",
-        )
 
     task_id = await app_context.task_manager.run_task(
         addon_api.import_addon,
@@ -356,8 +355,20 @@ async def post_install_addon(
 @router.get(
     "/api/server/{server_name}/addon/icon",
     operation_id="get_server_addon_icon",
+    responses={
+        200: {
+            "content": {
+                media: {"schema": {"type": "string", "format": "binary"}}
+                for media in ("image/png", "image/jpeg", "image/vnd.microsoft.icon")
+            }
+        }
+    },
+    response_class=FileResponse,
 )
 async def get_server_addon_icon(
+    current_user: UserResponse = Security(
+        require_permissions, scopes=[Permission.ADDONS_READ]
+    ),
     server_name: str = Depends(validate_server_exists),
     pack_type: str = Query(...),
     uuid: str = Query(...),
@@ -391,7 +402,11 @@ async def get_server_addon_icon(
                 break
 
         if icon_path and await aiofiles.ospath.exists(icon_path):
-            return FileResponse(icon_path, media_type="image/png")
+            return FileResponse(
+                icon_path,
+                media_type="image/png",
+                headers={"Cache-Control": "private, no-store"},
+            )
 
         logger.debug(
             "Addon icon not found for uuid '%s'. Serving default world icon.", uuid
@@ -403,7 +418,9 @@ async def get_server_addon_icon(
         default_icon_path = os.path.join(STATIC_DIR, "image", "icon", "favicon.ico")
         if await aiofiles.ospath.isfile(default_icon_path):
             return FileResponse(
-                default_icon_path, media_type="image/vnd.microsoft.icon"
+                default_icon_path,
+                media_type="image/vnd.microsoft.icon",
+                headers={"Cache-Control": "private, no-store"},
             )
         else:
             raise HTTPException(

@@ -5,7 +5,7 @@ from pathlib import Path
 from types import UnionType
 from typing import Annotated, Any, Dict, List, Literal, Union, get_args, get_origin
 
-from bedrock_server_manager import PluginBase, app_event
+from bedrock_server_manager import PluginBase, app_event, scheduled_task
 from bedrock_server_manager.events import server as status_events  # noqa: F401
 from bedrock_server_manager.events.registry import builtin_events
 from bedrock_server_manager.plugins.api_types import API_METHODS
@@ -14,7 +14,8 @@ from bedrock_server_manager.plugins.api_types import API_METHODS
 class APIDocsGenerator(PluginBase):
     """Generate navigable plugin API, model, and event references."""
 
-    version = "1.3.0"
+    version = "1.4.0"
+    permissions = []
     author = "dmedina559"
     description = "A utility plugin that automatically generates Markdown documentation for all registered plugin API functions and application events."
     name = "API Docs Generator"
@@ -26,18 +27,18 @@ class APIDocsGenerator(PluginBase):
         )
 
     @app_event("on_manager_startup")
+    @scheduled_task(
+        name="generate_docs",
+        requires_server_lock=False,
+        description="Generate Markdown documentation for registered plugin APIs and events",
+    )
     async def generate_docs(self, **kwargs: Any):
         """Export registered contracts after application startup without blocking I/O."""
 
         self.logger.info("Generating API and Event documentation...")
 
         try:
-            backup_dir = (
-                await self.api.settings.get_global_setting({"key": "paths.backups"})
-            ).value
-            if not isinstance(backup_dir, str):
-                raise ValueError("Backup path must be a string")
-            output = Path(backup_dir) / "plugin-reference"
+            output = await self.api.runtime.get_plugin_data_path("plugin-reference")
             references = self.format_reference_files(self.api.list_available_apis())
             await asyncio.to_thread(self.write_reference_files, output, references)
             self.logger.info("Generated plugin reference at %s", output)
@@ -173,6 +174,27 @@ class APIDocsGenerator(PluginBase):
                 f"- **Async (Requires await):** {'Yes' if is_async else 'No'}\n"
             )
             lines.append(f"- **Description:** {docstring}\n")
+            if api_func.get("required_scope"):
+                lines.append(
+                    f"- **Required Permission:** `{api_func['required_scope']}`\n"
+                )
+            else:
+                access = api_func.get("access", {})
+                if access.get("mode") == "conditional":
+                    for condition in access.get("conditions", []):
+                        scope = condition["required_scope"]
+                        requirement = f"`{scope}`" if scope else "plugin ownership"
+                        lines.append(
+                            f"- **Permission ({condition['condition']}):** {requirement}\n"
+                        )
+                elif access.get("mode") == "owner":
+                    lines.append(
+                        "- **Authorization:** Calling plugin's own resources only.\n"
+                    )
+                elif access.get("mode") == "public":
+                    lines.append(
+                        "- **Authorization:** No additional capability required.\n"
+                    )
 
             if api_func.get("contract_version") == 2:
                 request_model = api_func["request_model"]
@@ -185,10 +207,13 @@ class APIDocsGenerator(PluginBase):
                     for field in required
                     if properties.get(field, {}).get("examples")
                 }
-                payload_line = (
-                    f"payload = {examples!r}"
-                    if len(examples) == len(required)
-                    else "payload = {...}  # Supply required request fields below."
+                arguments = ", ".join(
+                    (
+                        f"{field}={examples[field]!r}"
+                        if field in examples
+                        else f"{field}=..."
+                    )
+                    for field in required
                 )
                 lines.append(f"- **Returns:** `{response_model}`\n")
                 lines.append(
@@ -197,11 +222,10 @@ class APIDocsGenerator(PluginBase):
                     "`APICancelledError`.\n"
                 )
                 lines.append(
-                    f"```python\nfrom bedrock_server_manager.api.models import {request_model}\n"
-                    f"{payload_line}\n"
-                    f"request = {request_model}(**payload)\n"
+                    f"```python\nfrom bedrock_server_manager.models import {request_model}\n"
+                    f"request = {request_model}({arguments})\n"
                     f"result = {signature_prefix}{full_name}(request)\n"
-                    'data = result.model_dump(mode="json")\n```'
+                    "```"
                 )
                 for label, schema_key in (
                     ("Request schema", "request_schema"),

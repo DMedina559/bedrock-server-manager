@@ -3,12 +3,12 @@
 Service managing server domain state mutations and business rules.
 """
 
-from typing import TYPE_CHECKING, Dict, Optional
+from typing import TYPE_CHECKING, Awaitable, Callable, Dict, Optional
 
 from pydantic import JsonValue
 
 from ..error import ConfigParseError
-from ..results import BanMutation
+from ..models.common import BanMutation
 from ..state.changeset import ChangeSet
 from ..state.models import BanItem, ServerConfigState
 from ..state.updates import ServerUpdate
@@ -25,9 +25,11 @@ class ServerService:
         self,
         state: "AppState",
         storage: "Storage",
+        ban_changed: Callable[[str], None] | None = None,
     ):
         self.state = state
         self.storage = storage
+        self._ban_changed = ban_changed
 
     def get_server_state(self, server_name: str) -> Optional[ServerConfigState]:
         """Return a server configuration state model snapshot."""
@@ -61,10 +63,16 @@ class ServerService:
                 values[name] = value
         return await self.apply_update(ServerUpdate.model_validate(values))
 
-    async def apply_update(self, request: ServerUpdate) -> ServerConfigState:
+    async def apply_update(
+        self,
+        request: ServerUpdate,
+        *,
+        before_publish: Callable[[], Awaitable[None]] | None = None,
+    ) -> ServerConfigState:
         request = ServerUpdate.model_validate(request)
 
         def build(existing: ServerConfigState | None) -> ServerConfigState:
+            self.state.servers.maintenance(request.server_name).check()
             data = existing.model_dump() if existing else {}
             data.update(request.model_dump(exclude_unset=True))
             return ServerConfigState.model_validate(data)
@@ -81,6 +89,7 @@ class ServerService:
             save=self.storage.server_repo.save_server,
             publish=self.state.servers.set,
             acknowledge=self.state.servers.remove_dirty_server,
+            before_publish=before_publish,
         )
 
     async def update_setting(
@@ -94,6 +103,7 @@ class ServerService:
         }
 
         def build(existing: ServerConfigState | None) -> ServerConfigState:
+            self.state.servers.maintenance(server_name).check()
             record = existing or ServerConfigState(server_name=server_name)
             data = record.model_dump()
             if parts[0] == "custom":
@@ -144,14 +154,20 @@ class ServerService:
     ) -> BanMutation:
         """Adds or updates a server ban record."""
         async with self.storage.transaction() as session:
-            return await self.storage.ban_repo.add_or_update_ban(
+            result = await self.storage.ban_repo.add_or_update_ban(
                 session, server_name, player_name, xuid, reason
             )
+        if self._ban_changed is not None:
+            self._ban_changed(server_name)
+        return result
 
     async def remove_server_ban(self, server_name: str, xuid: str) -> BanMutation:
         """Remove a server ban record by XUID."""
         async with self.storage.transaction() as session:
-            return await self.storage.ban_repo.remove_ban(session, server_name, xuid)
+            result = await self.storage.ban_repo.remove_ban(session, server_name, xuid)
+        if self._ban_changed is not None:
+            self._ban_changed(server_name)
+        return result
 
     async def get_server_bans(self, server_name: str) -> list[BanItem]:
         """Return all bans for a specific server."""

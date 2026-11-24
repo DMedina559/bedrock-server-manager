@@ -1,4 +1,5 @@
 from .event_api import PluginEventAPI
+from .operation_api import PluginOperationAPI
 
 # bedrock_server_manager/plugins/api_bridge.py
 """A bridge to safely expose core application APIs to plugins."""
@@ -6,6 +7,7 @@ from .event_api import PluginEventAPI
 import functools
 import inspect
 import logging
+from copy import deepcopy
 from typing import (
     TYPE_CHECKING,
     Any,
@@ -17,8 +19,6 @@ from typing import (
     TypeVar,
     cast,
 )
-
-from .api_contract import get_contract, validate_contract
 
 if TYPE_CHECKING:
     from ..context import AppContext
@@ -39,6 +39,7 @@ if TYPE_CHECKING:
         PluginsAPI,
         PropertiesAPI,
         RuntimeAPI,
+        SchedulerAPI,
         ServerAPI,
         SettingsAPI,
         SystemAPI,
@@ -51,6 +52,7 @@ logger = logging.getLogger(__name__)
 
 # Modules allowed from bedrock_server_manager.api
 ALLOWED_API_MODULES = {
+    "scheduler",
     "diagnostics",
     "addon",
     "allowlist",
@@ -70,13 +72,22 @@ ALLOWED_API_MODULES = {
     "world",
 }
 
-# (func, expose_to_plugins, requires_context, requires_plugin_name, origin_module)
-_api_registry: Dict[str, tuple[Callable[..., Any], bool, bool, bool, str]] = {}
+# (func, expose_to_plugins, requires_context, requires_plugin_name, origin_module, required_scope)
+_api_registry: Dict[
+    str, tuple[Callable[..., Any], bool, bool, bool, str, Optional[str]]
+] = {}
 
 F = TypeVar("F", bound=Callable[..., Any])
 
 
-def api_method(name: str, expose_to_plugins: bool = True) -> Callable[[F], F]:
+def api_method(
+    name: str,
+    expose_to_plugins: bool = True,
+    *,
+    required_scope: Optional[str] = None,
+    permission_resolver: Callable[[Any], str | None] | None = None,
+    permission_conditions: tuple[tuple[str, str | None], ...] = (),
+) -> Callable[[F], F]:
     """Decorator to register a function with the AppAPI bridge.
 
     Validates that the registering function originates from one of the allowed API modules.
@@ -114,21 +125,54 @@ def api_method(name: str, expose_to_plugins: bool = True) -> Callable[[F], F]:
         except (ValueError, TypeError):
             pass
 
+        from ..api.contract import validate_contract
+
         func = cast(F, validate_contract(func))
+        if permission_resolver is not None and (
+            required_scope or not permission_conditions
+        ):
+            raise ValueError(
+                "Conditional APIs need documented conditions and no fixed scope"
+            )
+        setattr(func, "__bsm_scope_resolver__", permission_resolver)
+        if not expose_to_plugins:
+            access_mode = "internal"
+        elif permission_resolver is not None:
+            access_mode = "conditional"
+        elif required_scope is not None:
+            access_mode = "capability"
+        else:
+            access_mode = "owner" if requires_plugin_name else "public"
+        setattr(
+            func,
+            "__bsm_plugin_access__",
+            {
+                "mode": access_mode,
+                "required_scope": (
+                    str(required_scope) if required_scope is not None else None
+                ),
+                "conditions": [
+                    {"condition": condition, "required_scope": scope}
+                    for condition, scope in permission_conditions
+                ],
+            },
+        )
         _api_registry[name] = (
             func,
             expose_to_plugins,
             requires_context,
             requires_plugin_name,
             api_domain,
+            required_scope,
         )
         logger.debug(
-            "API registered: '%s' from '%s' (expose_to_plugins=%s, requires_context=%s, requires_plugin_name=%s).",
+            "API registered: '%s' from '%s' (expose_to_plugins=%s, requires_context=%s, requires_plugin_name=%s, required_scope=%s).",
             name,
             module_name,
             expose_to_plugins,
             requires_context,
             requires_plugin_name,
+            required_scope,
         )
         return func
 
@@ -155,22 +199,52 @@ def create_app_api(
 
     import_module("bedrock_server_manager.api")
 
+    file_bus = (
+        events
+        if events is not None
+        else app_context.events if app_context is not None else None
+    )
+    file_owner = "application" if is_core else f"plugin:{plugin_name}"
+    file_generation = file_bus.owner_generation(file_owner) if file_bus else 0
+
+    def require_owner() -> None:
+        if file_bus is None:
+            raise RuntimeError("Plugin capabilities require an event owner")
+        file_bus.check_owner(file_owner, file_generation)
+
     def runtime_dispatcher(name: str) -> Callable[..., Any]:
+        from ..api.server import server_lifecycle_manager
         from . import runtime_capabilities
 
         if app_context is None:
             raise RuntimeError("Runtime capabilities require application context")
         functions: dict[str, Callable[..., Any]] = {
+            "register_http_permission": runtime_capabilities.register_http_permission,
             "register_diagnostic_provider": runtime_capabilities.register_diagnostic_provider,
             "report_task_progress": runtime_capabilities.report_task_progress,
+            "report_task_stage": runtime_capabilities.report_task_stage,
             "run_task": runtime_capabilities.run_task,
-            "server_lifecycle_manager": runtime_capabilities.server_lifecycle_manager,
+            "register_scheduled_task": runtime_capabilities.register_scheduled_task,
+            "register_api_task": runtime_capabilities.register_api_task,
+            "read_plugin_file": runtime_capabilities.read_plugin_file,
+            "write_plugin_file": runtime_capabilities.write_plugin_file,
+            "get_plugin_data_path": runtime_capabilities.get_plugin_data_path,
+            "get_system_path": runtime_capabilities.get_system_path,
+            "server_lifecycle_manager": server_lifecycle_manager,
             "websocket_register_data_provider": runtime_capabilities.register_data_provider,
         }
         function = functions[name]
         signature = inspect.signature(function)
 
         def inject(args: tuple[Any, ...], kwargs: dict[str, Any]) -> dict[str, Any]:
+            if not is_core:
+                require_owner()
+                if name == "server_lifecycle_manager":
+                    from .scopes import PluginScope, require_plugin_permission
+
+                    require_plugin_permission(
+                        app_context, plugin_name, PluginScope.SERVERS_LIFECYCLE
+                    )
             bound = signature.bind_partial(*args, **kwargs)
             if {"app_context", "plugin_name"} & bound.arguments.keys():
                 raise TypeError("Runtime context and plugin identity are injected")
@@ -188,6 +262,16 @@ def create_app_api(
             return async_capability
 
         def capability(*args: Any, **kwargs: Any) -> Any:
+            if name == "server_lifecycle_manager":
+                inject(args, kwargs)
+                from contextlib import asynccontextmanager
+
+                @asynccontextmanager
+                async def managed_lifecycle():
+                    async with function(*args, **inject(args, kwargs)):
+                        yield
+
+                return managed_lifecycle()
             return function(*args, **inject(args, kwargs))
 
         return capability
@@ -209,6 +293,7 @@ def create_app_api(
             requires_context,
             requires_plugin_name,
             _,
+            required_scope,
         ) = _api_registry[name]
 
         if not expose_to_plugins and not is_core:
@@ -224,6 +309,37 @@ def create_app_api(
                 f"API '{name}' requires app_context, but none was provided."
             )
 
+        def check_permission(args: tuple[Any, ...], kwargs: dict[str, Any]) -> None:
+            bound = inspect.signature(api_function).bind_partial(*args, **kwargs)
+            if {"app_context", "plugin_name"} & bound.arguments.keys():
+                raise TypeError("API runtime dependencies are injected")
+            if not is_core:
+                require_owner()
+                if required_scope is not None:
+                    from .scopes import require_plugin_permission
+
+                    if app_context is None:
+                        raise RuntimeError(
+                            "Plugin permissions require application context"
+                        )
+                    require_plugin_permission(app_context, plugin_name, required_scope)
+                resolver = getattr(api_function, "__bsm_scope_resolver__", None)
+                if resolver is not None:
+                    from ..api.contract import get_contract
+                    from .scopes import require_plugin_permission
+
+                    contract = get_contract(api_function)
+                    if contract is None or app_context is None:
+                        raise RuntimeError(
+                            "Conditional permissions require a typed contract and context"
+                        )
+                    request = contract[0].model_validate(
+                        bound.arguments.get("request", {})
+                    )
+                    scope = resolver(request)
+                    if scope is not None:
+                        require_plugin_permission(app_context, plugin_name, scope)
+
         def inject_runtime(
             args: tuple[Any, ...], kwargs: dict[str, Any]
         ) -> dict[str, Any]:
@@ -237,7 +353,10 @@ def create_app_api(
             if requires_context:
                 injected["app_context"] = app_context
             if requires_plugin_name:
-                injected["plugin_name"] = plugin_name
+                parameter = inspect.signature(api_function).parameters["plugin_name"]
+                injected["plugin_name"] = (
+                    None if is_core and parameter.default is None else plugin_name
+                )
             return injected
 
         public_signature = inspect.signature(api_function).replace(
@@ -252,8 +371,14 @@ def create_app_api(
 
             @functools.wraps(api_function)
             async def async_wrapper(*args: Any, **kwargs: Any) -> Any:
+                check_permission(args, kwargs)
                 kwargs = inject_runtime(args, kwargs)
-                return await api_function(*args, **kwargs)
+                from ..events.operations import operation_source
+
+                with operation_source(
+                    "application" if is_core else f"plugin:{plugin_name}"
+                ):
+                    return await api_function(*args, **kwargs)
 
             setattr(async_wrapper, "__signature__", public_signature)
             return async_wrapper
@@ -261,6 +386,7 @@ def create_app_api(
 
             @functools.wraps(api_function)
             def sync_wrapper(*args: Any, **kwargs: Any) -> Any:
+                check_permission(args, kwargs)
                 kwargs = inject_runtime(args, kwargs)
                 return api_function(*args, **kwargs)
 
@@ -268,6 +394,15 @@ def create_app_api(
             return sync_wrapper
 
     from ..events.capabilities import create_event_capabilities
+
+    def require_diagnostics() -> None:
+        from .scopes import PluginScope, require_plugin_permission
+
+        if app_context is None:
+            raise PermissionError("Global activity requires diagnostics:read")
+        require_plugin_permission(
+            app_context, plugin_name, PluginScope.DIAGNOSTICS_READ
+        )
 
     event_listener, event_sender, event_dispatcher = create_event_capabilities(
         plugin_name,
@@ -277,6 +412,7 @@ def create_app_api(
             else app_context.events if app_context is not None else None
         ),
         is_core=is_core,
+        require_diagnostics=require_diagnostics,
     )
 
     return AppAPI(
@@ -302,7 +438,15 @@ class CapabilityNamespace:
             names = {
                 "register_diagnostic_provider": "register_diagnostic_provider",
                 "report_task_progress": "report_task_progress",
+                "report_task_stage": "report_task_stage",
                 "run_task": "run_task",
+                "register_scheduled_task": "register_scheduled_task",
+                "register_api_task": "register_api_task",
+                "register_http_permission": "register_http_permission",
+                "read_plugin_file": "read_plugin_file",
+                "write_plugin_file": "write_plugin_file",
+                "get_plugin_data_path": "get_plugin_data_path",
+                "get_system_path": "get_system_path",
                 "server_lifecycle_manager": "server_lifecycle_manager",
                 "register_data_provider": "websocket_register_data_provider",
             }
@@ -320,6 +464,13 @@ class CapabilityNamespace:
 
 class AppAPI:
     """Safe, dynamic, and decoupled interface for plugins to access core APIs."""
+
+    @property
+    def operations(self) -> PluginOperationAPI:
+        """Read operation ancestry and results within the current sequence."""
+        if self._event_dispatcher is None:
+            raise RuntimeError("Operation capabilities are unavailable")
+        return PluginOperationAPI(self._event_dispatcher)
 
     @property
     def events(self) -> PluginEventAPI:
@@ -371,6 +522,11 @@ class AppAPI:
     @property
     def properties(self) -> "PropertiesAPI":
         return cast("PropertiesAPI", self._namespace("properties"))
+
+    @property
+    def scheduler(self) -> "SchedulerAPI":
+        """Read application schedules; task registration uses ``@scheduled_task``, ``scheduled_apis``, or ``runtime.register_api_task``."""
+        return cast("SchedulerAPI", self._namespace("scheduler"))
 
     @property
     def server(self) -> "ServerAPI":
@@ -445,14 +601,55 @@ class AppAPI:
                 self._namespaces[name] = CapabilityNamespace(self, name)
             return self._namespaces[name]
         entry = _api_registry.get(name)
-        if entry is not None and get_contract(entry[0]) is None:
+        if entry is not None:
+            if not entry[1] and not self._is_core:
+                return self._api_dispatcher(name)
+            domain = entry[4]
+            scoped_method = next(
+                (m for m, reg in _api_methods().get(domain, {}).items() if reg == name),
+                name,
+            )
+            logger.warning(
+                "Plugin '%s' used deprecated unscoped API 'self.api.%s'; use 'self.api.%s.%s' instead. Unscoped self.api usage will be removed in a future version.",
+                self._plugin_name,
+                name,
+                domain,
+                scoped_method,
+            )
             return self._api_dispatcher(name)
+
+        runtime_names = {
+            "register_diagnostic_provider",
+            "report_task_progress",
+            "report_task_stage",
+            "run_task",
+            "register_scheduled_task",
+            "register_api_task",
+            "register_http_permission",
+            "read_plugin_file",
+            "write_plugin_file",
+            "get_plugin_data_path",
+            "get_system_path",
+            "server_lifecycle_manager",
+            "register_data_provider",
+        }
+        if name in runtime_names and self._runtime_dispatcher is not None:
+            logger.warning(
+                "Plugin '%s' used deprecated unscoped runtime capability 'self.api.%s'; use 'self.api.runtime.%s' instead. Unscoped self.api usage will be removed in a future version.",
+                self._plugin_name,
+                name,
+                name,
+            )
+            return getattr(self.runtime, name)
+
         raise AttributeError(f"Use a typed API namespace instead of '{name}'")
 
     def list_available_apis(
         self, include_internal: Optional[bool] = None
     ) -> List[Dict[str, Any]]:
         """Return details of all registered APIs from allowed modules."""
+        from ..api.contract import get_contract
+
         if include_internal is None:
             include_internal = self._is_core
         include_internal = include_internal and self._is_core
@@ -462,13 +659,16 @@ class AppAPI:
             _api_registry.items(),
             key=lambda item: (item[1][4] or "", item[0]),
         )
-        for name, (func, expose_to_plugins, _, _, domain) in sorted_registry:
+        for (
+            name,
+            (func, expose_to_plugins, _, _, domain, required_scope),
+        ) in sorted_registry:
             if not expose_to_plugins and not include_internal:
                 continue
             try:
                 sig = inspect.signature(func)
                 contract = get_contract(func)
-                from ..api.models import APIErrorResponse
+                from ..models.common import APIErrorResponse
 
                 params_info = [
                     {
@@ -504,6 +704,8 @@ class AppAPI:
                         "parameters": params_info,
                         "docstring": summary,
                         "expose_to_plugins": expose_to_plugins,
+                        "required_scope": required_scope,
+                        "access": deepcopy(getattr(func, "__bsm_plugin_access__", {})),
                         "is_async": inspect.iscoroutinefunction(func),
                         "contract_version": 2 if contract else 1,
                         "request_model": contract[0].__name__ if contract else None,
@@ -543,13 +745,25 @@ class AppAPI:
                         "parameters": [],
                         "docstring": "Could not inspect signature.",
                         "expose_to_plugins": expose_to_plugins,
+                        "required_scope": required_scope,
+                        "access": deepcopy(getattr(func, "__bsm_plugin_access__", {})),
                         "is_async": inspect.iscoroutinefunction(func),
                     }
                 )
         return api_details
 
     def listen_for_event(self, event_name: str, callback: Callable[..., None]):
+        """Deprecated unscoped event listener helper; prefer ``@app_event`` or ``self.api.events.listen()``."""
+        logger.warning(
+            "Plugin '%s' used deprecated unscoped 'self.api.listen_for_event()'; use '@app_event' or 'self.api.events.listen()' instead. Unscoped self.api usage will be removed in a future version.",
+            self._plugin_name,
+        )
         self._event_listener(event_name, callback)
 
     async def send_event(self, event_name: str, *args: Any, **kwargs: Any):
+        """Deprecated unscoped event emitter helper; prefer ``self.api.events.emit()``."""
+        logger.warning(
+            "Plugin '%s' used deprecated unscoped 'self.api.send_event()'; use 'self.api.events.emit()' instead. Unscoped self.api usage will be removed in a future version.",
+            self._plugin_name,
+        )
         await self._event_sender(event_name, *args, **kwargs)

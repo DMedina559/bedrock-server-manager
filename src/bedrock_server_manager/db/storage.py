@@ -29,8 +29,8 @@ from ..error import BSMError, StorageError
 from ..logging import log_operation_error
 from ..state.app_state import AppState
 from ..state.changeset import ChangeSet
+from ..state.models import ServerConfigState, json_equal
 from ..state.settings import SettingsState
-from ..state.validation import json_equal
 from .repositories import (
     AuditLogRepository,
     PlayerRepository,
@@ -58,17 +58,24 @@ class Storage:
     def __init__(self, db: "Database", data_dir: str):
         self.db = db
         self.data_dir = data_dir
-        self.settings_repo = SettingsRepository(db)
-        self.server_repo = ServerRepository(db)
-        self.plugin_repo = PluginRepository(db)
-        self.user_repo = UserRepository(db)
-        self.ban_repo = ServerBanRepository(db)
-        self.player_repo = PlayerRepository(db)
-        self.audit_log_repo = AuditLogRepository(db)
+        from .repositories.scheduler import SchedulerRepository
+
+        self.scheduler_repo = SchedulerRepository(db, storage=self)
+        self._scheduler_state: AppState | None = None
+        self.settings_repo = SettingsRepository()
+        self.server_repo = ServerRepository()
+        self.plugin_repo = PluginRepository()
+        self.user_repo = UserRepository()
+        self.ban_repo = ServerBanRepository()
+        self.player_repo = PlayerRepository()
+        self.audit_log_repo = AuditLogRepository()
         self._listeners: List[Callable[[AppState, ChangeSet], Any]] = []
         self._flush_lock = asyncio.Lock()
         self.diagnostics: Diagnostics | None = None
         self.telemetry = StorageDiagnostics()
+        self.custom_settings_validator: (
+            Callable[[str, dict, dict, str | None], dict] | None
+        ) = None
 
     @asynccontextmanager
     async def _write_scope(self):
@@ -193,13 +200,32 @@ class Storage:
         save: Callable[[AsyncSession, Record], Awaitable[None]],
         publish: Callable[[Record], None],
         acknowledge: Callable[[str], None],
+        before_publish: Callable[[], Awaitable[None]] | None = None,
     ) -> Record:
         """Publish a service mutation only after its transaction commits."""
         async with self._write_scope():
             async with get_lock(name):
-                record = build(get(name))
+                previous = get(name)
+                record = build(previous)
+                if (
+                    isinstance(record, ServerConfigState)
+                    and self.custom_settings_validator is not None
+                ):
+                    checked = self.custom_settings_validator(
+                        "server",
+                        (
+                            previous.custom
+                            if isinstance(previous, ServerConfigState)
+                            else {}
+                        ),
+                        record.custom,
+                        name,
+                    )
+                    record = record.model_copy(update={"custom": checked})
                 async with self.transaction() as session:
                     await save(session, record)
+                if before_publish is not None:
+                    await before_publish()
                 publish(record)
                 acknowledge(name)
         await self._notify_listeners(state, changeset)
@@ -217,6 +243,10 @@ class Storage:
                     state.settings.model_dump()
                 )
                 mutate(candidate)
+                if self.custom_settings_validator is not None:
+                    candidate.custom = self.custom_settings_validator(
+                        "global", state.settings.custom, candidate.custom, None
+                    )
                 if candidate.model_dump() == state.settings.model_dump():
                     return
                 async with self.transaction() as session:
@@ -366,6 +396,8 @@ class Storage:
 
     async def _load_state(self, state: AppState) -> AppState:
         async with self.db.session_manager() as session:
+            if await self.settings_repo.remove_obsolete_player_interval(session):
+                await session.commit()
             settings_dict = await self.settings_repo.get_all_settings(session)
             if settings_dict:
                 loaded_settings = SettingsState.from_dict(
@@ -416,6 +448,8 @@ class Storage:
             state.servers.replace_loaded(loaded_servers)
             state.plugins.replace_loaded(loaded_plugins)
             state.users.replace_loaded(loaded_users)
+            state.scheduler.replace_loaded(await self.scheduler_repo.list())
+            self._scheduler_state = state
         return state
 
     async def save_players(self, players_data: list[dict[str, str]]) -> int:

@@ -33,10 +33,18 @@ Start with `docker compose up -d` and inspect `docker compose logs bsm`. Open th
 
 The image starts the web host using `HOST` and `PORT`. Its backend installation includes external-database extras; `BSM_DB_URL` selects another database. Database storage outside these volumes needs its own backup policy.
 
-## Stop and upgrade
+## Stop, upgrade, and run local recovery commands
 
-Use `docker compose stop` to stop the container deliberately. BSM handles graceful process shutdown, but Docker's deadline must allow cleanup to complete. HTTP shutdown can be restarted by external policies such as `always` or `unless-stopped`; BSM does not rewrite those policies.
+Use `docker compose stop` to stop the container deliberately. BSM handles graceful process shutdown, but Docker's deadline (`stop_grace_period`) must allow cleanup to complete. HTTP shutdown can be restarted by external policies such as `always` or `unless-stopped`; BSM does not rewrite those policies.
 
-Back up volumes and any external database before upgrading. Pull the chosen image and recreate the container while retaining its mounts. Deleting a container differs from deleting its volumes; avoid volume removal unless you intend to discard persisted data.
+To run local administration or account-recovery commands inside the container, pass the container's `BSM_CONFIG_DIR` (`/config`):
+
+```sh
+docker compose exec bsm bedrock-server-manager --config-dir /config reset-password --username admin
+docker compose exec bsm bedrock-server-manager --config-dir /config reset-mfa --username admin
+docker compose exec bsm bedrock-server-manager --config-dir /config database status
+```
+
+Back up both volumes (`bsm_config` and `bsm_data`) and any external database before upgrading. In particular, `/config/credentials/` holds `jwt_secret.key`, `encryption_key.key` (used for MFA secret encryption), `internal_service_token.key`, and `backup.key` (used for encrypted `.bsmbackup` archives)—losing `/config/credentials/` invalidates existing TOTP enrollments and host-managed backup keys. Pull the chosen image and recreate the container while retaining its mounts. Deleting a container differs from deleting its volumes; avoid volume removal unless you intend to discard persisted data.
 
 See [runtime supervision](web_runtime.md), [backups](../features/backups.md) and [troubleshooting](../general/troubleshooting.md).

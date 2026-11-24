@@ -93,7 +93,11 @@ async def _delete_all_data(server: "BedrockServer") -> None:
             f"Cannot delete running server '{server.server_name}'."
         )
 
-    paths = [server.paths.server_dir, server.paths.server_config_dir]
+    paths = [
+        server.paths.server_dir,
+        server.paths.server_config_dir,
+        server.paths.server_log_dir,
+    ]
     backup_root = server.settings.get("paths.backups")
     if backup_root:
         paths.append(os.path.join(backup_root, server.server_name))

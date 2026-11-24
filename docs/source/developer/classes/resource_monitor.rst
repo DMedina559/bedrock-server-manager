@@ -3,7 +3,7 @@
 Resource Monitor Core Documentation
 ===================================
 
-.. autoclass:: bedrock_server_manager.core.system.base.ResourceMonitor
+.. autoclass:: bedrock_server_manager.core.system.base.ProcessResourceMonitor
    :members:
    :undoc-members:
    :show-inheritance:

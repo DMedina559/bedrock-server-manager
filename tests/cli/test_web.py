@@ -1,17 +1,9 @@
 from unittest.mock import AsyncMock
 
-import pytest
-from click.testing import CliRunner
-
 from bedrock_server_manager.cli.web import web
 from bedrock_server_manager.error import BSMError
 from bedrock_server_manager.web.process import WebProcessPaths
 from bedrock_server_manager.web.runtime import WebRunOptions
-
-
-@pytest.fixture
-def runner():
-    return CliRunner()
 
 
 def test_start_web_server_direct_success(runner, app_context, monkeypatch):

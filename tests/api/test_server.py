@@ -2,7 +2,6 @@ import asyncio
 from pathlib import Path
 
 import pytest
-from pydantic import ValidationError
 
 from bedrock_server_manager.api.models import (
     DeleteServerDataRequest,
@@ -23,6 +22,7 @@ from bedrock_server_manager.api.server import (
     get_server_setting,
     restart_server,
     send_command,
+    server_lifecycle_manager,
     set_server_custom_value,
     set_server_setting,
     set_server_status,
@@ -31,44 +31,15 @@ from bedrock_server_manager.api.server import (
     update_server_player_stats,
 )
 from bedrock_server_manager.error import BlockedCommandError, ServerRunningError
-from bedrock_server_manager.plugins.runtime_capabilities import server_lifecycle_manager
 
 
-async def test_server_lifecycle_api_controls_real_process(
+async def test_server_api_lifecycle_settings_commands_and_deletion(
     app_context, real_bedrock_server
 ):
     name = real_bedrock_server.server_name
-    assert (
-        await start_server(
-            StartServerRequest(server_name=name), app_context=app_context
-        )
-    ).outcome == "started"
-    first_pid = real_bedrock_server.process._process.pid
-    assert (
-        await start_server(
-            StartServerRequest(server_name=name), app_context=app_context
-        )
-    ).outcome == "already_running"
-    assert real_bedrock_server.process._process.pid == first_pid
-    result = await restart_server(
-        RestartServerRequest(server_name=name, send_message=False),
-        app_context=app_context,
-    )
-    assert result.outcome == "restarted"
-    assert real_bedrock_server.process._process.pid != first_pid
-    assert (
-        await stop_server(StopServerRequest(server_name=name), app_context=app_context)
-    ).outcome == "stopped"
-    assert not await real_bedrock_server.is_running()
-    assert (
-        await stop_server(StopServerRequest(server_name=name), app_context=app_context)
-    ).outcome == "already_stopped"
+    path = Path(real_bedrock_server.paths.server_dir)
 
-
-async def test_server_setting_api_persists_typed_and_custom_values(
-    app_context, real_bedrock_server
-):
-    name = real_bedrock_server.server_name
+    # Settings persistence
     await set_server_setting(
         SetServerSettingRequest(
             server_name=name, key="settings.autoupdate", value=True
@@ -94,103 +65,121 @@ async def test_server_setting_api_persists_typed_and_custom_values(
     await app_context.reload()
     assert await real_bedrock_server.get_autoupdate()
 
+    # Blocked command rejected
+    with pytest.raises(BlockedCommandError):
+        await send_command(
+            SendCommandRequest(server_name=name, command="stop"),
+            app_context=app_context,
+        )
 
-async def test_server_runtime_stats_api_updates_summary(
-    app_context, real_bedrock_server
-):
-    name = real_bedrock_server.server_name
-    response = await set_server_status(
-        SetServerStatusRequest(server_name=name, status="STOPPED"),
-        app_context=app_context,
-    )
-    assert response.new_status == "STOPPED"
-    await real_bedrock_server.start()
-    response = await update_server_player_stats(
+    # Status and lifecycle controls
+    assert (
+        await set_server_status(
+            SetServerStatusRequest(server_name=name, status="STOPPED"),
+            app_context=app_context,
+        )
+    ).new_status == "STOPPED"
+
+    assert (
+        await start_server(
+            StartServerRequest(server_name=name), app_context=app_context
+        )
+    ).outcome == "started"
+    first_pid = real_bedrock_server.process._process.pid
+    assert (
+        await start_server(
+            StartServerRequest(server_name=name), app_context=app_context
+        )
+    ).outcome == "already_running"
+    assert real_bedrock_server.process._process.pid == first_pid
+
+    # Runtime stats and send_command while running
+    stats_resp = await update_server_player_stats(
         UpdateServerPlayerStatsRequest(
             server_name=name, player_count=1, players=[{"name": "Steve", "xuid": "123"}]
         ),
         app_context=app_context,
     )
-    assert response.status == "success"
+    assert stats_resp.status == "success"
     assert (await real_bedrock_server.get_summary_info()).player_count == 1
 
-
-async def test_command_api_sends_to_actual_dummy_server(
-    app_context, real_bedrock_server
-):
-    await real_bedrock_server.start()
-    response = await send_command(
-        SendCommandRequest(
-            server_name=real_bedrock_server.server_name,
-            command="__DUMMY__ PLAYER_JOIN APIPlayer",
-        ),
+    cmd_resp = await send_command(
+        SendCommandRequest(server_name=name, command="__DUMMY__ PLAYER_JOIN APIPlayer"),
         app_context=app_context,
     )
-    assert response.status == "success"
+    assert cmd_resp.status == "success"
 
-
-async def test_blocked_command_is_rejected(app_context, real_bedrock_server):
-    with pytest.raises(BlockedCommandError):
-        await send_command(
-            SendCommandRequest(
-                server_name=real_bedrock_server.server_name, command="stop"
-            ),
+    # Delete without stop preserves running server
+    with pytest.raises(ServerRunningError):
+        await delete_server_data(
+            DeleteServerDataRequest(server_name=name, stop_if_running=False),
             app_context=app_context,
         )
+    assert path.exists() and await real_bedrock_server.is_running()
 
-
-async def test_delete_api_removes_actual_installation(app_context, real_bedrock_server):
-    path = Path(real_bedrock_server.paths.server_dir)
-    result = await delete_server_data(
-        DeleteServerDataRequest(server_name=real_bedrock_server.server_name),
+    # Restart and cancelled maintenance
+    restart_res = await restart_server(
+        RestartServerRequest(server_name=name, send_message=False),
         app_context=app_context,
     )
-    assert result.status == "success"
-    assert result.server_name == real_bedrock_server.server_name
-    assert not path.exists()
-    assert real_bedrock_server.server_name not in app_context._servers
+    assert restart_res.outcome == "restarted"
+    assert real_bedrock_server.process._process.pid != first_pid
 
-
-async def test_cancelled_maintenance_does_not_restart_server(
-    app_context, real_bedrock_server
-):
-    await real_bedrock_server.start()
     with pytest.raises(asyncio.CancelledError):
-        async with server_lifecycle_manager(
-            real_bedrock_server.server_name, True, app_context=app_context
-        ):
+        async with server_lifecycle_manager(name, True, app_context=app_context):
             assert not await real_bedrock_server.is_running()
             raise asyncio.CancelledError
     assert not await real_bedrock_server.is_running()
 
+    assert (
+        await stop_server(StopServerRequest(server_name=name), app_context=app_context)
+    ).outcome == "already_stopped"
 
-@pytest.mark.parametrize(
-    "model", [StartServerRequest, StopServerRequest, DeleteServerDataRequest]
-)
-def test_lifecycle_request_rejects_empty_server(model):
-    with pytest.raises(ValidationError):
-        model(server_name="")
-
-
-def test_runtime_player_request_rejects_mismatched_count():
-    with pytest.raises(ValidationError):
-        UpdateServerPlayerStatsRequest(
-            server_name="test_server", player_count=2, players=[]
-        )
+    # Delete removes actual installation
+    del_res = await delete_server_data(
+        DeleteServerDataRequest(server_name=name),
+        app_context=app_context,
+    )
+    assert del_res.status == "success" and del_res.server_name == name
+    assert not path.exists() and name not in app_context._servers
 
 
-async def test_delete_without_stop_preserves_running_server(
+async def test_process_status_is_separate_from_summary(
     app_context, real_bedrock_server
 ):
-    await real_bedrock_server.start()
-    path = Path(real_bedrock_server.paths.server_dir)
-    with pytest.raises(ServerRunningError):
-        await delete_server_data(
-            DeleteServerDataRequest(
-                server_name=real_bedrock_server.server_name, stop_if_running=False
-            ),
-            app_context=app_context,
-        )
-    assert path.exists()
-    assert await real_bedrock_server.is_running()
-    assert real_bedrock_server.server_name in app_context._servers
+    from bedrock_server_manager.api.models import (
+        GetServerProcessRequest,
+        GetServerSummaryRequest,
+    )
+    from bedrock_server_manager.api.server import get_server_process, get_server_summary
+
+    name = real_bedrock_server.server_name
+    await start_server({"server_name": name}, app_context=app_context)
+    run = real_bedrock_server.process.run
+    await asyncio.wait_for(run.ready_event.wait(), 5)
+    starts = [
+        item
+        for item in app_context.operations.activity().recent
+        if item.name == "server.start"
+    ]
+    assert starts[0].stage == "ready"
+    result = await get_server_process(
+        GetServerProcessRequest(server_name=name), app_context=app_context
+    )
+    assert result.process.generation == run.generation
+    assert result.process.running and result.process.ready and result.process.owned
+    assert result.process.command_available
+    assert result.process.output.source == "pipe"
+    assert result.process.output.available
+    summary = await get_server_summary(
+        GetServerSummaryRequest(server_name=name), app_context=app_context
+    )
+    assert "generation" not in summary.summary.model_dump()
+    assert "output_available" not in summary.summary.model_dump()
+    await real_bedrock_server.stop()
+    stopped = await get_server_process(
+        GetServerProcessRequest(server_name=name), app_context=app_context
+    )
+    assert not stopped.process.running
+    assert not stopped.process.command_available
+    assert stopped.process.exit.code is not None

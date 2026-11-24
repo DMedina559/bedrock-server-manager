@@ -2,6 +2,10 @@
 Tests for domain repository classes and Storage coordination.
 """
 
+import pytest
+from sqlalchemy import select
+
+from bedrock_server_manager.db.models import Plugin, PluginSetting
 from bedrock_server_manager.db.storage import Storage
 from bedrock_server_manager.state.models import (
     PluginInfoState,
@@ -57,6 +61,37 @@ async def test_plugin_repository(db, tmp_path):
         assert len(plugins) == 1
         assert plugins[0].plugin_name == "test_plugin"
         assert plugins[0].enabled is True
+
+
+@pytest.mark.parametrize(
+    "has_plugin,has_settings",
+    [(True, True), (True, False), (False, True), (False, False)],
+)
+async def test_plugin_deletion_reports_affected_rows(storage, has_plugin, has_settings):
+    async with storage.transaction() as session:
+        if has_plugin:
+            await storage.plugin_repo.save_plugin(
+                session, PluginInfoState(plugin_name="removed", enabled=True)
+            )
+        if has_settings:
+            session.add(
+                PluginSetting(plugin_name="removed", settings={"enabled": True})
+            )
+        session.add(PluginSetting(plugin_name="retained", settings={"enabled": False}))
+
+    async with storage.transaction() as session:
+        assert await storage.plugin_repo.delete_plugin(session, "removed") is (
+            has_plugin or has_settings
+        )
+
+    async with storage.transaction() as session:
+        assert (
+            await session.scalar(select(Plugin).where(Plugin.plugin_name == "removed"))
+            is None
+        )
+        assert await session.get(PluginSetting, "removed") is None
+        assert await session.get(PluginSetting, "retained") is not None
+        assert await storage.plugin_repo.delete_plugin(session, "removed") is False
 
 
 async def test_user_repository(db, tmp_path):

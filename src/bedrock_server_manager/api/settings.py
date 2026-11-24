@@ -9,9 +9,7 @@ from ..context import AppContext
 from ..error import BSMError, UserInputError
 from ..events import trigger_event
 from ..logging import log_operation_error
-from ..plugins.api_bridge import api_method
-from ..plugins.api_contract import validate_contract
-from .models.settings import (
+from ..models.settings import (
     GetAllGlobalSettingsRequest,
     GetAllGlobalSettingsResponse,
     GetGlobalSettingRequest,
@@ -23,16 +21,51 @@ from .models.settings import (
     SetGlobalSettingRequest,
     SetGlobalSettingResponse,
 )
+from ..plugins.api_bridge import api_method
+from ..plugins.scopes import (
+    BLACKLISTED_PATH_SETTINGS,
+    GRANTABLE_PATH_SCOPES,
+    PluginScope,
+    global_setting_permission,
+    plugin_has_permission,
+    require_plugin_permission,
+)
 
 logger = logging.getLogger(__name__)
 
 
-@api_method("get_global_setting")
+@api_method(
+    "get_global_setting",
+    permission_resolver=global_setting_permission,
+    permission_conditions=tuple(
+        (f"key=paths.{name}", f"path:{name}") for name in GRANTABLE_PATH_SCOPES
+    )
+    + (("non-path setting", PluginScope.SETTINGS_READ),),
+)
 async def get_global_setting(
-    request: GetGlobalSettingRequest, *, app_context: AppContext
+    request: GetGlobalSettingRequest,
+    *,
+    app_context: AppContext,
+    plugin_name: str | None = None,
 ) -> GetGlobalSettingResponse:
     """Reads a single value from the global application settings."""
     key = request.key
+    if plugin_name is not None:
+        if key == "paths" or key.startswith("paths."):
+            if key in BLACKLISTED_PATH_SETTINGS:
+                raise PermissionError(
+                    f"Access to '{key}' is restricted for all plugins."
+                )
+            scope = key.split(".", 1)[1] if "." in key else None
+            if scope not in GRANTABLE_PATH_SCOPES:
+                raise PermissionError(
+                    f"Access to host filesystem path '{key}' is restricted for plugins."
+                )
+            require_plugin_permission(app_context, plugin_name, f"path:{scope}")
+        else:
+            require_plugin_permission(
+                app_context, plugin_name, PluginScope.SETTINGS_READ
+            )
     logger.debug("Reading global setting '%s'.", key)
     try:
         settings = app_context.settings
@@ -48,15 +81,35 @@ async def get_global_setting(
         raise
 
 
-@api_method("get_all_global_settings")
+@api_method("get_all_global_settings", required_scope=PluginScope.SETTINGS_READ)
 async def get_all_global_settings(
-    request: GetAllGlobalSettingsRequest, *, app_context: AppContext
+    request: GetAllGlobalSettingsRequest,
+    *,
+    app_context: AppContext,
+    plugin_name: str | None = None,
 ) -> GetAllGlobalSettingsResponse:
     """Reads the entire global application settings configuration."""
     logger.debug("Reading all global settings.")
     try:
         settings = app_context.settings
-        all_settings = settings.state.settings.to_dict()
+        all_settings = dict(settings.state.settings.to_dict())
+        if plugin_name is not None:
+            paths = all_settings.get("paths")
+            if isinstance(paths, dict):
+                plugin = app_context.plugin_manager.get_plugin(plugin_name)
+                filtered_paths = {}
+                for scope in GRANTABLE_PATH_SCOPES:
+                    if (
+                        plugin_has_permission(plugin, f"path:{scope}")
+                        and scope in paths
+                    ):
+                        filtered_paths[scope] = paths[scope]
+                if filtered_paths:
+                    all_settings["paths"] = filtered_paths
+                else:
+                    all_settings.pop("paths", None)
+            else:
+                all_settings.pop("paths", None)
         logger.debug("Successfully retrieved all global settings.")
         return GetAllGlobalSettingsResponse.model_validate(
             {"status": "success", "settings": all_settings}
@@ -68,7 +121,7 @@ async def get_all_global_settings(
         raise
 
 
-@validate_contract
+@api_method("set_global_setting", expose_to_plugins=False)
 @trigger_event(
     before="before_setting_update", after="after_setting_update", identity_keys=("key",)
 )
@@ -100,7 +153,7 @@ async def set_global_setting(
         raise
 
 
-@api_method("set_custom_global_setting")
+@api_method("set_custom_global_setting", required_scope=PluginScope.SETTINGS_MANAGE)
 async def set_custom_global_setting(
     request: SetCustomGlobalSettingRequest, *, app_context: AppContext
 ) -> SetCustomGlobalSettingResponse:
@@ -130,7 +183,7 @@ async def set_custom_global_setting(
         raise
 
 
-@validate_contract
+@api_method("reload_global_settings", expose_to_plugins=False)
 async def reload_global_settings(
     request: ReloadGlobalSettingsRequest, *, app_context: AppContext
 ) -> ReloadGlobalSettingsResponse:
@@ -138,8 +191,6 @@ async def reload_global_settings(
     logger.debug("Received request to reload global settings and logging.")
     try:
         await app_context.reload()
-        settings = app_context.settings
-        await settings.reload()
         logger.info("Global settings successfully reloaded.")
         return ReloadGlobalSettingsResponse(
             message="Global settings have been reloaded."

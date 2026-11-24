@@ -36,7 +36,9 @@ async def validate_server_exists(
         logger.warning(
             "Dependency: Invalid server name format for '%s': %s", server_name, e
         )
-        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(e))
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST, detail="Invalid server name."
+        )
 
 
 async def validate_server_registered(
@@ -49,9 +51,9 @@ async def validate_server_registered(
     try:
         core_validate_server_name_format(server_name)
     except InvalidServerNameError as error:
-        raise HTTPException(status_code=400, detail=str(error)) from error
+        raise HTTPException(status_code=400, detail="Invalid server name.") from error
     try:
         app_context.get_server(server_name, require_installation=False)
     except ResourceNotFoundError as error:
-        raise HTTPException(status_code=404, detail=str(error)) from error
+        raise HTTPException(status_code=404, detail="Server not found.") from error
     return server_name

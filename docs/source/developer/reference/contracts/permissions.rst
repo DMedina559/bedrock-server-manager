@@ -1,6 +1,6 @@
 permissions
 ===========
 
-.. automodule:: bedrock_server_manager.api.models.permissions
+.. automodule:: bedrock_server_manager.models.permissions
    :members:
    :member-order: bysource

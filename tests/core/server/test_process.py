@@ -34,9 +34,8 @@ async def test_stopping_stopped_server_is_idempotent(real_bedrock_server):
     assert await real_bedrock_server.stop() is None
 
 
-@pytest.mark.parametrize("probe_stage", ["status", "recovery"])
 async def test_stale_probe_cannot_replace_newly_started_child(
-    real_bedrock_server, monkeypatch, probe_stage
+    real_bedrock_server, monkeypatch
 ):
     from pathlib import Path
 
@@ -44,26 +43,16 @@ async def test_stale_probe_cannot_replace_newly_started_child(
 
     server = real_bedrock_server
     entered, release = asyncio.Event(), asyncio.Event()
-    original_status = module.system_base.is_server_running
     original_verify = module.system_process.get_verified_bedrock_process
     original_write_pid = module.system_process.write_pid_to_file
     probe_task = None
 
-    async def status(*args):
-        if asyncio.current_task() is probe_task:
-            if probe_stage == "status":
-                entered.set()
-                await release.wait()
-                return False
-            return True
-        return await original_status(*args)
-
-    async def verify(*args):
+    async def verify(*args, **kwargs):
         if asyncio.current_task() is probe_task:
             entered.set()
             await release.wait()
             return None
-        return await original_verify(*args)
+        return await original_verify(*args, **kwargs)
 
     async def write_pid(path, pid):
         release.set()
@@ -71,7 +60,6 @@ async def test_stale_probe_cannot_replace_newly_started_child(
         await original_write_pid(path, pid)
 
     monkeypatch.setattr(module.system_process, "write_pid_to_file", write_pid)
-    monkeypatch.setattr(module.system_base, "is_server_running", status)
     monkeypatch.setattr(module.system_process, "get_verified_bedrock_process", verify)
     probe_task = asyncio.create_task(server.is_running())
     try:
@@ -146,3 +134,101 @@ async def test_recovered_process_exit_polling_times_out(real_bedrock_server):
     with pytest.raises(TimeoutError):
         await real_bedrock_server.process._wait_for_exit(recovered, 0.01)
     recovered.wait.assert_not_called()
+
+
+@pytest.mark.parametrize("missing_pid", [False, True])
+async def test_recovered_survivor_stays_outside_monitoring(
+    real_bedrock_server, app_context, missing_pid
+):
+    from pathlib import Path
+
+    from bedrock_server_manager.error import SendCommandError
+
+    server = real_bedrock_server
+    await server.start()
+    child = server.process._process
+    manager = app_context.bedrock_process_manager
+    await manager.remove_server(server.server_name)
+    server.process._process = None  # Simulate loss of handles across BSM restart.
+    if missing_pid:
+        Path(server.get_pid_file_path()).unlink()
+    try:
+        assert await server.is_running()
+        assert server.server_name not in manager.servers
+        runtime = app_context.state.runtime.get_server_runtime(server.server_name)
+        assert runtime.running and runtime.pid == child.pid
+        assert runtime.recovered_untracked is missing_pid
+        assert not runtime.process_owned
+        assert not runtime.command_available
+        assert runtime.output_source == "unknown"
+        assert not manager.check_health()
+        with pytest.raises(SendCommandError):
+            await server.send_command("list")
+        result = await app_context.api.server.start({"server_name": server.server_name})
+        assert result.outcome == "already_running"
+        assert server.server_name not in manager.servers
+    finally:
+        await server.stop()
+        await asyncio.wait_for(child.wait(), 5)
+    assert (
+        app_context.state.runtime.get_server_runtime(
+            server.server_name
+        ).command_available
+        is False
+    )
+
+
+async def test_start_bypasses_negative_discovery_cache(
+    real_bedrock_server, app_context
+):
+    from pathlib import Path
+
+    from bedrock_server_manager.core.bedrock_server import BedrockServer
+
+    owner = real_bedrock_server
+    observer = BedrockServer(
+        owner.server_name,
+        settings=owner.settings,
+        events=owner.events,
+        state=owner.state,
+        storage=owner.storage,
+    )
+    assert not await observer.is_running()
+    assert observer.process._recovery_state.last_negative_scan
+    await owner.start()
+    Path(owner.get_pid_file_path()).unlink()
+    with pytest.raises(ServerStartError, match="already running"):
+        await observer.start()
+    assert observer.process._process.pid == owner.process._process.pid
+    assert observer.process._recovery_state.recovered_pids
+
+
+async def test_recovered_process_emits_status_change_event(
+    real_bedrock_server, app_context
+):
+    server = real_bedrock_server
+    await server.start()
+    child = server.process._process
+    manager = app_context.bedrock_process_manager
+    await manager.remove_server(server.server_name)
+    server.process._process = None
+    # Simulate config being STOPPED while process was left running
+    await server.configuration.update("server_info.status", "STOPPED")
+    assert server.configuration.snapshot().status == "STOPPED"
+
+    emitted = []
+
+    async def on_status_change(**kwargs):
+        emitted.append(kwargs)
+
+    sub = app_context.events.subscribe("after_server_status_change", on_status_change)
+    try:
+        assert await server.is_running()
+        assert server.configuration.snapshot().status == "RUNNING"
+        assert len(emitted) == 1
+        assert emitted[0]["result"].new_status == "RUNNING"
+        assert emitted[0]["server_name"] == server.server_name
+    finally:
+        app_context.events.unsubscribe(sub)
+        await server.stop()
+        await asyncio.wait_for(child.wait(), 5)

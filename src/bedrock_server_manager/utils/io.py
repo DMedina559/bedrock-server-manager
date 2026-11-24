@@ -1,8 +1,14 @@
 import json
+import logging
 import os
+import shutil
+import tempfile
 import threading
 import time
 import uuid
+from collections.abc import AsyncIterator
+from contextlib import asynccontextmanager
+from pathlib import Path
 from typing import Any, List
 
 from .threads import run_in_thread
@@ -110,3 +116,43 @@ async def save_lines(lines: List[str], filepath: str) -> None:
 async def load_lines(filepath: str) -> List[str]:
     """Non-blocking asynchronous entry point to read lines from a file safely."""
     return await run_in_thread(_sync_lines_load, filepath)
+
+
+@asynccontextmanager
+async def temporary_directory(
+    parent: str | Path | None = None, *, prefix: str = "bsm-"
+) -> AsyncIterator[Path]:
+    """Cancellation-owned temporary directories without event-loop filesystem work."""
+    directory: Path | None = None
+    original: BaseException | None = None
+
+    def create() -> None:
+        nonlocal directory
+        directory = Path(tempfile.mkdtemp(prefix=prefix, dir=parent))
+
+    try:
+        await run_in_thread(create)
+        assert directory is not None
+        yield directory
+    except BaseException as error:
+        original = error
+        raise
+    finally:
+        if directory is not None:
+            started = time.monotonic()
+            status = "failed"
+            try:
+                await run_in_thread(shutil.rmtree, directory)
+                status = "completed"
+            except BaseException as cleanup_error:
+                if original is None:
+                    raise
+                original.add_note(
+                    f"Temporary directory cleanup also failed: {type(cleanup_error).__name__}"
+                )
+            finally:
+                logging.getLogger(__name__).debug(
+                    "Temporary staging cleanup: status=%s duration_ms=%.3f",
+                    status,
+                    (time.monotonic() - started) * 1000,
+                )

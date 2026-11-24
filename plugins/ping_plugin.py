@@ -3,7 +3,7 @@
 from pydantic import BaseModel, ConfigDict
 
 from bedrock_server_manager import PluginBase, app_event
-from bedrock_server_manager.api.models import StartServerResponse
+from bedrock_server_manager.models import StartServerResponse
 
 
 class PingPayload(BaseModel):
@@ -12,7 +12,9 @@ class PingPayload(BaseModel):
 
 
 class PingPlugin(PluginBase):
-    version = "2.0.0"
+    version = "2.1.0"
+    permissions = []
+    author = "dmedina559"
     name = "Ping Example"
     description = "Publish a typed ping after server startup."
 

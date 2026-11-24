@@ -31,8 +31,16 @@ class WebProcessPaths(BaseModel):
     db_url: str
 
     @property
+    def runtime_dir(self) -> Path:
+        return Path(self.config_dir) / "runtime"
+
+    @property
     def control_file(self) -> Path:
-        return Path(self.config_dir) / "web_server.control.json"
+        return self.runtime_dir / "web_server.control.json"
+
+    @property
+    def pid_file(self) -> Path:
+        return self.runtime_dir / "web_server.pid"
 
 
 def read_control(paths: WebProcessPaths) -> ControlRecord | None:
@@ -147,21 +155,32 @@ async def start_detached(
         command.extend(["--port", str(options.port)])
     if options.debug:
         command.append("--debug")
-    probe = ControlFiles(paths.config_dir, WebRuntime())
-    probe.acquire()
-    probe.close()
-    child = await asyncio.to_thread(
-        processes.GuardedProcess(command).popen,
-        stdin=subprocess.DEVNULL,
-        stdout=subprocess.DEVNULL,
-        stderr=subprocess.DEVNULL,
-        creationflags=(
-            getattr(subprocess, "CREATE_NO_WINDOW", 0) if os.name == "nt" else 0
-        ),
-        start_new_session=os.name != "nt",
-        close_fds=True,
+
+    def _probe_control() -> None:
+        probe = ControlFiles(paths.config_dir, WebRuntime())
+        probe.acquire()
+        probe.close()
+
+    await asyncio.to_thread(_probe_control)
+    for previous in list(_detached_children):
+        if previous.poll() is not None:
+            _detached_children.discard(previous)
+    spawn = asyncio.create_task(
+        asyncio.to_thread(
+            processes.GuardedProcess(command).popen,
+            stdin=subprocess.DEVNULL,
+            stdout=subprocess.DEVNULL,
+            stderr=subprocess.DEVNULL,
+            creationflags=(
+                getattr(subprocess, "CREATE_NO_WINDOW", 0) if os.name == "nt" else 0
+            ),
+            start_new_session=os.name != "nt",
+            close_fds=True,
+        )
     )
+    child = None
     try:
+        child = await asyncio.shield(spawn)
         async with AsyncClient(timeout=1, trust_env=False) as client:
             async with asyncio.timeout(timeout):
                 while True:
@@ -169,7 +188,7 @@ async def start_detached(
                         raise ServerStartError(
                             "Detached web runtime exited before HTTP readiness; inspect the application log"
                         )
-                    record = read_control(paths)
+                    record = await asyncio.to_thread(read_control, paths)
                     if record is not None:
                         if record.instance_id != instance_id:
                             raise OperationConflictError(
@@ -186,13 +205,32 @@ async def start_detached(
                             pass
                     await asyncio.sleep(0.05)
     except BaseException as error:
-        if child.poll() is None:
-            child.terminate()
+        while not spawn.done():
             try:
-                await asyncio.to_thread(child.wait, timeout=5)
-            except subprocess.TimeoutExpired:
-                child.kill()
-                await asyncio.to_thread(child.wait, timeout=5)
+                await asyncio.shield(spawn)
+            except asyncio.CancelledError:
+                continue
+        if child is None:
+            child = spawn.result()
+
+        def terminate_child() -> None:
+            if child.poll() is None:
+                child.terminate()
+                try:
+                    child.wait(timeout=5)
+                except subprocess.TimeoutExpired:
+                    child.kill()
+                    child.wait(timeout=5)
+
+        cleanup = asyncio.create_task(
+            asyncio.to_thread(terminate_child), name="detached-web-rollback"
+        )
+        while not cleanup.done():
+            try:
+                await asyncio.shield(cleanup)
+            except asyncio.CancelledError:
+                continue
+        cleanup.result()
         if isinstance(error, TimeoutError):
             raise ServerStartError(
                 "Detached web runtime did not become ready before the startup deadline"
@@ -203,11 +241,15 @@ async def start_detached(
 async def stop_local(
     paths: WebProcessPaths, *, timeout: float = 180, force: bool = False
 ) -> str:
-    record = read_control(paths)
+    record = await asyncio.to_thread(read_control, paths)
     if record is None:
-        pid_file = Path(paths.config_dir) / "web_server.pid"
-        if not pid_file.exists():
-            return "Web server not running."
+        pid_file = paths.pid_file
+        if not await asyncio.to_thread(pid_file.exists):
+            legacy_pid_file = Path(paths.config_dir) / "web_server.pid"
+            if await asyncio.to_thread(legacy_pid_file.exists):
+                pid_file = legacy_pid_file
+            else:
+                return "Web server not running."
         if not force:
             raise ServerStopError(
                 "No graceful runtime control record; use --force only for a verified legacy process"
@@ -216,10 +258,10 @@ async def stop_local(
         if pid == os.getpid():
             raise ServerProcessError("Refusing to terminate the current process")
         if pid is None or not await processes.is_process_running(pid):
-            pid_file.unlink(missing_ok=True)
+            await asyncio.to_thread(pid_file.unlink, missing_ok=True)
             return "Web server not running (stale PID removed)."
         await force_stop_verified(paths, pid)
-        pid_file.unlink(missing_ok=True)
+        await asyncio.to_thread(pid_file.unlink, missing_ok=True)
         return "Web server stopped by forced termination."
     try:
         async with AsyncClient(timeout=5, trust_env=False) as client:
@@ -240,7 +282,7 @@ async def stop_local(
             raise ServerStopError("Shutdown response belongs to another runtime")
         async with asyncio.timeout(timeout):
             while True:
-                current = read_control(paths)
+                current = await asyncio.to_thread(read_control, paths)
                 if current is None or current.instance_id != record.instance_id:
                     return "Web server stopped gracefully."
                 await asyncio.sleep(0.05)
@@ -252,8 +294,35 @@ async def stop_local(
         if record.pid == os.getpid():
             raise ServerProcessError("Refusing to terminate the current process")
         await force_stop_verified(paths, record.pid, record)
-        current = read_control(paths)
+        current = await asyncio.to_thread(read_control, paths)
         if current is not None and current.instance_id == record.instance_id:
-            paths.control_file.unlink(missing_ok=True)
-            (Path(paths.config_dir) / "web_server.pid").unlink(missing_ok=True)
+            await asyncio.to_thread(paths.control_file.unlink, missing_ok=True)
+            await asyncio.to_thread(paths.pid_file.unlink, missing_ok=True)
         return "Web server stopped by forced termination."
+
+
+async def check_bsm_offline(
+    config_dir: str, data_dir: str = "", db_url: str = ""
+) -> tuple[bool, int | None]:
+    """Check whether BSM is currently running. Returns (is_offline, active_pid)."""
+    if not config_dir:
+        return True, None
+    paths = WebProcessPaths(
+        config_dir=config_dir,
+        data_dir=data_dir or config_dir,
+        db_url=db_url or "sqlite:///:memory:",
+    )
+    control = read_control(paths)
+    if paths.pid_file.is_file():
+        try:
+            pid = await processes.read_pid_from_file(str(paths.pid_file))
+            if pid is not None and pid > 0:
+                try:
+                    proc = await verify_web_owner(paths, pid, control)
+                    if proc is not None and proc.is_running():
+                        return False, pid
+                except Exception:
+                    pass
+        except Exception:
+            pass
+    return True, None

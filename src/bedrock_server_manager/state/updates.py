@@ -4,9 +4,8 @@ from enum import Enum
 
 from pydantic import JsonValue
 
-from ..contracts import NonEmptyStr, ServerName
-from .models import PersistentRecord
-from .types import UserRole
+from ..models.common import NonEmptyStr, ServerName
+from .models import PersistentRecord, UserRole
 
 
 class Unset(Enum):

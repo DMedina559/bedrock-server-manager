@@ -8,18 +8,21 @@ from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT / "src"))
-from bedrock_server_manager.plugins.api_contract import get_contract  # noqa: E402
+from bedrock_server_manager.api.contract import get_contract  # noqa: E402
 from bedrock_server_manager.plugins.api_types import API_METHODS  # noqa: E402
 
 
 def contracts():
     result = {}
     for path in (ROOT / "src/bedrock_server_manager/api").glob("*.py"):
-        if path.stem == "__init__":
+        if path.stem in {"__init__", "contract", "errors"}:
             continue
         domain = path.stem
         module = importlib.import_module(f"bedrock_server_manager.api.{domain}")
         for name, operation in inspect.getmembers(module, inspect.isfunction):
+            # Imported permission resolvers and utilities are not domain API operations.
+            if operation.__module__ != module.__name__:
+                continue
             if "request" in inspect.signature(operation).parameters and get_contract(
                 operation
             ):

@@ -1,6 +1,5 @@
 import click
 
-from ..utils import get_password_hash
 from ..utils.general import run_async
 
 
@@ -17,18 +16,51 @@ def reset_password_command(ctx, username: str):
     )
 
     async def _reset():
+        success = await app_context.user_service.reset_password(username, password)
+        if not success:
+            click.secho(f"Error: User '{username}' not found.", fg="red")
+            return
+
+        click.secho(
+            f"Password for user '{username}' has been reset successfully.",
+            fg="green",
+        )
+
+    try:
+        run_async(_reset())
+    except Exception as error:
+        from ..error import UserInputError
+
+        if isinstance(error, UserInputError):
+            raise click.ClickException(str(error)) from None
+        raise
+
+
+@click.command(
+    "reset-mfa",
+    help="Locally reset an account's MFA and revoke all its login sessions.",
+)
+@click.argument("username")
+@click.confirmation_option(prompt="Reset MFA and sign out all logins for this account?")
+@click.pass_context
+def reset_mfa_command(ctx, username: str):
+    """Recovery requires access to the manager's local configuration/database."""
+    app_context = ctx.obj["app_context"]
+
+    async def reset():
         async with app_context.storage.transaction() as session:
-            hashed_pwd = get_password_hash(password)
-            success = await app_context.storage.user_repo.update_password(
-                session, username, hashed_pwd
+            user = await app_context.storage.user_repo.get_user_by_username(
+                session, username
             )
-            if not success:
-                click.secho(f"Error: User '{username}' not found.", fg="red")
-                return
+            if user is None:
+                raise click.ClickException("Account not found.")
+            identifier, user_id = user.access_id, user.id
+        await app_context.session_service.change_factor(
+            identifier, disable=True, reset_passkeys=True
+        )
+        await app_context.session_service.event(user_id, "local_mfa_reset")
+        click.echo(
+            "MFA reset. All login sessions were signed out; integration credentials are unchanged."
+        )
 
-            click.secho(
-                f"Password for user '{username}' has been reset successfully.",
-                fg="green",
-            )
-
-    run_async(_reset())
+    run_async(reset())

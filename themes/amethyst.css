@@ -1,0 +1,57 @@
+/* Amethyst — BSM custom theme. Supports light/dark mode and both densities. */
+:root[data-theme="amethyst"][data-mode="dark"][data-density] {
+  --bsm-page: #0f0b16;
+  --bsm-surface: #181223;
+  --bsm-surface-raised: #221a32;
+  --bsm-input: #120e1b;
+  --bsm-text: #f1eff5;
+  --bsm-muted: #b3abc4;
+  --bsm-border: #564b6c;
+  --bsm-accent: #c28aea;
+  --bsm-accent-strong: #52197b;
+  --bsm-accent-hover: #411461;
+  --bsm-on-accent: #ffffff;
+  --bsm-success: #78e6ac;
+  --bsm-danger: #ffb0b7;
+  --bsm-danger-solid: #a51c36;
+  --bsm-warning: #f6d784;
+  --bsm-info: #a9ceff;
+  --bsm-console: #08060c;
+  --bsm-console-text: #cfb9df;
+  --bsm-overlay: #030810b8;
+  --bsm-focus: #c28aea;
+  --bsm-shadow: 0 12px 40px #00000030;
+  --bsm-chart-1: #ba86df;
+  --bsm-chart-2: #dfab86;
+  --bsm-chart-3: #86dfa4;
+  --sidebar-bg-custom: var(--bsm-surface);
+  --splash-text-color: var(--bsm-warning);
+}
+:root[data-theme="amethyst"][data-mode="light"][data-density] {
+  --bsm-page: #f2f0f7;
+  --bsm-surface: #fcfcfd;
+  --bsm-surface-raised: #e3ddee;
+  --bsm-input: #f8f7fb;
+  --bsm-text: #1c1825;
+  --bsm-muted: #514766;
+  --bsm-border: #8d81a7;
+  --bsm-accent: #47136c;
+  --bsm-accent-strong: #52197b;
+  --bsm-accent-hover: #411461;
+  --bsm-on-accent: #ffffff;
+  --bsm-success: #16643f;
+  --bsm-danger: #a51c36;
+  --bsm-danger-solid: #a51c36;
+  --bsm-warning: #795000;
+  --bsm-info: #24549a;
+  --bsm-console: #eae6f2;
+  --bsm-console-text: #412654;
+  --bsm-overlay: #17213180;
+  --bsm-focus: #47136c;
+  --bsm-shadow: 0 10px 30px #17213112;
+  --bsm-chart-1: #542079;
+  --bsm-chart-2: #794520;
+  --bsm-chart-3: #20793e;
+  --sidebar-bg-custom: var(--bsm-surface);
+  --splash-text-color: var(--bsm-warning);
+}

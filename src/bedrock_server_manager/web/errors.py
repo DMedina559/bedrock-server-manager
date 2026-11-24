@@ -8,11 +8,11 @@ from fastapi.responses import JSONResponse
 from pydantic import ValidationError
 from starlette.exceptions import HTTPException as StarletteHTTPException
 
-from ..api.models.common import APIErrorResponse, ErrorEnvelope
+from ..api.contract import APIResponseValidationError
 from ..error import BSMError
 from ..failures import classify_failure
 from ..logging import log_operation_error
-from ..plugins.api_contract import APIResponseValidationError
+from ..models.common import APIErrorResponse, ErrorEnvelope
 
 logger = logging.getLogger(__name__)
 
@@ -26,14 +26,13 @@ def configure_errors(app: FastAPI) -> None:
         status_code = classified.status_code
         payload = APIErrorResponse.model_validate(classified.error.model_dump())
         headers = getattr(error, "headers", None)
-        if not classified.expected:
-            log_operation_error(
-                logger,
-                "HTTP operation failed: %s %s",
-                request.method,
-                request.url.path,
-                error=error,
-            )
+        log_operation_error(
+            logger,
+            "HTTP operation failed: %s %s",
+            request.method,
+            request.url.path,
+            error=error,
+        )
         return JSONResponse(
             status_code=status_code,
             headers=headers,

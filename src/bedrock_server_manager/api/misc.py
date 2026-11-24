@@ -11,7 +11,7 @@ import logging
 from typing import Optional
 
 from ..context import AppContext
-from ..core import prune_old_downloads
+from ..core.downloader import prune_old_downloads
 from ..error import (
     BSMError,
     IncompleteOperationError,
@@ -19,12 +19,13 @@ from ..error import (
 )
 from ..events import trigger_event
 from ..logging import log_operation_error
-from ..plugins.api_bridge import api_method
-from ..utils.general import ReentrantAsyncLock
-from .models.misc import (
+from ..models.misc import (
     PruneDownloadCacheRequest,
     PruneDownloadCacheResponse,
 )
+from ..plugins.api_bridge import api_method
+from ..plugins.scopes import PluginScope
+from ..utils.general import ReentrantAsyncLock
 
 logger = logging.getLogger(__name__)
 
@@ -32,18 +33,38 @@ logger = logging.getLogger(__name__)
 _misc_lock = ReentrantAsyncLock()
 
 
-@api_method("prune_download_cache")
+@api_method("prune_download_cache", required_scope=PluginScope.DOWNLOADS_PRUNE)
 @trigger_event(
     before="before_prune_download_cache",
     after="after_prune_download_cache",
     identity_keys=("download_dir", "keep_count"),
 )
 async def prune_download_cache(
-    request: PruneDownloadCacheRequest, *, app_context: Optional[AppContext] = None
+    request: PruneDownloadCacheRequest,
+    *,
+    app_context: Optional[AppContext] = None,
+    plugin_name: str | None = None,
 ) -> PruneDownloadCacheResponse:
     """Prunes old downloaded server archives (.zip) in a directory."""
     download_dir = request.download_dir
     keep_count = request.keep_count
+    if plugin_name is not None:
+        from pathlib import Path
+
+        if app_context is None:
+            raise PermissionError(
+                "Plugin download cleanup requires application context"
+            )
+        configured = app_context.settings.get("paths.downloads")
+        if not configured:
+            raise PermissionError("Download cache directory is not configured")
+        allowed = Path(configured).expanduser().resolve()
+        requested = Path(download_dir).expanduser().resolve()
+        if requested != allowed and not requested.is_relative_to(allowed):
+            raise PermissionError(
+                "Plugin cleanup must stay inside the configured download cache"
+            )
+        download_dir = str(requested)
     try:
         await _misc_lock.acquire(timeout=300)
     except asyncio.TimeoutError:

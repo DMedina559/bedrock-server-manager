@@ -56,3 +56,22 @@ async def publish_player_snapshot(
     data["request"] = snapshot
     data["result"] = PlayerChangeResult(**snapshot.model_dump())
     return await events.emit("after_server_players_change", data)
+
+
+class PlayerTransition(PlayerPresence):
+    server_name: str
+    generation: str
+    sequence: int = Field(ge=0)
+    action: Literal["connected", "disconnected"]
+    reason: str
+
+
+for name in ("after_server_player_connected", "after_server_player_disconnected"):
+    builtin_events.register(
+        EventDefinition(
+            name=name,
+            phase="after",
+            identity_keys=("server_name", "generation", "xuid"),
+        ),
+        PlayerTransition,
+    )

@@ -6,7 +6,8 @@ from uuid import uuid4
 
 from pydantic import BaseModel, ConfigDict, Field, model_validator
 
-from ..events.models import EventDiagnostics, EventOptions
+from ..events.models import EventDiagnostics, EventOptions, EventSubscriptions
+from ..events.operations import OperationActivity
 
 
 class DiagnosticModel(BaseModel):
@@ -76,6 +77,11 @@ class DiagnosticIssue(DiagnosticModel):
 
 
 class RuntimeDiagnostics(DiagnosticModel):
+    running_workers: int = 0
+    queued_workers: int = 0
+    draining_workers: int = 0
+    oldest_draining_worker_seconds: float | None = None
+    pending_lifecycle_stages: list[str] = Field(default_factory=list)
     kind: Literal["runtime"] = "runtime"
     ready: bool = False
     stage_started_at: float | None = None
@@ -127,6 +133,8 @@ class EventsDiagnostics(DiagnosticModel):
     kind: Literal["events"] = "events"
     activity: EventDiagnostics
     capacity: EventOptions
+    operations: OperationActivity | None = None
+    subscriptions: EventSubscriptions = Field(default_factory=EventSubscriptions)
 
 
 class TransportDiagnostics(DiagnosticModel):
@@ -187,6 +195,7 @@ class TaskDiagnostic(DiagnosticModel):
 
 
 class TasksDiagnostics(DiagnosticModel):
+    concurrency_limit: int | None = None
     kind: Literal["tasks"] = "tasks"
     active: int
     tasks: list[TaskDiagnostic] = Field(default_factory=list)
@@ -203,6 +212,27 @@ class ProcessDiagnostic(DiagnosticModel):
     pid: int | None = None
     observed_at: float | None = None
     last_error_type: str | None = None
+    cpu_percent: float | None = None
+    memory_mb: float | None = None
+    restart_attempts: int = 0
+    in_restart_backoff: bool = False
+    recovered_untracked: bool = False
+    process_owned: bool = False
+    command_available: bool = False
+    output_source: Literal["file", "pipe", "unknown"] = "unknown"
+    generation: str | None = None
+    ready: bool = False
+    phase: str | None = None
+    output_available: bool = False
+    output_error: str | None = None
+    output_queued_bytes: int = 0
+    output_dropped_bytes: int = 0
+    exit_code: int | None = None
+    exit_reason: str | None = None
+    ban_enforcement_available: bool = False
+    ban_error: str | None = None
+    recovery_exhausted: bool = False
+    healthy: bool | None = None
 
 
 class ProcessesDiagnostics(DiagnosticModel):
@@ -214,9 +244,20 @@ class ProcessesDiagnostics(DiagnosticModel):
     registered: int
     observed_running: int
     observation_available: bool
+    total_cpu_percent: float = 0.0
+    total_memory_mb: float = 0.0
+    unhealthy_count: int = 0
+    untracked_recoveries_count: int = 0
+    command_unavailable_count: int = 0
+    pending_identities: int = 0
+    identity_error: str | None = None
 
 
 class MetricsDiagnostics(DiagnosticModel):
+    event_loop_lag_ms: float = 0
+    recent_max_event_loop_lag_ms: float = 0
+    event_loop_lag_threshold_ms: float = 100
+    event_loop_lag_breaches: int = 0
     kind: Literal["metrics"] = "metrics"
     last_sample_at: float | None = None
     sample_age_seconds: float | None = None
@@ -229,6 +270,31 @@ class MetricsDiagnostics(DiagnosticModel):
     last_error_type: str | None = None
     unavailable_measurements: list[str] = Field(default_factory=list)
     warming_up: bool = True
+
+
+class BackupsDiagnostics(DiagnosticModel):
+    kind: Literal["backups"] = "backups"
+    servers: int
+    archives: int
+    total_bytes: int
+    failed: int
+    missing_keys: int
+    destination_failures: int
+    without_backup: int
+
+
+class SchedulerDiagnostics(DiagnosticModel):
+    kind: Literal["scheduler"] = "scheduler"
+    running: bool
+    schedules: int = Field(ge=0)
+    enabled: int = Field(ge=0)
+    active_jobs: int = Field(ge=0)
+    failed: int = Field(ge=0)
+    unavailable: int = Field(ge=0)
+    last_tick_at: float | None = None
+    tick_age_seconds: float | None = None
+    last_error_type: str | None = None
+    timezone_database_available: bool = True
 
 
 class PluginValues(DiagnosticModel):
@@ -263,6 +329,7 @@ DiagnosticData = (
     | ProcessesDiagnostics
     | MetricsDiagnostics
     | PluginValues
+    | BackupsDiagnostics
 )
 
 
@@ -418,11 +485,24 @@ class DiagnosticReport(DiagnosticModel):
     history: DiagnosticHistory
 
 
+class DiagnosticActivity(DiagnosticModel):
+    """Global current-instance metadata; no correlation filter is required."""
+
+    scope: Literal["application"] = "application"
+    issues: list[DiagnosticIssue] = Field(default_factory=list, max_length=3)
+    events: EventDiagnostics | None = None
+    operations: OperationActivity | None = None
+    subscriptions: EventSubscriptions | None = None
+    truncated: bool = False
+
+
 class DiagnosticTrace(DiagnosticModel):
+    operations: OperationActivity | None = None
+    operations_available: bool = False
     correlation_id: str
     events: EventDiagnostics | None
     events_available: bool = False
-    issues: list[DiagnosticIssue] = Field(default_factory=list, max_length=3)
+    issues: list[DiagnosticIssue] = Field(default_factory=list, max_length=4)
     tasks: list[TaskDiagnostic]
     tasks_available: bool
     history: DiagnosticHistory

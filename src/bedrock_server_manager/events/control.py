@@ -24,6 +24,10 @@ class CancellableEvent:
                 self._is_cancelled = True
                 self._cancel_reason = str(reason)
 
+    @property
+    def is_sealed(self) -> bool:
+        return self._sealed
+
     def seal(self) -> None:
         with self._lock:
             self._sealed = True

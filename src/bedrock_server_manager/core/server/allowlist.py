@@ -114,15 +114,11 @@ class ServerAllowlist:
                     )
             if added_count > 0:
                 try:
-                    lock = self.server.get_file_lock(
-                        self.server.paths.allowlist_json_path
+                    await save_json(
+                        current_allowlist,
+                        self.server.paths.allowlist_json_path,
+                        indent=4,
                     )
-                    async with lock:
-                        await save_json(
-                            current_allowlist,
-                            self.server.paths.allowlist_json_path,
-                            indent=4,
-                        )
                     self.logger.info(
                         "Successfully updated allowlist for '%s'. %s players added.",
                         self.server.server_name,
@@ -167,15 +163,11 @@ class ServerAllowlist:
             ]
             if len(updated_allowlist) < len(current_allowlist):
                 try:
-                    lock = self.server.get_file_lock(
-                        self.server.paths.allowlist_json_path
+                    await save_json(
+                        updated_allowlist,
+                        self.server.paths.allowlist_json_path,
+                        indent=4,
                     )
-                    async with lock:
-                        await save_json(
-                            updated_allowlist,
-                            self.server.paths.allowlist_json_path,
-                            indent=4,
-                        )
                     self.logger.info(
                         "Successfully removed '%s' from allowlist for '%s'.",
                         player_name_to_remove,

@@ -10,7 +10,7 @@ For Minecraft connections, check the Bedrock process and its UDP game ports sepa
 
 ## Logs and background tasks
 
-Inspect the task result when an operation was accepted but failed later. Manager log files have per-run names; locate the configured log directory rather than assuming a fixed filename. Use the local command's logging options shown by `bedrock-server-manager --help` to reproduce with more detail.
+Inspect the task result when an operation was accepted but failed later. Application logs are written under `<config_dir>/logs/` and per-server logs under `<config_dir>/logs/servers/<server_name>/`. Use `bedrock-server-manager logs --list`, `bedrock-server-manager logs --app --follow`, or `bedrock-server-manager logs --server <name> --follow` to inspect them directly from the host terminal, and use `--log-level DEBUG` when reproducing an issue. If an administrator is locked out of the Web UI, use `bedrock-server-manager reset-password <username>` or `bedrock-server-manager reset-mfa <username>` on the host. To preview or clean up orphaned data after failed operations, run `bedrock-server-manager cleanup --orphans --dry-run`.
 
 ```{figure} ../../images/web_background_task_operations.png
 :alt: Operations dialog showing completed addon tasks and their result messages

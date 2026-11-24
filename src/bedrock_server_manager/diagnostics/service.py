@@ -2,6 +2,7 @@
 
 import asyncio
 import inspect
+import logging
 import platform
 import time
 from collections import Counter
@@ -10,12 +11,20 @@ from importlib.metadata import PackageNotFoundError, version
 from typing import Any
 from uuid import uuid4
 
-from ..events.models import EventActivityQuery, EventDiagnostics
-from .activity import RecentOutcomes, bound_event_activity
+from ..events.models import EventActivityQuery, EventDiagnostics, EventSubscriptions
+from ..events.operations import OperationActivity, OperationActivityQuery
+from ..logging import RepeatedFailureReporter
+from .activity import (
+    RecentOutcomes,
+    bound_event_activity,
+    bound_operations,
+    bound_subscriptions,
+)
 from .health import summarize_health
 from .history import DiagnosticHistoryStore
 from .models import (
     CollectionDiagnostics,
+    DiagnosticActivity,
     DiagnosticData,
     DiagnosticEnvironment,
     DiagnosticIssue,
@@ -62,6 +71,12 @@ class Diagnostics:
         self.event_activity_provider: Callable[
             [EventActivityQuery], EventDiagnostics | None
         ] = lambda query: None
+        self.operation_activity_provider: Callable[
+            [OperationActivityQuery], OperationActivity | None
+        ] = lambda query: None
+        self.subscription_activity_provider: Callable[
+            [EventActivityQuery], EventSubscriptions | None
+        ] = lambda query: None
         self.task_snapshot_provider: Callable[[], TasksDiagnostics | None] = (
             lambda: None
         )
@@ -76,6 +91,7 @@ class Diagnostics:
             instance_id=self.instance_id,
             telemetry=self.collection,
         )
+        self._log_failures = RepeatedFailureReporter(logging.getLogger(__name__))
         self.provider_failures = 0
         self.provider_timeouts = 0
         self.provider_rejections = 0
@@ -88,6 +104,10 @@ class Diagnostics:
         self._lock = asyncio.Lock()
         self._last_snapshot: DiagnosticSnapshot | None = None
         self.accepting = True
+        self._subscriber_task: asyncio.Task | None = None
+        self._subscriber_wake: asyncio.Event | None = None
+        self.subscriber_notifier: Callable[[], Coroutine[Any, Any, None]] | None = None
+        self.subscriber_interval_seconds: float = 3.0
 
     def register(
         self, name: str, provider: Provider, *, owner: str = "application"
@@ -157,11 +177,73 @@ class Diagnostics:
     def has_pending_providers(self) -> bool:
         return any(not task.done() for task in self._pending.values())
 
+    @property
+    def notifier(
+        self,
+    ) -> Callable[[DiagnosticSnapshot, str], Coroutine[Any, Any, None]] | None:
+        return self._sampler.notifier
+
+    @notifier.setter
+    def notifier(
+        self,
+        value: Callable[[DiagnosticSnapshot, str], Coroutine[Any, Any, None]] | None,
+    ) -> None:
+        self._sampler.notifier = value
+
     def owner_pending(self, owner: str) -> bool:
         return any(
             not task.done() and self._pending_owners.get(name) == owner
             for name, task in self._pending.items()
         )
+
+    def wake_subscribers(self) -> None:
+        """Wake the subscriber loop immediately when an event or status transition occurs."""
+        if self._subscriber_wake is not None:
+            self._subscriber_wake.set()
+
+    def start_subscriber_monitor(self) -> None:
+        """Start monitoring active WebSocket subscriptions to push health/diagnostic updates."""
+        if not self.accepting:
+            return
+        if self._subscriber_task is None or self._subscriber_task.done():
+            self._subscriber_wake = asyncio.Event()
+            self._subscriber_task = asyncio.create_task(
+                self._subscriber_loop(), name="diagnostics-subscribers"
+            )
+
+    async def stop_subscriber_monitor(self) -> None:
+        """Stop the subscriber monitor task and await completion."""
+        task, self._subscriber_task = self._subscriber_task, None
+        self._subscriber_wake = None
+        if task is not None:
+            task.cancel()
+            await asyncio.gather(task, return_exceptions=True)
+
+    async def _subscriber_loop(self) -> None:
+        while self.accepting:
+            try:
+                try:
+                    if self._subscriber_wake is not None:
+                        await asyncio.wait_for(
+                            self._subscriber_wake.wait(),
+                            timeout=self.subscriber_interval_seconds,
+                        )
+                    else:
+                        await asyncio.sleep(self.subscriber_interval_seconds)
+                except asyncio.TimeoutError:
+                    pass
+                if self._subscriber_wake is not None:
+                    self._subscriber_wake.clear()
+                if not self.accepting:
+                    break
+                if self.subscriber_notifier is not None:
+                    await self.subscriber_notifier()
+            except asyncio.CancelledError:
+                break
+            except Exception as e:
+                self._log_failures.report(
+                    "subscriber-monitor", "Subscriber monitor failed: %s", e
+                )
 
     def _enqueue(self, **values: Any) -> None:
         try:
@@ -172,7 +254,8 @@ class Diagnostics:
             )
             self.recent.record(record.subsystem, record.outcome, record.code)
             self.history.enqueue(record)
-        except Exception:
+        except Exception as error:
+            self._log_failures.report("record", "Diagnostic %s failed: %s", error)
             self.history.dropped += 1
 
     def registry_snapshot(self) -> RegistryDiagnostics:
@@ -301,6 +384,8 @@ class Diagnostics:
             operation_id=operation_id,
             duration_ms=max(0, (time.monotonic() - started) * 1000),
         )
+        if error is not None:
+            self.wake_subscribers()
 
     def record_task(
         self,
@@ -325,6 +410,8 @@ class Diagnostics:
             correlation_id=correlation_id,
             duration_ms=max(0, (time.monotonic() - started) * 1000),
         )
+        if record.error is not None:
+            self.wake_subscribers()
 
     def record_event(self, record) -> None:
         """Persist listener failure identities and correlation without payloads."""
@@ -343,6 +430,7 @@ class Diagnostics:
                 owner=failure.owner[:160],
                 operation_id=record.event_id,
             )
+        self.wake_subscribers()
 
     async def _collect(
         self, name: str, owner: str, provider: Provider, registration: object
@@ -402,8 +490,30 @@ class Diagnostics:
                     records=self.options.event_record_limit,
                     details=self.options.event_detail_limit,
                 )
-                data.truncated = data.truncated or truncated
-            status, issues = self._health(data)
+                if data.operations is not None:
+                    data.operations = bound_operations(
+                        data.operations, records=self.options.event_record_limit
+                    )
+                data.subscriptions = bound_subscriptions(
+                    data.subscriptions,
+                    records=self.options.event_detail_limit,
+                    details=self.options.event_detail_limit,
+                )
+                data.truncated = (
+                    data.truncated
+                    or truncated
+                    or data.subscriptions.truncated
+                    or bool(
+                        data.operations
+                        and (
+                            data.operations.active_truncated
+                            or data.operations.recent_truncated
+                        )
+                    )
+                )
+            status, issues = self._health(
+                data, subsystem=name if owner == "application" else None
+            )
             observed_at = (
                 data.last_sample_at
                 if isinstance(data, MetricsDiagnostics)
@@ -427,17 +537,22 @@ class Diagnostics:
                 age_seconds=age,
                 stale=age is not None and age > self.options.stale_after_seconds,
             )
+            self._log_failures.recover("provider:" + name)
             self._last_success[name] = section.model_copy(deep=True)
             return section
         except (Exception, asyncio.CancelledError) as error:
+            if isinstance(error, Exception):
+                self._log_failures.report(
+                    "provider:" + name, "Diagnostic %s failed: %s", error
+                )
             self.provider_failures += 1
             self.record("diagnostics", name, started=started, error=error, owner=owner)
             return self._unavailable(name, owner, started, "provider_failed")
 
-    def _health(self, data: DiagnosticData):
+    def _health(self, data: DiagnosticData, *, subsystem: str | None = None):
         from .health import evaluate_health
 
-        return evaluate_health(data, self.options)
+        return evaluate_health(data, self.options, subsystem=subsystem)
 
     def collection_snapshot(self) -> CollectionDiagnostics:
         """Expose collection and writer observations without additional I/O."""
@@ -552,6 +667,97 @@ class Diagnostics:
         finally:
             self._lock.release()
 
+    def activity(self, query: EventActivityQuery | None = None) -> DiagnosticActivity:
+        """Read bounded global events, operation ancestry metadata, and listener details."""
+        query = query or EventActivityQuery()
+        query = query.model_copy(
+            update={"limit": min(query.limit, self.options.event_record_limit)}
+        )
+        issues = []
+        events = None
+        truncated = False
+        try:
+            events = self.event_activity_provider(query)
+            if events is not None:
+                events, truncated = bound_event_activity(
+                    events, records=query.limit, details=self.options.event_detail_limit
+                )
+        except Exception as error:
+            self._log_failures.report(
+                "activity-events", "Diagnostic %s failed: %s", error
+            )
+            events = None
+            issues.append(
+                DiagnosticIssue(
+                    code="activity_events_unavailable",
+                    message="Event observations are unavailable.",
+                    action="inspect_events",
+                )
+            )
+        operations = None
+        try:
+            operations = self.operation_activity_provider(
+                OperationActivityQuery(
+                    name=query.operation_name,
+                    owner=query.owner,
+                    source=query.source,
+                    server_name=query.server_name,
+                    operation_id=query.operation_id,
+                    sequence_id=query.sequence_id,
+                    correlation_id=query.correlation_id,
+                    limit=query.limit,
+                )
+            )
+            if operations is not None:
+                operations = bound_operations(operations, records=query.limit)
+        except Exception as error:
+            self._log_failures.report(
+                "activity-operations", "Diagnostic %s failed: %s", error
+            )
+            operations = None
+            issues.append(
+                DiagnosticIssue(
+                    code="activity_operations_unavailable",
+                    message="Operation observations are unavailable.",
+                    action="inspect_events",
+                )
+            )
+        subscriptions = None
+        try:
+            subscriptions = self.subscription_activity_provider(
+                query.model_copy(update={"limit": self.options.event_detail_limit})
+            )
+            if subscriptions is not None:
+                subscriptions = bound_subscriptions(
+                    subscriptions,
+                    records=self.options.event_detail_limit,
+                    details=self.options.event_detail_limit,
+                )
+        except Exception as error:
+            self._log_failures.report(
+                "activity-subscriptions", "Diagnostic %s failed: %s", error
+            )
+            subscriptions = None
+            issues.append(
+                DiagnosticIssue(
+                    code="activity_subscriptions_unavailable",
+                    message="Listener observations are unavailable.",
+                    action="inspect_events",
+                )
+            )
+        return DiagnosticActivity(
+            events=events,
+            operations=operations,
+            subscriptions=subscriptions,
+            issues=issues,
+            truncated=truncated
+            or bool(
+                operations
+                and (operations.active_truncated or operations.recent_truncated)
+            )
+            or bool(subscriptions and subscriptions.truncated),
+        )
+
     async def trace(
         self, correlation_id: str, *, limit: int = 100, cursor: str | None = None
     ) -> DiagnosticTrace:
@@ -580,7 +786,8 @@ class Diagnostics:
                     details=self.options.event_detail_limit,
                 )
                 truncated = truncated or detail_truncated
-        except Exception:
+        except Exception as error:
+            self._log_failures.report("trace-events", "Diagnostic %s failed: %s", error)
             issues.append(
                 DiagnosticIssue(
                     code="trace_events_unavailable",
@@ -590,7 +797,8 @@ class Diagnostics:
             )
         try:
             tasks = self.task_snapshot_provider()
-        except Exception:
+        except Exception as error:
+            self._log_failures.report("trace-tasks", "Diagnostic %s failed: %s", error)
             issues.append(
                 DiagnosticIssue(
                     code="trace_tasks_unavailable",
@@ -606,12 +814,43 @@ class Diagnostics:
                     action="inspect_storage",
                 )
             )
+        operations = None
+        try:
+            operations = self.operation_activity_provider(
+                OperationActivityQuery(
+                    correlation_id=correlation_id,
+                    limit=min(limit, self.options.event_record_limit),
+                )
+            )
+            if operations is not None:
+                operations = bound_operations(
+                    operations, records=min(limit, self.options.event_record_limit)
+                )
+                truncated = (
+                    truncated
+                    or operations.active_truncated
+                    or operations.recent_truncated
+                )
+        except Exception as error:
+            self._log_failures.report(
+                "trace-operations", "Diagnostic %s failed: %s", error
+            )
+            operations = None
+            issues.append(
+                DiagnosticIssue(
+                    code="trace_operations_unavailable",
+                    message="Operation observations are unavailable.",
+                    action="inspect_events",
+                )
+            )
         matching_tasks = (
             [task for task in tasks.tasks if task.correlation_id == correlation_id]
             if tasks is not None
             else []
         )
         return DiagnosticTrace(
+            operations=operations,
+            operations_available=operations is not None,
             correlation_id=correlation_id,
             events=events,
             events_available=events is not None,
@@ -645,10 +884,12 @@ class Diagnostics:
             return
         self.history.start()
         self._sampler.start()
+        self.start_subscriber_monitor()
 
     async def close(self) -> None:
         if not self.accepting:
             return
+        await self.stop_subscriber_monitor()
         await self._sampler.close()
         self.record("runtime", "diagnostics_closed", started=time.monotonic())
         self.accepting = False

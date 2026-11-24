@@ -12,13 +12,18 @@ async def setup_check_middleware(request: Request, call_next):
     """
     # Paths that should be accessible even if setup is not complete
     allowed_paths = [
-        "/setup/status",  # API status check
-        "/setup/create-first-user",  # API create user
+        "/api/setup/status",  # API status check
+        "/api/setup/create-first-user",  # API create user
+        "/setup/status",
+        "/setup/create-first-user",
         "/app",  # The SPA itself
         "/themes",
         "/favicon.ico",
         "/site.webmanifest",
         "/auth/token",
+        "/auth/passkey/options",
+        "/auth/passkey/verify",
+        "/audit-log",
         "/docs",
         "/openapi.json",
     ]
@@ -34,15 +39,14 @@ async def setup_check_middleware(request: Request, call_next):
         response = await call_next(request)
         return response
 
-    if await request.app.state.app_context.check_setup() and not any(
-        req_path.startswith(p) for p in allowed_paths
+    if (
+        not req_path.startswith("/api")
+        and not req_path.startswith("/app")
+        and not any(req_path.startswith(p) for p in allowed_paths)
+        and await request.app.state.app_context.check_setup()
     ):
-
-        if req_path.startswith("/api"):
-            pass
-        elif not req_path.startswith("/app"):
-            app_url = request.url_for("serve_spa")
-            return RedirectResponse(url=str(app_url))
+        app_url = request.url_for("serve_spa")
+        return RedirectResponse(url=str(app_url))
 
     response = await call_next(request)
     return response

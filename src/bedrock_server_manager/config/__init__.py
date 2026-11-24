@@ -6,11 +6,10 @@ This includes: - Loading and managing user-defined settings from configuration f
 Providing access to these configurations throughout the application.
 """
 
-from .blocked_commands import API_COMMAND_BLACKLIST
 from .const import (
+    API_COMMAND_BLACKLIST,
     DEFAULT_ENABLED_PLUGINS,
     GUARD_VARIABLE,
-    SERVER_TIMEOUT,
     app_name_title,
     env_name,
     executable_name,
@@ -31,8 +30,6 @@ __all__ = [
     "GUARD_VARIABLE",
     "DEFAULT_ENABLED_PLUGINS",
     "get_installed_version",
-    "SERVER_TIMEOUT",
-    # from blocked_commands.py
     "API_COMMAND_BLACKLIST",
     # from splash_text.py
     "SPLASH_TEXTS",

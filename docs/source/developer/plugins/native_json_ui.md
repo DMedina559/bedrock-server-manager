@@ -37,27 +37,39 @@ async def get_ui(server: str = "default_server"): # Accept the server query para
 
 ### Basic Example
 
-Here is a minimal example of a plugin that adds a native UI page:
+Here is a minimal example of a plugin that adds an authenticated native UI page. Include a unique `operation_id` and scope the route with `Security(require_permissions, scopes=["plugins:pages"])` (or a custom `plugin:<plugin_name>:<perm>` scope) so access matches BSM's role model:
 
 ```python
-from fastapi import APIRouter, Request
+from fastapi import APIRouter, Depends, Request, Security
 from fastapi.responses import JSONResponse
-from bedrock_server_manager import PluginBase, app_event
+from bedrock_server_manager import (
+    PluginBase,
+    app_event,
+    get_current_user,
+    require_permissions,
+)
 
 class MyPlugin(PluginBase):
     version = "4.0.0"
 
     @app_event("on_load")
     async def plugin_loaded(self, **kwargs):
-        self.router = APIRouter(tags=["My Plugin"])
+        self.router = APIRouter(
+            tags=["My Plugin"],
+            dependencies=[Depends(get_current_user)],
+        )
 
         @self.router.get(
             "/my_plugin/ui",
+            operation_id="my_plugin_native_ui",
             response_class=JSONResponse,
             name="My Plugin UI",
-            tags=["plugin-json-ui"]  # <--- This tag enables the Native UI renderer
+            tags=["plugin-json-ui"],  # <--- This tag enables the Native UI renderer
+            dependencies=[
+                Security(require_permissions, scopes=["plugins:pages"])
+            ],
         )
-        async def get_ui(request: Request):
+        async def get_ui(request: Request, server: str = ""):
             return JSONResponse(content={
                 "type": "Container",
                 "children": [
@@ -74,9 +86,6 @@ class MyPlugin(PluginBase):
                     }
                 ]
             })
-
-    def get_fastapi_routers(self, **kwargs):
-        return [self.router]
 ```
 
 ## Available Components
@@ -89,6 +98,7 @@ The JSON schema supports a wide range of components. Each component is an object
 *   **Row**: Horizontal layout.
 *   **Column**: Vertical layout.
 *   **Divider**: Horizontal line separator.
+*   **Tabs** & **Tab**: Tabbed view container. Place `Tab` children inside `Tabs` (each `Tab` accepts `props.label` and optional `props.value`).
 
 ### Typography
 *   **Text**: Renders text.

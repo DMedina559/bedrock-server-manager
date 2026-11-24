@@ -18,7 +18,7 @@ The web overview brings application health and the server fleet together.
 - [Install BSM](../extras/installation.md) and complete [first startup](quickstart.md).
 - [Install or update a game server](../features/installation.md).
 - [Manage running servers](../features/server_management.md) and [configure player access](../features/configuration.md).
-- [Protect worlds with backups](../features/backups.md) and [import content](../features/content_management.md).
+- [Protect worlds with backups](../features/backups.md), [schedule automated tasks](../features/scheduler.md), and [import content](../features/content_management.md).
 - [Configure administration](../features/settings.md), [Docker](../extras/docker.md) or [runtime supervision](../extras/web_runtime.md).
 - [Install plugins](../plugins/introduction.md) or [develop one](../developer/plugins/introduction.md).
 

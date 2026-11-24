@@ -5,21 +5,12 @@ Plugin that automatically reloads server configurations after changes.
 
 from typing import Any
 
-from pydantic import BaseModel, ConfigDict, Field
-
-from bedrock_server_manager import PluginBase, app_event
-from bedrock_server_manager.api.models.allowlist import (
+from bedrock_server_manager import PluginBase, PluginScope, app_event
+from bedrock_server_manager.models import (
     AddToAllowlistResponse,
     RemoveFromAllowlistResponse,
+    SendCommandRequest,
 )
-from bedrock_server_manager.logging import log_operation_error
-
-
-class PluginSettings(BaseModel):
-    model_config = ConfigDict(extra="forbid", strict=True)
-    enable_auto_reload: bool = Field(
-        default=True, description="Reload configuration when its source changes."
-    )
 
 
 class AutoReloadPlugin(PluginBase):
@@ -28,9 +19,8 @@ class AutoReloadPlugin(PluginBase):
     ensuring changes take effect immediately without manual intervention.
     """
 
-    settings_model = PluginSettings
-
-    version = "1.2.0"
+    version = "1.4.0"
+    permissions = [PluginScope.SERVERS_COMMAND, PluginScope.SERVERS_READ]
     description = "Automatically sends a `reload` command to a running server after its configuration files (e.g., allowlist.json, permissions.json) are modified."
     author = "dmedina559"
     name = "Auto Reload Config"
@@ -42,38 +32,8 @@ class AutoReloadPlugin(PluginBase):
             "Plugin loaded. Will send reload commands after config changes if server is running."
         )
 
-    async def _is_server_running(self, server_name: str) -> bool:
-        """Check if a server is currently running via the API."""
-        try:
-            response = await self.api.system.get_server_running_status(
-                request={"server_name": server_name}
-            )
-            if response and response.status == "success":
-                return bool(response.is_running)
-
-            self.logger.warning(
-                "Could not determine running status for '%s'.",
-                server_name,
-            )
-        except AttributeError:
-            self.logger.error(
-                "API is missing 'get_server_running_status'. Cannot check server status."
-            )
-        except Exception as e:
-            log_operation_error(
-                self.logger,
-                "Error checking server status for '%s': %s",
-                server_name,
-                e,
-                error=e,
-            )
-        return False
-
     async def _send_reload_command(self, server_name: str, command: str, context: str):
         """Sends a given command to a server if it's running."""
-        if not await self.get_plugin_setting("enable_auto_reload", default=True):
-            self.logger.debug("Auto reload is disabled in plugin settings.")
-            return
         if await self._is_server_running(server_name):
             try:
                 self.logger.info(
@@ -82,7 +42,7 @@ class AutoReloadPlugin(PluginBase):
                     server_name,
                 )
                 await self.api.server.send_command(
-                    request={"server_name": server_name, "command": command}
+                    request=SendCommandRequest(server_name=server_name, command=command)
                 )
                 self.logger.debug(
                     "Reload command delivered to server '%s'.", server_name

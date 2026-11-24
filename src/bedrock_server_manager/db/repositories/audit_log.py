@@ -9,7 +9,6 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.future import select
 
 from ...state.models import PersistentRecord
-from ..database import Database
 from ..models import AuditLog
 
 
@@ -21,9 +20,6 @@ class AuditEntry(PersistentRecord):
 
 class AuditLogRepository:
     """Handle database persistence for audit log records."""
-
-    def __init__(self, db: Database | None = None):
-        self.db = db
 
     async def create_audit_log(
         self,
@@ -38,9 +34,16 @@ class AuditLogRepository:
         session.add(log)
         return log
 
-    async def get_all_logs(self, session: AsyncSession) -> List[AuditLog]:
-        """Return all audit logs ordered by timestamp descending."""
-        result = await session.execute(
-            select(AuditLog).order_by(AuditLog.timestamp.desc())
-        )
+    async def get_all_logs(
+        self, session: AsyncSession, limit: int | None = None, offset: int = 0
+    ) -> List[AuditLog]:
+        """Return audit logs ordered deterministically by timestamp and id descending."""
+        if offset < 0 or (limit is not None and not 1 <= limit <= 500):
+            raise ValueError("Invalid audit page bounds")
+        query = select(AuditLog).order_by(AuditLog.timestamp.desc(), AuditLog.id.desc())
+        if offset > 0:
+            query = query.offset(offset)
+        if limit is not None:
+            query = query.limit(limit)
+        result = await session.execute(query)
         return list(result.scalars().all())

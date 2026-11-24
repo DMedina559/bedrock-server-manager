@@ -14,6 +14,7 @@ from . import __version__
 from .cli import (
     cleanup,
     database,
+    logs,
     reset_password,
     service,
     setup,
@@ -74,6 +75,17 @@ def create_cli_app():
         bcm_config.set_custom_db_url(db_url)
         bcm_config.set_custom_log_level(log_level)
 
+        if ctx.invoked_subcommand == "backup":
+            # Offline recovery must work even when bootstrap/database access is broken.
+            ctx.obj = {
+                "cli": cli,
+                "config_dir": config_dir,
+                "data_dir": data_dir,
+                "db_url": db_url,
+                "log_level": log_level,
+            }
+            return
+
         try:
             logger = setup_logging(force_reconfigure=True)
             log_separator(logger, app_name=app_name_title, app_version=__version__)
@@ -108,7 +120,7 @@ def create_cli_app():
 
             atexit.register(shutdown_cli_app, app_context)
 
-            if ctx.invoked_subcommand not in ["setup", "migrate"]:
+            if ctx.invoked_subcommand not in ["setup"]:
                 asyncio.run(app_context.load())
                 startup_checks(app_context)
 
@@ -134,10 +146,15 @@ def create_cli_app():
 
         cli.add_command(web.web)
         cli.add_command(cleanup.cleanup)
+        cli.add_command(logs.logs)
         cli.add_command(setup.setup)
         cli.add_command(reset_password.reset_password_command)
+        cli.add_command(reset_password.reset_mfa_command)
         cli.add_command(service.service)
         cli.add_command(database.database)
+        from .cli.backup import backup
+
+        cli.add_command(backup)
 
     # Call the assembly function to build the CLI with core and plugin commands
     _add_commands_to_cli()

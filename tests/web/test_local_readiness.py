@@ -7,17 +7,9 @@ from httpx2 import ASGITransport, AsyncClient
 
 from bedrock_server_manager.config import get_installed_version
 from bedrock_server_manager.web.control import ControlFiles
-from bedrock_server_manager.web.main import create_server
 from bedrock_server_manager.web.process import WebProcessPaths, read_control
-from bedrock_server_manager.web.runtime import WebRunOptions, WebRuntime
-
-
-def attach_runtime(app_context, test_app):
-    runtime = WebRuntime()
-    server = create_server(app_context, WebRunOptions(), runtime)
-    test_app.state.web_runtime = runtime
-    runtime.ready()
-    return runtime, server
+from bedrock_server_manager.web.runtime import WebRuntime
+from tests.web.helpers import attach_runtime
 
 
 async def test_local_readiness_works_before_first_user(
@@ -149,7 +141,7 @@ def test_control_record_publishes_distinct_private_rotating_capabilities(tmp_pat
         assert not runtime.authenticate_readiness("é")
     finally:
         files.close()
-    assert not (tmp_path / "web_server.control.json").exists()
+    assert not (tmp_path / "runtime" / "web_server.control.json").exists()
 
 
 async def test_user_authentication_still_works_and_bad_local_header_is_rejected(

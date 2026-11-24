@@ -8,8 +8,12 @@ from typing import Any
 
 from pydantic import BaseModel, ConfigDict, Field
 
-from bedrock_server_manager import PluginBase, app_event
+from bedrock_server_manager import PluginBase, PluginScope, app_event
 from bedrock_server_manager.logging import log_operation_error
+from bedrock_server_manager.models import (
+    GetServerSummaryRequest,
+    SendCommandRequest,
+)
 
 
 class PluginSettings(BaseModel):
@@ -32,9 +36,6 @@ class PluginSettings(BaseModel):
         le=60,
         description="Seconds to wait after starting for initialization.",
     )
-    enable_notifications: bool = Field(
-        default=True, description="Send in-game lifecycle warnings."
-    )
 
 
 class ServerLifecycleNotificationsPlugin(PluginBase):
@@ -46,7 +47,8 @@ class ServerLifecycleNotificationsPlugin(PluginBase):
 
     settings_model = PluginSettings
 
-    version = "1.2.0"
+    version = "1.4.0"
+    permissions = [PluginScope.SERVERS_COMMAND, PluginScope.SERVERS_READ]
     description = "Enhances server management by sending in-game notifications and introducing delays at critical server lifecycle points."
     author = "dmedina559"
     name = "Server Lifecycle Notifications"
@@ -58,38 +60,10 @@ class ServerLifecycleNotificationsPlugin(PluginBase):
             "Plugin loaded. Will manage server lifecycle notifications and delays."
         )
 
-    async def _is_server_running(self, server_name: str) -> bool:
-        """Check if a server is currently running via the API."""
-        try:
-            response = await self.api.system.get_server_running_status(
-                request={"server_name": server_name}
-            )
-            if response and response.status == "success":
-                return bool(response.is_running)
-            self.logger.warning(
-                "Could not determine running status for '%s'.",
-                server_name,
-            )
-        except AttributeError:
-            self.logger.error(
-                "API is missing 'get_server_running_status'. Cannot check server status."
-            )
-        except Exception as e:
-            log_operation_error(
-                self.logger,
-                "Error checking server status for '%s': %s",
-                server_name,
-                e,
-                error=e,
-            )
-        return False
-
     async def _send_ingame_message(
         self, server_name: str, message: str, context: str
     ) -> None:
         """Helper to send an in-game message if the server is running."""
-        if not await self.get_plugin_setting("enable_notifications", default=True):
-            return
         if await self._is_server_running(server_name):
             try:
                 # Ensure the message is formatted as a "say" command.
@@ -99,7 +73,7 @@ class ServerLifecycleNotificationsPlugin(PluginBase):
                     command = message
 
                 await self.api.server.send_command(
-                    request={"server_name": server_name, "command": command}
+                    request=SendCommandRequest(server_name=server_name, command=command)
                 )
                 self.logger.debug(
                     "Sent %s message to '%s': %s", context, server_name, message
@@ -126,7 +100,7 @@ class ServerLifecycleNotificationsPlugin(PluginBase):
         self.logger.debug("Handling before_server_stop for '%s'.", server_name)
 
         summary = await self.api.server.get_summary(
-            request={"server_name": server_name}
+            request=GetServerSummaryRequest(server_name=server_name)
         )
         player_count = (
             summary.summary.player_count if summary.status == "success" else 0
@@ -171,7 +145,7 @@ class ServerLifecycleNotificationsPlugin(PluginBase):
         self.logger.debug("Handling before_delete_server_data for '%s'.", server_name)
 
         summary = await self.api.server.get_summary(
-            request={"server_name": server_name}
+            request=GetServerSummaryRequest(server_name=server_name)
         )
         player_count = (
             summary.summary.player_count if summary.status == "success" else 0
@@ -196,7 +170,7 @@ class ServerLifecycleNotificationsPlugin(PluginBase):
         )
 
         summary = await self.api.server.get_summary(
-            request={"server_name": server_name}
+            request=GetServerSummaryRequest(server_name=server_name)
         )
         player_count = (
             summary.summary.player_count if summary.status == "success" else 0

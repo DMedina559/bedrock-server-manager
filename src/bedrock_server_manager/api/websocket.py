@@ -9,9 +9,8 @@ from typing import Literal
 from ..context import AppContext
 from ..error import IncompleteOperationError
 from ..logging import log_operation_error
-from ..plugins.api_bridge import api_method
-from ..results import DeliveryResult
-from .models.websocket import (
+from ..models.common import DeliveryResult
+from ..models.websocket import (
     BroadcastRequest,
     BroadcastResponse,
     PublishWsEventRequest,
@@ -23,6 +22,8 @@ from .models.websocket import (
     UnregisterDataProviderRequest,
     UnregisterDataProviderResponse,
 )
+from ..plugins.api_bridge import api_method
+from ..plugins.scopes import PluginScope
 
 logger = logging.getLogger(__name__)
 
@@ -37,7 +38,7 @@ def _delivery_status(
     return "partial" if result.failed or result.unavailable else "success"
 
 
-@api_method("websocket_broadcast")
+@api_method("websocket_broadcast", required_scope=PluginScope.WEBSOCKET_SEND)
 async def broadcast(
     request: BroadcastRequest, *, app_context: AppContext
 ) -> BroadcastResponse:
@@ -68,7 +69,7 @@ async def broadcast(
         raise
 
 
-@api_method("websocket_send_to_user")
+@api_method("websocket_send_to_user", required_scope=PluginScope.WEBSOCKET_SEND)
 async def send_to_user(
     request: SendToUserRequest, *, app_context: AppContext
 ) -> SendToUserResponse:
@@ -89,7 +90,7 @@ async def send_to_user(
         raise
 
 
-@api_method("websocket_send_to_client")
+@api_method("websocket_send_to_client", required_scope=PluginScope.WEBSOCKET_SEND)
 async def send_to_client(
     request: SendToClientRequest, *, app_context: AppContext
 ) -> SendToClientResponse:
@@ -112,12 +113,17 @@ async def send_to_client(
 
 @api_method("websocket_unregister_data_provider")
 async def unregister_data_provider(
-    request: UnregisterDataProviderRequest, *, app_context: AppContext
+    request: UnregisterDataProviderRequest,
+    *,
+    app_context: AppContext,
+    plugin_name: str | None = None,
 ) -> UnregisterDataProviderResponse:
     """Unregisters a data provider handler for a WebSocket topic."""
     topic = request.topic
     try:
-        removed = app_context.connection_manager.unregister_data_provider(topic)
+        removed = app_context.connection_manager.unregister_data_provider(
+            topic, plugin_name=plugin_name
+        )
         return UnregisterDataProviderResponse(
             status="success" if removed else "skipped",
             outcome="removed" if removed else "already_absent",
@@ -134,7 +140,7 @@ async def unregister_data_provider(
         raise
 
 
-@api_method("websocket_publish_ws_event")
+@api_method("websocket_publish_ws_event", required_scope=PluginScope.WEBSOCKET_SEND)
 async def publish_ws_event(
     request: PublishWsEventRequest, *, app_context: AppContext
 ) -> PublishWsEventResponse:

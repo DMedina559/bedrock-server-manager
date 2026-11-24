@@ -1,0 +1,57 @@
+/* Snowy Taiga — BSM custom theme. Supports light/dark mode and both densities. */
+:root[data-theme="snowy_taiga"][data-mode="dark"][data-density] {
+  --bsm-page: #0b1011;
+  --bsm-surface: #151f21;
+  --bsm-surface-raised: #1e2c2f;
+  --bsm-input: #101719;
+  --bsm-text: #eff4f5;
+  --bsm-muted: #abc0c4;
+  --bsm-border: #4b676c;
+  --bsm-accent: #8aeaba;
+  --bsm-accent-strong: #197b4a;
+  --bsm-accent-hover: #14613b;
+  --bsm-on-accent: #ffffff;
+  --bsm-success: #78e6ac;
+  --bsm-danger: #ffb0b7;
+  --bsm-danger-solid: #a51c36;
+  --bsm-warning: #f6d784;
+  --bsm-info: #a9ceff;
+  --bsm-console: #070a0b;
+  --bsm-console-text: #b9dfcc;
+  --bsm-overlay: #030810b8;
+  --bsm-focus: #8aeaba;
+  --bsm-shadow: 0 12px 40px #00000030;
+  --bsm-chart-1: #86dfb3;
+  --bsm-chart-2: #a486df;
+  --bsm-chart-3: #df9c86;
+  --sidebar-bg-custom: var(--bsm-surface);
+  --splash-text-color: var(--bsm-warning);
+}
+:root[data-theme="snowy_taiga"][data-mode="light"][data-density] {
+  --bsm-page: #f1f5f6;
+  --bsm-surface: #fcfdfd;
+  --bsm-surface-raised: #e0e9eb;
+  --bsm-input: #f7fafa;
+  --bsm-text: #182325;
+  --bsm-muted: #476166;
+  --bsm-border: #81a1a7;
+  --bsm-accent: #136c40;
+  --bsm-accent-strong: #197b4a;
+  --bsm-accent-hover: #14613b;
+  --bsm-on-accent: #ffffff;
+  --bsm-success: #16643f;
+  --bsm-danger: #a51c36;
+  --bsm-danger-solid: #a51c36;
+  --bsm-warning: #795000;
+  --bsm-info: #24549a;
+  --bsm-console: #e8eff0;
+  --bsm-console-text: #26543d;
+  --bsm-overlay: #17213180;
+  --bsm-focus: #136c40;
+  --bsm-shadow: 0 10px 30px #17213112;
+  --bsm-chart-1: #20794d;
+  --bsm-chart-2: #3e2079;
+  --bsm-chart-3: #793620;
+  --sidebar-bg-custom: var(--bsm-surface);
+  --splash-text-color: var(--bsm-warning);
+}

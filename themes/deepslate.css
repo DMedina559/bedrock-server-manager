@@ -1,0 +1,57 @@
+/* Deepslate — BSM custom theme. Supports light/dark mode and both densities. */
+:root[data-theme="deepslate"][data-mode="dark"][data-density] {
+  --bsm-page: #0d1014;
+  --bsm-surface: #151a20;
+  --bsm-surface-raised: #1f252e;
+  --bsm-input: #101418;
+  --bsm-text: #eff2f5;
+  --bsm-muted: #abb5c4;
+  --bsm-border: #4b596c;
+  --bsm-accent: #8ae2ea;
+  --bsm-accent-strong: #19737b;
+  --bsm-accent-hover: #145b61;
+  --bsm-on-accent: #ffffff;
+  --bsm-success: #78e6ac;
+  --bsm-danger: #ffb0b7;
+  --bsm-danger-solid: #a51c36;
+  --bsm-warning: #f6d784;
+  --bsm-info: #a9ceff;
+  --bsm-console: #07090b;
+  --bsm-console-text: #b9dcdf;
+  --bsm-overlay: #030810b8;
+  --bsm-focus: #8ae2ea;
+  --bsm-shadow: 0 12px 40px #00000030;
+  --bsm-chart-1: #86d7df;
+  --bsm-chart-2: #d786df;
+  --bsm-chart-3: #dfd086;
+  --sidebar-bg-custom: var(--bsm-surface);
+  --splash-text-color: var(--bsm-warning);
+}
+:root[data-theme="deepslate"][data-mode="light"][data-density] {
+  --bsm-page: #f1f3f6;
+  --bsm-surface: #fcfcfd;
+  --bsm-surface-raised: #e0e5eb;
+  --bsm-input: #f7f8fa;
+  --bsm-text: #181d25;
+  --bsm-muted: #475466;
+  --bsm-border: #8191a7;
+  --bsm-accent: #13656c;
+  --bsm-accent-strong: #19737b;
+  --bsm-accent-hover: #145b61;
+  --bsm-on-accent: #ffffff;
+  --bsm-success: #16643f;
+  --bsm-danger: #a51c36;
+  --bsm-danger-solid: #a51c36;
+  --bsm-warning: #795000;
+  --bsm-info: #24549a;
+  --bsm-console: #e8ebf0;
+  --bsm-console-text: #265154;
+  --bsm-overlay: #17213180;
+  --bsm-focus: #13656c;
+  --bsm-shadow: 0 10px 30px #17213112;
+  --bsm-chart-1: #207179;
+  --bsm-chart-2: #712079;
+  --bsm-chart-3: #796a20;
+  --sidebar-bg-custom: var(--bsm-surface);
+  --splash-text-color: var(--bsm-warning);
+}

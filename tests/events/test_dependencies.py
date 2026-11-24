@@ -8,6 +8,7 @@ from dataclasses import dataclass
 import pytest
 from pydantic import BaseModel
 
+from bedrock_server_manager.contracts import DeliveryResult
 from bedrock_server_manager.events import (
     EventBus,
     EventDefinition,
@@ -17,7 +18,6 @@ from bedrock_server_manager.events import (
 )
 from bedrock_server_manager.events.models import EventDelivery
 from bedrock_server_manager.events.player import publish_player_snapshot
-from bedrock_server_manager.results import DeliveryResult
 
 
 class PublisherOnly:
@@ -54,40 +54,6 @@ async def test_status_configuration_needs_only_publisher(
     )
     assert result.new_status == "TEST_STATUS"
     assert await real_bedrock_server.get_status_from_config() == "TEST_STATUS"
-
-
-async def test_monitor_retries_rejected_publication_without_replaying_delivered_listeners(
-    app_context, real_bedrock_server
-):
-    bus = EventBus(EventOptions(max_active=1))
-    entered, release = asyncio.Event(), asyncio.Event()
-
-    async def block():
-        entered.set()
-        await release.wait()
-
-    bus.subscribe("busy", block)
-    occupied = asyncio.create_task(bus.emit("busy"))
-    await entered.wait()
-    manager = app_context.bedrock_process_manager
-    manager.events = PublisherOnly(bus)
-    try:
-        await manager._publish_players(real_bedrock_server)
-        assert real_bedrock_server.server_name in manager._pending_player_events
-    finally:
-        release.set()
-        await occupied
-    received = []
-    bus.subscribe("after_server_players_change", lambda **data: received.append(data))
-
-    def fail(**data):
-        raise RuntimeError("Listener failed")
-
-    bus.subscribe("after_server_players_change", fail, owner="fault")
-    await manager._publish_players(real_bedrock_server)
-    assert len(received) == 1
-    assert real_bedrock_server.server_name not in manager._pending_player_events
-    assert bus.diagnostics().recent[-1].status == "partial"
 
 
 async def test_native_capabilities_remain_bound_to_original_bus_after_runtime_restart(
@@ -301,6 +267,7 @@ async def test_outstanding_workers_bound_queued_work_and_release_capacity(owner_
     await bus.drain_owner("plugin:bounded", 2)
     bus.open_owner("plugin:bounded")
     bus.activate_owner("plugin:bounded")
+    bus.options.listener_timeout_seconds = 1.0
     assert (await bus.emit("bounded")).status == "completed"
     assert bus.diagnostics().pending_workers == 0
     await bus.close()

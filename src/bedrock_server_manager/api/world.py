@@ -10,11 +10,7 @@ from ..error import (
 )
 from ..events import trigger_event
 from ..logging import log_operation_error
-from ..plugins.api_bridge import api_method
-from ..plugins.api_contract import validate_contract
-from ..plugins.runtime_capabilities import server_lifecycle_manager
-from ..utils import get_timestamp
-from .models.world import (
+from ..models.world import (
     ExportWorldRequest,
     ExportWorldResponse,
     GetWorldNameRequest,
@@ -24,6 +20,10 @@ from .models.world import (
     ResetWorldRequest,
     ResetWorldResponse,
 )
+from ..plugins.api_bridge import api_method
+from ..plugins.scopes import PluginScope
+from ..utils import get_timestamp
+from .server import server_lifecycle_manager
 
 # bedrock_server_manager/api/world.py
 """Provides API functions for managing Bedrock server worlds.
@@ -54,7 +54,7 @@ plugin system.
 logger = logging.getLogger(__name__)
 
 
-@api_method("get_world_name")
+@api_method("get_world_name", required_scope=PluginScope.WORLDS_READ)
 async def get_world_name(
     request: GetWorldNameRequest, *, app_context: AppContext
 ) -> GetWorldNameResponse:
@@ -84,7 +84,7 @@ async def get_world_name(
         raise
 
 
-@api_method("export_world")
+@api_method("export_world", required_scope=PluginScope.WORLDS_MANAGE)
 @trigger_event(
     before="before_world_export",
     after="after_world_export",
@@ -122,7 +122,9 @@ async def export_world(
             effective_export_dir = os.path.join(content_base_dir, "worlds")
         logger.debug("Initiating world export for '%s'", server_name)
         try:
-            os.makedirs(effective_export_dir, exist_ok=True)
+            import aiofiles.os
+
+            await aiofiles.os.makedirs(effective_export_dir, exist_ok=True)
             world_name_str = await server.get_world_name()
             timestamp = get_timestamp()
             export_filename = f"{world_name_str}_export_{timestamp}.mcworld"
@@ -160,7 +162,7 @@ async def export_world(
         server.operation_lock.release()
 
 
-@api_method("import_world")
+@api_method("import_world", required_scope=PluginScope.WORLDS_MANAGE)
 @trigger_event(
     before="before_world_import",
     after="after_world_import",
@@ -195,7 +197,9 @@ async def import_world(
             stop_start_server,
         )
         try:
-            if not os.path.isfile(selected_file_path):
+            import aiofiles.ospath
+
+            if not await aiofiles.ospath.isfile(selected_file_path):
                 raise FileNotFoundError(
                     f"Source .mcworld file not found: {selected_file_path}"
                 )
@@ -239,7 +243,7 @@ async def import_world(
         server.operation_lock.release()
 
 
-@validate_contract
+@api_method("reset_world", required_scope=PluginScope.WORLDS_RESET)
 @trigger_event(
     before="before_world_reset",
     after="after_world_reset",

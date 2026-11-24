@@ -1,3 +1,5 @@
+import pytest
+
 from bedrock_server_manager.plugins.plugin_manager import PluginManager
 
 
@@ -55,18 +57,15 @@ async def test_synchronize_config_with_disk(db, app_context):
 
 async def test_synchronize_config_preserves_app_state(db, app_context):
     """Test disk sync and _load_config do NOT reload or wipe AppState settings or user auth state."""
-    from bedrock_server_manager.utils.auth import get_jwt_secret_key
+    from bedrock_server_manager.web.auth import get_jwt_secret_key
 
-    # Set up a secret key in settings
-    await app_context.settings.set("web.jwt_secret_key", "persistent_secret_key_123")
     key_before = await get_jwt_secret_key(app_context.settings)
-    assert key_before == "persistent_secret_key_123"
 
     pm = app_context.plugin_manager
     await pm._synchronize_config_with_disk()
 
     key_after = await get_jwt_secret_key(app_context.settings)
-    assert key_after == "persistent_secret_key_123"
+    assert key_after == key_before
 
 
 EVENT_PLUGIN = """
@@ -111,12 +110,43 @@ async def test_reload_plugins(app_context, plugin_factory):
 
 def test_path_traversal_rejection(app_context):
     """Test PluginManager rejects path traversal and unsafe names in plugin discovery."""
+    from pathlib import Path
+
     pm = app_context.plugin_manager
 
     assert pm._find_plugin_path("../secret") is None
     assert pm._find_plugin_path("../../etc/passwd") is None
     assert pm._find_plugin_path("foo/bar") is None
     assert pm._find_plugin_path("..") is None
+    assert pm._find_plugin_path("public") is None
+    assert pm._find_plugin_path("shared") is None
+    assert pm._find_plugin_path("private") is None
+
+    plugin_root = pm.plugin_dirs[0]
+    own_pkg = plugin_root / "alpha" / "static"
+    other_pkg = plugin_root / "beta" / "static"
+    own_data = Path(app_context.config_dir) / "plugins" / "alpha" / "static"
+    other_data = Path(app_context.config_dir) / "plugins" / "beta" / "static"
+    public_data = Path(app_context.config_dir) / "plugins" / "public" / "static"
+    for d in (own_pkg, other_pkg, own_data, other_data, public_data):
+        d.mkdir(parents=True, exist_ok=True)
+
+    mounts = pm._validate_static_mounts(
+        "alpha",
+        [
+            ("/alpha/pkg", own_pkg, "alpha_pkg"),
+            ("/alpha/private", own_data, "alpha_private"),
+            ("/alpha/public", public_data, "alpha_public"),
+            ("/alpha/other_pkg", other_pkg, "alpha_other_pkg"),
+            ("/alpha/other_data", other_data, "alpha_other_data"),
+            ("/alpha/root", plugin_root, "alpha_root"),
+        ],
+    )
+    assert [m[0] for m in mounts] == [
+        "/alpha/pkg",
+        "/alpha/private",
+        "/alpha/public",
+    ]
 
 
 async def test_event_dispatch_app_context_sanitization(app_context, plugin_factory):
@@ -375,20 +405,366 @@ async def test_example_listener_logs_metadata_without_payload(
     assert "example_sender" in caplog.text
 
 
-async def test_download_ui_propagates_listing_errors_and_validates_type(
-    plugin_factory, admin_auth_client
+async def test_core_content_upload_download_and_delete(admin_auth_client, app_context):
+    import io
+    import zipfile
+
+    buf = io.BytesIO()
+    with zipfile.ZipFile(buf, "w") as zf:
+        zf.writestr("levelname.txt", "TestWorld")
+    payload = buf.getvalue()
+
+    upload_res = await admin_auth_client.post(
+        "/api/content/upload",
+        files={"file": ("my_world.mcworld", payload, "application/zip")},
+    )
+    assert upload_res.status_code == 200, upload_res.text
+    assert upload_res.json()["category"] == "worlds"
+    assert upload_res.json()["filename"] == "my_world.mcworld"
+
+    dl_res = await admin_auth_client.get(
+        "/api/content/worlds/my_world.mcworld/download"
+    )
+    assert dl_res.status_code == 200
+    assert dl_res.content == payload
+
+    del_res = await admin_auth_client.delete("/api/content/worlds/my_world.mcworld")
+    assert del_res.status_code == 200
+    assert (
+        await admin_auth_client.get("/api/content/worlds/my_world.mcworld/download")
+    ).status_code == 404
+
+
+async def test_standardized_plugin_decorators_and_attributes(
+    app_context, populated_server, running_app, admin_auth_client, plugin_factory
 ):
-    from pathlib import Path
+    plugin = await plugin_factory(
+        "modern_plugin",
+        """
+from fastapi import APIRouter
+from pydantic import BaseModel, Field
+from bedrock_server_manager import (
+    PluginBase,
+    app_event,
+    data_provider,
+    diagnostic_provider,
+    scheduled_task,
+)
 
-    from bedrock_server_manager.plugins import default
 
-    source = Path(default.__file__).parent / "download_page_plugin.py"
-    await plugin_factory("download_page_plugin", source.read_text())
-    response = await admin_auth_client.get(
-        "/api/download_page/ui", params={"server": "missing_server", "type": "backups"}
+class JobOptions(BaseModel):
+    step: int = Field(default=3, ge=1)
+
+
+class ModernPlugin(PluginBase):
+    version = "1.0.0"
+    permissions = ["servers:command", "backups:prune"]
+    http_permissions = [("manage", "Manage modern plugin", ["admin"])]
+    scheduled_apis = [
+        {"name": "cmd", "api_method": "server.send_command", "requires_server_lock": False}
+    ]
+
+    @app_event("on_load")
+    async def setup(self):
+        self.calls = []
+        self.router = APIRouter()
+        self.router.add_api_route(
+            "/modern-plugin", lambda: {"modern": True}, operation_id="modern_plugin_route"
+        )
+        self.api.runtime.register_api_task(
+            "prune_api",
+            self.api.backup_restore.prune_old_backups,
+        )
+
+    @scheduled_task("custom_job", requires_server_lock=False)
+    async def run_custom(self, server_name: str, options: JobOptions, execution_context: dict):
+        self.calls.append((server_name, options, execution_context["slot"]))
+
+    @diagnostic_provider("metric")
+    async def report_metric(self):
+        return {"count": len(self.calls)}
+
+    @data_provider("modern_topic")
+    async def provide_topic(self):
+        return {"active": True}
+""",
     )
-    assert response.status_code == 404
-    response = await admin_auth_client.get(
-        "/api/download_page/ui", params={"server": "missing_server", "type": "invalid"}
+
+    assert "/modern-plugin" in running_app.openapi()["paths"]
+    assert (await admin_auth_client.get("/modern-plugin")).json() == {"modern": True}
+    assert (
+        "plugin:modern_plugin:manage"
+        in app_context.plugin_manager.access_policy.descriptions
     )
-    assert response.status_code == 422
+    assert app_context.connection_manager.get_data_provider("modern_topic") is not None
+    assert app_context.scheduler.tasks.available("modern_plugin:custom_job")
+    assert app_context.scheduler.tasks.available("modern_plugin:cmd")
+    assert app_context.scheduler.tasks.available("modern_plugin:prune_api")
+
+    await app_context.scheduler._execute(
+        {"task": "modern_plugin:custom_job", "options": {}},
+        populated_server,
+        "slot-a",
+    )
+    assert plugin.calls == [(populated_server.server_name, {"step": 3}, "slot-a")]
+
+    await app_context.plugin_manager.unload_plugin_by_name("modern_plugin")
+    assert not app_context.scheduler.tasks.available("modern_plugin:custom_job")
+    assert not app_context.scheduler.tasks.available("modern_plugin:cmd")
+    assert not app_context.scheduler.tasks.available("modern_plugin:prune_api")
+    assert app_context.connection_manager.get_data_provider("modern_topic") is None
+
+
+async def test_deprecated_plugin_registrations_log_warnings(
+    app_context, plugin_factory, caplog
+):
+    import logging
+
+    caplog.clear()
+    with caplog.at_level(logging.WARNING):
+        await plugin_factory(
+            "legacy_plugin",
+            """
+from fastapi import APIRouter
+from bedrock_server_manager import PluginBase, app_event
+
+
+class LegacyPlugin(PluginBase):
+    version = "1.0.0"
+
+    @app_event("on_load")
+    async def setup(self):
+        self._router = APIRouter()
+        self._router.add_api_route(
+            "/legacy-plugin", lambda: {"legacy": True}, operation_id="legacy_plugin_route"
+        )
+        async def old_diag():
+            return {"v": 1}
+
+        async def old_topic():
+            return 1
+
+        self.api.runtime.register_http_permission("view", "View legacy", ["admin"])
+        await self.api.runtime.register_diagnostic_provider("old_diag", old_diag)
+        await self.api.runtime.register_data_provider("old_topic", old_topic)
+
+        async def old_task(server_name: str, options: dict):
+            return None
+
+        self.api.runtime.register_scheduled_task("legacy_plugin:old_task", old_task)
+
+    def get_fastapi_routers(self):
+        return [self._router]
+""",
+        )
+
+    messages = "\n".join(record.getMessage() for record in caplog.records)
+    assert "deprecated 'get_fastapi_routers()'" in messages
+    assert "deprecated 'api.runtime.register_http_permission()'" in messages
+    assert "deprecated 'api.runtime.register_diagnostic_provider()'" in messages
+    assert "deprecated 'api.runtime.register_data_provider()'" in messages
+    assert "deprecated 'api.runtime.register_scheduled_task()'" in messages
+    assert app_context.scheduler.tasks.available("legacy_plugin:old_task")
+
+
+async def test_plugin_declaring_unrecognized_permission_is_rejected(
+    app_context, caplog
+):
+    import logging
+
+    caplog.clear()
+    path = app_context.plugin_manager.plugin_dirs[0] / "typo_plugin.py"
+    path.write_text("""
+from bedrock_server_manager import PluginBase
+
+class TypoPlugin(PluginBase):
+    version = "1.0.0"
+    permissions = ["servers:lifecycle", "sever:command"]
+""")
+    await app_context.plugin_service.register_or_update_plugin(
+        "typo_plugin", enabled=True
+    )
+    with caplog.at_level(logging.ERROR):
+        await app_context.plugin_manager._synchronize_config_with_disk()
+        loaded = await app_context.plugin_manager.load_plugin_by_name("typo_plugin")
+
+    assert not loaded
+    assert app_context.plugin_manager.get_plugin_status("typo_plugin") == "ERROR"
+    messages = "\n".join(record.getMessage() for record in caplog.records)
+    assert "Unknown plugin permission scopes: sever:command" in messages
+
+
+async def test_plugin_settings_evolution_prunes_dropped_fields(
+    app_context, plugin_factory
+):
+    """Test that updating a plugin to a new schema version automatically prunes dropped fields."""
+    v1_source = """
+from pydantic import BaseModel, ConfigDict, Field
+from bedrock_server_manager import PluginBase
+
+class Profile(BaseModel):
+    model_config = ConfigDict(extra="forbid", strict=True)
+    a: int = 1
+    dropped_field: str = "old"
+
+class PluginV1(PluginBase):
+    version = "1.0.0"
+    settings_model = Profile
+    global_settings_model = Profile
+    server_settings_model = Profile
+"""
+    plugin = await plugin_factory("evolving_plugin", v1_source)
+    await app_context.server_service.register_or_update_server("srv1")
+
+    # Set settings containing the field that will be dropped in v2
+    await plugin.set_plugin_settings(
+        {"a": 5, "dropped_field": "legacy"}, scope="plugin"
+    )
+    await plugin.set_plugin_settings(
+        {"a": 6, "dropped_field": "legacy_global"}, scope="global"
+    )
+    await plugin.set_plugin_settings(
+        {"a": 7, "dropped_field": "legacy_server"}, scope="server", server_name="srv1"
+    )
+
+    # Verify initial settings contain dropped_field
+    assert (
+        app_context.state.settings.plugin_settings["evolving_plugin"]["dropped_field"]
+        == "legacy"
+    )
+    assert (
+        app_context.state.settings.custom["evolving_plugin"]["dropped_field"]
+        == "legacy_global"
+    )
+    assert (
+        app_context.state.servers.get("srv1").custom["evolving_plugin"]["dropped_field"]
+        == "legacy_server"
+    )
+
+    # Now update plugin to v2 where dropped_field is removed from all models (with extra="forbid")
+    v2_source = """
+from pydantic import BaseModel, ConfigDict, Field
+from bedrock_server_manager import PluginBase
+
+class ProfileV2(BaseModel):
+    model_config = ConfigDict(extra="forbid", strict=True)
+    a: int = 1
+    new_field: str = "default_new"
+
+class PluginV1(PluginBase):
+    version = "2.0.0"
+    settings_model = ProfileV2
+    global_settings_model = ProfileV2
+    server_settings_model = ProfileV2
+"""
+    await plugin_factory("evolving_plugin", v2_source)
+    await app_context.plugin_manager.reload_plugin("evolving_plugin")
+    active_plugin = app_context.plugin_manager.get_plugin("evolving_plugin")
+
+    # Verify dropped_field is completely pruned from state and database
+    p_settings = app_context.state.settings.plugin_settings["evolving_plugin"]
+    assert "dropped_field" not in p_settings
+    assert p_settings["a"] == 5
+
+    g_settings = app_context.state.settings.custom["evolving_plugin"]
+    assert "dropped_field" not in g_settings
+    assert g_settings["a"] == 6
+
+    s_settings = app_context.state.servers.get("srv1").custom["evolving_plugin"]
+    assert "dropped_field" not in s_settings
+    assert s_settings["a"] == 7
+
+    # Verify reading settings via get_plugin_settings works without ValidationError and returns clean dict
+    own = await active_plugin.get_plugin_settings(scope="plugin")
+    assert own == {"a": 5, "new_field": "default_new"}
+
+    glob = await active_plugin.get_plugin_settings(scope="global")
+    assert glob == {"a": 6, "new_field": "default_new"}
+
+    srv = await active_plugin.get_plugin_settings(scope="server", server_name="srv1")
+    assert srv == {"a": 7, "new_field": "default_new"}
+
+
+async def test_plugin_dropped_scope_prunes_settings(app_context, plugin_factory):
+    """Test that when a plugin drops a settings scope in an update, orphaned custom settings are pruned."""
+    v1_source = """
+from pydantic import BaseModel, ConfigDict
+from bedrock_server_manager import PluginBase
+
+class Profile(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    x: int = 10
+
+class DropScopePlugin(PluginBase):
+    version = "1.0.0"
+    global_settings_model = Profile
+    server_settings_model = Profile
+"""
+    plugin = await plugin_factory("drop_scope_plugin", v1_source)
+    await app_context.server_service.register_or_update_server("srv2")
+
+    await plugin.set_plugin_settings({"x": 99}, scope="global")
+    await plugin.set_plugin_settings({"x": 88}, scope="server", server_name="srv2")
+
+    assert "drop_scope_plugin" in app_context.state.settings.custom
+    assert "drop_scope_plugin" in app_context.state.servers.get("srv2").custom
+
+    # Update plugin to v2 which drops global_settings_model and server_settings_model
+    v2_source = """
+from bedrock_server_manager import PluginBase
+
+class DropScopePlugin(PluginBase):
+    version = "2.0.0"
+    global_settings_model = None
+    server_settings_model = None
+"""
+    await plugin_factory("drop_scope_plugin", v2_source)
+    await app_context.plugin_manager.reload_plugin("drop_scope_plugin")
+
+    # Verify orphaned global and server custom settings were pruned
+    assert "drop_scope_plugin" not in app_context.state.settings.custom
+    assert "drop_scope_plugin" not in app_context.state.servers.get("srv2").custom
+
+
+@pytest.mark.parametrize("ownership", ["settings", "config"])
+async def test_uninstalled_plugin_prunes_orphaned_settings(app_context, ownership):
+    """Test that disk synchronization prunes orphaned settings from completely removed plugins."""
+    # Seed orphaned plugin settings in state
+    app_context.state.settings.set("plugin_settings.removed_plugin", {"foo": "bar"})
+    app_context.state.settings.set("custom.removed_plugin", {"baz": "qux"})
+    await app_context.server_service.register_or_update_server("srv3")
+    await app_context.server_service.update_setting(
+        "srv3", "custom.removed_plugin", {"srv": 1}
+    )
+
+    assert "removed_plugin" in app_context.state.settings.plugin_settings
+    assert "removed_plugin" in app_context.state.settings.custom
+    assert "removed_plugin" in app_context.state.servers.get("srv3").custom
+
+    # Unrelated integration namespaces must survive the same cleanup and reload.
+    await app_context.settings.set("custom.integration", {"enabled": True})
+    await app_context.server_service.update_setting(
+        "srv3", "custom.integration", {"enabled": True}
+    )
+
+    if ownership == "config":
+        app_context.state.settings.set("plugin_settings", {})
+        app_context.plugin_manager.plugin_config["removed_plugin"] = {
+            "enabled": False,
+            "version": "1.0.0",
+        }
+        await app_context.plugin_manager._save_config()
+
+    # Synchronize with disk (where removed_plugin does not exist)
+    await app_context.plugin_manager._synchronize_config_with_disk()
+
+    # Verify orphaned settings are completely cleaned up
+    assert "removed_plugin" not in app_context.state.settings.plugin_settings
+    assert "removed_plugin" not in app_context.state.settings.custom
+    assert "removed_plugin" not in app_context.state.servers.get("srv3").custom
+
+    await app_context.settings.reload()
+    assert app_context.settings.get("custom.integration") == {"enabled": True}
+    assert app_context.state.servers.get("srv3").custom["integration"] == {
+        "enabled": True
+    }

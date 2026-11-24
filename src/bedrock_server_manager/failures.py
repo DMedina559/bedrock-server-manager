@@ -1,10 +1,11 @@
 """One failure classification for Python transports and diagnostic logging."""
 
-from fastapi.exceptions import RequestValidationError
-from pydantic import ValidationError
-from starlette.exceptions import HTTPException
+from __future__ import annotations
 
-from .contracts import ClassifiedFailure, FailureInfo
+import sys
+
+from pydantic import ValidationError
+
 from .error import (
     APICancelledError,
     AppFileNotFoundError,
@@ -27,10 +28,15 @@ from .error import (
     SystemError,
     UserInputError,
 )
+from .models.common import APIErrorResponse, ClassifiedFailure, FailureInfo
 
 
 def classify_failure(error: Exception) -> ClassifiedFailure:
-    if isinstance(error, (ValidationError, RequestValidationError)):
+    fastapi_exc = sys.modules.get("fastapi.exceptions")
+    request_validation_error = getattr(fastapi_exc, "RequestValidationError", ())
+    starlette_exc = sys.modules.get("starlette.exceptions")
+    http_exception = getattr(starlette_exc, "HTTPException", ())
+    if isinstance(error, (ValidationError, request_validation_error)):
         items = error.errors()
         return ClassifiedFailure(
             status_code=422,
@@ -46,7 +52,7 @@ def classify_failure(error: Exception) -> ClassifiedFailure:
                 },
             ),
         )
-    if isinstance(error, HTTPException):
+    if isinstance(error, http_exception):
         code = {
             400: "validation_error",
             401: "unauthorized",
@@ -90,7 +96,7 @@ def classify_failure(error: Exception) -> ClassifiedFailure:
             APICancelledError,
             "operation_canceled",
             409,
-            "Operation canceled by a plugin.",
+            "Operation canceled before execution.",
         ),
         (InvalidServerNameError, "invalid_server_name", 400, "Invalid server name."),
         (AppFileNotFoundError, "not_found", 404, "Resource not found."),
@@ -160,3 +166,11 @@ def classify_failure(error: Exception) -> ClassifiedFailure:
             code="internal_error", message="An unexpected error occurred."
         ),
     )
+
+
+def error_status_code(error: Exception) -> int:
+    return classify_failure(error).status_code
+
+
+def error_response(error: Exception) -> APIErrorResponse:
+    return APIErrorResponse.model_validate(classify_failure(error).error.model_dump())

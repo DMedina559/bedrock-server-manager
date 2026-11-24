@@ -14,7 +14,9 @@ Create a server with a unique name and choose a release selector: `LATEST`, `PRE
 Choose a server name and release before starting installation.
 ```
 
-For `CUSTOM`, put the server ZIP in the configured downloads root's `custom` directory and select that archive. Paths come from application settings; they need not be beside your checkout.
+For `CUSTOM`, put the server ZIP in the configured downloads root's `custom` directory (`<data_dir>/.downloads/custom/`) and select that archive (`GET /api/downloads/list`). Paths come from application settings (`paths.downloads`); they need not be beside your checkout. You can prune older cached release archives from `<data_dir>/.downloads/stable/` and `preview/` via `PUT /api/downloads/prune` (keeping the newest `keep` archives, or according to `retention.downloads`).
+
+If a server directory with the chosen `server_name` already exists, installation stops and returns `status: "confirm_needed"` unless `overwrite: true` is confirmed (which deletes the existing server directory before installing).
 
 Follow installation progress to completion, then review properties, game ports, allowlist and player permissions before starting. Each simultaneously running server needs distinct game ports. Confirm the process is running and inspect its logs before connecting.
 

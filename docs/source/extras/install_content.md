@@ -1,6 +1,6 @@
 # Place content files manually
 
-Use the content library when you cannot use the content-uploader plugin. Resolve its root from application settings; paths need not be relative to your checkout or server directory.
+In addition to uploading archives through the Web UI (`/api/content/upload`), you can place content archives directly in the configured content library on the host filesystem. Resolve its root from application settings; paths need not be relative to your checkout or server directory.
 
 | Library subdirectory | Files |
 |---|---|

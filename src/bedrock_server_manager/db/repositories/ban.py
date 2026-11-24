@@ -7,18 +7,14 @@ from typing import Optional
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.future import select
 
+from ...contracts import BanMutation
 from ...error import ResourceNotFoundError
-from ...results import BanMutation
 from ...state.models import BanItem
-from ..database import Database
 from ..models import Server, ServerBan
 
 
 class ServerBanRepository:
     """Handle database operations for server bans."""
-
-    def __init__(self, db: Database | None = None):
-        self.db = db
 
     async def add_or_update_ban(
         self,

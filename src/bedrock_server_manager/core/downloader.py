@@ -7,6 +7,7 @@ import logging
 import os
 import platform
 import re
+import threading
 import zipfile
 from pathlib import Path
 from typing import TYPE_CHECKING, Optional, Set, Tuple
@@ -28,12 +29,14 @@ from ..error import (
     UserInputError,
 )
 from ..failures import classify_failure
-from ..results import CleanupResult
-from ..utils.threads import run_in_thread
+from ..models.common import CleanupResult
+from ..utils.io import temporary_directory
+from ..utils.preparation import preparation_stage
+from ..utils.progress import report_stage
+from ..utils.threads import check_cancellation, run_in_thread
 from .files import (
     extract_archive,
     file_transaction,
-    temporary_directory,
     validate_archive,
 )
 from .system import base as system_base
@@ -119,6 +122,7 @@ class BedrockDownloader:
         self.settings: "Settings" = settings_obj
         self.server_dir: str = os.path.abspath(server_dir)
         self.input_target_version: str = target_version.strip()
+        self.installation_committed = False
         self.logger = logging.getLogger(__name__)
 
         # For "CUSTOM" version, the path to the ZIP file must be provided.
@@ -376,12 +380,13 @@ class BedrockDownloader:
         self.logger.debug(
             "Attempting to download server from: %s", self.resolved_download_url
         )
+        await report_stage("Downloading server software")
         self.logger.debug("Saving downloaded file to: %s", self.zip_file_path)
 
         target_dir = os.path.dirname(self.zip_file_path)
         try:
             if target_dir and not await aiofiles.ospath.exists(target_dir):
-                os.makedirs(target_dir, exist_ok=True)
+                await aiofiles.os.makedirs(target_dir, exist_ok=True)
         except OSError as e:
             raise FileOperationError(
                 f"Cannot create directory '{target_dir}' for download: {e}"
@@ -407,11 +412,19 @@ class BedrockDownloader:
                         )
                         total_size = int(response.headers.get("content-length", 0))
                         bytes_written = 0
+                        reported_bucket = -1
                         async with aiofiles.open(download_path, "wb") as f:
                             # Write the file in chunks to avoid high memory usage.
                             async for chunk in response.content.iter_chunked(8192 * 4):
                                 await f.write(chunk)
                                 bytes_written += len(chunk)
+                                if total_size > 0:
+                                    bucket = min(10, bytes_written * 10 // total_size)
+                                    if bucket > reported_bucket:
+                                        reported_bucket = bucket
+                                        await report_stage(
+                                            f"Downloading server software: {bucket * 10}%"
+                                        )
                         self.logger.info(
                             "Bedrock download complete (%s bytes): '%s'.",
                             bytes_written,
@@ -587,7 +600,9 @@ class BedrockDownloader:
             )
 
         except Exception as e:
-            self.logger.warning("Could not merge new server.properties from zip: %s", e)
+            self.logger.warning(
+                "Could not merge new server.properties from zip: %s", e, exc_info=True
+            )
             raise
 
     def get_actual_version(self) -> Optional[str]:
@@ -636,6 +651,7 @@ class BedrockDownloader:
         if not await aiofiles.ospath.exists(self.zip_file_path):
             raise AppFileNotFoundError(self.zip_file_path, "ZIP file to extract")
 
+        await report_stage("Extracting server software")
         self.logger.info("Extracting Bedrock server files into '%s'.", self.server_dir)
         self.logger.debug(
             "Extraction mode: %s",
@@ -654,7 +670,7 @@ class BedrockDownloader:
 
                 archive_path = self.zip_file_path
 
-                def prepare() -> None:
+                def prepare(cancellation_event: threading.Event | None = None) -> None:
                     with zipfile.ZipFile(archive_path, "r") as archive:
                         members = [
                             member
@@ -666,7 +682,7 @@ class BedrockDownloader:
                                 for item in self.PRESERVED_ITEMS_ON_UPDATE
                             )
                         ]
-                        extract_archive(archive, staging, members)
+                        extract_archive(archive, staging, members, cancellation_event)
                         if is_update:
                             self._update_server_properties_from_zip(archive, staging)
 
@@ -675,8 +691,11 @@ class BedrockDownloader:
                     Path(self.server_dir).parent
                 ) as transaction:
 
-                    def install() -> None:
+                    def install(
+                        cancellation_event: threading.Event | None = None,
+                    ) -> None:
                         for entry in sorted(staging.rglob("*")):
+                            check_cancellation(cancellation_event)
                             target = Path(self.server_dir) / entry.relative_to(staging)
                             if entry.is_dir():
                                 transaction.mkdir(target)
@@ -684,6 +703,8 @@ class BedrockDownloader:
                                 transaction.replace(entry, target)
 
                     await run_in_thread(install)
+                    # No awaits between completed replacement and the commit marker.
+                    self.installation_committed = True
         except zipfile.BadZipFile as error:
             raise ExtractError(
                 f"Invalid ZIP file: '{self.zip_file_path}'. {error}"
@@ -701,8 +722,10 @@ class BedrockDownloader:
             self.input_target_version,
             is_update,
         )
-        actual_version, _, _ = await self.prepare_download_assets()
-        await self.extract_server_files(is_update)
+        async with preparation_stage(self.settings, "download"):
+            actual_version, _, _ = await self.prepare_download_assets()
+        async with preparation_stage(self.settings, "install"):
+            await self.extract_server_files(is_update)
         self.logger.debug(
             "Server setup/update for version %s completed in '%s'.",
             actual_version,

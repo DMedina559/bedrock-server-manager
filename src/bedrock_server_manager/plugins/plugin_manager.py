@@ -5,11 +5,13 @@ This module is central to the plugin architecture of the Bedrock Server Manager.
 """
 
 import asyncio
+import copy
 import importlib.util
 import inspect
 import logging
 import os
 import sys
+import threading
 import time
 import types
 import warnings
@@ -35,7 +37,7 @@ from starlette.types import Lifespan
 
 if TYPE_CHECKING:
     from .api_bridge import AppAPI
-    from ..web.tasks import TaskManager
+    from ..services.task_service import TaskManager
     from ..web.websocket_manager import ConnectionManager
     from ..state.app_state import AppState
     from ..db.storage import Storage
@@ -46,17 +48,55 @@ from ..config.const import DEFAULT_ENABLED_PLUGINS
 from ..events import EventBus
 from ..logging import log_operation_error
 from ..utils.general import ReentrantAsyncLock
-from ..utils.threads import run_in_thread
+from ..utils.threads import check_cancellation, run_in_thread
 from .api_bridge import create_app_api
 from .lifespan import RouterLifespan
 from .plugin_base import PluginBase
 from .runtime import PluginRuntime, PluginStatus
+from .scopes import (
+    normalize_permissions,
+    plugin_permissions,
+)
+from .settings import prune_dropped_fields
 
 logger = logging.getLogger(__name__)
 
 
 class PluginManager:
     """Manage the discovery, loading, configuration, and lifecycle of all plugins."""
+
+    def _register_settings_models(self, name, plugin_class):
+        entries = [
+            (self.settings_models, "settings_model"),
+            (self.global_settings_models, "global_settings_model"),
+            (self.server_settings_models, "server_settings_model"),
+        ]
+        try:
+            if (
+                getattr(plugin_class, "global_settings_model", None)
+                or getattr(plugin_class, "server_settings_model", None)
+            ) and ("." in name or "__" in name or name.startswith("_")):
+                raise ValueError(
+                    "Scoped plugin settings require a single safe namespace segment"
+                )
+            for registry, attribute in entries:
+                model = getattr(plugin_class, attribute, None)
+                if model is not None:
+                    if not isinstance(model, type) or not issubclass(model, BaseModel):
+                        raise TypeError(
+                            "Settings models must be Pydantic model classes"
+                        )
+                    model.model_json_schema()
+            for registry, attribute in entries:
+                model = getattr(plugin_class, attribute, None)
+                if model is None:
+                    registry.pop(name, None)
+                else:
+                    registry[name] = model
+            return True
+        except Exception:
+            logger.exception("Invalid settings model declaration for plugin '%s'", name)
+            return False
 
     def __init__(
         self,
@@ -67,6 +107,8 @@ class PluginManager:
         events: EventBus | None = None,
         api_factory: Callable[[str], "AppAPI"] | None = None,
         settings_models: dict[str, type[BaseModel]] | None = None,
+        global_settings_models: dict[str, type[BaseModel]] | None = None,
+        server_settings_models: dict[str, type[BaseModel]] | None = None,
         diagnostic_cleanup: Callable[[str], None] | None = None,
         diagnostic_pending: Callable[[str], bool] | None = None,
         diagnostic_failure: (
@@ -76,8 +118,13 @@ class PluginManager:
         connection_manager_provider: (
             Callable[[], Optional["ConnectionManager"]] | None
         ) = None,
+        scheduler_provider: Callable[[], Any] | None = None,
+        diagnostics_provider: Callable[[], Any] | None = None,
     ):
         """Initialize the PluginManager with explicit required dependencies."""
+        from ..web.access_policy import AccessPolicy
+
+        self.access_policy = AccessPolicy()
         self.diagnostic_failure = diagnostic_failure
         self._plugin_observations: dict[str, dict[str, Any]] = {}
         self._unloading: set[str] = set()
@@ -105,8 +152,16 @@ class PluginManager:
             lambda name: create_app_api(name, None, events=self.events)
         )
         self.settings_models = settings_models if settings_models is not None else {}
+        self.global_settings_models = (
+            global_settings_models if global_settings_models is not None else {}
+        )
+        self.server_settings_models = (
+            server_settings_models if server_settings_models is not None else {}
+        )
         self.task_manager_provider = task_manager_provider or (lambda: None)
         self.connection_manager_provider = connection_manager_provider or (lambda: None)
+        self.scheduler_provider = scheduler_provider or (lambda: None)
+        self.diagnostics_provider = diagnostics_provider or (lambda: None)
         self.plugin_fastapi_routers: List[APIRouter] = []
         self._router_owners: dict[str, list[APIRouter]] = {}
         self._mount_owners: dict[str, list[Tuple[str, Path, str]]] = {}
@@ -152,6 +207,7 @@ class PluginManager:
                 "version": p.version,
                 "author": p.author,
                 "description": p.description,
+                "permissions": list(p.permissions),
             }
             for name, p in self.state.plugins.plugins.items()
         }
@@ -167,6 +223,7 @@ class PluginManager:
                 version=str(config.get("version") or ""),
                 author=str(config.get("author") or ""),
                 description=str(config.get("description") or ""),
+                permissions=list(config.get("permissions") or []),
             )
             self.state.plugins.set(p_info)
 
@@ -174,11 +231,14 @@ class PluginManager:
 
     def _find_plugin_path(self, plugin_name: str) -> Optional[Path]:
         """Searches for the plugin file or package in the configured plugin directories."""
+        from .files import RESERVED_PLUGIN_NAMES
+
         if (
             not plugin_name
             or ".." in plugin_name
             or "/" in plugin_name
             or "\\" in plugin_name
+            or plugin_name.lower() in RESERVED_PLUGIN_NAMES
         ):
             logger.warning("Invalid or unsafe plugin name requested: '%s'", plugin_name)
             return None
@@ -208,9 +268,13 @@ class PluginManager:
         return None
 
     def _get_plugin_class_from_path(
-        self, path: Path, plugin_name_override: Optional[str] = None
+        self,
+        path: Path,
+        plugin_name_override: Optional[str] = None,
+        cancellation_event: Optional[threading.Event] = None,
     ) -> Optional[Type[PluginBase]]:
         """Dynamically imports a plugin module or package under the bsm_plugins namespace."""
+        check_cancellation(cancellation_event)
         plugin_name = (
             plugin_name_override
             if plugin_name_override
@@ -230,6 +294,15 @@ class PluginManager:
                 ):
                     return obj
 
+        existing_modules = set(sys.modules)
+
+        def _cleanup_imported_modules() -> None:
+            sys.modules.pop(full_module_name, None)
+            prefix = f"{full_module_name}."
+            for mod_name in list(sys.modules):
+                if mod_name.startswith(prefix) and mod_name not in existing_modules:
+                    sys.modules.pop(mod_name, None)
+
         try:
             submodule_locations = [str(path.parent)] if is_package else None
 
@@ -242,9 +315,11 @@ class PluginManager:
                 raise ImportError(f"Could not create spec for '{full_module_name}'")
 
             module = importlib.util.module_from_spec(spec)
+            check_cancellation(cancellation_event)
 
             sys.modules[full_module_name] = module
             spec.loader.exec_module(module)
+            check_cancellation(cancellation_event)
 
             for _, obj in inspect.getmembers(module):
                 if (
@@ -255,11 +330,17 @@ class PluginManager:
                     return obj
 
             logger.warning("No PluginBase subclass found in '%s'.", path)
-        except Exception as e:
+            _cleanup_imported_modules()
+        except InterruptedError:
+            _cleanup_imported_modules()
+            raise
+        except BaseException as e:
+            _cleanup_imported_modules()
+            if not isinstance(e, Exception):
+                raise
             log_operation_error(
                 logger, "Failed to load plugin file at '%s': %s", path, e, error=e
             )
-            sys.modules.pop(full_module_name, None)
         return None
 
     async def quiesce(self) -> None:
@@ -272,6 +353,11 @@ class PluginManager:
             if tasks:
                 await asyncio.gather(*tasks, return_exceptions=True)
             self.plugin_tasks.clear()
+
+    @property
+    def has_pending_lifespans(self) -> bool:
+        """Keep resource dependencies alive until router cleanup actually exits."""
+        return any(not owner.task.done() for owner in self._router_lifespans.values())
 
     async def shutdown(self) -> None:
         """Gracefully shuts down the PluginManager, unloading all plugins and cleaning up resources."""
@@ -372,6 +458,63 @@ class PluginManager:
             return
         await self.trigger_event(event, *args, **kwargs)
 
+    def _start_plugin_task_loops(self, plugin_key: str, instance: PluginBase) -> None:
+        """Create and register @task_loop tasks for a single plugin instance."""
+        for method_name, method in inspect.getmembers(
+            instance, predicate=inspect.ismethod
+        ):
+            interval_raw = getattr(method, "_task_loop_interval", None)
+            if interval_raw is not None:
+                interval = max(float(interval_raw), 0.1)
+
+                async def run_task_loop(
+                    m: Callable[..., Any] = method,
+                    intv: float = interval,
+                    p_name: str = plugin_key,
+                    m_name: str = method_name,
+                ) -> None:
+                    consecutive_failures = 0
+                    while True:
+                        try:
+                            sleep_time = (
+                                intv
+                                if consecutive_failures == 0
+                                else min(
+                                    intv * (2 ** min(consecutive_failures, 6)),
+                                    300.0,
+                                )
+                            )
+                            await asyncio.sleep(sleep_time)
+                            if inspect.iscoroutinefunction(m):
+                                await m()
+                            else:
+                                await run_in_thread(m)
+                            consecutive_failures = 0
+                        except asyncio.CancelledError:
+                            logger.debug(
+                                "Task loop %s.%s cancelled cleanly.",
+                                p_name,
+                                m_name,
+                            )
+                            break
+                        except Exception as e:
+                            consecutive_failures += 1
+                            log_operation_error(
+                                logger,
+                                "Error in task loop %s.%s (failure #%s): %s",
+                                p_name,
+                                m_name,
+                                consecutive_failures,
+                                e,
+                                error=e,
+                            )
+
+                task = asyncio.create_task(
+                    run_task_loop(),
+                    name=f"task_loop_{plugin_key}_{method_name}",
+                )
+                self.plugin_tasks.setdefault(plugin_key, []).append(task)
+
     async def start_plugin_tasks(self) -> None:
         """Start background tasks for all plugins that have methods decorated with
         @task_loop.
@@ -412,61 +555,7 @@ class PluginManager:
                 self.plugin_tasks[plugin_key] = []
 
                 try:
-                    for method_name, method in inspect.getmembers(
-                        plugin_instance, predicate=inspect.ismethod
-                    ):
-                        interval_raw = getattr(method, "_task_loop_interval", None)
-                        if interval_raw is not None:
-                            interval = max(float(interval_raw), 0.1)
-
-                            async def run_task_loop(
-                                m: Callable[..., Any] = method,
-                                intv: float = interval,
-                                p_name: str = plugin_key,
-                                m_name: str = method_name,
-                            ) -> None:
-                                consecutive_failures = 0
-                                while True:
-                                    try:
-                                        sleep_time = (
-                                            intv
-                                            if consecutive_failures == 0
-                                            else min(
-                                                intv
-                                                * (2 ** min(consecutive_failures, 6)),
-                                                300.0,
-                                            )
-                                        )
-                                        await asyncio.sleep(sleep_time)
-                                        if inspect.iscoroutinefunction(m):
-                                            await m()
-                                        else:
-                                            await run_in_thread(m)
-                                        consecutive_failures = 0
-                                    except asyncio.CancelledError:
-                                        logger.debug(
-                                            "Task loop %s.%s cancelled cleanly.",
-                                            p_name,
-                                            m_name,
-                                        )
-                                        break
-                                    except Exception as e:
-                                        consecutive_failures += 1
-                                        log_operation_error(
-                                            logger,
-                                            "Error in task loop %s.%s (failure #%s): %s",
-                                            p_name,
-                                            m_name,
-                                            consecutive_failures,
-                                            e,
-                                            error=e,
-                                        )
-
-                            task = asyncio.create_task(
-                                run_task_loop(),
-                                name=f"task_loop_{plugin_key}_{method_name}",
-                            )
-                            self.plugin_tasks.setdefault(plugin_key, []).append(task)
+                    self._start_plugin_task_loops(plugin_key, plugin_instance)
                 except Exception as e:
                     log_operation_error(
                         logger,
@@ -475,6 +564,198 @@ class PluginManager:
                         e,
                         error=e,
                     )
+
+    async def _reconcile_plugin_settings(
+        self,
+        valid_plugin_names: Set[str] | None = None,
+        target_plugin: str | None = None,
+        removed_plugin_names: Set[str] | None = None,
+    ) -> None:
+        """Reconcile and prune orphaned or dropped settings as plugins and their schemas evolve.
+
+        This handles:
+        1. Pruning settings for uninstalled plugins (plugins removed from disk).
+        2. Pruning settings for scopes dropped by existing plugins (e.g. global_settings_model removed).
+        3. Pruning individual dropped/renamed fields from stored settings when a plugin evolves its model.
+        """
+        from ..state.changeset import ChangeSet
+
+        async with self.storage.write_lock:
+            settings = self.state.settings
+            current_plugin_settings = copy.deepcopy(settings.plugin_settings)
+            current_custom = copy.deepcopy(settings.custom)
+            settings_changed = False
+            updated_servers: Dict[str, Any] = {}
+            changeset = ChangeSet()
+
+            # Custom namespaces can belong to integrations outside the plugin system.
+            # Only remove those with evidence of prior plugin ownership.
+            orphaned_plugins = set(current_plugin_settings) | (
+                removed_plugin_names or set()
+            )
+            if valid_plugin_names is not None:
+                orphaned_plugins -= valid_plugin_names
+
+            # 1. Prune uninstalled plugins across settings and servers
+            if valid_plugin_names is not None and target_plugin is None:
+                for p_name in list(current_plugin_settings):
+                    if p_name not in valid_plugin_names:
+                        current_plugin_settings.pop(p_name, None)
+                        settings_changed = True
+                        logger.info(
+                            "Pruned orphaned plugin settings for uninstalled plugin '%s'",
+                            p_name,
+                        )
+                for p_name in list(current_custom):
+                    if p_name in orphaned_plugins:
+                        current_custom.pop(p_name, None)
+                        settings_changed = True
+                        logger.info(
+                            "Pruned orphaned global custom settings for uninstalled plugin '%s'",
+                            p_name,
+                        )
+                for s_name, s_cfg in self.state.servers.servers.items():
+                    if isinstance(s_cfg.custom, dict):
+                        s_custom = dict(s_cfg.custom)
+                        s_changed = False
+                        for p_name in list(s_custom):
+                            if p_name in orphaned_plugins:
+                                s_custom.pop(p_name, None)
+                                s_changed = True
+                                logger.info(
+                                    "Pruned orphaned server custom settings for uninstalled plugin '%s' on server '%s'",
+                                    p_name,
+                                    s_name,
+                                )
+                        if s_changed:
+                            updated_servers[s_name] = s_cfg.model_copy(
+                                update={"custom": s_custom}
+                            )
+
+            # 2. Prune dropped scopes and dropped fields for installed plugins
+            plugins_to_check = (
+                {target_plugin: self._discovered_classes[target_plugin]}
+                if target_plugin and target_plugin in self._discovered_classes
+                else self._discovered_classes
+            )
+
+            for p_name, p_class in plugins_to_check.items():
+                if valid_plugin_names is not None and p_name not in valid_plugin_names:
+                    continue
+
+                # Scope: plugin
+                p_model = getattr(p_class, "settings_model", None)
+                if (
+                    p_model is not None
+                    and isinstance(p_model, type)
+                    and issubclass(p_model, BaseModel)
+                ):
+                    if p_name in current_plugin_settings and isinstance(
+                        current_plugin_settings[p_name], dict
+                    ):
+                        pruned, dropped = prune_dropped_fields(
+                            p_model, current_plugin_settings[p_name]
+                        )
+                        if dropped:
+                            logger.info(
+                                "Pruned dropped settings for plugin '%s' (plugin scope): %s",
+                                p_name,
+                                sorted(dropped),
+                            )
+                            current_plugin_settings[p_name] = pruned
+                            settings_changed = True
+
+                # Scope: global
+                g_model = getattr(p_class, "global_settings_model", None)
+                if g_model is None:
+                    if p_name in current_custom:
+                        current_custom.pop(p_name, None)
+                        settings_changed = True
+                        logger.info(
+                            "Pruned orphaned global custom settings for plugin '%s' (scope dropped)",
+                            p_name,
+                        )
+                elif isinstance(g_model, type) and issubclass(g_model, BaseModel):
+                    if p_name in current_custom and isinstance(
+                        current_custom[p_name], dict
+                    ):
+                        pruned, dropped = prune_dropped_fields(
+                            g_model, current_custom[p_name]
+                        )
+                        if dropped:
+                            logger.info(
+                                "Pruned dropped settings for plugin '%s' (global scope): %s",
+                                p_name,
+                                sorted(dropped),
+                            )
+                            current_custom[p_name] = pruned
+                            settings_changed = True
+
+                # Scope: server
+                s_model = getattr(p_class, "server_settings_model", None)
+                for s_name, s_cfg in self.state.servers.servers.items():
+                    s_server_cfg = updated_servers.get(s_name, s_cfg)
+                    if (
+                        isinstance(s_server_cfg.custom, dict)
+                        and p_name in s_server_cfg.custom
+                    ):
+                        if s_model is None:
+                            s_custom = dict(s_server_cfg.custom)
+                            s_custom.pop(p_name, None)
+                            updated_servers[s_name] = s_server_cfg.model_copy(
+                                update={"custom": s_custom}
+                            )
+                            logger.info(
+                                "Pruned orphaned server custom settings for plugin '%s' on server '%s' (scope dropped)",
+                                p_name,
+                                s_name,
+                            )
+                        elif isinstance(s_model, type) and issubclass(
+                            s_model, BaseModel
+                        ):
+                            if isinstance(s_server_cfg.custom[p_name], dict):
+                                pruned, dropped = prune_dropped_fields(
+                                    s_model, s_server_cfg.custom[p_name]
+                                )
+                                if dropped:
+                                    logger.info(
+                                        "Pruned dropped settings for plugin '%s' on server '%s' (server scope): %s",
+                                        p_name,
+                                        s_name,
+                                        sorted(dropped),
+                                    )
+                                    s_custom = dict(s_server_cfg.custom)
+                                    s_custom[p_name] = pruned
+                                    updated_servers[s_name] = s_server_cfg.model_copy(
+                                        update={"custom": s_custom}
+                                    )
+
+            # 3. Persist pruned state atomically
+            if settings_changed or updated_servers:
+                candidate = type(settings).model_validate(settings.model_dump())
+                if settings_changed:
+                    candidate.set("plugin_settings", current_plugin_settings)
+                    candidate.set("custom", current_custom)
+                    changeset.add_setting("plugin_settings")
+                    changeset.add_setting("custom")
+
+                async with self.storage.transaction() as session:
+                    if settings_changed:
+                        await self.storage.settings_repo.save_settings(
+                            session, candidate.to_dict()
+                        )
+                    for s_name, updated_cfg in updated_servers.items():
+                        await self.storage.server_repo.save_server(session, updated_cfg)
+                        changeset.add_server(s_name)
+
+                if settings_changed:
+                    candidate.clear_dirty()
+                    self.state.settings = candidate
+                for s_name, updated_cfg in updated_servers.items():
+                    self.state.servers.set(updated_cfg)
+                    self.state.servers.remove_dirty_server(s_name)
+
+                await self.storage._notify_listeners(self.state, changeset)
 
     async def _synchronize_config_with_disk(self) -> None:
         """Synchronizes the in-memory plugin configuration with the actual plugin files on disk."""
@@ -508,62 +789,102 @@ class PluginManager:
                         )
             return found
 
-        found_paths = await asyncio.to_thread(_scan_disk_for_plugins)
+        found_paths = await run_in_thread(_scan_disk_for_plugins)
+        existing_modules = set(sys.modules)
 
-        for path, override_name in found_paths:
-            p_name = override_name if override_name else path.stem
-            p_class = self._get_plugin_class_from_path(path, override_name)
-            if p_class:
-                version = getattr(p_class, "version", None)
-                if version and version != "N/A":
-                    self._discovered_classes[p_name] = p_class
-                    if self.settings_models is not None:
-                        models = self.settings_models
-                        if p_class.settings_model is not None:
-                            models[p_name] = p_class.settings_model
-                        else:
-                            models.pop(p_name, None)
-                    valid_plugin_names.add(p_name)
-                    description = p_class.__doc__.strip() if p_class.__doc__ else ""
-                    author = getattr(p_class, "author", "N/A")
-
-                    existing = self.plugin_config.get(p_name)
-                    enabled_val = (
-                        p_name in DEFAULT_ENABLED_PLUGINS
-                        if existing is None
-                        else (
-                            existing
-                            if isinstance(existing, bool)
-                            else existing.get("enabled", False)
+        try:
+            for path, override_name in found_paths:
+                p_name = override_name if override_name else path.stem
+                p_class = await run_in_thread(
+                    self._get_plugin_class_from_path, path, override_name
+                )
+                if p_class:
+                    version = getattr(p_class, "version", None)
+                    if version and version != "N/A":
+                        try:
+                            permissions = sorted(
+                                plugin_permissions(p_class, validate_known=True)
+                            )
+                        except (TypeError, ValueError) as error:
+                            logger.error(
+                                "Invalid permissions for plugin '%s': %s", p_name, error
+                            )
+                            valid_plugin_names.add(p_name)
+                            existing_config = self.plugin_config.get(p_name)
+                            if not isinstance(existing_config, dict):
+                                existing_config = {
+                                    "enabled": bool(existing_config),
+                                    "version": str(version),
+                                }
+                                self.plugin_config[p_name] = existing_config
+                            existing_config["permissions"] = []
+                            self._discovered_classes.pop(p_name, None)
+                            self._set_runtime_status(p_name, "ERROR")
+                            continue
+                        self._discovered_classes[p_name] = p_class
+                        if not self._register_settings_models(p_name, p_class):
+                            continue
+                        valid_plugin_names.add(p_name)
+                        description = (
+                            p_class.__doc__.strip()
+                            if p_class.__doc__
+                            else str(getattr(p_class, "description", "") or "").strip()
                         )
-                    )
-                    status_val = self.get_plugin_status(p_name)
-                    if status_val == "UNKNOWN":
-                        status_val = "DISABLED" if not enabled_val else "UNLOADED"
+                        author = getattr(p_class, "author", "N/A")
+                        existing = self.plugin_config.get(p_name)
+                        enabled_val = (
+                            p_name in DEFAULT_ENABLED_PLUGINS
+                            if existing is None
+                            else (
+                                existing
+                                if isinstance(existing, bool)
+                                else existing.get("enabled", False)
+                            )
+                        )
+                        status_val = self.get_plugin_status(p_name)
+                        if status_val == "UNKNOWN":
+                            status_val = "DISABLED" if not enabled_val else "UNLOADED"
 
-                    if existing is None or isinstance(existing, bool):
-                        self.plugin_config[p_name] = {
-                            "enabled": enabled_val,
-                            "description": description,
-                            "version": str(version),
-                            "author": author,
-                        }
-                    else:
-                        existing["description"] = description
-                        existing["version"] = str(version)
-                        existing["author"] = author
-                        existing["enabled"] = enabled_val
-                    self._set_runtime_status(p_name, status_val)
+                        if existing is None or isinstance(existing, bool):
+                            self.plugin_config[p_name] = {
+                                "enabled": enabled_val,
+                                "description": description,
+                                "version": str(version),
+                                "author": author,
+                                "permissions": permissions,
+                            }
+                        else:
+                            existing["description"] = description
+                            existing["version"] = str(version)
+                            existing["author"] = author
+                            existing["enabled"] = enabled_val
+                            existing["permissions"] = permissions
+                        self._set_runtime_status(p_name, status_val)
 
-        plugins_to_remove = [
-            p for p in self.plugin_config if p not in valid_plugin_names
-        ]
-        for plugin_name in plugins_to_remove:
-            del self.plugin_config[plugin_name]
-            if self.settings_models is not None:
-                self.settings_models.pop(plugin_name, None)
+            plugins_to_remove = [
+                p for p in self.plugin_config if p not in valid_plugin_names
+            ]
+            for plugin_name in plugins_to_remove:
+                del self.plugin_config[plugin_name]
+                if self.settings_models is not None:
+                    self.settings_models.pop(plugin_name, None)
+                    self.global_settings_models.pop(plugin_name, None)
+                    self.server_settings_models.pop(plugin_name, None)
 
-        await self._save_config()
+            await self._save_config()
+            await self._reconcile_plugin_settings(
+                valid_plugin_names=valid_plugin_names,
+                removed_plugin_names=set(plugins_to_remove),
+            )
+        except BaseException:
+            self._discovered_classes.clear()
+            for mod_name in list(sys.modules):
+                if (
+                    mod_name.startswith("bsm_plugins.")
+                    and mod_name not in existing_modules
+                ):
+                    sys.modules.pop(mod_name, None)
+            raise
 
     def _sort_plugin_dependencies(
         self, plugin_classes: Dict[str, Type[PluginBase]]
@@ -613,6 +934,71 @@ class PluginManager:
 
         return [p for p in sorted_plugins if p in plugin_classes]
 
+    def _validate_plugin_permissions(
+        self, plugin_name: str, instance: PluginBase, plugin_logger: logging.Logger
+    ) -> None:
+        instance._capability_permissions = normalize_permissions(
+            instance.permissions, validate_known=True
+        )
+
+    def _validate_static_mounts(
+        self, plugin_name: str, mounts: list[Any], *, warn_invalid: bool = False
+    ) -> list[tuple[str, Path, str]]:
+        from .files import plugin_path
+
+        allowed_roots: list[Path] = []
+        for p_dir in self.plugin_dirs:
+            try:
+                p_root = p_dir.resolve()
+                pkg_dir = (p_root / plugin_name).resolve()
+                if pkg_dir.is_relative_to(p_root):
+                    allowed_roots.append(pkg_dir)
+            except ValueError:
+                continue
+
+        config_dir = getattr(self.settings, "config_dir", None)
+        if config_dir:
+            for scope in ("private", "public"):
+                try:
+                    data_root = plugin_path(
+                        config_dir, plugin_name, scope=scope
+                    ).resolve()
+                    allowed_roots.append(data_root)
+                except Exception:
+                    continue
+
+        valid_mounts: list[tuple[str, Path, str]] = []
+        for m in mounts:
+            if isinstance(m, tuple) and len(m) == 3:
+                route_path, static_dir, mount_name = m
+                candidate = Path(static_dir)
+                if candidate.is_symlink():
+                    if warn_invalid:
+                        logger.warning(
+                            "Plugin '%s' provided symlink static mount path: '%s'",
+                            plugin_name,
+                            static_dir,
+                        )
+                    continue
+                resolved_dir = candidate.resolve()
+                is_safe = False
+                for allowed_root in allowed_roots:
+                    try:
+                        if resolved_dir.is_relative_to(allowed_root):
+                            is_safe = True
+                            break
+                    except ValueError:
+                        continue
+                if is_safe and resolved_dir.is_dir():
+                    valid_mounts.append((route_path, resolved_dir, mount_name))
+                elif warn_invalid:
+                    logger.warning(
+                        "Plugin '%s' provided invalid or out-of-bounds static mount path: '%s'",
+                        plugin_name,
+                        static_dir,
+                    )
+        return valid_mounts
+
     async def load_plugins(self) -> None:
         """Discovers, loads, initializes, and starts tasks for all enabled plugins."""
         self._check_lifecycle_task()
@@ -650,6 +1036,9 @@ class PluginManager:
 
                     instance = plugin_class(plugin_name, api_instance, plugin_logger)
                     self._pending_plugins[plugin_name] = instance
+                    self._validate_plugin_permissions(
+                        plugin_name, instance, plugin_logger
+                    )
                     task_manager = self.task_manager_provider()
                     if task_manager is not None:
                         task_manager.allow_plugin(plugin_name)
@@ -664,46 +1053,18 @@ class PluginManager:
                             else []
                         )
                         for event_name in event_names:
-                            instance.api.listen_for_event(event_name, method)
+                            instance.api.events.listen(
+                                event_name,
+                                method,
+                                priority=getattr(method, "_app_event_priority", 0),
+                                **getattr(method, "_app_event_options", {}),
+                            )
 
                     # Dispatch on_load so plugins initialize internal state (e.g. self.router)
                     await self.dispatch_event(instance, "on_load")
-
-                    if callable(getattr(instance, "get_fastapi_routers", None)):
-                        routers = instance.get_fastapi_routers()
-                        if isinstance(routers, list):
-                            await self._register_routers(plugin_name, routers)
-
-                    if callable(getattr(instance, "get_static_mounts", None)):
-                        mounts = instance.get_static_mounts()
-                        if isinstance(mounts, list):
-                            valid_mounts = []
-                            for m in mounts:
-                                if isinstance(m, tuple) and len(m) == 3:
-                                    route_path, static_dir, mount_name = m
-                                    resolved_dir = Path(static_dir).resolve()
-                                    # Verify resolved static dir is within one of the allowed plugin directories
-                                    is_safe = False
-                                    for p_dir in self.plugin_dirs:
-                                        try:
-                                            if resolved_dir.is_relative_to(
-                                                p_dir.resolve()
-                                            ):
-                                                is_safe = True
-                                                break
-                                        except ValueError:
-                                            continue
-                                    if is_safe and resolved_dir.is_dir():
-                                        valid_mounts.append(
-                                            (route_path, resolved_dir, mount_name)
-                                        )
-                                    else:
-                                        logger.warning(
-                                            "Plugin '%s' provided invalid or out-of-bounds static mount path: '%s'",
-                                            plugin_name,
-                                            static_dir,
-                                        )
-                            self._register_mounts(plugin_name, valid_mounts)
+                    await self._register_plugin_extensions(
+                        plugin_name, instance, warn_invalid_mounts=True
+                    )
 
                     self.plugins.append(instance)
                     for owner in self._event_owners(instance):
@@ -883,7 +1244,8 @@ class PluginManager:
         try:
             return await owner.start()
         except BaseException:
-            self._router_lifespans.pop(name, None)
+            if owner.task.done():
+                self._router_lifespans.pop(name, None)
             raise
 
     async def _close_router_lifespan(self, name: str) -> None:
@@ -895,7 +1257,216 @@ class PluginManager:
                 if owner.task.done():
                     self._router_lifespans.pop(name, None)
 
+    def _validate_web_routers(self, extra=()):
+        from ..web.router_validation import validate_plugin_routes
+
+        mounted = {
+            id(route) for routes in self._mounted_routes.values() for route in routes
+        }
+        base = (
+            [route for route in self._web_app.routes if id(route) not in mounted]
+            if self._web_app
+            else []
+        )
+        validate_plugin_routes(
+            base, [*self.plugin_fastapi_routers, *extra], self.access_policy
+        )
+
+    async def _register_plugin_extensions(
+        self,
+        plugin_name: str,
+        instance: PluginBase,
+        *,
+        warn_invalid_mounts: bool = True,
+    ) -> None:
+        """Discover and register standardized declarative attributes, decorators, and legacy hooks."""
+        owner = f"plugin:{plugin_name}"
+        generation = self.events.owner_generation(owner)
+
+        # 1. Declarative HTTP permissions
+        permissions = getattr(instance, "http_permissions", None)
+        if isinstance(permissions, list) and permissions:
+            for perm_entry in permissions:
+                if isinstance(perm_entry, dict):
+                    raw_perm = perm_entry["permission"]
+                    full_perm = (
+                        raw_perm
+                        if raw_perm.startswith("plugin:")
+                        else f"plugin:{plugin_name}:{raw_perm}"
+                    )
+                    self.access_policy.register(
+                        plugin_name,
+                        full_perm,
+                        perm_entry.get("description", ""),
+                        perm_entry["roles"],
+                        server_scoped=bool(perm_entry.get("server_scoped", False)),
+                    )
+                elif isinstance(perm_entry, (tuple, list)) and len(perm_entry) in (
+                    3,
+                    4,
+                ):
+                    raw_perm = perm_entry[0]
+                    full_perm = (
+                        raw_perm
+                        if raw_perm.startswith("plugin:")
+                        else f"plugin:{plugin_name}:{raw_perm}"
+                    )
+                    self.access_policy.register(
+                        plugin_name,
+                        full_perm,
+                        perm_entry[1],
+                        perm_entry[2],
+                        server_scoped=(
+                            bool(perm_entry[3]) if len(perm_entry) == 4 else False
+                        ),
+                    )
+
+        # 2. Declarative method decorators (@scheduled_task, @diagnostic_provider, @data_provider)
+        scheduler = self.scheduler_provider()
+        diagnostics = self.diagnostics_provider()
+        cm = self.connection_manager_provider()
+
+        for _, method in inspect.getmembers(instance, predicate=inspect.ismethod):
+            for task_cfg in getattr(method, "_scheduled_task_configs", ()):
+                if scheduler is not None:
+                    scheduler.tasks.register(
+                        task_cfg["name"],
+                        method,
+                        owner=owner,
+                        generation=generation,
+                        options_model=task_cfg.get("options_model"),
+                        timeout_seconds=task_cfg.get("timeout_seconds", 300),
+                        requires_server_lock=task_cfg.get("requires_server_lock", True),
+                        with_context=task_cfg.get("with_context", False),
+                        description=task_cfg.get("description", ""),
+                    )
+            for diag_name in getattr(method, "_diagnostic_provider_names", ()):
+                if diagnostics is not None:
+                    self.events.check_owner(owner)
+                    diagnostics.register(
+                        f"plugin:{plugin_name}:{diag_name}",
+                        method,
+                        owner=owner,
+                    )
+            for topic_name in getattr(method, "_data_provider_topics", ()):
+                if cm is not None:
+                    cm.register_data_provider(
+                        topic=topic_name,
+                        handler=method,
+                        plugin_name=plugin_name,
+                    )
+
+        # 3. Declarative scheduled_apis attribute
+        scheduled_apis = getattr(instance, "scheduled_apis", None)
+        if (
+            isinstance(scheduled_apis, list)
+            and scheduled_apis
+            and scheduler is not None
+        ):
+            for api_entry in scheduled_apis:
+                if isinstance(api_entry, dict):
+                    api_target = api_entry.get("api_method") or api_entry.get("api")
+                    if not api_target:
+                        continue
+                    task_name = api_entry.get("name") or (
+                        str(api_target).replace(".", "_")
+                        if isinstance(api_target, str)
+                        else getattr(api_target, "__name__", "api_task")
+                    )
+                    scheduler.tasks.register_api_task(
+                        task_name,
+                        api_target,
+                        owner=owner,
+                        generation=generation,
+                        options_model=api_entry.get("options_model"),
+                        default_options=api_entry.get("default_options"),
+                        slot_field=api_entry.get("slot_field"),
+                        timeout_seconds=api_entry.get("timeout_seconds", 300),
+                        requires_server_lock=api_entry.get(
+                            "requires_server_lock", True
+                        ),
+                        description=api_entry.get("description", ""),
+                    )
+                elif isinstance(api_entry, (tuple, list)) and len(api_entry) == 2:
+                    task_name, api_target = api_entry
+                    scheduler.tasks.register_api_task(
+                        task_name,
+                        api_target,
+                        owner=owner,
+                        generation=generation,
+                    )
+
+        # 4. FastAPI routers (declarative router / routers + deprecated get_fastapi_routers)
+        collected_routers: list[APIRouter] = []
+        seen_router_ids: set[int] = set()
+
+        def _add_router(r: Any) -> None:
+            if r is not None and id(r) not in seen_router_ids:
+                seen_router_ids.add(id(r))
+                collected_routers.append(r)
+
+        single_router = getattr(instance, "router", None)
+        if single_router is not None:
+            _add_router(single_router)
+        multi_routers = getattr(instance, "routers", None)
+        if isinstance(multi_routers, list):
+            for r in multi_routers:
+                _add_router(r)
+
+        has_legacy_routers = (
+            "get_fastapi_routers" in instance.__dict__
+            or getattr(type(instance), "get_fastapi_routers", None)
+            is not PluginBase.get_fastapi_routers
+        )
+        if has_legacy_routers and callable(
+            getattr(instance, "get_fastapi_routers", None)
+        ):
+            logger.warning(
+                "Plugin '%s' uses deprecated 'get_fastapi_routers()'; assign 'router' or 'routers' on the plugin class/instance instead. 'get_fastapi_routers()' will be removed in a future version.",
+                plugin_name,
+            )
+            legacy_routers = instance.get_fastapi_routers()
+            if isinstance(legacy_routers, list):
+                for r in legacy_routers:
+                    _add_router(r)
+
+        if collected_routers:
+            await self._register_routers(plugin_name, collected_routers)
+
+        # 5. Static mounts (declarative static_mounts + deprecated get_static_mounts)
+        collected_mounts: list[Tuple[str, Path, str]] = []
+        decl_mounts = getattr(instance, "static_mounts", None)
+        if isinstance(decl_mounts, list) and decl_mounts:
+            collected_mounts.extend(decl_mounts)
+
+        has_legacy_mounts = (
+            "get_static_mounts" in instance.__dict__
+            or getattr(type(instance), "get_static_mounts", None)
+            is not PluginBase.get_static_mounts
+        )
+        if has_legacy_mounts and callable(getattr(instance, "get_static_mounts", None)):
+            logger.warning(
+                "Plugin '%s' uses deprecated 'get_static_mounts()'; assign 'static_mounts' on the plugin class/instance instead. 'get_static_mounts()' will be removed in a future version.",
+                plugin_name,
+            )
+            legacy_mounts = instance.get_static_mounts()
+            if isinstance(legacy_mounts, list):
+                for m in legacy_mounts:
+                    if m not in collected_mounts:
+                        collected_mounts.append(m)
+
+        if collected_mounts:
+            valid_mounts = await run_in_thread(
+                self._validate_static_mounts,
+                plugin_name,
+                collected_mounts,
+                warn_invalid=warn_invalid_mounts,
+            )
+            if valid_mounts:
+                self._register_mounts(plugin_name, valid_mounts)
+
     async def _register_routers(self, name: str, routers: list[APIRouter]) -> None:
+        self._validate_web_routers(routers)
         self._router_owners.setdefault(name, []).extend(routers)
         self.plugin_fastapi_routers.extend(routers)
         if self._web_started:
@@ -918,6 +1489,7 @@ class PluginManager:
     def _sync_web_routes(self, name: str) -> None:
         if self._web_app is None:
             return
+        self._validate_web_routers()
         for owner in list(self._mounted_routes):
             self._remove_web_routes(owner)
         self._web_app.router.lifespan_context = self._web_lifespan
@@ -947,6 +1519,7 @@ class PluginManager:
         observation = self._plugin_observations.setdefault(plugin_name, {})
         observation["last_transition_at"] = time.time()
         if status == "ERROR" and plugin_name not in self._unloading:
+            self.access_policy.remove_owner(plugin_name)
             observation["load_failures"] = observation.get("load_failures", 0) + 1
             if self.diagnostic_failure is not None:
                 self.diagnostic_failure(plugin_name, "load", None)
@@ -968,6 +1541,17 @@ class PluginManager:
             owner = f"plugin:{name}"
             observation = self._plugin_observations.get(name, {})
             config = self.state.plugins.get(name)
+            draining_owners = self._draining_plugins.get(name)
+            is_draining = (name in self._unloading) or bool(
+                draining_owners is not None
+                and (
+                    self.diagnostic_pending(name)
+                    or any(self.events.owner_pending(o) for o in draining_owners)
+                )
+            )
+            if draining_owners is not None and not is_draining:
+                self._draining_plugins.pop(name, None)
+
             result.append(
                 PluginDiagnostic(
                     name=name,
@@ -981,9 +1565,7 @@ class PluginManager:
                         and task.status in {"queued", "running", "cancelling"}
                         for task in managed_tasks
                     ),
-                    draining=name in self._unloading
-                    or name in self._draining_plugins
-                    or self.diagnostic_pending(name),
+                    draining=is_draining,
                     version=config.version if config else None,
                     listeners=event_activity.subscriptions_by_owner.get(owner, 0),
                     workers=event_activity.workers_by_owner.get(owner, 0),
@@ -1035,6 +1617,17 @@ class PluginManager:
             if not cfg.get("enabled", False):
                 return "DISABLED"
         return "UNKNOWN" if cfg is None else "UNLOADED"
+
+    def get_plugin(self, plugin_name: str) -> Optional[PluginBase]:
+        """Find a loaded or pending plugin instance by identifier or display name."""
+        if plugin_name in self._pending_plugins:
+            return self._pending_plugins[plugin_name]
+        for p in self.plugins:
+            api = getattr(p, "api", None)
+            ident = getattr(api, "_plugin_name", None) or getattr(p, "name", None)
+            if p.name == plugin_name or ident == plugin_name:
+                return p
+        return None
 
     async def unload_plugin_by_name(self, plugin_name: str) -> bool:
         """Measure owned drain work and retain failures without changing propagation."""
@@ -1130,7 +1723,9 @@ class PluginManager:
             if self.diagnostic_pending(plugin_name) or any(
                 self.events.owner_pending(owner) for owner in owners
             ):
+                self._draining_plugins[plugin_name] = owners
                 self._draining_plugins[plugin_key] = owners
+            self.access_policy.remove_owner(plugin_key)
             self._pending_plugins.pop(plugin_key, None)
             if target_instance in self.plugins:
                 self.plugins.remove(target_instance)
@@ -1202,7 +1797,7 @@ class PluginManager:
                     logger.debug("Plugin '%s' is already loaded.", plugin_name)
                     return True
 
-            path = self._find_plugin_path(plugin_name)
+            path = await run_in_thread(self._find_plugin_path, plugin_name)
             if not path:
                 logger.error(
                     "Cannot load plugin '%s': File or directory not found.", plugin_name
@@ -1211,7 +1806,9 @@ class PluginManager:
                     self._set_runtime_status(plugin_name, "ERROR")
                 return False
 
-            p_class = self._get_plugin_class_from_path(path, plugin_name)
+            p_class = await run_in_thread(
+                self._get_plugin_class_from_path, path, plugin_name
+            )
             if not p_class:
                 logger.error(
                     "Cannot load plugin '%s': No PluginBase subclass found.",
@@ -1221,12 +1818,10 @@ class PluginManager:
                     self._set_runtime_status(plugin_name, "ERROR")
                 return False
 
-            if self.settings_models is not None:
-                models = self.settings_models
-                if p_class.settings_model is not None:
-                    models[plugin_name] = p_class.settings_model
-                else:
-                    models.pop(plugin_name, None)
+            if not self._register_settings_models(plugin_name, p_class):
+                return False
+            self._discovered_classes[plugin_name] = p_class
+            await self._reconcile_plugin_settings(target_plugin=plugin_name)
             instance = None
             try:
                 plugin_logger = logging.getLogger(f"plugin.{plugin_name}")
@@ -1235,6 +1830,7 @@ class PluginManager:
 
                 instance = p_class(plugin_name, api_instance, plugin_logger)
                 self._pending_plugins[plugin_name] = instance
+                self._validate_plugin_permissions(plugin_name, instance, plugin_logger)
                 task_manager = self.task_manager_provider()
                 if task_manager is not None:
                     task_manager.allow_plugin(plugin_name)
@@ -1248,90 +1844,19 @@ class PluginManager:
                         else []
                     )
                     for event_name in event_names:
-                        instance.api.listen_for_event(event_name, method)
+                        instance.api.events.listen(
+                            event_name,
+                            method,
+                            priority=getattr(method, "_app_event_priority", 0),
+                            **getattr(method, "_app_event_options", {}),
+                        )
 
                 await self.dispatch_event(instance, "on_load")
+                await self._register_plugin_extensions(
+                    plugin_name, instance, warn_invalid_mounts=False
+                )
 
-                if callable(getattr(instance, "get_fastapi_routers", None)):
-                    routers = instance.get_fastapi_routers()
-                    if isinstance(routers, list):
-                        await self._register_routers(plugin_name, routers)
-
-                if callable(getattr(instance, "get_static_mounts", None)):
-                    mounts = instance.get_static_mounts()
-                    if isinstance(mounts, list):
-                        for m in mounts:
-                            if isinstance(m, tuple) and len(m) == 3:
-                                route_path, static_dir, mount_name = m
-                                resolved_dir = Path(static_dir).resolve()
-                                is_safe = False
-                                for p_dir in self.plugin_dirs:
-                                    try:
-                                        if resolved_dir.is_relative_to(p_dir.resolve()):
-                                            is_safe = True
-                                            break
-                                    except ValueError:
-                                        continue
-                                if is_safe and resolved_dir.is_dir():
-                                    self._register_mounts(
-                                        plugin_name,
-                                        [(route_path, resolved_dir, mount_name)],
-                                    )
-
-                for method_name, method in inspect.getmembers(
-                    instance, predicate=inspect.ismethod
-                ):
-                    interval_raw = getattr(method, "_task_loop_interval", None)
-                    if interval_raw is not None:
-                        interval = max(float(interval_raw), 0.1)
-
-                        async def run_task_loop(
-                            m: Callable[..., Any] = method,
-                            intv: float = interval,
-                            p_name: str = plugin_name,
-                            m_name: str = method_name,
-                        ) -> None:
-                            consecutive_failures = 0
-                            while True:
-                                try:
-                                    sleep_time = (
-                                        intv
-                                        if consecutive_failures == 0
-                                        else min(
-                                            intv * (2 ** min(consecutive_failures, 6)),
-                                            300.0,
-                                        )
-                                    )
-                                    await asyncio.sleep(sleep_time)
-                                    if inspect.iscoroutinefunction(m):
-                                        await m()
-                                    else:
-                                        await run_in_thread(m)
-                                    consecutive_failures = 0
-                                except asyncio.CancelledError:
-                                    logger.debug(
-                                        "Task loop %s.%s cancelled cleanly.",
-                                        p_name,
-                                        m_name,
-                                    )
-                                    break
-                                except Exception as e:
-                                    consecutive_failures += 1
-                                    log_operation_error(
-                                        logger,
-                                        "Error in task loop %s.%s (failure #%s): %s",
-                                        p_name,
-                                        m_name,
-                                        consecutive_failures,
-                                        e,
-                                        error=e,
-                                    )
-
-                        task = asyncio.create_task(
-                            run_task_loop(),
-                            name=f"task_loop_{plugin_name}_{method_name}",
-                        )
-                        self.plugin_tasks.setdefault(plugin_name, []).append(task)
+                self._start_plugin_task_loops(plugin_name, instance)
 
                 self.plugins.append(instance)
                 for owner in self._event_owners(instance):
@@ -1346,6 +1871,7 @@ class PluginManager:
                     await self.unload_plugin_by_name(plugin_name)
                 else:
                     self.events.remove_owner(f"plugin:{plugin_name}")
+                    sys.modules.pop(f"bsm_plugins.{plugin_name}", None)
                 if not isinstance(e, Exception):
                     raise
                 log_operation_error(

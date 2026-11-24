@@ -3,12 +3,13 @@
 from ..context import AppContext
 from ..diagnostics.comparison import compare_snapshots
 from ..error import ResourceNotFoundError
-from ..plugins.api_bridge import api_method
-from .models.diagnostics import (
+from ..models.diagnostics import (
     CompareDiagnosticSnapshotsRequest,
     CompareDiagnosticSnapshotsResponse,
     GetApplicationDiagnosticsRequest,
     GetApplicationDiagnosticsResponse,
+    GetDiagnosticActivityRequest,
+    GetDiagnosticActivityResponse,
     GetDiagnosticHistoryRequest,
     GetDiagnosticHistoryResponse,
     GetDiagnosticReportRequest,
@@ -18,9 +19,11 @@ from .models.diagnostics import (
     GetDiagnosticTraceRequest,
     GetDiagnosticTraceResponse,
 )
+from ..plugins.api_bridge import api_method
+from ..plugins.scopes import PluginScope
 
 
-@api_method("get_application_diagnostics")
+@api_method("get_application_diagnostics", required_scope=PluginScope.DIAGNOSTICS_READ)
 async def get_application_diagnostics(
     request: GetApplicationDiagnosticsRequest, *, app_context: AppContext
 ) -> GetApplicationDiagnosticsResponse:
@@ -31,7 +34,7 @@ async def get_application_diagnostics(
     return GetApplicationDiagnosticsResponse.model_validate(result.model_dump())
 
 
-@api_method("get_diagnostic_history")
+@api_method("get_diagnostic_history", required_scope=PluginScope.DIAGNOSTICS_READ)
 async def get_diagnostic_history(
     request: GetDiagnosticHistoryRequest, *, app_context: AppContext
 ) -> GetDiagnosticHistoryResponse:
@@ -40,7 +43,7 @@ async def get_diagnostic_history(
     return GetDiagnosticHistoryResponse.model_validate(result.model_dump())
 
 
-@api_method("get_diagnostic_report")
+@api_method("get_diagnostic_report", required_scope=PluginScope.DIAGNOSTICS_READ)
 async def get_diagnostic_report(
     request: GetDiagnosticReportRequest, *, app_context: AppContext
 ) -> GetDiagnosticReportResponse:
@@ -49,7 +52,7 @@ async def get_diagnostic_report(
     return GetDiagnosticReportResponse.model_validate(report.model_dump())
 
 
-@api_method("get_diagnostic_runs")
+@api_method("get_diagnostic_runs", required_scope=PluginScope.DIAGNOSTICS_READ)
 async def get_diagnostic_runs(
     request: GetDiagnosticRunsRequest, *, app_context: AppContext
 ) -> GetDiagnosticRunsResponse:
@@ -60,7 +63,7 @@ async def get_diagnostic_runs(
     return GetDiagnosticRunsResponse.model_validate(runs.model_dump())
 
 
-@api_method("get_diagnostic_trace")
+@api_method("get_diagnostic_trace", required_scope=PluginScope.DIAGNOSTICS_READ)
 async def get_diagnostic_trace(
     request: GetDiagnosticTraceRequest, *, app_context: AppContext
 ) -> GetDiagnosticTraceResponse:
@@ -69,10 +72,20 @@ async def get_diagnostic_trace(
     return GetDiagnosticTraceResponse.model_validate(trace.model_dump())
 
 
-@api_method("compare_diagnostic_snapshots")
+@api_method("compare_diagnostic_snapshots", required_scope=PluginScope.DIAGNOSTICS_READ)
 async def compare_diagnostic_snapshots(
     request: CompareDiagnosticSnapshotsRequest, *, app_context: AppContext
 ) -> CompareDiagnosticSnapshotsResponse:
     """Compare metadata snapshots without treating restarted counters as activity."""
     comparison = compare_snapshots(request.before, request.after)
     return CompareDiagnosticSnapshotsResponse.model_validate(comparison.model_dump())
+
+
+@api_method("get_diagnostic_activity", required_scope=PluginScope.DIAGNOSTICS_READ)
+async def get_diagnostic_activity(
+    request: GetDiagnosticActivityRequest, *, app_context: AppContext
+) -> GetDiagnosticActivityResponse:
+    """Read all-chain event, operation, and subscription metadata without payloads."""
+    return GetDiagnosticActivityResponse.model_validate(
+        app_context.diagnostics.activity(request).model_dump()
+    )

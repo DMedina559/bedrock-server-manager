@@ -53,3 +53,10 @@ Use **Access Control → Bans** to review the selected server's stored bans, add
 
 Review and manage bans for the selected server.
 ```
+
+## Known-player directory
+
+BSM maintains a global database of known player Gamertag and XUID pairs (`GET /api/players/get`) so you can select players when editing allowlists, permissions, or bans without typing XUIDs manually:
+
+- **Scan server logs (`PUT /api/players/scan`, `players:manage_global`):** Scans all installed servers' log files for `Player connected: <Name>, xuid: <XUID>` lines and merges discovered players into the global database (also schedulable via the `player:scan_logs` task).
+- **Add known players manually (`POST /api/players/add`, `players:manage_global`):** Pre-populate `"Gamertag:XUID"` entries before a player has connected for the first time.

@@ -178,9 +178,9 @@ Schemas are listed once. Local `$defs` references identify other models on this 
     }
   },
   "required": [
-    "server_name",
     "player_name",
-    "xuid"
+    "xuid",
+    "server_name"
   ],
   "title": "AddServerBanRequest",
   "type": "object"
@@ -364,201 +364,922 @@ Schemas are listed once. Local `$defs` references identify other models on this 
 }
 ```
 
-## BackupAllRequest
+## BackupCopy
 
 ```json
 {
   "additionalProperties": false,
   "properties": {
-    "server_name": {
-      "examples": [
-        "example"
-      ],
-      "minLength": 1,
-      "pattern": "^[a-zA-Z0-9_-]+$",
-      "title": "Server Name",
-      "type": "string"
-    }
-  },
-  "required": [
-    "server_name"
-  ],
-  "title": "BackupAllRequest",
-  "type": "object"
-}
-```
-
-## BackupAllResponse
-
-```json
-{
-  "additionalProperties": false,
-  "properties": {
-    "details": {
-      "$ref": "#/$defs/ComponentResults"
+    "attempts": {
+      "default": 0,
+      "title": "Attempts",
+      "type": "integer"
     },
-    "message": {
-      "title": "Message",
-      "type": "string"
-    },
-    "server_name": {
-      "examples": [
-        "example"
+    "completed_at": {
+      "anyOf": [
+        {
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
       ],
-      "minLength": 1,
-      "pattern": "^[a-zA-Z0-9_-]+$",
-      "title": "Server Name",
-      "type": "string"
+      "default": null,
+      "title": "Completed At"
+    },
+    "error": {
+      "anyOf": [
+        {
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "title": "Error"
+    },
+    "next_retry_at": {
+      "anyOf": [
+        {
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "title": "Next Retry At"
     },
     "status": {
-      "default": "success",
       "enum": [
-        "success",
-        "skipped",
-        "partial"
+        "pending",
+        "completed",
+        "failed",
+        "pruned"
       ],
       "title": "Status",
       "type": "string"
     }
   },
   "required": [
-    "message",
-    "server_name"
+    "status"
   ],
-  "title": "BackupAllResponse",
+  "title": "BackupCopy",
   "type": "object"
 }
 ```
 
-## BackupConfigFileRequest
+## BackupCreated
 
 ```json
 {
   "additionalProperties": false,
+  "description": "Compact creation receipt; inspect the archive for the full inventory.",
   "properties": {
-    "file_to_backup": {
-      "minLength": 1,
-      "pattern": ".*\\S.*",
-      "title": "File To Backup",
+    "backup_id": {
+      "title": "Backup Id",
       "type": "string"
     },
-    "server_name": {
-      "examples": [
-        "example"
+    "components": {
+      "items": {
+        "enum": [
+          "server_directory",
+          "world",
+          "server.properties",
+          "allowlist.json",
+          "permissions.json",
+          "script_config",
+          "bsm_settings",
+          "behavior_packs",
+          "resource_packs",
+          "development_behavior_packs",
+          "development_resource_packs"
+        ],
+        "type": "string"
+      },
+      "title": "Components",
+      "type": "array"
+    },
+    "created_at": {
+      "anyOf": [
+        {
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
       ],
-      "minLength": 1,
-      "pattern": "^[a-zA-Z0-9_-]+$",
-      "title": "Server Name",
+      "default": null,
+      "title": "Created At"
+    },
+    "encrypted": {
+      "title": "Encrypted",
+      "type": "boolean"
+    },
+    "file_count": {
+      "title": "File Count",
+      "type": "integer"
+    },
+    "filename": {
+      "title": "Filename",
       "type": "string"
+    },
+    "size": {
+      "title": "Size",
+      "type": "integer"
+    },
+    "warnings": {
+      "items": {
+        "type": "string"
+      },
+      "title": "Warnings",
+      "type": "array"
     }
   },
   "required": [
-    "server_name",
-    "file_to_backup"
+    "backup_id",
+    "filename",
+    "size",
+    "encrypted",
+    "components",
+    "file_count"
   ],
-  "title": "BackupConfigFileRequest",
+  "title": "BackupCreated",
   "type": "object"
 }
 ```
 
-## BackupConfigFileResponse
+## BackupFile
 
 ```json
 {
   "additionalProperties": false,
   "properties": {
-    "message": {
-      "title": "Message",
+    "component": {
+      "enum": [
+        "server_directory",
+        "world",
+        "server.properties",
+        "allowlist.json",
+        "permissions.json",
+        "script_config",
+        "bsm_settings",
+        "behavior_packs",
+        "resource_packs",
+        "development_behavior_packs",
+        "development_resource_packs"
+      ],
+      "title": "Component",
       "type": "string"
     },
-    "server_name": {
-      "examples": [
-        "example"
-      ],
-      "minLength": 1,
-      "pattern": "^[a-zA-Z0-9_-]+$",
-      "title": "Server Name",
+    "executable": {
+      "default": false,
+      "title": "Executable",
+      "type": "boolean"
+    },
+    "path": {
+      "title": "Path",
       "type": "string"
+    },
+    "sha256": {
+      "pattern": "^[a-f0-9]{64}$",
+      "title": "Sha256",
+      "type": "string"
+    },
+    "size": {
+      "minimum": 0,
+      "title": "Size",
+      "type": "integer"
+    }
+  },
+  "required": [
+    "path",
+    "component",
+    "size",
+    "sha256"
+  ],
+  "title": "BackupFile",
+  "type": "object"
+}
+```
+
+## BackupHealth
+
+```json
+{
+  "additionalProperties": false,
+  "properties": {
+    "alerts": {
+      "items": {
+        "additionalProperties": {
+          "$ref": "#/$defs/JsonValue"
+        },
+        "type": "object"
+      },
+      "title": "Alerts",
+      "type": "array"
+    },
+    "count": {
+      "title": "Count",
+      "type": "integer"
+    },
+    "destination_failures": {
+      "default": 0,
+      "title": "Destination Failures",
+      "type": "integer"
+    },
+    "destinations": {
+      "additionalProperties": {
+        "$ref": "#/$defs/JsonValue"
+      },
+      "title": "Destinations",
+      "type": "object"
+    },
+    "drill": {
+      "anyOf": [
+        {
+          "additionalProperties": {
+            "$ref": "#/$defs/JsonValue"
+          },
+          "type": "object"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "title": "Drill"
+    },
+    "failed_count": {
+      "default": 0,
+      "title": "Failed Count",
+      "type": "integer"
+    },
+    "last_error": {
+      "anyOf": [
+        {
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "title": "Last Error"
+    },
+    "last_failure_at": {
+      "anyOf": [
+        {
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "title": "Last Failure At"
+    },
+    "last_success_at": {
+      "anyOf": [
+        {
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "title": "Last Success At"
+    },
+    "last_verified_at": {
+      "anyOf": [
+        {
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "title": "Last Verified At"
+    },
+    "missing_key_ids": {
+      "items": {
+        "type": "string"
+      },
+      "title": "Missing Key Ids",
+      "type": "array"
+    },
+    "older_key_ids": {
+      "items": {
+        "type": "string"
+      },
+      "title": "Older Key Ids",
+      "type": "array"
+    },
+    "readiness": {
+      "default": "unavailable",
+      "enum": [
+        "ready",
+        "attention",
+        "unavailable"
+      ],
+      "title": "Readiness",
+      "type": "string"
+    },
+    "readiness_reasons": {
+      "items": {
+        "type": "string"
+      },
+      "title": "Readiness Reasons",
+      "type": "array"
+    },
+    "recovery_backup_id": {
+      "anyOf": [
+        {
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "title": "Recovery Backup Id"
+    },
+    "schedule": {
+      "anyOf": [
+        {
+          "additionalProperties": {
+            "$ref": "#/$defs/JsonValue"
+          },
+          "type": "object"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "title": "Schedule"
+    },
+    "total_bytes": {
+      "title": "Total Bytes",
+      "type": "integer"
+    },
+    "unverified_count": {
+      "default": 0,
+      "title": "Unverified Count",
+      "type": "integer"
+    },
+    "verification_interval_hours": {
+      "title": "Verification Interval Hours",
+      "type": "integer"
+    }
+  },
+  "required": [
+    "count",
+    "total_bytes",
+    "verification_interval_hours"
+  ],
+  "title": "BackupHealth",
+  "type": "object"
+}
+```
+
+## BackupHealthResponse
+
+```json
+{
+  "additionalProperties": false,
+  "properties": {
+    "health": {
+      "$ref": "#/$defs/BackupHealth"
+    },
+    "message": {
+      "anyOf": [
+        {
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "title": "Message"
     },
     "status": {
+      "const": "success",
       "default": "success",
-      "enum": [
-        "success",
-        "skipped",
-        "partial"
-      ],
       "title": "Status",
       "type": "string"
     }
   },
   "required": [
-    "message",
-    "server_name"
+    "health"
   ],
-  "title": "BackupConfigFileResponse",
+  "title": "BackupHealthResponse",
   "type": "object"
 }
 ```
 
-## BackupWorldRequest
+## BackupManifest
 
 ```json
 {
   "additionalProperties": false,
   "properties": {
-    "server_name": {
-      "examples": [
-        "example"
-      ],
-      "minLength": 1,
-      "pattern": "^[a-zA-Z0-9_-]+$",
-      "title": "Server Name",
+    "backup_id": {
+      "format": "uuid",
+      "title": "Backup Id",
       "type": "string"
+    },
+    "bedrock_version": {
+      "title": "Bedrock Version",
+      "type": "string"
+    },
+    "bsm_version": {
+      "title": "Bsm Version",
+      "type": "string"
+    },
+    "capture_finished_at": {
+      "format": "date-time",
+      "title": "Capture Finished At",
+      "type": "string"
+    },
+    "capture_method": {
+      "enum": [
+        "offline",
+        "live"
+      ],
+      "title": "Capture Method",
+      "type": "string"
+    },
+    "capture_started_at": {
+      "format": "date-time",
+      "title": "Capture Started At",
+      "type": "string"
+    },
+    "components": {
+      "additionalProperties": {
+        "enum": [
+          "included",
+          "absent"
+        ],
+        "type": "string"
+      },
+      "propertyNames": {
+        "enum": [
+          "server_directory",
+          "world",
+          "server.properties",
+          "allowlist.json",
+          "permissions.json",
+          "script_config",
+          "bsm_settings",
+          "behavior_packs",
+          "resource_packs",
+          "development_behavior_packs",
+          "development_resource_packs"
+        ]
+      },
+      "title": "Components",
+      "type": "object"
+    },
+    "created_at": {
+      "format": "date-time",
+      "title": "Created At",
+      "type": "string"
+    },
+    "directories": {
+      "items": {
+        "type": "string"
+      },
+      "title": "Directories",
+      "type": "array"
+    },
+    "files": {
+      "items": {
+        "$ref": "#/$defs/BackupFile"
+      },
+      "title": "Files",
+      "type": "array"
+    },
+    "format": {
+      "const": "bsmbackup",
+      "default": "bsmbackup",
+      "title": "Format",
+      "type": "string"
+    },
+    "format_version": {
+      "const": 1,
+      "default": 1,
+      "title": "Format Version",
+      "type": "integer"
+    },
+    "mode": {
+      "anyOf": [
+        {
+          "enum": [
+            "world",
+            "selected",
+            "full"
+          ],
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "title": "Mode"
+    },
+    "reason": {
+      "default": "manual",
+      "enum": [
+        "manual",
+        "pre_start",
+        "pre_update",
+        "pre_restore",
+        "scheduled"
+      ],
+      "title": "Reason",
+      "type": "string"
+    },
+    "selected_components": {
+      "anyOf": [
+        {
+          "items": {
+            "enum": [
+              "server_directory",
+              "world",
+              "server.properties",
+              "allowlist.json",
+              "permissions.json",
+              "script_config",
+              "bsm_settings",
+              "behavior_packs",
+              "resource_packs",
+              "development_behavior_packs",
+              "development_resource_packs"
+            ],
+            "type": "string"
+          },
+          "type": "array"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "title": "Selected Components"
+    },
+    "source_architecture": {
+      "anyOf": [
+        {
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "title": "Source Architecture"
+    },
+    "source_platform": {
+      "anyOf": [
+        {
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "title": "Source Platform"
+    },
+    "source_server": {
+      "title": "Source Server",
+      "type": "string"
+    },
+    "source_world": {
+      "title": "Source World",
+      "type": "string"
+    },
+    "warnings": {
+      "items": {
+        "type": "string"
+      },
+      "title": "Warnings",
+      "type": "array"
     }
   },
   "required": [
-    "server_name"
+    "backup_id",
+    "created_at",
+    "capture_started_at",
+    "capture_finished_at",
+    "bsm_version",
+    "bedrock_version",
+    "source_server",
+    "source_world",
+    "capture_method",
+    "components",
+    "files"
   ],
-  "title": "BackupWorldRequest",
+  "title": "BackupManifest",
   "type": "object"
 }
 ```
 
-## BackupWorldResponse
+## BackupSummary
 
 ```json
 {
   "additionalProperties": false,
   "properties": {
-    "message": {
-      "title": "Message",
+    "backup_id": {
+      "title": "Backup Id",
       "type": "string"
     },
-    "server_name": {
-      "examples": [
-        "example"
+    "copies": {
+      "additionalProperties": {
+        "$ref": "#/$defs/BackupCopy"
+      },
+      "title": "Copies",
+      "type": "object"
+    },
+    "created_at": {
+      "anyOf": [
+        {
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
       ],
-      "minLength": 1,
-      "pattern": "^[a-zA-Z0-9_-]+$",
-      "title": "Server Name",
+      "default": null,
+      "title": "Created At"
+    },
+    "drill": {
+      "anyOf": [
+        {
+          "additionalProperties": {
+            "$ref": "#/$defs/JsonValue"
+          },
+          "type": "object"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "title": "Drill"
+    },
+    "encrypted": {
+      "title": "Encrypted",
+      "type": "boolean"
+    },
+    "error": {
+      "anyOf": [
+        {
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "title": "Error"
+    },
+    "filename": {
+      "title": "Filename",
       "type": "string"
+    },
+    "key_id": {
+      "anyOf": [
+        {
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "title": "Key Id"
+    },
+    "label": {
+      "default": "",
+      "title": "Label",
+      "type": "string"
+    },
+    "manifest": {
+      "anyOf": [
+        {
+          "$ref": "#/$defs/BackupManifest"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null
+    },
+    "notes": {
+      "default": "",
+      "title": "Notes",
+      "type": "string"
+    },
+    "origin": {
+      "default": "captured",
+      "enum": [
+        "captured",
+        "imported"
+      ],
+      "title": "Origin",
+      "type": "string"
+    },
+    "pinned": {
+      "default": false,
+      "title": "Pinned",
+      "type": "boolean"
+    },
+    "protected_until": {
+      "anyOf": [
+        {
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "title": "Protected Until"
+    },
+    "purpose": {
+      "anyOf": [
+        {
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "title": "Purpose"
+    },
+    "size": {
+      "title": "Size",
+      "type": "integer"
+    },
+    "stage_durations_ms": {
+      "additionalProperties": {
+        "type": "number"
+      },
+      "title": "Stage Durations Ms",
+      "type": "object"
+    },
+    "verification": {
+      "$ref": "#/$defs/BackupVerification"
+    }
+  },
+  "required": [
+    "backup_id",
+    "filename",
+    "size",
+    "encrypted"
+  ],
+  "title": "BackupSummary",
+  "type": "object"
+}
+```
+
+## BackupVerification
+
+```json
+{
+  "additionalProperties": false,
+  "properties": {
+    "error": {
+      "anyOf": [
+        {
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "title": "Error"
     },
     "status": {
-      "default": "success",
+      "default": "unverified",
       "enum": [
-        "success",
-        "skipped",
-        "partial"
+        "unverified",
+        "verified",
+        "failed"
       ],
       "title": "Status",
       "type": "string"
+    },
+    "verified_at": {
+      "anyOf": [
+        {
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "title": "Verified At"
+    }
+  },
+  "title": "BackupVerification",
+  "type": "object"
+}
+```
+
+## BackupsDiagnostics
+
+```json
+{
+  "additionalProperties": false,
+  "properties": {
+    "archives": {
+      "title": "Archives",
+      "type": "integer"
+    },
+    "destination_failures": {
+      "title": "Destination Failures",
+      "type": "integer"
+    },
+    "failed": {
+      "title": "Failed",
+      "type": "integer"
+    },
+    "kind": {
+      "const": "backups",
+      "default": "backups",
+      "title": "Kind",
+      "type": "string"
+    },
+    "missing_keys": {
+      "title": "Missing Keys",
+      "type": "integer"
+    },
+    "servers": {
+      "title": "Servers",
+      "type": "integer"
+    },
+    "total_bytes": {
+      "title": "Total Bytes",
+      "type": "integer"
+    },
+    "without_backup": {
+      "title": "Without Backup",
+      "type": "integer"
     }
   },
   "required": [
-    "message",
-    "server_name"
+    "servers",
+    "archives",
+    "total_bytes",
+    "failed",
+    "missing_keys",
+    "destination_failures",
+    "without_backup"
   ],
-  "title": "BackupWorldResponse",
+  "title": "BackupsDiagnostics",
+  "type": "object"
+}
+```
+
+## BanEnforcementStatus
+
+```json
+{
+  "additionalProperties": false,
+  "properties": {
+    "available": {
+      "title": "Available",
+      "type": "boolean"
+    },
+    "error": {
+      "anyOf": [
+        {
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "title": "Error"
+    }
+  },
+  "required": [
+    "available"
+  ],
+  "title": "BanEnforcementStatus",
   "type": "object"
 }
 ```
@@ -1018,6 +1739,175 @@ Schemas are listed once. Local `$defs` references identify other models on this 
     }
   },
   "title": "ComponentResults",
+  "type": "object"
+}
+```
+
+## CreateSnapshotRequest
+
+```json
+{
+  "additionalProperties": false,
+  "properties": {
+    "components": {
+      "anyOf": [
+        {
+          "items": {
+            "enum": [
+              "world",
+              "server.properties",
+              "allowlist.json",
+              "permissions.json",
+              "script_config",
+              "bsm_settings",
+              "behavior_packs",
+              "resource_packs",
+              "development_behavior_packs",
+              "development_resource_packs"
+            ],
+            "type": "string"
+          },
+          "minItems": 1,
+          "type": "array",
+          "uniqueItems": true,
+          "x-bsm-choice-labels": {
+            "allowlist.json": "Allowlist",
+            "behavior_packs": "Server behavior packs",
+            "bsm_settings": "BSM server settings",
+            "development_behavior_packs": "Development behavior packs",
+            "development_resource_packs": "Development resource packs",
+            "permissions.json": "Player permissions",
+            "resource_packs": "Server resource packs",
+            "script_config": "Script configuration",
+            "server.properties": "Server properties",
+            "world": "Active world (includes world packs)"
+          },
+          "x-bsm-default-components": [
+            "world",
+            "server.properties",
+            "allowlist.json",
+            "permissions.json",
+            "script_config",
+            "bsm_settings"
+          ]
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "title": "Components"
+    },
+    "encrypted": {
+      "anyOf": [
+        {
+          "type": "boolean"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "title": "Encrypted"
+    },
+    "mode": {
+      "anyOf": [
+        {
+          "enum": [
+            "world",
+            "selected",
+            "full"
+          ],
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "title": "Mode"
+    },
+    "purpose": {
+      "default": "manual",
+      "enum": [
+        "manual",
+        "scheduled",
+        "pre_start",
+        "pre_update"
+      ],
+      "title": "Purpose",
+      "type": "string"
+    },
+    "schedule_slot": {
+      "anyOf": [
+        {
+          "maxLength": 128,
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "title": "Schedule Slot"
+    },
+    "server_name": {
+      "examples": [
+        "example"
+      ],
+      "minLength": 1,
+      "pattern": "^[a-zA-Z0-9_-]+$",
+      "title": "Server Name",
+      "type": "string"
+    }
+  },
+  "required": [
+    "server_name"
+  ],
+  "title": "CreateSnapshotRequest",
+  "type": "object"
+}
+```
+
+## CreateSnapshotResponse
+
+```json
+{
+  "additionalProperties": false,
+  "properties": {
+    "backup": {
+      "$ref": "#/$defs/BackupCreated"
+    },
+    "message": {
+      "title": "Message",
+      "type": "string"
+    },
+    "server_name": {
+      "examples": [
+        "example"
+      ],
+      "minLength": 1,
+      "pattern": "^[a-zA-Z0-9_-]+$",
+      "title": "Server Name",
+      "type": "string"
+    },
+    "status": {
+      "default": "success",
+      "enum": [
+        "success",
+        "skipped",
+        "partial"
+      ],
+      "title": "Status",
+      "type": "string"
+    }
+  },
+  "required": [
+    "message",
+    "server_name",
+    "backup"
+  ],
+  "title": "CreateSnapshotResponse",
   "type": "object"
 }
 ```
@@ -1685,6 +2575,7 @@ Schemas are listed once. Local `$defs` references identify other models on this 
         {
           "discriminator": {
             "mapping": {
+              "backups": "#/$defs/BackupsDiagnostics",
               "events": "#/$defs/EventsDiagnostics",
               "metrics": "#/$defs/MetricsDiagnostics",
               "plugin_values": "#/$defs/PluginValues",
@@ -1728,6 +2619,9 @@ Schemas are listed once. Local `$defs` references identify other models on this 
             },
             {
               "$ref": "#/$defs/PluginValues"
+            },
+            {
+              "$ref": "#/$defs/BackupsDiagnostics"
             }
           ]
         },
@@ -1954,6 +2848,7 @@ Schemas are listed once. Local `$defs` references identify other models on this 
   "additionalProperties": false,
   "properties": {
     "pack_type": {
+      "description": "The type of the pack: 'behavior' or 'resource'.",
       "enum": [
         "behavior",
         "resource"
@@ -1962,6 +2857,7 @@ Schemas are listed once. Local `$defs` references identify other models on this 
       "type": "string"
     },
     "pack_uuid": {
+      "description": "The UUID of the pack.",
       "minLength": 1,
       "pattern": ".*\\S.*",
       "title": "Pack Uuid",
@@ -1978,9 +2874,9 @@ Schemas are listed once. Local `$defs` references identify other models on this 
     }
   },
   "required": [
-    "server_name",
     "pack_uuid",
-    "pack_type"
+    "pack_type",
+    "server_name"
   ],
   "title": "DisableAddonRequest",
   "type": "object"
@@ -2033,6 +2929,7 @@ Schemas are listed once. Local `$defs` references identify other models on this 
   "additionalProperties": false,
   "properties": {
     "pack_type": {
+      "description": "The type of the pack: 'behavior' or 'resource'.",
       "enum": [
         "behavior",
         "resource"
@@ -2041,6 +2938,7 @@ Schemas are listed once. Local `$defs` references identify other models on this 
       "type": "string"
     },
     "pack_uuid": {
+      "description": "The UUID of the pack.",
       "minLength": 1,
       "pattern": ".*\\S.*",
       "title": "Pack Uuid",
@@ -2057,9 +2955,9 @@ Schemas are listed once. Local `$defs` references identify other models on this 
     }
   },
   "required": [
-    "server_name",
     "pack_uuid",
-    "pack_type"
+    "pack_type",
+    "server_name"
   ],
   "title": "EnableAddonRequest",
   "type": "object"
@@ -2269,6 +3167,90 @@ Schemas are listed once. Local `$defs` references identify other models on this 
 }
 ```
 
+## EventFilter
+
+```json
+{
+  "additionalProperties": false,
+  "properties": {
+    "correlation_id": {
+      "anyOf": [
+        {
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "title": "Correlation Id"
+    },
+    "operation_name": {
+      "anyOf": [
+        {
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "title": "Operation Name"
+    },
+    "plugin_name": {
+      "anyOf": [
+        {
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "title": "Plugin Name"
+    },
+    "sequence_id": {
+      "anyOf": [
+        {
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "title": "Sequence Id"
+    },
+    "server_name": {
+      "anyOf": [
+        {
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "title": "Server Name"
+    },
+    "source": {
+      "anyOf": [
+        {
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "title": "Source"
+    }
+  },
+  "title": "EventFilter",
+  "type": "object"
+}
+```
+
 ## EventOptions
 
 ```json
@@ -2405,6 +3387,30 @@ Schemas are listed once. Local `$defs` references identify other models on this 
       "title": "Name",
       "type": "string"
     },
+    "operation_id": {
+      "anyOf": [
+        {
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "title": "Operation Id"
+    },
+    "operation_name": {
+      "anyOf": [
+        {
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "title": "Operation Name"
+    },
     "parent_event_id": {
       "anyOf": [
         {
@@ -2416,6 +3422,17 @@ Schemas are listed once. Local `$defs` references identify other models on this 
       ],
       "default": null,
       "title": "Parent Event Id"
+    },
+    "phase": {
+      "default": "custom",
+      "enum": [
+        "before",
+        "after",
+        "custom",
+        "lifecycle"
+      ],
+      "title": "Phase",
+      "type": "string"
     },
     "rejection_reason": {
       "anyOf": [
@@ -2434,6 +3451,30 @@ Schemas are listed once. Local `$defs` references identify other models on this 
       ],
       "default": null,
       "title": "Rejection Reason"
+    },
+    "sequence_id": {
+      "anyOf": [
+        {
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "title": "Sequence Id"
+    },
+    "server_name": {
+      "anyOf": [
+        {
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "title": "Server Name"
     },
     "source": {
       "title": "Source",
@@ -2468,6 +3509,169 @@ Schemas are listed once. Local `$defs` references identify other models on this 
 }
 ```
 
+## EventSubscriptionInfo
+
+```json
+{
+  "additionalProperties": false,
+  "properties": {
+    "active": {
+      "title": "Active",
+      "type": "boolean"
+    },
+    "after": {
+      "default": [],
+      "items": {
+        "type": "string"
+      },
+      "title": "After",
+      "type": "array"
+    },
+    "before": {
+      "default": [],
+      "items": {
+        "type": "string"
+      },
+      "title": "Before",
+      "type": "array"
+    },
+    "calls": {
+      "default": 0,
+      "title": "Calls",
+      "type": "integer"
+    },
+    "failures": {
+      "default": 0,
+      "title": "Failures",
+      "type": "integer"
+    },
+    "filters": {
+      "anyOf": [
+        {
+          "$ref": "#/$defs/EventFilter"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null
+    },
+    "kind": {
+      "enum": [
+        "legacy",
+        "hook",
+        "observer"
+      ],
+      "title": "Kind",
+      "type": "string"
+    },
+    "last_duration_ms": {
+      "default": 0,
+      "title": "Last Duration Ms",
+      "type": "number"
+    },
+    "last_status": {
+      "anyOf": [
+        {
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "title": "Last Status"
+    },
+    "listener_id": {
+      "title": "Listener Id",
+      "type": "string"
+    },
+    "name": {
+      "title": "Name",
+      "type": "string"
+    },
+    "once": {
+      "title": "Once",
+      "type": "boolean"
+    },
+    "owner": {
+      "title": "Owner",
+      "type": "string"
+    },
+    "priority": {
+      "title": "Priority",
+      "type": "integer"
+    },
+    "subscription_id": {
+      "title": "Subscription Id",
+      "type": "string"
+    },
+    "timeouts": {
+      "default": 0,
+      "title": "Timeouts",
+      "type": "integer"
+    },
+    "unresolved_after": {
+      "default": [],
+      "items": {
+        "type": "string"
+      },
+      "title": "Unresolved After",
+      "type": "array"
+    },
+    "unresolved_before": {
+      "default": [],
+      "items": {
+        "type": "string"
+      },
+      "title": "Unresolved Before",
+      "type": "array"
+    }
+  },
+  "required": [
+    "subscription_id",
+    "listener_id",
+    "name",
+    "owner",
+    "kind",
+    "priority",
+    "once",
+    "active"
+  ],
+  "title": "EventSubscriptionInfo",
+  "type": "object"
+}
+```
+
+## EventSubscriptions
+
+```json
+{
+  "additionalProperties": false,
+  "properties": {
+    "items": {
+      "items": {
+        "$ref": "#/$defs/EventSubscriptionInfo"
+      },
+      "title": "Items",
+      "type": "array"
+    },
+    "total": {
+      "default": 0,
+      "title": "Total",
+      "type": "integer"
+    },
+    "truncated": {
+      "default": false,
+      "title": "Truncated",
+      "type": "boolean"
+    }
+  },
+  "title": "EventSubscriptions",
+  "type": "object"
+}
+```
+
 ## EventsDiagnostics
 
 ```json
@@ -2485,6 +3689,20 @@ Schemas are listed once. Local `$defs` references identify other models on this 
       "default": "events",
       "title": "Kind",
       "type": "string"
+    },
+    "operations": {
+      "anyOf": [
+        {
+          "$ref": "#/$defs/OperationActivity"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null
+    },
+    "subscriptions": {
+      "$ref": "#/$defs/EventSubscriptions"
     },
     "truncated": {
       "default": false,
@@ -3158,7 +4376,8 @@ Schemas are listed once. Local `$defs` references identify other models on this 
     "health": {
       "enum": [
         "healthy",
-        "degraded"
+        "degraded",
+        "unhealthy"
       ],
       "title": "Health",
       "type": "string"
@@ -3407,6 +4626,222 @@ Schemas are listed once. Local `$defs` references identify other models on this 
     "process_info"
   ],
   "title": "GetBedrockProcessInfoResponse",
+  "type": "object"
+}
+```
+
+## GetDiagnosticActivityRequest
+
+```json
+{
+  "additionalProperties": false,
+  "properties": {
+    "correlation_id": {
+      "anyOf": [
+        {
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "title": "Correlation Id"
+    },
+    "limit": {
+      "default": 100,
+      "maximum": 200,
+      "minimum": 1,
+      "title": "Limit",
+      "type": "integer"
+    },
+    "name": {
+      "anyOf": [
+        {
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "title": "Name"
+    },
+    "operation_id": {
+      "anyOf": [
+        {
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "title": "Operation Id"
+    },
+    "operation_name": {
+      "anyOf": [
+        {
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "title": "Operation Name"
+    },
+    "owner": {
+      "anyOf": [
+        {
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "title": "Owner"
+    },
+    "phase": {
+      "anyOf": [
+        {
+          "enum": [
+            "before",
+            "after",
+            "custom",
+            "lifecycle"
+          ],
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "title": "Phase"
+    },
+    "sequence_id": {
+      "anyOf": [
+        {
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "title": "Sequence Id"
+    },
+    "server_name": {
+      "anyOf": [
+        {
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "title": "Server Name"
+    },
+    "source": {
+      "anyOf": [
+        {
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "title": "Source"
+    },
+    "status": {
+      "anyOf": [
+        {
+          "enum": [
+            "dispatching",
+            "completed",
+            "partial",
+            "cancelled",
+            "suppressed"
+          ],
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "title": "Status"
+    }
+  },
+  "title": "GetDiagnosticActivityRequest",
+  "type": "object"
+}
+```
+
+## GetDiagnosticActivityResponse
+
+```json
+{
+  "additionalProperties": false,
+  "properties": {
+    "events": {
+      "anyOf": [
+        {
+          "$ref": "#/$defs/EventDiagnostics"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null
+    },
+    "issues": {
+      "items": {
+        "$ref": "#/$defs/DiagnosticIssue"
+      },
+      "maxItems": 3,
+      "title": "Issues",
+      "type": "array"
+    },
+    "operations": {
+      "anyOf": [
+        {
+          "$ref": "#/$defs/OperationActivity"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null
+    },
+    "scope": {
+      "const": "application",
+      "default": "application",
+      "title": "Scope",
+      "type": "string"
+    },
+    "subscriptions": {
+      "anyOf": [
+        {
+          "$ref": "#/$defs/EventSubscriptions"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null
+    },
+    "truncated": {
+      "default": false,
+      "title": "Truncated",
+      "type": "boolean"
+    }
+  },
+  "title": "GetDiagnosticActivityResponse",
   "type": "object"
 }
 ```
@@ -3758,9 +5193,25 @@ Schemas are listed once. Local `$defs` references identify other models on this 
       "items": {
         "$ref": "#/$defs/DiagnosticIssue"
       },
-      "maxItems": 3,
+      "maxItems": 4,
       "title": "Issues",
       "type": "array"
+    },
+    "operations": {
+      "anyOf": [
+        {
+          "$ref": "#/$defs/OperationActivity"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null
+    },
+    "operations_available": {
+      "default": false,
+      "title": "Operations Available",
+      "type": "boolean"
     },
     "tasks": {
       "items": {
@@ -3919,15 +5370,47 @@ Schemas are listed once. Local `$defs` references identify other models on this 
   "additionalProperties": false,
   "properties": {
     "key": {
-      "minLength": 1,
-      "pattern": ".*\\S.*",
-      "title": "Key",
+      "anyOf": [
+        {
+          "minLength": 1,
+          "pattern": ".*\\S.*",
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "title": "Key"
+    },
+    "scope": {
+      "default": "plugin",
+      "enum": [
+        "plugin",
+        "global",
+        "server"
+      ],
+      "title": "Scope",
       "type": "string"
+    },
+    "server_name": {
+      "anyOf": [
+        {
+          "examples": [
+            "example"
+          ],
+          "minLength": 1,
+          "pattern": "^[a-zA-Z0-9_-]+$",
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "title": "Server Name"
     }
   },
-  "required": [
-    "key"
-  ],
   "title": "GetPluginSettingRequest",
   "type": "object"
 }
@@ -4214,6 +5697,76 @@ Schemas are listed once. Local `$defs` references identify other models on this 
 }
 ```
 
+## GetServerProcessRequest
+
+```json
+{
+  "additionalProperties": false,
+  "properties": {
+    "server_name": {
+      "examples": [
+        "example"
+      ],
+      "minLength": 1,
+      "pattern": "^[a-zA-Z0-9_-]+$",
+      "title": "Server Name",
+      "type": "string"
+    }
+  },
+  "required": [
+    "server_name"
+  ],
+  "title": "GetServerProcessRequest",
+  "type": "object"
+}
+```
+
+## GetServerProcessResponse
+
+```json
+{
+  "additionalProperties": false,
+  "properties": {
+    "message": {
+      "anyOf": [
+        {
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "title": "Message"
+    },
+    "process": {
+      "$ref": "#/$defs/ServerProcessStatus"
+    },
+    "server_name": {
+      "examples": [
+        "example"
+      ],
+      "minLength": 1,
+      "pattern": "^[a-zA-Z0-9_-]+$",
+      "title": "Server Name",
+      "type": "string"
+    },
+    "status": {
+      "const": "success",
+      "default": "success",
+      "title": "Status",
+      "type": "string"
+    }
+  },
+  "required": [
+    "server_name",
+    "process"
+  ],
+  "title": "GetServerProcessResponse",
+  "type": "object"
+}
+```
+
 ## GetServerRunningStatusRequest
 
 ```json
@@ -4473,6 +6026,11 @@ Schemas are listed once. Local `$defs` references identify other models on this 
       "const": "success",
       "default": "success",
       "title": "Status",
+      "type": "string"
+    },
+    "timezone": {
+      "default": "UTC",
+      "title": "Timezone",
       "type": "string"
     }
   },
@@ -4784,6 +6342,87 @@ Schemas are listed once. Local `$defs` references identify other models on this 
     "server_name"
   ],
   "title": "ImportWorldResponse",
+  "type": "object"
+}
+```
+
+## InspectSnapshotRequest
+
+```json
+{
+  "additionalProperties": false,
+  "properties": {
+    "backup_id": {
+      "minLength": 1,
+      "pattern": ".*\\S.*",
+      "title": "Backup Id",
+      "type": "string"
+    },
+    "recovery_key": {
+      "anyOf": [
+        {
+          "format": "password",
+          "type": "string",
+          "writeOnly": true
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "title": "Recovery Key"
+    },
+    "server_name": {
+      "examples": [
+        "example"
+      ],
+      "minLength": 1,
+      "pattern": "^[a-zA-Z0-9_-]+$",
+      "title": "Server Name",
+      "type": "string"
+    }
+  },
+  "required": [
+    "server_name",
+    "backup_id"
+  ],
+  "title": "InspectSnapshotRequest",
+  "type": "object"
+}
+```
+
+## InspectSnapshotResponse
+
+```json
+{
+  "additionalProperties": false,
+  "properties": {
+    "backup": {
+      "$ref": "#/$defs/BackupSummary"
+    },
+    "message": {
+      "anyOf": [
+        {
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "title": "Message"
+    },
+    "status": {
+      "const": "success",
+      "default": "success",
+      "title": "Status",
+      "type": "string"
+    }
+  },
+  "required": [
+    "backup"
+  ],
+  "title": "InspectSnapshotResponse",
   "type": "object"
 }
 ```
@@ -5289,6 +6928,166 @@ Schemas are listed once. Local `$defs` references identify other models on this 
 }
 ```
 
+## ListSchedulesRequest
+
+```json
+{
+  "additionalProperties": false,
+  "properties": {
+    "server_name": {
+      "anyOf": [
+        {
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "title": "Server Name"
+    }
+  },
+  "title": "ListSchedulesRequest",
+  "type": "object"
+}
+```
+
+## ListSchedulesResponse
+
+```json
+{
+  "additionalProperties": false,
+  "properties": {
+    "host_timezone": {
+      "anyOf": [
+        {
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "title": "Host Timezone"
+    },
+    "schedules": {
+      "items": {
+        "$ref": "#/$defs/ScheduleEntry"
+      },
+      "title": "Schedules",
+      "type": "array"
+    },
+    "server_time": {
+      "anyOf": [
+        {
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "title": "Server Time"
+    },
+    "task_definitions": {
+      "additionalProperties": {
+        "additionalProperties": {
+          "$ref": "#/$defs/JsonValue"
+        },
+        "type": "object"
+      },
+      "title": "Task Definitions",
+      "type": "object"
+    },
+    "task_types": {
+      "items": {
+        "type": "string"
+      },
+      "title": "Task Types",
+      "type": "array"
+    },
+    "timezone_database_available": {
+      "default": true,
+      "title": "Timezone Database Available",
+      "type": "boolean"
+    },
+    "timezones": {
+      "items": {
+        "type": "string"
+      },
+      "title": "Timezones",
+      "type": "array"
+    }
+  },
+  "title": "ListSchedulesResponse",
+  "type": "object"
+}
+```
+
+## ListSnapshotsRequest
+
+```json
+{
+  "additionalProperties": false,
+  "properties": {
+    "server_name": {
+      "examples": [
+        "example"
+      ],
+      "minLength": 1,
+      "pattern": "^[a-zA-Z0-9_-]+$",
+      "title": "Server Name",
+      "type": "string"
+    }
+  },
+  "required": [
+    "server_name"
+  ],
+  "title": "ListSnapshotsRequest",
+  "type": "object"
+}
+```
+
+## ListSnapshotsResponse
+
+```json
+{
+  "additionalProperties": false,
+  "properties": {
+    "backups": {
+      "items": {
+        "$ref": "#/$defs/BackupSummary"
+      },
+      "title": "Backups",
+      "type": "array"
+    },
+    "message": {
+      "anyOf": [
+        {
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "title": "Message"
+    },
+    "status": {
+      "const": "success",
+      "default": "success",
+      "title": "Status",
+      "type": "string"
+    }
+  },
+  "required": [
+    "backups"
+  ],
+  "title": "ListSnapshotsResponse",
+  "type": "object"
+}
+```
+
 ## ListenerFailure
 
 ```json
@@ -5387,6 +7186,129 @@ Schemas are listed once. Local `$defs` references identify other models on this 
 }
 ```
 
+## ManageSnapshotRequest
+
+```json
+{
+  "additionalProperties": false,
+  "properties": {
+    "action": {
+      "enum": [
+        "verify",
+        "pin",
+        "unpin",
+        "copy",
+        "test_key",
+        "annotate",
+        "drill",
+        "delete"
+      ],
+      "title": "Action",
+      "type": "string"
+    },
+    "backup_id": {
+      "minLength": 1,
+      "pattern": ".*\\S.*",
+      "title": "Backup Id",
+      "type": "string"
+    },
+    "destination": {
+      "anyOf": [
+        {
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "title": "Destination"
+    },
+    "label": {
+      "anyOf": [
+        {
+          "maxLength": 120,
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "title": "Label"
+    },
+    "notes": {
+      "anyOf": [
+        {
+          "maxLength": 2000,
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "title": "Notes"
+    },
+    "recovery_key": {
+      "anyOf": [
+        {
+          "format": "password",
+          "type": "string",
+          "writeOnly": true
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "title": "Recovery Key"
+    },
+    "server_name": {
+      "examples": [
+        "example"
+      ],
+      "minLength": 1,
+      "pattern": "^[a-zA-Z0-9_-]+$",
+      "title": "Server Name",
+      "type": "string"
+    }
+  },
+  "required": [
+    "server_name",
+    "backup_id",
+    "action"
+  ],
+  "title": "ManageSnapshotRequest",
+  "type": "object"
+}
+```
+
+## ManageSnapshotResponse
+
+```json
+{
+  "additionalProperties": false,
+  "properties": {
+    "message": {
+      "title": "Message",
+      "type": "string"
+    },
+    "status": {
+      "const": "success",
+      "default": "success",
+      "title": "Status",
+      "type": "string"
+    }
+  },
+  "required": [
+    "message"
+  ],
+  "title": "ManageSnapshotResponse",
+  "type": "object"
+}
+```
+
 ## MetricsDiagnostics
 
 ```json
@@ -5397,6 +7319,21 @@ Schemas are listed once. Local `$defs` references identify other models on this 
       "default": 0,
       "title": "Attempts",
       "type": "integer"
+    },
+    "event_loop_lag_breaches": {
+      "default": 0,
+      "title": "Event Loop Lag Breaches",
+      "type": "integer"
+    },
+    "event_loop_lag_ms": {
+      "default": 0,
+      "title": "Event Loop Lag Ms",
+      "type": "number"
+    },
+    "event_loop_lag_threshold_ms": {
+      "default": 100,
+      "title": "Event Loop Lag Threshold Ms",
+      "type": "number"
     },
     "failures": {
       "default": 0,
@@ -5461,6 +7398,11 @@ Schemas are listed once. Local `$defs` references identify other models on this 
       "default": 0,
       "title": "Missed Intervals",
       "type": "integer"
+    },
+    "recent_max_event_loop_lag_ms": {
+      "default": 0,
+      "title": "Recent Max Event Loop Lag Ms",
+      "type": "number"
     },
     "sample_age_seconds": {
       "anyOf": [
@@ -5724,6 +7666,209 @@ Schemas are listed once. Local `$defs` references identify other models on this 
 }
 ```
 
+## OperationActivity
+
+```json
+{
+  "additionalProperties": false,
+  "description": "Bounded, metadata-only global activity; recent results are not durable.",
+  "properties": {
+    "active": {
+      "items": {
+        "$ref": "#/$defs/OperationSnapshot"
+      },
+      "title": "Active",
+      "type": "array"
+    },
+    "active_operations": {
+      "default": 0,
+      "title": "Active Operations",
+      "type": "integer"
+    },
+    "active_sequences": {
+      "default": 0,
+      "title": "Active Sequences",
+      "type": "integer"
+    },
+    "active_truncated": {
+      "default": false,
+      "title": "Active Truncated",
+      "type": "boolean"
+    },
+    "completed": {
+      "default": 0,
+      "title": "Completed",
+      "type": "integer"
+    },
+    "history_limit": {
+      "default": 0,
+      "title": "History Limit",
+      "type": "integer"
+    },
+    "recent": {
+      "items": {
+        "$ref": "#/$defs/OperationSnapshot"
+      },
+      "title": "Recent",
+      "type": "array"
+    },
+    "recent_truncated": {
+      "default": false,
+      "title": "Recent Truncated",
+      "type": "boolean"
+    }
+  },
+  "title": "OperationActivity",
+  "type": "object"
+}
+```
+
+## OperationSnapshot
+
+```json
+{
+  "additionalProperties": false,
+  "description": "Immutable coordination metadata; response bodies and secrets are excluded.",
+  "properties": {
+    "correlation_id": {
+      "title": "Correlation Id",
+      "type": "string"
+    },
+    "finished_at": {
+      "anyOf": [
+        {
+          "type": "number"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "title": "Finished At"
+    },
+    "name": {
+      "title": "Name",
+      "type": "string"
+    },
+    "operation_id": {
+      "title": "Operation Id",
+      "type": "string"
+    },
+    "outcome": {
+      "anyOf": [
+        {
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "title": "Outcome"
+    },
+    "owner": {
+      "default": "application",
+      "title": "Owner",
+      "type": "string"
+    },
+    "parent_operation_id": {
+      "anyOf": [
+        {
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "title": "Parent Operation Id"
+    },
+    "purpose": {
+      "anyOf": [
+        {
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "title": "Purpose"
+    },
+    "root_operation_id": {
+      "title": "Root Operation Id",
+      "type": "string"
+    },
+    "scope": {
+      "default": [],
+      "items": {
+        "type": "string"
+      },
+      "title": "Scope",
+      "type": "array"
+    },
+    "sequence_id": {
+      "title": "Sequence Id",
+      "type": "string"
+    },
+    "server_name": {
+      "anyOf": [
+        {
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "title": "Server Name"
+    },
+    "source": {
+      "default": "application",
+      "title": "Source",
+      "type": "string"
+    },
+    "stage": {
+      "anyOf": [
+        {
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "title": "Stage"
+    },
+    "started_at": {
+      "title": "Started At",
+      "type": "number"
+    },
+    "status": {
+      "default": "running",
+      "enum": [
+        "running",
+        "finished",
+        "failed",
+        "cancelled"
+      ],
+      "title": "Status",
+      "type": "string"
+    }
+  },
+  "required": [
+    "operation_id",
+    "sequence_id",
+    "root_operation_id",
+    "correlation_id",
+    "name",
+    "started_at"
+  ],
+  "title": "OperationSnapshot",
+  "type": "object"
+}
+```
+
 ## PersistenceDiagnostics
 
 ```json
@@ -5833,6 +7978,109 @@ Schemas are listed once. Local `$defs` references identify other models on this 
     "retention_days"
   ],
   "title": "PersistenceDiagnostics",
+  "type": "object"
+}
+```
+
+## PlanSnapshotRestoreRequest
+
+```json
+{
+  "additionalProperties": false,
+  "properties": {
+    "backup_id": {
+      "minLength": 1,
+      "pattern": ".*\\S.*",
+      "title": "Backup Id",
+      "type": "string"
+    },
+    "components": {
+      "items": {
+        "enum": [
+          "server_directory",
+          "world",
+          "server.properties",
+          "allowlist.json",
+          "permissions.json",
+          "script_config",
+          "bsm_settings",
+          "behavior_packs",
+          "resource_packs",
+          "development_behavior_packs",
+          "development_resource_packs"
+        ],
+        "type": "string"
+      },
+      "minItems": 1,
+      "title": "Components",
+      "type": "array"
+    },
+    "recovery_key": {
+      "anyOf": [
+        {
+          "format": "password",
+          "type": "string",
+          "writeOnly": true
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "title": "Recovery Key"
+    },
+    "server_name": {
+      "examples": [
+        "example"
+      ],
+      "minLength": 1,
+      "pattern": "^[a-zA-Z0-9_-]+$",
+      "title": "Server Name",
+      "type": "string"
+    }
+  },
+  "required": [
+    "server_name",
+    "backup_id",
+    "components"
+  ],
+  "title": "PlanSnapshotRestoreRequest",
+  "type": "object"
+}
+```
+
+## PlanSnapshotRestoreResponse
+
+```json
+{
+  "additionalProperties": false,
+  "properties": {
+    "message": {
+      "anyOf": [
+        {
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "title": "Message"
+    },
+    "plan": {
+      "$ref": "#/$defs/RestorePlan"
+    },
+    "status": {
+      "const": "success",
+      "default": "success",
+      "title": "Status",
+      "type": "string"
+    }
+  },
+  "required": [
+    "plan"
+  ],
+  "title": "PlanSnapshotRestoreResponse",
   "type": "object"
 }
 ```
@@ -6077,10 +8325,27 @@ Schemas are listed once. Local `$defs` references identify other models on this 
       "title": "Enabled",
       "type": "boolean"
     },
+    "has_global_settings": {
+      "default": false,
+      "title": "Has Global Settings",
+      "type": "boolean"
+    },
+    "has_server_settings": {
+      "default": false,
+      "title": "Has Server Settings",
+      "type": "boolean"
+    },
     "has_settings": {
       "default": false,
       "title": "Has Settings",
       "type": "boolean"
+    },
+    "permissions": {
+      "items": {
+        "type": "string"
+      },
+      "title": "Permissions",
+      "type": "array"
     },
     "status": {
       "default": "UNKNOWN",
@@ -6207,9 +8472,96 @@ Schemas are listed once. Local `$defs` references identify other models on this 
 {
   "additionalProperties": false,
   "properties": {
+    "ban_enforcement_available": {
+      "default": false,
+      "title": "Ban Enforcement Available",
+      "type": "boolean"
+    },
+    "ban_error": {
+      "anyOf": [
+        {
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "title": "Ban Error"
+    },
+    "command_available": {
+      "default": false,
+      "title": "Command Available",
+      "type": "boolean"
+    },
+    "cpu_percent": {
+      "anyOf": [
+        {
+          "type": "number"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "title": "Cpu Percent"
+    },
+    "exit_code": {
+      "anyOf": [
+        {
+          "type": "integer"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "title": "Exit Code"
+    },
+    "exit_reason": {
+      "anyOf": [
+        {
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "title": "Exit Reason"
+    },
     "expected_status": {
       "title": "Expected Status",
       "type": "string"
+    },
+    "generation": {
+      "anyOf": [
+        {
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "title": "Generation"
+    },
+    "healthy": {
+      "anyOf": [
+        {
+          "type": "boolean"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "title": "Healthy"
+    },
+    "in_restart_backoff": {
+      "default": false,
+      "title": "In Restart Backoff",
+      "type": "boolean"
     },
     "last_error_type": {
       "anyOf": [
@@ -6222,6 +8574,18 @@ Schemas are listed once. Local `$defs` references identify other models on this 
       ],
       "default": null,
       "title": "Last Error Type"
+    },
+    "memory_mb": {
+      "anyOf": [
+        {
+          "type": "number"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "title": "Memory Mb"
     },
     "observed_at": {
       "anyOf": [
@@ -6247,6 +8611,55 @@ Schemas are listed once. Local `$defs` references identify other models on this 
       "default": null,
       "title": "Observed Running"
     },
+    "output_available": {
+      "default": false,
+      "title": "Output Available",
+      "type": "boolean"
+    },
+    "output_dropped_bytes": {
+      "default": 0,
+      "title": "Output Dropped Bytes",
+      "type": "integer"
+    },
+    "output_error": {
+      "anyOf": [
+        {
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "title": "Output Error"
+    },
+    "output_queued_bytes": {
+      "default": 0,
+      "title": "Output Queued Bytes",
+      "type": "integer"
+    },
+    "output_source": {
+      "default": "unknown",
+      "enum": [
+        "file",
+        "pipe",
+        "unknown"
+      ],
+      "title": "Output Source",
+      "type": "string"
+    },
+    "phase": {
+      "anyOf": [
+        {
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "title": "Phase"
+    },
     "pid": {
       "anyOf": [
         {
@@ -6259,6 +8672,31 @@ Schemas are listed once. Local `$defs` references identify other models on this 
       "default": null,
       "title": "Pid"
     },
+    "process_owned": {
+      "default": false,
+      "title": "Process Owned",
+      "type": "boolean"
+    },
+    "ready": {
+      "default": false,
+      "title": "Ready",
+      "type": "boolean"
+    },
+    "recovered_untracked": {
+      "default": false,
+      "title": "Recovered Untracked",
+      "type": "boolean"
+    },
+    "recovery_exhausted": {
+      "default": false,
+      "title": "Recovery Exhausted",
+      "type": "boolean"
+    },
+    "restart_attempts": {
+      "default": 0,
+      "title": "Restart Attempts",
+      "type": "integer"
+    },
     "server_name": {
       "title": "Server Name",
       "type": "string"
@@ -6269,6 +8707,42 @@ Schemas are listed once. Local `$defs` references identify other models on this 
     "expected_status"
   ],
   "title": "ProcessDiagnostic",
+  "type": "object"
+}
+```
+
+## ProcessExitStatus
+
+```json
+{
+  "additionalProperties": false,
+  "properties": {
+    "code": {
+      "anyOf": [
+        {
+          "type": "integer"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "title": "Code"
+    },
+    "reason": {
+      "anyOf": [
+        {
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "title": "Reason"
+    }
+  },
+  "title": "ProcessExitStatus",
   "type": "object"
 }
 ```
@@ -6307,12 +8781,82 @@ Schemas are listed once. Local `$defs` references identify other models on this 
 }
 ```
 
+## ProcessOutputStatus
+
+```json
+{
+  "additionalProperties": false,
+  "properties": {
+    "available": {
+      "title": "Available",
+      "type": "boolean"
+    },
+    "dropped_bytes": {
+      "minimum": 0,
+      "title": "Dropped Bytes",
+      "type": "integer"
+    },
+    "error": {
+      "anyOf": [
+        {
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "title": "Error"
+    },
+    "queued_bytes": {
+      "minimum": 0,
+      "title": "Queued Bytes",
+      "type": "integer"
+    },
+    "source": {
+      "enum": [
+        "file",
+        "pipe",
+        "unknown"
+      ],
+      "title": "Source",
+      "type": "string"
+    }
+  },
+  "required": [
+    "source",
+    "available",
+    "queued_bytes",
+    "dropped_bytes"
+  ],
+  "title": "ProcessOutputStatus",
+  "type": "object"
+}
+```
+
 ## ProcessesDiagnostics
 
 ```json
 {
   "additionalProperties": false,
   "properties": {
+    "command_unavailable_count": {
+      "default": 0,
+      "title": "Command Unavailable Count",
+      "type": "integer"
+    },
+    "identity_error": {
+      "anyOf": [
+        {
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "title": "Identity Error"
+    },
     "kind": {
       "const": "processes",
       "default": "processes",
@@ -6351,6 +8895,11 @@ Schemas are listed once. Local `$defs` references identify other models on this 
       "title": "Observed Running",
       "type": "integer"
     },
+    "pending_identities": {
+      "default": 0,
+      "title": "Pending Identities",
+      "type": "integer"
+    },
     "processes": {
       "items": {
         "$ref": "#/$defs/ProcessDiagnostic"
@@ -6362,10 +8911,30 @@ Schemas are listed once. Local `$defs` references identify other models on this 
       "title": "Registered",
       "type": "integer"
     },
+    "total_cpu_percent": {
+      "default": 0.0,
+      "title": "Total Cpu Percent",
+      "type": "number"
+    },
+    "total_memory_mb": {
+      "default": 0.0,
+      "title": "Total Memory Mb",
+      "type": "number"
+    },
     "truncated": {
       "default": false,
       "title": "Truncated",
       "type": "boolean"
+    },
+    "unhealthy_count": {
+      "default": 0,
+      "title": "Unhealthy Count",
+      "type": "integer"
+    },
+    "untracked_recoveries_count": {
+      "default": 0,
+      "title": "Untracked Recoveries Count",
+      "type": "integer"
     }
   },
   "required": [
@@ -6647,6 +9216,408 @@ Schemas are listed once. Local `$defs` references identify other models on this 
 }
 ```
 
+## RecoveryReport
+
+```json
+{
+  "additionalProperties": false,
+  "properties": {
+    "archive_count": {
+      "title": "Archive Count",
+      "type": "integer"
+    },
+    "archives": {
+      "items": {
+        "$ref": "#/$defs/RecoveryReportArchive"
+      },
+      "title": "Archives",
+      "type": "array"
+    },
+    "archives_omitted": {
+      "title": "Archives Omitted",
+      "type": "integer"
+    },
+    "destination_failures": {
+      "title": "Destination Failures",
+      "type": "integer"
+    },
+    "generated_at": {
+      "title": "Generated At",
+      "type": "string"
+    },
+    "last_drill": {
+      "anyOf": [
+        {
+          "$ref": "#/$defs/RecoveryReportDrill"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null
+    },
+    "last_restore": {
+      "anyOf": [
+        {
+          "$ref": "#/$defs/RecoveryReportOutcome"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null
+    },
+    "last_review": {
+      "anyOf": [
+        {
+          "$ref": "#/$defs/RecoveryReportReview"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null
+    },
+    "missing_key_count": {
+      "title": "Missing Key Count",
+      "type": "integer"
+    },
+    "readiness": {
+      "enum": [
+        "ready",
+        "attention",
+        "unavailable"
+      ],
+      "title": "Readiness",
+      "type": "string"
+    },
+    "recovery_pending": {
+      "title": "Recovery Pending",
+      "type": "boolean"
+    },
+    "report_version": {
+      "const": 1,
+      "default": 1,
+      "title": "Report Version",
+      "type": "integer"
+    }
+  },
+  "required": [
+    "generated_at",
+    "readiness",
+    "archive_count",
+    "archives_omitted",
+    "missing_key_count",
+    "destination_failures",
+    "recovery_pending",
+    "archives"
+  ],
+  "title": "RecoveryReport",
+  "type": "object"
+}
+```
+
+## RecoveryReportArchive
+
+```json
+{
+  "additionalProperties": false,
+  "properties": {
+    "archive_reference": {
+      "title": "Archive Reference",
+      "type": "string"
+    },
+    "copies_completed": {
+      "title": "Copies Completed",
+      "type": "integer"
+    },
+    "copies_failed": {
+      "title": "Copies Failed",
+      "type": "integer"
+    },
+    "encrypted": {
+      "title": "Encrypted",
+      "type": "boolean"
+    },
+    "key_available": {
+      "title": "Key Available",
+      "type": "boolean"
+    },
+    "verification_status": {
+      "enum": [
+        "unverified",
+        "verified",
+        "failed"
+      ],
+      "title": "Verification Status",
+      "type": "string"
+    },
+    "verified_at": {
+      "anyOf": [
+        {
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "title": "Verified At"
+    }
+  },
+  "required": [
+    "archive_reference",
+    "encrypted",
+    "key_available",
+    "verification_status",
+    "copies_completed",
+    "copies_failed"
+  ],
+  "title": "RecoveryReportArchive",
+  "type": "object"
+}
+```
+
+## RecoveryReportDrill
+
+```json
+{
+  "additionalProperties": false,
+  "properties": {
+    "archive_reference": {
+      "title": "Archive Reference",
+      "type": "string"
+    },
+    "checked_at": {
+      "anyOf": [
+        {
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "title": "Checked At"
+    },
+    "checked_files": {
+      "default": 0,
+      "title": "Checked Files",
+      "type": "integer"
+    },
+    "status": {
+      "enum": [
+        "passed",
+        "failed",
+        "running"
+      ],
+      "title": "Status",
+      "type": "string"
+    }
+  },
+  "required": [
+    "archive_reference",
+    "status"
+  ],
+  "title": "RecoveryReportDrill",
+  "type": "object"
+}
+```
+
+## RecoveryReportOutcome
+
+```json
+{
+  "additionalProperties": false,
+  "properties": {
+    "archive_reference": {
+      "title": "Archive Reference",
+      "type": "string"
+    },
+    "cleanup_needed": {
+      "default": false,
+      "title": "Cleanup Needed",
+      "type": "boolean"
+    },
+    "committed": {
+      "anyOf": [
+        {
+          "type": "boolean"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "title": "Committed"
+    },
+    "components": {
+      "items": {
+        "enum": [
+          "server_directory",
+          "world",
+          "server.properties",
+          "allowlist.json",
+          "permissions.json",
+          "script_config",
+          "bsm_settings",
+          "behavior_packs",
+          "resource_packs",
+          "development_behavior_packs",
+          "development_resource_packs"
+        ],
+        "type": "string"
+      },
+      "title": "Components",
+      "type": "array"
+    },
+    "recorded_at": {
+      "title": "Recorded At",
+      "type": "string"
+    },
+    "restart_failed": {
+      "default": false,
+      "title": "Restart Failed",
+      "type": "boolean"
+    },
+    "restarted": {
+      "default": false,
+      "title": "Restarted",
+      "type": "boolean"
+    },
+    "status": {
+      "enum": [
+        "completed",
+        "failed",
+        "cancelled"
+      ],
+      "title": "Status",
+      "type": "string"
+    }
+  },
+  "required": [
+    "recorded_at",
+    "archive_reference",
+    "status",
+    "components"
+  ],
+  "title": "RecoveryReportOutcome",
+  "type": "object"
+}
+```
+
+## RecoveryReportResponse
+
+```json
+{
+  "additionalProperties": false,
+  "properties": {
+    "message": {
+      "anyOf": [
+        {
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "title": "Message"
+    },
+    "report": {
+      "$ref": "#/$defs/RecoveryReport"
+    },
+    "status": {
+      "const": "success",
+      "default": "success",
+      "title": "Status",
+      "type": "string"
+    }
+  },
+  "required": [
+    "report"
+  ],
+  "title": "RecoveryReportResponse",
+  "type": "object"
+}
+```
+
+## RecoveryReportReview
+
+```json
+{
+  "additionalProperties": false,
+  "properties": {
+    "archive_reference": {
+      "title": "Archive Reference",
+      "type": "string"
+    },
+    "change_counts": {
+      "additionalProperties": {
+        "type": "integer"
+      },
+      "title": "Change Counts",
+      "type": "object"
+    },
+    "checked_files": {
+      "title": "Checked Files",
+      "type": "integer"
+    },
+    "components": {
+      "items": {
+        "enum": [
+          "server_directory",
+          "world",
+          "server.properties",
+          "allowlist.json",
+          "permissions.json",
+          "script_config",
+          "bsm_settings",
+          "behavior_packs",
+          "resource_packs",
+          "development_behavior_packs",
+          "development_resource_packs"
+        ],
+        "type": "string"
+      },
+      "title": "Components",
+      "type": "array"
+    },
+    "dry_run": {
+      "title": "Dry Run",
+      "type": "boolean"
+    },
+    "recorded_at": {
+      "title": "Recorded At",
+      "type": "string"
+    },
+    "sufficient_space": {
+      "title": "Sufficient Space",
+      "type": "boolean"
+    },
+    "volumes": {
+      "items": {
+        "$ref": "#/$defs/RestoreVolume"
+      },
+      "title": "Volumes",
+      "type": "array"
+    }
+  },
+  "required": [
+    "recorded_at",
+    "archive_reference",
+    "components",
+    "dry_run",
+    "checked_files",
+    "change_counts",
+    "sufficient_space",
+    "volumes"
+  ],
+  "title": "RecoveryReportReview",
+  "type": "object"
+}
+```
+
 ## RegistryDiagnostics
 
 ```json
@@ -6786,6 +9757,76 @@ Schemas are listed once. Local `$defs` references identify other models on this 
 }
 ```
 
+## RemoveServerBanRequest
+
+```json
+{
+  "additionalProperties": false,
+  "properties": {
+    "server_name": {
+      "examples": [
+        "example"
+      ],
+      "minLength": 1,
+      "pattern": "^[a-zA-Z0-9_-]+$",
+      "title": "Server Name",
+      "type": "string"
+    },
+    "xuid": {
+      "minLength": 1,
+      "pattern": ".*\\S.*",
+      "title": "Xuid",
+      "type": "string"
+    }
+  },
+  "required": [
+    "xuid",
+    "server_name"
+  ],
+  "title": "RemoveServerBanRequest",
+  "type": "object"
+}
+```
+
+## RemoveServerBanResponse
+
+```json
+{
+  "additionalProperties": false,
+  "properties": {
+    "message": {
+      "title": "Message",
+      "type": "string"
+    },
+    "server_name": {
+      "examples": [
+        "example"
+      ],
+      "minLength": 1,
+      "pattern": "^[a-zA-Z0-9_-]+$",
+      "title": "Server Name",
+      "type": "string"
+    },
+    "status": {
+      "default": "success",
+      "enum": [
+        "success",
+        "skipped",
+        "partial"
+      ],
+      "title": "Status",
+      "type": "string"
+    }
+  },
+  "required": [
+    "message",
+    "server_name"
+  ],
+  "title": "RemoveServerBanResponse",
+  "type": "object"
+}
+```
+
 ## ReorderAddonsRequest
 
 ```json
@@ -6793,6 +9834,7 @@ Schemas are listed once. Local `$defs` references identify other models on this 
   "additionalProperties": false,
   "properties": {
     "pack_type": {
+      "description": "The type of the pack: 'behavior' or 'resource'.",
       "enum": [
         "behavior",
         "resource"
@@ -6810,6 +9852,7 @@ Schemas are listed once. Local `$defs` references identify other models on this 
       "type": "string"
     },
     "uuids": {
+      "description": "The exact list of currently active UUIDs in the new desired order.",
       "items": {
         "minLength": 1,
         "pattern": ".*\\S.*",
@@ -6820,9 +9863,9 @@ Schemas are listed once. Local `$defs` references identify other models on this 
     }
   },
   "required": [
-    "server_name",
+    "pack_type",
     "uuids",
-    "pack_type"
+    "server_name"
   ],
   "title": "ReorderAddonsRequest",
   "type": "object"
@@ -6864,6 +9907,69 @@ Schemas are listed once. Local `$defs` references identify other models on this 
     "server_name"
   ],
   "title": "ReorderAddonsResponse",
+  "type": "object"
+}
+```
+
+## ResetWorldRequest
+
+```json
+{
+  "additionalProperties": false,
+  "properties": {
+    "server_name": {
+      "examples": [
+        "example"
+      ],
+      "minLength": 1,
+      "pattern": "^[a-zA-Z0-9_-]+$",
+      "title": "Server Name",
+      "type": "string"
+    }
+  },
+  "required": [
+    "server_name"
+  ],
+  "title": "ResetWorldRequest",
+  "type": "object"
+}
+```
+
+## ResetWorldResponse
+
+```json
+{
+  "additionalProperties": false,
+  "properties": {
+    "message": {
+      "title": "Message",
+      "type": "string"
+    },
+    "server_name": {
+      "examples": [
+        "example"
+      ],
+      "minLength": 1,
+      "pattern": "^[a-zA-Z0-9_-]+$",
+      "title": "Server Name",
+      "type": "string"
+    },
+    "status": {
+      "default": "success",
+      "enum": [
+        "success",
+        "skipped",
+        "partial"
+      ],
+      "title": "Status",
+      "type": "string"
+    }
+  },
+  "required": [
+    "message",
+    "server_name"
+  ],
+  "title": "ResetWorldResponse",
   "type": "object"
 }
 ```
@@ -7047,6 +10153,23 @@ Schemas are listed once. Local `$defs` references identify other models on this 
       "title": "Backup File Path",
       "type": "string"
     },
+    "component": {
+      "anyOf": [
+        {
+          "enum": [
+            "server.properties",
+            "allowlist.json",
+            "permissions.json"
+          ],
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "title": "Component"
+    },
     "server_name": {
       "examples": [
         "example"
@@ -7106,6 +10229,572 @@ Schemas are listed once. Local `$defs` references identify other models on this 
     "server_name"
   ],
   "title": "RestoreConfigFileResponse",
+  "type": "object"
+}
+```
+
+## RestoreFileChange
+
+```json
+{
+  "additionalProperties": false,
+  "properties": {
+    "action": {
+      "enum": [
+        "added",
+        "replaced",
+        "removed"
+      ],
+      "title": "Action",
+      "type": "string"
+    },
+    "component": {
+      "enum": [
+        "server_directory",
+        "world",
+        "server.properties",
+        "allowlist.json",
+        "permissions.json",
+        "script_config",
+        "bsm_settings",
+        "behavior_packs",
+        "resource_packs",
+        "development_behavior_packs",
+        "development_resource_packs"
+      ],
+      "title": "Component",
+      "type": "string"
+    },
+    "path": {
+      "title": "Path",
+      "type": "string"
+    }
+  },
+  "required": [
+    "component",
+    "path",
+    "action"
+  ],
+  "title": "RestoreFileChange",
+  "type": "object"
+}
+```
+
+## RestorePlan
+
+```json
+{
+  "additionalProperties": false,
+  "properties": {
+    "backup_id": {
+      "title": "Backup Id",
+      "type": "string"
+    },
+    "change_counts": {
+      "additionalProperties": {
+        "type": "integer"
+      },
+      "title": "Change Counts",
+      "type": "object"
+    },
+    "changes": {
+      "items": {
+        "$ref": "#/$defs/RestoreFileChange"
+      },
+      "title": "Changes",
+      "type": "array"
+    },
+    "changes_truncated": {
+      "default": false,
+      "title": "Changes Truncated",
+      "type": "boolean"
+    },
+    "checked_files": {
+      "default": 0,
+      "title": "Checked Files",
+      "type": "integer"
+    },
+    "components": {
+      "items": {
+        "enum": [
+          "server_directory",
+          "world",
+          "server.properties",
+          "allowlist.json",
+          "permissions.json",
+          "script_config",
+          "bsm_settings",
+          "behavior_packs",
+          "resource_packs",
+          "development_behavior_packs",
+          "development_resource_packs"
+        ],
+        "type": "string"
+      },
+      "title": "Components",
+      "type": "array"
+    },
+    "destinations": {
+      "additionalProperties": {
+        "type": "string"
+      },
+      "propertyNames": {
+        "enum": [
+          "server_directory",
+          "world",
+          "server.properties",
+          "allowlist.json",
+          "permissions.json",
+          "script_config",
+          "bsm_settings",
+          "behavior_packs",
+          "resource_packs",
+          "development_behavior_packs",
+          "development_resource_packs"
+        ]
+      },
+      "title": "Destinations",
+      "type": "object"
+    },
+    "dry_run": {
+      "default": false,
+      "title": "Dry Run",
+      "type": "boolean"
+    },
+    "required_bytes": {
+      "title": "Required Bytes",
+      "type": "integer"
+    },
+    "safety_backup": {
+      "default": true,
+      "title": "Safety Backup",
+      "type": "boolean"
+    },
+    "setting_changes": {
+      "items": {
+        "$ref": "#/$defs/RestoreValueChange"
+      },
+      "title": "Setting Changes",
+      "type": "array"
+    },
+    "sufficient_space": {
+      "default": true,
+      "title": "Sufficient Space",
+      "type": "boolean"
+    },
+    "token": {
+      "title": "Token",
+      "type": "string"
+    },
+    "volumes": {
+      "items": {
+        "$ref": "#/$defs/RestoreVolume"
+      },
+      "title": "Volumes",
+      "type": "array"
+    },
+    "warnings": {
+      "items": {
+        "type": "string"
+      },
+      "title": "Warnings",
+      "type": "array"
+    }
+  },
+  "required": [
+    "backup_id",
+    "token",
+    "components",
+    "destinations",
+    "warnings",
+    "required_bytes"
+  ],
+  "title": "RestorePlan",
+  "type": "object"
+}
+```
+
+## RestoreRecoveryResponse
+
+```json
+{
+  "additionalProperties": false,
+  "properties": {
+    "message": {
+      "anyOf": [
+        {
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "title": "Message"
+    },
+    "recovery": {
+      "$ref": "#/$defs/RestoreRecoveryState"
+    },
+    "status": {
+      "const": "success",
+      "default": "success",
+      "title": "Status",
+      "type": "string"
+    }
+  },
+  "required": [
+    "recovery"
+  ],
+  "title": "RestoreRecoveryResponse",
+  "type": "object"
+}
+```
+
+## RestoreRecoveryState
+
+```json
+{
+  "additionalProperties": false,
+  "properties": {
+    "active": {
+      "title": "Active",
+      "type": "boolean"
+    },
+    "committed": {
+      "anyOf": [
+        {
+          "type": "boolean"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "title": "Committed"
+    },
+    "error": {
+      "anyOf": [
+        {
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "title": "Error"
+    }
+  },
+  "required": [
+    "active"
+  ],
+  "title": "RestoreRecoveryState",
+  "type": "object"
+}
+```
+
+## RestoreResult
+
+```json
+{
+  "additionalProperties": false,
+  "properties": {
+    "cleanup_warning": {
+      "anyOf": [
+        {
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "title": "Cleanup Warning"
+    },
+    "committed": {
+      "default": true,
+      "title": "Committed",
+      "type": "boolean"
+    },
+    "restart_error": {
+      "anyOf": [
+        {
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "title": "Restart Error"
+    },
+    "restarted": {
+      "default": false,
+      "title": "Restarted",
+      "type": "boolean"
+    },
+    "restored": {
+      "items": {
+        "enum": [
+          "server_directory",
+          "world",
+          "server.properties",
+          "allowlist.json",
+          "permissions.json",
+          "script_config",
+          "bsm_settings",
+          "behavior_packs",
+          "resource_packs",
+          "development_behavior_packs",
+          "development_resource_packs"
+        ],
+        "type": "string"
+      },
+      "title": "Restored",
+      "type": "array"
+    },
+    "safety_backup_id": {
+      "anyOf": [
+        {
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "title": "Safety Backup Id"
+    }
+  },
+  "required": [
+    "restored"
+  ],
+  "title": "RestoreResult",
+  "type": "object"
+}
+```
+
+## RestoreSnapshotRequest
+
+```json
+{
+  "additionalProperties": false,
+  "properties": {
+    "backup_id": {
+      "minLength": 1,
+      "pattern": ".*\\S.*",
+      "title": "Backup Id",
+      "type": "string"
+    },
+    "components": {
+      "items": {
+        "enum": [
+          "server_directory",
+          "world",
+          "server.properties",
+          "allowlist.json",
+          "permissions.json",
+          "script_config",
+          "bsm_settings",
+          "behavior_packs",
+          "resource_packs",
+          "development_behavior_packs",
+          "development_resource_packs"
+        ],
+        "type": "string"
+      },
+      "minItems": 1,
+      "title": "Components",
+      "type": "array"
+    },
+    "recovery_key": {
+      "anyOf": [
+        {
+          "format": "password",
+          "type": "string",
+          "writeOnly": true
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "title": "Recovery Key"
+    },
+    "restart": {
+      "default": true,
+      "title": "Restart",
+      "type": "boolean"
+    },
+    "server_name": {
+      "examples": [
+        "example"
+      ],
+      "minLength": 1,
+      "pattern": "^[a-zA-Z0-9_-]+$",
+      "title": "Server Name",
+      "type": "string"
+    },
+    "stop_running": {
+      "default": true,
+      "title": "Stop Running",
+      "type": "boolean"
+    },
+    "token": {
+      "minLength": 1,
+      "pattern": ".*\\S.*",
+      "title": "Token",
+      "type": "string"
+    }
+  },
+  "required": [
+    "server_name",
+    "backup_id",
+    "components",
+    "token"
+  ],
+  "title": "RestoreSnapshotRequest",
+  "type": "object"
+}
+```
+
+## RestoreSnapshotResponse
+
+```json
+{
+  "additionalProperties": false,
+  "properties": {
+    "message": {
+      "title": "Message",
+      "type": "string"
+    },
+    "result": {
+      "$ref": "#/$defs/RestoreResult"
+    },
+    "server_name": {
+      "examples": [
+        "example"
+      ],
+      "minLength": 1,
+      "pattern": "^[a-zA-Z0-9_-]+$",
+      "title": "Server Name",
+      "type": "string"
+    },
+    "status": {
+      "default": "success",
+      "enum": [
+        "success",
+        "skipped",
+        "partial"
+      ],
+      "title": "Status",
+      "type": "string"
+    }
+  },
+  "required": [
+    "message",
+    "server_name",
+    "result"
+  ],
+  "title": "RestoreSnapshotResponse",
+  "type": "object"
+}
+```
+
+## RestoreValueChange
+
+```json
+{
+  "additionalProperties": false,
+  "properties": {
+    "after": {
+      "anyOf": [
+        {
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "title": "After"
+    },
+    "before": {
+      "anyOf": [
+        {
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "title": "Before"
+    },
+    "component": {
+      "enum": [
+        "server_directory",
+        "world",
+        "server.properties",
+        "allowlist.json",
+        "permissions.json",
+        "script_config",
+        "bsm_settings",
+        "behavior_packs",
+        "resource_packs",
+        "development_behavior_packs",
+        "development_resource_packs"
+      ],
+      "title": "Component",
+      "type": "string"
+    },
+    "key": {
+      "title": "Key",
+      "type": "string"
+    }
+  },
+  "required": [
+    "component",
+    "key",
+    "before",
+    "after"
+  ],
+  "title": "RestoreValueChange",
+  "type": "object"
+}
+```
+
+## RestoreVolume
+
+```json
+{
+  "additionalProperties": false,
+  "properties": {
+    "available_bytes": {
+      "title": "Available Bytes",
+      "type": "integer"
+    },
+    "required_bytes": {
+      "title": "Required Bytes",
+      "type": "integer"
+    },
+    "roles": {
+      "items": {
+        "type": "string"
+      },
+      "title": "Roles",
+      "type": "array"
+    },
+    "sufficient": {
+      "title": "Sufficient",
+      "type": "boolean"
+    }
+  },
+  "required": [
+    "roles",
+    "required_bytes",
+    "available_bytes",
+    "sufficient"
+  ],
+  "title": "RestoreVolume",
   "type": "object"
 }
 ```
@@ -7191,11 +10880,35 @@ Schemas are listed once. Local `$defs` references identify other models on this 
 {
   "additionalProperties": false,
   "properties": {
+    "draining_workers": {
+      "default": 0,
+      "title": "Draining Workers",
+      "type": "integer"
+    },
     "kind": {
       "const": "runtime",
       "default": "runtime",
       "title": "Kind",
       "type": "string"
+    },
+    "oldest_draining_worker_seconds": {
+      "anyOf": [
+        {
+          "type": "number"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "title": "Oldest Draining Worker Seconds"
+    },
+    "pending_lifecycle_stages": {
+      "items": {
+        "type": "string"
+      },
+      "title": "Pending Lifecycle Stages",
+      "type": "array"
     },
     "phase": {
       "title": "Phase",
@@ -7209,10 +10922,20 @@ Schemas are listed once. Local `$defs` references identify other models on this 
       "title": "Python Version",
       "type": "string"
     },
+    "queued_workers": {
+      "default": 0,
+      "title": "Queued Workers",
+      "type": "integer"
+    },
     "ready": {
       "default": false,
       "title": "Ready",
       "type": "boolean"
+    },
+    "running_workers": {
+      "default": 0,
+      "title": "Running Workers",
+      "type": "integer"
     },
     "shutdown_reason": {
       "anyOf": [
@@ -7357,6 +11080,228 @@ Schemas are listed once. Local `$defs` references identify other models on this 
 }
 ```
 
+## ScheduleConfigurationView
+
+```json
+{
+  "additionalProperties": false,
+  "description": "Read saved definitions even if this host has lost their timezone data.",
+  "properties": {
+    "catch_up": {
+      "default": true,
+      "title": "Catch Up",
+      "type": "boolean"
+    },
+    "enabled": {
+      "default": true,
+      "title": "Enabled",
+      "type": "boolean"
+    },
+    "options": {
+      "additionalProperties": {
+        "$ref": "#/$defs/JsonValue"
+      },
+      "title": "Options",
+      "type": "object"
+    },
+    "server_name": {
+      "maxLength": 160,
+      "minLength": 1,
+      "title": "Server Name",
+      "type": "string"
+    },
+    "stagger_minutes": {
+      "default": 15,
+      "maximum": 120,
+      "minimum": 0,
+      "title": "Stagger Minutes",
+      "type": "integer"
+    },
+    "task": {
+      "maxLength": 160,
+      "pattern": "^(backup|verify|[a-zA-Z0-9_.-]+:[a-zA-Z0-9_.-]+)$",
+      "title": "Task",
+      "type": "string"
+    },
+    "time": {
+      "default": "03:00",
+      "pattern": "^(?:[01][0-9]|2[0-3]):[0-5][0-9]$",
+      "title": "Time",
+      "type": "string"
+    },
+    "timezone": {
+      "default": "UTC",
+      "title": "Timezone",
+      "type": "string"
+    },
+    "weekdays": {
+      "items": {
+        "type": "integer"
+      },
+      "maxItems": 7,
+      "minItems": 1,
+      "title": "Weekdays",
+      "type": "array"
+    }
+  },
+  "required": [
+    "task",
+    "server_name"
+  ],
+  "title": "ScheduleConfigurationView",
+  "type": "object"
+}
+```
+
+## ScheduleEntry
+
+```json
+{
+  "additionalProperties": false,
+  "properties": {
+    "attempts": {
+      "default": 0,
+      "title": "Attempts",
+      "type": "integer"
+    },
+    "available": {
+      "title": "Available",
+      "type": "boolean"
+    },
+    "blocked_reason": {
+      "anyOf": [
+        {
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "title": "Blocked Reason"
+    },
+    "configuration": {
+      "$ref": "#/$defs/ScheduleConfigurationView"
+    },
+    "last_error": {
+      "anyOf": [
+        {
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "title": "Last Error"
+    },
+    "last_evaluated_at": {
+      "anyOf": [
+        {
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "title": "Last Evaluated At"
+    },
+    "last_status": {
+      "anyOf": [
+        {
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "title": "Last Status"
+    },
+    "last_success_at": {
+      "anyOf": [
+        {
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "title": "Last Success At"
+    },
+    "legacy": {
+      "default": false,
+      "title": "Legacy",
+      "type": "boolean"
+    },
+    "next_attempt_at": {
+      "anyOf": [
+        {
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "title": "Next Attempt At"
+    },
+    "next_run_at": {
+      "anyOf": [
+        {
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "title": "Next Run At"
+    },
+    "retry_exhausted": {
+      "default": false,
+      "title": "Retry Exhausted",
+      "type": "boolean"
+    },
+    "revision": {
+      "anyOf": [
+        {
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "title": "Revision"
+    },
+    "runs": {
+      "items": {
+        "additionalProperties": {
+          "$ref": "#/$defs/JsonValue"
+        },
+        "type": "object"
+      },
+      "title": "Runs",
+      "type": "array"
+    },
+    "schedule_id": {
+      "title": "Schedule Id",
+      "type": "string"
+    }
+  },
+  "required": [
+    "schedule_id",
+    "configuration",
+    "available"
+  ],
+  "title": "ScheduleEntry",
+  "type": "object"
+}
+```
+
 ## SendCommandRequest
 
 ```json
@@ -7364,6 +11309,7 @@ Schemas are listed once. Local `$defs` references identify other models on this 
   "additionalProperties": false,
   "properties": {
     "command": {
+      "description": "The command to send to the server.",
       "minLength": 1,
       "pattern": ".*\\S.*",
       "title": "Command",
@@ -7380,8 +11326,8 @@ Schemas are listed once. Local `$defs` references identify other models on this 
     }
   },
   "required": [
-    "server_name",
-    "command"
+    "command",
+    "server_name"
   ],
   "title": "SendCommandRequest",
   "type": "object"
@@ -7599,6 +11545,105 @@ Schemas are listed once. Local `$defs` references identify other models on this 
 }
 ```
 
+## ServerProcessStatus
+
+```json
+{
+  "additionalProperties": false,
+  "properties": {
+    "bans": {
+      "$ref": "#/$defs/BanEnforcementStatus"
+    },
+    "command_available": {
+      "title": "Command Available",
+      "type": "boolean"
+    },
+    "exit": {
+      "$ref": "#/$defs/ProcessExitStatus"
+    },
+    "generation": {
+      "anyOf": [
+        {
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "title": "Generation"
+    },
+    "observed_at": {
+      "anyOf": [
+        {
+          "type": "number"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "title": "Observed At"
+    },
+    "output": {
+      "$ref": "#/$defs/ProcessOutputStatus"
+    },
+    "owned": {
+      "title": "Owned",
+      "type": "boolean"
+    },
+    "phase": {
+      "anyOf": [
+        {
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "title": "Phase"
+    },
+    "pid": {
+      "anyOf": [
+        {
+          "type": "integer"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "title": "Pid"
+    },
+    "ready": {
+      "title": "Ready",
+      "type": "boolean"
+    },
+    "recovered": {
+      "title": "Recovered",
+      "type": "boolean"
+    },
+    "running": {
+      "title": "Running",
+      "type": "boolean"
+    }
+  },
+  "required": [
+    "running",
+    "ready",
+    "owned",
+    "recovered",
+    "command_available",
+    "output",
+    "bans",
+    "exit"
+  ],
+  "title": "ServerProcessStatus",
+  "type": "object"
+}
+```
+
 ## ServerSummary
 
 ```json
@@ -7679,13 +11724,15 @@ Schemas are listed once. Local `$defs` references identify other models on this 
   "additionalProperties": false,
   "properties": {
     "key": {
+      "description": "The dot-notation key of the setting (e.g., 'web.port').",
       "minLength": 1,
       "pattern": ".*\\S.*",
       "title": "Key",
       "type": "string"
     },
     "value": {
-      "$ref": "#/$defs/JsonValue"
+      "$ref": "#/$defs/JsonValue",
+      "description": "The new value for the setting."
     }
   },
   "required": [
@@ -7827,17 +11874,51 @@ Schemas are listed once. Local `$defs` references identify other models on this 
   "additionalProperties": false,
   "properties": {
     "key": {
-      "minLength": 1,
-      "pattern": ".*\\S.*",
-      "title": "Key",
+      "anyOf": [
+        {
+          "minLength": 1,
+          "pattern": ".*\\S.*",
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "title": "Key"
+    },
+    "scope": {
+      "default": "plugin",
+      "enum": [
+        "plugin",
+        "global",
+        "server"
+      ],
+      "title": "Scope",
       "type": "string"
+    },
+    "server_name": {
+      "anyOf": [
+        {
+          "examples": [
+            "example"
+          ],
+          "minLength": 1,
+          "pattern": "^[a-zA-Z0-9_-]+$",
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "title": "Server Name"
     },
     "value": {
       "$ref": "#/$defs/JsonValue"
     }
   },
   "required": [
-    "key",
     "value"
   ],
   "title": "SetPluginSettingRequest",
@@ -7957,6 +12038,7 @@ Schemas are listed once. Local `$defs` references identify other models on this 
   "additionalProperties": false,
   "properties": {
     "key": {
+      "description": "The dot-notation key of the setting (e.g., 'settings.autoupdate').",
       "minLength": 1,
       "pattern": ".*\\S.*",
       "title": "Key",
@@ -7972,13 +12054,14 @@ Schemas are listed once. Local `$defs` references identify other models on this 
       "type": "string"
     },
     "value": {
-      "$ref": "#/$defs/JsonValue"
+      "$ref": "#/$defs/JsonValue",
+      "description": "The new value for the setting."
     }
   },
   "required": [
-    "server_name",
     "key",
-    "value"
+    "value",
+    "server_name"
   ],
   "title": "SetServerCustomValueRequest",
   "type": "object"
@@ -8055,6 +12138,133 @@ Schemas are listed once. Local `$defs` references identify other models on this 
     "reason"
   ],
   "title": "SkippedItem",
+  "type": "object"
+}
+```
+
+## SnapshotReuseRequest
+
+```json
+{
+  "additionalProperties": false,
+  "properties": {
+    "components": {
+      "anyOf": [
+        {
+          "items": {
+            "enum": [
+              "world",
+              "server.properties",
+              "allowlist.json",
+              "permissions.json",
+              "script_config",
+              "bsm_settings",
+              "behavior_packs",
+              "resource_packs",
+              "development_behavior_packs",
+              "development_resource_packs"
+            ],
+            "type": "string"
+          },
+          "minItems": 1,
+          "type": "array",
+          "uniqueItems": true,
+          "x-bsm-choice-labels": {
+            "allowlist.json": "Allowlist",
+            "behavior_packs": "Server behavior packs",
+            "bsm_settings": "BSM server settings",
+            "development_behavior_packs": "Development behavior packs",
+            "development_resource_packs": "Development resource packs",
+            "permissions.json": "Player permissions",
+            "resource_packs": "Server resource packs",
+            "script_config": "Script configuration",
+            "server.properties": "Server properties",
+            "world": "Active world (includes world packs)"
+          },
+          "x-bsm-default-components": [
+            "world",
+            "server.properties",
+            "allowlist.json",
+            "permissions.json",
+            "script_config",
+            "bsm_settings"
+          ]
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "title": "Components"
+    },
+    "mode": {
+      "anyOf": [
+        {
+          "enum": [
+            "world",
+            "selected",
+            "full"
+          ],
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "title": "Mode"
+    },
+    "server_name": {
+      "examples": [
+        "example"
+      ],
+      "minLength": 1,
+      "pattern": "^[a-zA-Z0-9_-]+$",
+      "title": "Server Name",
+      "type": "string"
+    }
+  },
+  "required": [
+    "server_name"
+  ],
+  "title": "SnapshotReuseRequest",
+  "type": "object"
+}
+```
+
+## SnapshotReuseResponse
+
+```json
+{
+  "additionalProperties": false,
+  "properties": {
+    "message": {
+      "anyOf": [
+        {
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "title": "Message"
+    },
+    "reusable": {
+      "title": "Reusable",
+      "type": "boolean"
+    },
+    "status": {
+      "const": "success",
+      "default": "success",
+      "title": "Status",
+      "type": "string"
+    }
+  },
+  "required": [
+    "reusable"
+  ],
+  "title": "SnapshotReuseResponse",
   "type": "object"
 }
 ```
@@ -8568,6 +12778,18 @@ Schemas are listed once. Local `$defs` references identify other models on this 
       "title": "Capacity",
       "type": "integer"
     },
+    "concurrency_limit": {
+      "anyOf": [
+        {
+          "type": "integer"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "title": "Concurrency Limit"
+    },
     "counts_by_status": {
       "additionalProperties": {
         "type": "integer"
@@ -8907,6 +13129,95 @@ Schemas are listed once. Local `$defs` references identify other models on this 
 }
 ```
 
+## UpdateSubpackRequest
+
+```json
+{
+  "additionalProperties": false,
+  "properties": {
+    "pack_type": {
+      "description": "The type of the pack: 'behavior' or 'resource'.",
+      "enum": [
+        "behavior",
+        "resource"
+      ],
+      "title": "Pack Type",
+      "type": "string"
+    },
+    "pack_uuid": {
+      "description": "The UUID of the pack.",
+      "minLength": 1,
+      "pattern": ".*\\S.*",
+      "title": "Pack Uuid",
+      "type": "string"
+    },
+    "server_name": {
+      "examples": [
+        "example"
+      ],
+      "minLength": 1,
+      "pattern": "^[a-zA-Z0-9_-]+$",
+      "title": "Server Name",
+      "type": "string"
+    },
+    "subpack_name": {
+      "description": "The folder name of the subpack to activate.",
+      "minLength": 1,
+      "pattern": ".*\\S.*",
+      "title": "Subpack Name",
+      "type": "string"
+    }
+  },
+  "required": [
+    "pack_uuid",
+    "pack_type",
+    "subpack_name",
+    "server_name"
+  ],
+  "title": "UpdateSubpackRequest",
+  "type": "object"
+}
+```
+
+## UpdateSubpackResponse
+
+```json
+{
+  "additionalProperties": false,
+  "properties": {
+    "message": {
+      "title": "Message",
+      "type": "string"
+    },
+    "server_name": {
+      "examples": [
+        "example"
+      ],
+      "minLength": 1,
+      "pattern": "^[a-zA-Z0-9_-]+$",
+      "title": "Server Name",
+      "type": "string"
+    },
+    "status": {
+      "default": "success",
+      "enum": [
+        "success",
+        "skipped",
+        "partial"
+      ],
+      "title": "Status",
+      "type": "string"
+    }
+  },
+  "required": [
+    "message",
+    "server_name"
+  ],
+  "title": "UpdateSubpackResponse",
+  "type": "object"
+}
+```
+
 ## ValidatePropertyValueRequest
 
 ```json
@@ -8966,6 +13277,131 @@ Schemas are listed once. Local `$defs` references identify other models on this 
     "valid"
   ],
   "title": "ValidatePropertyValueResponse",
+  "type": "object"
+}
+```
+
+## WaitForServerLogRequest
+
+```json
+{
+  "additionalProperties": false,
+  "properties": {
+    "after_sequence": {
+      "anyOf": [
+        {
+          "minimum": 0,
+          "type": "integer"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "title": "After Sequence"
+    },
+    "exact": {
+      "default": false,
+      "title": "Exact",
+      "type": "boolean"
+    },
+    "generation": {
+      "anyOf": [
+        {
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "title": "Generation"
+    },
+    "server_name": {
+      "examples": [
+        "example"
+      ],
+      "minLength": 1,
+      "pattern": "^[a-zA-Z0-9_-]+$",
+      "title": "Server Name",
+      "type": "string"
+    },
+    "text": {
+      "maxLength": 4096,
+      "minLength": 1,
+      "title": "Text",
+      "type": "string"
+    },
+    "timeout": {
+      "default": 30,
+      "exclusiveMinimum": 0,
+      "maximum": 300,
+      "title": "Timeout",
+      "type": "number"
+    }
+  },
+  "required": [
+    "server_name",
+    "text"
+  ],
+  "title": "WaitForServerLogRequest",
+  "type": "object"
+}
+```
+
+## WaitForServerLogResponse
+
+```json
+{
+  "additionalProperties": false,
+  "properties": {
+    "generation": {
+      "title": "Generation",
+      "type": "string"
+    },
+    "line": {
+      "title": "Line",
+      "type": "string"
+    },
+    "message": {
+      "anyOf": [
+        {
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "title": "Message"
+    },
+    "sequence": {
+      "title": "Sequence",
+      "type": "integer"
+    },
+    "server_name": {
+      "examples": [
+        "example"
+      ],
+      "minLength": 1,
+      "pattern": "^[a-zA-Z0-9_-]+$",
+      "title": "Server Name",
+      "type": "string"
+    },
+    "status": {
+      "const": "success",
+      "default": "success",
+      "title": "Status",
+      "type": "string"
+    }
+  },
+  "required": [
+    "server_name",
+    "generation",
+    "sequence",
+    "line"
+  ],
+  "title": "WaitForServerLogResponse",
   "type": "object"
 }
 ```
