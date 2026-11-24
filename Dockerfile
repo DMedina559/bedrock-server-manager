@@ -1,5 +1,5 @@
 # Stage 1: Python Build
-FROM python:3.14-slim AS python-builder
+FROM python:3.15-slim AS python-builder
 WORKDIR /app
 COPY pyproject.toml README.md LICENSE ./
 COPY src/ ./src/
@@ -15,7 +15,7 @@ ENV SETUPTOOLS_SCM_PRETEND_VERSION=${APP_VERSION}
 RUN python -m build
 
 # Stage 2: Final Python Application
-FROM python:3.14-slim
+FROM python:3.15-slim
 WORKDIR /app
 # Install system dependencies and upgrade to patch vulnerabilities
 # gcc supports dependencies without prebuilt wheels; database extras use pure-Python/binary drivers.
