@@ -17,7 +17,7 @@ Bedrock Server Manager is a comprehensive python server designed for installing,
     <img alt="Downloads" src="https://img.shields.io/endpoint?url=https://raw.githubusercontent.com/DMedina559/bsm-stats/main/downloads.json">
   </a>
   <a href="https://github.com/DMedina559/bedrock-server-manager/actions">
-    <img alt="Tests" src="https://img.shields.io/github/actions/workflow/status/DMedina559/bedrock-server-manager/build-test.yml?label=Tests&event=push">
+    <img alt="Tests (dev)" src="https://img.shields.io/github/actions/workflow/status/DMedina559/bedrock-server-manager/build-test.yml?label=Tests%20%28dev%29&branch=dev&event=push">
   </a>
 </p>
 
